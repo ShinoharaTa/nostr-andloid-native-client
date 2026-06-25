@@ -1,0 +1,112 @@
+-- SSOT ローカル DB（whiteboard.md「オフラインファースト / キャッシュ設計」）。
+-- UI はこのテーブルだけを読む（stale-while-revalidate）。Sync エンジンが背景で充填。
+
+-- ============ events: kind:1 等の本文イベント ============
+CREATE TABLE event (
+    id          TEXT NOT NULL PRIMARY KEY,
+    pubkey      TEXT NOT NULL,
+    kind        INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL,
+    content     TEXT NOT NULL,
+    tags_json   TEXT NOT NULL DEFAULT '[]',
+    sig         TEXT NOT NULL
+);
+CREATE INDEX event_pubkey_idx ON event(pubkey);
+CREATE INDEX event_kind_created_idx ON event(kind, created_at);
+
+-- ============ profile: kind:0。pubkey ごとに最新1件だけ（dedup） ============
+CREATE TABLE profile (
+    pubkey      TEXT NOT NULL PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    handle      TEXT NOT NULL DEFAULT '',
+    picture_url TEXT,
+    updated_at  INTEGER NOT NULL
+);
+
+-- created_at が新しいときだけ上書きする upsert（古い kind:0 で上書きしない）
+upsertProfile:
+INSERT INTO profile(pubkey, name, handle, picture_url, updated_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(pubkey) DO UPDATE SET
+    name = excluded.name,
+    handle = excluded.handle,
+    picture_url = excluded.picture_url,
+    updated_at = excluded.updated_at
+WHERE excluded.updated_at > profile.updated_at;
+
+profilesByPubkeys:
+SELECT * FROM profile WHERE pubkey IN ?;
+
+-- 期限切れ（TTL 超過）のプロフィール pubkey を取得 → バッチ REQ の対象
+staleProfiles:
+SELECT pubkey FROM profile WHERE updated_at < ?;
+
+-- ============ relay_status: 接続健全性 ============
+CREATE TABLE relay_status (
+    url             TEXT NOT NULL PRIMARY KEY,
+    last_connected  INTEGER,
+    failure_count   INTEGER NOT NULL DEFAULT 0,
+    supports_negentropy INTEGER NOT NULL DEFAULT 0  -- NIP-77
+);
+
+-- ============ publish_queue: オフライン時の送信保留 ============
+CREATE TABLE publish_queue (
+    event_id    TEXT NOT NULL PRIMARY KEY,
+    payload     TEXT NOT NULL,      -- 署名済みイベント JSON
+    created_at  INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0
+);
+
+enqueuePublish:
+INSERT OR REPLACE INTO publish_queue(event_id, payload, created_at, attempts)
+VALUES (?, ?, ?, ?);
+
+pendingPublishes:
+SELECT * FROM publish_queue ORDER BY created_at ASC;
+
+-- カラムのフィードを created_at 降順で読む（since 以降の差分取得にも流用）
+feedByAuthors:
+SELECT * FROM event
+WHERE kind = 1 AND pubkey IN ? AND created_at > ?
+ORDER BY created_at DESC
+LIMIT 200;
+
+-- ============ pinned_column: ピン留めカラム（永続） ============
+-- レール/デッキの並びの source of truth（whiteboard「統合モデル」）。
+-- フィード/スレッド/チャンネルルームを区別なく ColumnSpec として保存。
+-- 一時カラム(transient)はここに無く、ピン留めで昇格＝この表に INSERT。
+CREATE TABLE pinned_column (
+    id          TEXT NOT NULL PRIMARY KEY,
+    title       TEXT NOT NULL,
+    subtitle    TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL,          -- ColumnKind
+    renderer    TEXT NOT NULL,          -- ColumnRenderer
+    filter_json TEXT NOT NULL,          -- ReqFilter をシリアライズ
+    sort_order  INTEGER NOT NULL
+);
+
+pinnedColumns:
+SELECT * FROM pinned_column ORDER BY sort_order ASC;
+
+pinColumn:
+INSERT OR REPLACE INTO pinned_column(id, title, subtitle, kind, renderer, filter_json, sort_order)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+unpinColumn:
+DELETE FROM pinned_column WHERE id = ?;
+
+reorderColumn:
+UPDATE pinned_column SET sort_order = ? WHERE id = ?;
+
+-- ============ NIP-28 チャンネル一覧（kind:40/41 を集約したキャッシュ） ============
+CREATE TABLE channel (
+    id           TEXT NOT NULL PRIMARY KEY,  -- kind:40 イベント id
+    name         TEXT NOT NULL DEFAULT '',
+    about        TEXT NOT NULL DEFAULT '',
+    picture_url  TEXT,
+    updated_at   INTEGER NOT NULL,           -- kind:41 の最新 created_at
+    last_message_at INTEGER NOT NULL DEFAULT 0
+);
+
+channelsByActivity:
+SELECT * FROM channel ORDER BY last_message_at DESC;
