@@ -16,6 +16,9 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
 
+    // expect/actual class は Beta 警告が出る。意図的な利用なので抑制。
+    compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
+
     listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "ComposeApp"

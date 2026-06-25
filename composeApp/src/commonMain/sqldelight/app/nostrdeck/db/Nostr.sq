@@ -23,16 +23,16 @@ CREATE TABLE profile (
     updated_at  INTEGER NOT NULL
 );
 
--- created_at が新しいときだけ上書きする upsert（古い kind:0 で上書きしない）
-upsertProfile:
-INSERT INTO profile(pubkey, name, handle, picture_url, updated_at)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(pubkey) DO UPDATE SET
-    name = excluded.name,
-    handle = excluded.handle,
-    picture_url = excluded.picture_url,
-    updated_at = excluded.updated_at
-WHERE excluded.updated_at > profile.updated_at;
+-- created_at が新しいときだけ反映（古い kind:0 で上書きしない）。
+-- UPSERT(ON CONFLICT DO UPDATE) は SQLite 3.24+ で、Android API26 同梱の 3.18 では不可。
+-- INSERT OR IGNORE + UPDATE...WHERE の2文で「新しいものだけ反映」を表現する。
+insertProfileIfAbsent:
+INSERT OR IGNORE INTO profile(pubkey, name, handle, picture_url, updated_at)
+VALUES (?, ?, ?, ?, ?);
+
+updateProfileIfNewer:
+UPDATE profile SET name = ?, handle = ?, picture_url = ?, updated_at = ?
+WHERE pubkey = ? AND updated_at < ?;
 
 profilesByPubkeys:
 SELECT * FROM profile WHERE pubkey IN ?;
