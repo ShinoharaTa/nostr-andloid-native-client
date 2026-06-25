@@ -106,3 +106,15 @@ data class ChannelMessage(
     val isMine: Boolean = false,
     val continuation: Boolean = false,  // 直前と同一著者なら頭をまとめる
 )
+
+/**
+ * NIP-10 スレッドの1行（ツリーを描画順にフラット化したもの）。
+ * 本実装では e/p タグから木を組んで深さ優先で並べる。サンプルは固定。
+ */
+data class ThreadEntry(
+    val note: NoteUi,
+    val depth: Int = 0,
+    val replyToName: String? = null,
+    val isRoot: Boolean = false,
+    val isFocused: Boolean = false,     // タップ元のノート（ハイライト）
+)

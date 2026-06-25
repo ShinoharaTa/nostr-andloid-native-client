@@ -1,5 +1,7 @@
 package app.nostrdeck.data
 
+import app.nostrdeck.model.Channel
+import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
@@ -7,6 +9,7 @@ import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.ThreadEntry
 
 /**
  * UI を動かすための仮データ。
@@ -31,6 +34,13 @@ object SampleData {
             ReqFilter(kinds = listOf(1, 7, 9735)), order = 3),
     )
 
+    /** チャンネル一覧カラム（list アイコンから開く一時カラム）。 */
+    val channelListColumn = ColumnSpec(
+        "c_channels", "パブリックチャット", "NIP-28 · channels",
+        ColumnKind.CHANNEL_LIST, ColumnRenderer.CHANNEL_LIST, ReqFilter(kinds = listOf(40, 41)),
+        pinned = false, order = 99,
+    )
+
     private val names = listOf(
         "jack" to "jack@cash.app", "fiatjaf" to "fiatjaf@nostr.com",
         "gigi" to "dergigi@gigi.np", "pablof7z" to "pablo@f7z.io",
@@ -45,22 +55,82 @@ object SampleData {
         "the outbox model (NIP-65) finally clicked. fetch from where people actually write.",
     )
 
-    fun feed(seed: Int): List<NoteUi> = List(8) { i ->
+    private fun profile(name: String, handle: String) = Profile(pubkey = "pk_$name", name = name, handle = handle)
+
+    private fun note(seed: Int, i: Int): NoteUi {
         val (name, handle) = names[(seed + i) % names.size]
-        NoteUi(
+        return NoteUi(
             event = NostrEvent(
-                id = "evt_${seed}_$i",
-                pubkey = "pk_$name",
-                kind = 1,
+                id = "evt_${seed}_$i", pubkey = "pk_$name", kind = 1,
                 createdAt = 1_750_000_000 - (seed + i) * 137L,
                 content = bodies[(seed + i) % bodies.size],
             ),
-            author = Profile(pubkey = "pk_$name", name = name, handle = handle),
-            replies = 3 + (i * 7) % 90,
-            reposts = 9 + (i * 13) % 200,
-            zapsSats = 1000L + (i * 800),
-            likes = 30 + (i * 17) % 400,
+            author = profile(name, handle),
+            replies = 3 + (i * 7) % 90, reposts = 9 + (i * 13) % 200,
+            zapsSats = 1000L + (i * 800), likes = 30 + (i * 17) % 400,
             imageUrl = if ((seed + i) % 4 == 3) "https://example/img_$i.jpg" else null,
         )
     }
+
+    fun feed(seed: Int): List<NoteUi> = List(8) { note(seed, it) }
+
+    /** カラム種別に応じた仮フィード。 */
+    fun feedFor(spec: ColumnSpec): List<NoteUi> = feed(spec.title.length)
+
+    // ---- NIP-10 スレッド（タップしたノートの文脈） ----
+    fun thread(rootSeed: Int = 0): List<ThreadEntry> = listOf(
+        ThreadEntry(note(rootSeed, 0), depth = 0, isRoot = true),
+        ThreadEntry(note(rootSeed, 4), depth = 1, replyToName = "jack", isFocused = true),
+        ThreadEntry(note(rootSeed, 2), depth = 2, replyToName = "gigi"),
+        ThreadEntry(note(rootSeed, 1), depth = 1, replyToName = "jack"),
+        ThreadEntry(note(rootSeed, 3), depth = 2, replyToName = "fiatjaf"),
+    )
+
+    fun threadColumnFor(note: NoteUi) = ColumnSpec(
+        id = "thread_${note.event.id}", title = "スレッド", subtitle = "一時表示 · NIP-10",
+        kind = ColumnKind.THREAD, renderer = ColumnRenderer.THREAD,
+        filter = ReqFilter(kinds = listOf(1)), pinned = false, order = 100,
+    )
+
+    // ---- NIP-28 チャンネル ----
+    val channels = listOf(
+        Channel("ch_njp", "Nostr Japan", "日本語のNostr雑談", members = 340, unread = 12,
+            lastMessageBy = "カリン", lastMessage = "次のミートアップ来る人ー？"),
+        Channel("ch_btc", "Bitcoin Talk", "price & tech", members = 1280, unread = 3,
+            lastMessageBy = "ODELL", lastMessage = "self-custody is not optional"),
+        Channel("ch_dev", "#dev-help", "client devs hangout", members = 92,
+            lastMessageBy = "pablof7z", lastMessage = "NIP-28 の kind:42 はここ"),
+        Channel("ch_photo", "Photography", "📷 share your shots", members = 210, unread = 1,
+            lastMessageBy = "みやび", lastMessage = "桜の写真あげました"),
+        Channel("ch_relay", "Relay Ops", "running your own relay", members = 58,
+            lastMessageBy = "sat", lastMessage = "negentropy 効くと爆速"),
+    )
+
+    private val roomTexts = listOf(
+        "次のミートアップ来る人ー？", "渋谷だっけ？", "21日の19時〜です 🍻", "行きます！",
+        "kind:42 のメッセージ、ここに流れる", "NIP-10 マーカーで返信もできるよ",
+        "モデレーションは kind:43/44 ね", "了解、実装する",
+    )
+
+    fun roomMessages(channelId: String): List<ChannelMessage> = List(8) { i ->
+        val (name, handle) = names[i % names.size]
+        val mine = i % 3 == 0 && i > 0
+        ChannelMessage(
+            event = NostrEvent(
+                id = "msg_${channelId}_$i", pubkey = "pk_$name", kind = 42,
+                createdAt = 1_750_000_000 + i * 60L, content = roomTexts[i % roomTexts.size],
+                tags = listOf(listOf("e", channelId, "", "root")),
+            ),
+            author = profile(if (mine) "あなた" else name, handle),
+            isMine = mine,
+            continuation = i > 0 && (i % 4 != 0),
+        )
+    }
+
+    fun roomColumnFor(channel: Channel) = ColumnSpec(
+        id = "room_${channel.id}", title = channel.name, subtitle = "👤 ${channel.members} · kind:42",
+        kind = ColumnKind.CHANNEL_ROOM, renderer = ColumnRenderer.ROOM,
+        filter = ReqFilter(kinds = listOf(42), channelId = channel.id),
+        pinned = false, order = 100, unread = channel.unread,
+    )
 }

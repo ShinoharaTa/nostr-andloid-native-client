@@ -1,81 +1,93 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.data.SampleData
+import app.nostrdeck.model.ColumnKind
+import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
-import app.nostrdeck.model.NoteUi
+import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 
 /**
- * Deck のルート。**レイアウト分岐はウィンドウ幅で駆動**（ヒンジ検出ではない）。
- * → iPad の Stage Manager 可変幅・フォルダブル展開のどちらも同じ経路で処理でき、
- *   ヒンジ API の無い iOS でも破綻しない（whiteboard.md 参照）。
- *
- * BoxWithConstraints の代わりに呼び出し側から [maxWidthDp] を渡す形にして、
- * 将来 WindowSizeClass / WindowInfoTracker（ヒンジのガター用）を差し込みやすくしている。
+ * Deck の本体。レイアウトは [isCompact]（= ウィンドウ幅）で分岐：
+ *  - Compact : HorizontalPager（1カラム=1ページ・タブ切替）
+ *  - Expanded: 固定幅カラムを横スクロールで並べる
+ * どちらも `state.jumpTarget` を監視して対象カラムへスクロールする。
  */
 @Composable
-fun DeckScreen(
-    columns: List<ColumnSpec>,
-    feedFor: (ColumnSpec) -> List<NoteUi>,
-    maxWidthDp: Int,
-    modifier: Modifier = Modifier,
-) {
-    val isCompact = maxWidthDp < COMPACT_BREAKPOINT_DP
+fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().background(DeckColors.Bg)) {
-        if (isCompact) {
-            CompactPager(columns, feedFor)
-        } else {
-            ExpandedDeck(columns, feedFor)
+        if (isCompact) CompactPager(state) else ExpandedDeck(state)
+    }
+}
+
+@Composable
+private fun ExpandedDeck(state: DeckState) {
+    val scroll = rememberScrollState()
+    val colWidthPx = with(LocalDensity.current) { DeckDimens.ColumnWidth.toPx() }
+
+    // レール/タブからのジャンプ要求を消費して横スクロール
+    LaunchedEffect(state.jumpTarget) {
+        val target = state.jumpTarget ?: return@LaunchedEffect
+        val idx = state.columns.indexOfFirst { it.id == target }
+        if (idx >= 0) scroll.animateScrollTo((idx * colWidthPx).toInt())
+        state.consumeJump()
+    }
+
+    Row(Modifier.fillMaxSize().horizontalScroll(scroll)) {
+        state.columns.forEach { spec ->
+            RenderColumn(
+                spec, state, state.listStateFor(spec.id),
+                Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
+            )
+            Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Border))
         }
     }
 }
 
-private const val COMPACT_BREAKPOINT_DP = 600  // WindowSizeClass の Compact 上限相当
-
-/** 折りたたみ時：1カラム=1ページ。タブ + スワイプで普通の SNS の操作感。 */
 @Composable
-private fun CompactPager(columns: List<ColumnSpec>, feedFor: (ColumnSpec) -> List<NoteUi>) {
-    val pager = rememberPagerState(pageCount = { columns.size })
+private fun CompactPager(state: DeckState) {
+    val pager = rememberPagerState(pageCount = { state.columns.size })
+
+    LaunchedEffect(state.jumpTarget) {
+        val target = state.jumpTarget ?: return@LaunchedEffect
+        val idx = state.columns.indexOfFirst { it.id == target }
+        if (idx >= 0) pager.animateScrollToPage(idx)
+        state.consumeJump()
+    }
+
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp, 8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            columns.forEachIndexed { i, c ->
+            state.columns.forEachIndexed { i, c ->
                 val active = pager.currentPage == i
                 Text(
                     c.title, fontSize = 12.5.sp,
@@ -88,56 +100,42 @@ private fun CompactPager(columns: List<ColumnSpec>, feedFor: (ColumnSpec) -> Lis
             }
         }
         HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-            val spec = columns[page]
-            // 各ページのスクロール位置を独立保持（本来は ViewModel hoist）
-            val listState = rememberLazyListState()
-            FeedColumn(spec, remember(spec.id) { feedFor(spec) }, listState = listState)
+            val spec = state.columns[page]
+            RenderColumn(spec, state, state.listStateFor(spec.id), Modifier.fillMaxSize())
         }
     }
 }
 
-/** 展開時：固定幅カラムを横並び。はみ出しは横スクロール。末尾にカラム追加。 */
+/** spec.renderer に応じてカラム実体を描き分けるディスパッチャ。 */
 @Composable
-private fun ExpandedDeck(columns: List<ColumnSpec>, feedFor: (ColumnSpec) -> List<NoteUi>) {
-    Row(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
-        columns.forEachIndexed { i, spec ->
-            val listState = rememberLazyListState()
-            FeedColumn(
-                spec, remember(spec.id) { feedFor(spec) },
-                listState = listState,
-                offline = spec.title == "通知",   // デモ用にオフラインバナーを1カラムで表示
-                modifier = Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight()
-                    .border(0.dp, DeckColors.Border),
-            )
-            VerticalDivider()
-            // TODO: ヒンジ位置にカラム境界が重なる場合は DeckDimens.HingeGutter を挿入
-        }
-        AddColumnRail()
+private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyListState, modifier: Modifier) {
+    val onPin = { if (spec.pinned) state.unpin(spec.id) else state.pin(spec.id) }
+    val onClose = { state.close(spec.id) }
+
+    when (spec.renderer) {
+        ColumnRenderer.FEED -> FeedColumn(
+            spec, SampleData.feedFor(spec), modifier, listState,
+            offline = spec.kind == ColumnKind.NOTIFICATIONS,
+            onPin = onPin, onClose = onClose,
+            onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note)) },
+        )
+        ColumnRenderer.THREAD -> ThreadColumn(
+            spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose,
+        )
+        ColumnRenderer.CHANNEL_LIST -> ChannelListColumn(
+            spec, SampleData.channels, pinnedChannelIds(state), modifier, listState,
+            onPin = onPin, onClose = onClose,
+            onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch)) },
+            onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
+        )
+        ColumnRenderer.ROOM -> ChannelRoomColumn(
+            spec, SampleData.roomMessages(spec.filter.channelId.orEmpty()),
+            modifier, listState, onPin = onPin, onClose = onClose,
+        )
     }
 }
 
-@Composable
-private fun VerticalDivider() {
-    Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Border))
-}
-
-@Composable
-private fun AddColumnRail() {
-    Column(
-        Modifier.width(56.dp).fillMaxHeight().background(DeckColors.Surface).padding(top = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier.size(38.dp).clip(CircleShape)
-                .border(1.5.dp, DeckColors.BorderStrong, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3) }
-    }
-}
-
-/** 余白を縦書き風に確保するためのレイアウトユーティリティ（未使用のフックを残置）。 */
-@Suppress("unused")
-private fun Modifier.fixedColumnWidth() = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-}
+/** 現在ピン留め済みのチャンネル room の channelId 集合（一覧の📌表示用）。 */
+private fun pinnedChannelIds(state: DeckState): Set<String> =
+    state.columns.filter { it.pinned && it.kind == ColumnKind.CHANNEL_ROOM }
+        .mapNotNull { it.filter.channelId }.toSet()

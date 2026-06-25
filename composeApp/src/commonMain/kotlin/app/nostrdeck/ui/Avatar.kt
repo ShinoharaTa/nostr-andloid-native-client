@@ -1,6 +1,8 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -14,25 +16,29 @@ import app.nostrdeck.theme.DeckDimens
 import kotlin.math.abs
 
 /**
- * pubkey から決定的にグラデーションを生成するプレースホルダアバター。
- * 実際の実装では Profile.pictureUrl を Coil で読み、未取得時はこれをフォールバックにする。
+ * pubkey から決定的にグラデーションを生成するプレースホルダ。
+ * 実装では Profile.pictureUrl を Coil で読み、未取得時のフォールバックにする。
  * （designs/index.html の grad() と同じ発想）
  */
 @Composable
 fun GradientAvatar(seed: String, modifier: Modifier = Modifier) {
+    Box(modifier.size(DeckDimens.AvatarSize).clip(CircleShape).background(gradientBrush(seed)))
+}
+
+/** チャンネルアイコン等の角丸四角版（親 Box を満たす）。 */
+@Composable
+fun GradientSquare(seed: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize().background(gradientBrush(seed)))
+}
+
+fun gradientBrush(seed: String): Brush {
     var h = 0
     for (c in seed) h = (h * 31 + c.code)
     val a = abs(h) % 360
     val b = abs(h shr 3) % 360
-    val brush = Brush.linearGradient(
+    return Brush.linearGradient(
         listOf(hsl(a.toFloat(), 0.65f, 0.55f), hsl(b.toFloat(), 0.70f, 0.42f)),
         start = Offset.Zero, end = Offset.Infinite,
-    )
-    androidx.compose.foundation.layout.Box(
-        modifier
-            .size(DeckDimens.AvatarSize)
-            .clip(CircleShape)
-            .background(brush)
     )
 }
 
