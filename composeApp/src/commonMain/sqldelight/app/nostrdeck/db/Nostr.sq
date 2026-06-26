@@ -22,6 +22,28 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 recentNotes:
 SELECT * FROM event WHERE kind = 1 ORDER BY created_at DESC LIMIT ?;
 
+feedBySearch:
+SELECT * FROM event WHERE kind = 1 AND content LIKE ('%' || ? || '%')
+ORDER BY created_at DESC LIMIT 200;
+
+-- ============ event_tag: タグ索引（#t ハッシュタグ等のカラム検索用） ============
+CREATE TABLE event_tag (
+    event_id TEXT NOT NULL,
+    tag      TEXT NOT NULL,   -- 't','e','p'…
+    value    TEXT NOT NULL,
+    PRIMARY KEY (event_id, tag, value)
+);
+CREATE INDEX event_tag_idx ON event_tag(tag, value);
+
+insertTag:
+INSERT OR IGNORE INTO event_tag(event_id, tag, value) VALUES (?, ?, ?);
+
+feedByHashtag:
+SELECT event.* FROM event
+JOIN event_tag ON event.id = event_tag.event_id
+WHERE event.kind = 1 AND event_tag.tag = 't' AND event_tag.value = ?
+ORDER BY event.created_at DESC LIMIT 200;
+
 -- ============ profile: kind:0。pubkey ごとに最新1件だけ（dedup） ============
 CREATE TABLE profile (
     pubkey      TEXT NOT NULL PRIMARY KEY,

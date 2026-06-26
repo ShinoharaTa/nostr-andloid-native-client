@@ -25,10 +25,13 @@
 ---
 
 ## M2. リレー基盤の本実装
-- ⬜ P0 リレープール（複数接続・指数バックオフ＋ジッター・`relay_status`）
-- ⬜ P0 **カラム=REQ ライフサイクル**：表示中のみ購読 active、オフスクリーンは `CLOSE`
+- 🟡 P0 リレープール（複数接続・指数バックオフ＋ジッターは実装。`relay_status` 永続は未）
+- ✅ P0 **カラム=REQ ライフサイクル**：表示時に subId=columnId で購読、dispose で CLOSE
+- ✅ P0 filter 別 DB クエリ（hashtag=event_tag join / authors / search / global）+ タグ索引
 - ⬜ P1 `since` 差分取得（再接続時の取りこぼし最小化）
+- ⬜ P1 スキーマ・マイグレーション（現状は変更時にアンインストールが必要）
 - ⬜ P2 Negentropy（NIP-77）対応リレーで集合差分同期
+- → ✅ **データ層確認**: event_tag 1708件、feedByHashtag('nostr') が実投稿6件を返却
 
 ## M3. プロフィール解決（kind:0）— 体感に最も効く
 - ✅ P0 受信著者をバッチ（`{kinds:[0],authors:[...]}`）+ 400ms デバウンスで解決

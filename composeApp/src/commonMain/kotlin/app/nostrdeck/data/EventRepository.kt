@@ -8,6 +8,7 @@ import app.nostrdeck.db.NostrDb
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
+import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayMessage
@@ -16,7 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
@@ -27,8 +27,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * SSOT リポジトリ（whiteboard）。リレー購読→検証→DB 書き込み、読みは DB の Flow。
- * UI はこの [notes] を購読するだけ（ネットワークを見ない）。M1 は global フィード。
+ * SSOT リポジトリ。リレー購読→検証→DB 書き込み、読みは DB の Flow。
+ * 各カラムは [subscribeColumn]/[unsubscribeColumn] で自分のフィルタを REQ（= カラム=REQ ライフサイクル）。
  */
 class EventRepository(
     private val db: NostrDb,
@@ -39,18 +39,8 @@ class EventRepository(
     private val relays = relayUrls.map { RelayClient(it, scope) }
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * DB の最近の kind:1 を NoteUi にして流す。
-     * event 表と profile 表の**両方**を監視して combine するので、後から kind:0 が解決すると
-     * 著者名/アバターが自動で差し変わる（M3）。
-     */
-    val notes: Flow<List<NoteUi>> = combine(
-        q.recentNotes(200L).asFlow().mapToList(Dispatchers.Default),
-        q.allProfiles().asFlow().mapToList(Dispatchers.Default),
-    ) { rows, profiles ->
-        val byPubkey = profiles.associateBy { it.pubkey }
-        rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]) }
-    }
+    /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
+    private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
 
     fun start() {
         relays.forEach { relay ->
@@ -60,13 +50,44 @@ class EventRepository(
         scope.launch { profileBatchLoop() }
     }
 
-    /** M1: グローバルな kind:1 を購読（フォローリスト確定までの暫定）。 */
-    fun subscribeHomeFeed(limit: Int = 100) {
-        relays.forEach { it.subscribe("home", Filter(kinds = listOf(1), limit = limit)) }
+    // ---- カラム = REQ ライフサイクル ----
+    private val openColumns = mutableSetOf<String>()
+
+    /** カラム表示時に購読開始（subId = columnId）。 */
+    fun subscribeColumn(columnId: String, filter: ReqFilter) {
+        if (!openColumns.add(columnId)) return
+        val pf = filter.toProtocol(limit = 100)
+        relays.forEach { it.subscribe(columnId, pf) }
     }
 
+    /** カラム除去/オフスクリーン時に CLOSE。 */
+    fun unsubscribeColumn(columnId: String) {
+        if (openColumns.remove(columnId)) relays.forEach { it.unsubscribe(columnId) }
+    }
+
+    /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。 */
+    fun columnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
+        combine(rowsFlow(filter), profilesFlow) { rows, profiles ->
+            val byPubkey = profiles.associateBy { it.pubkey }
+            rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]) }
+        }
+
+    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
+        filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+        filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
+        !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
+        else -> q.recentNotes(200L)
+    }.asFlow().mapToList(Dispatchers.Default)
+
+    private fun ReqFilter.toProtocol(limit: Int) = Filter(
+        authors = authors.ifEmpty { null },
+        kinds = kinds.ifEmpty { listOf(1) },
+        hashtags = hashtags.ifEmpty { null },
+        search = search,
+        limit = limit,
+    )
+
     // ---- kind:0 バッチ解決 ----
-    // 著者 pubkey を Channel に流し、単一コルーチンで 400ms バーストをまとめて 1 本の REQ に。
     private val authorRequests = Channel<String>(Channel.UNLIMITED)
 
     private fun requestProfile(pubkey: String) {
@@ -79,7 +100,6 @@ class EventRepository(
         while (true) {
             val first = authorRequests.receive()
             if (first !in requested) pending.add(first)
-            // デバウンス窓: 静かになるまで追加収集
             withTimeoutOrNull(400) {
                 while (true) {
                     val next = authorRequests.receive()
@@ -89,7 +109,6 @@ class EventRepository(
             if (pending.isEmpty()) continue
             requested.addAll(pending)
             pending.clear()
-            // 累積した全著者を 1 本の購読で（kind:0 は更新頻度が低い）
             relays.forEach {
                 it.subscribe("profiles", Filter(kinds = listOf(0), authors = requested.toList()))
             }
@@ -105,9 +124,20 @@ class EventRepository(
         when (e.kind) {
             1 -> {
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
-                requestProfile(e.pubkey)   // 著者の kind:0 をバッチ要求
+                indexTags(e)
+                requestProfile(e.pubkey)
             }
             0 -> upsertProfile(e)
+        }
+    }
+
+    /** #t/#e/#p をタグ索引へ（ハッシュタグ等のカラム検索用）。't' は小文字化。 */
+    private fun indexTags(e: NostrEvent) {
+        e.tags.forEach { tag ->
+            if (tag.size >= 2 && tag[0] in TAG_KEYS) {
+                val value = if (tag[0] == "t") tag[1].lowercase() else tag[1]
+                q.insertTag(e.id, tag[0], value)
+            }
         }
     }
 
@@ -126,7 +156,7 @@ class EventRepository(
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
             author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url),
-            imageUrl = imageUrlRegex.find(row.content)?.value,   // TODO(M6): imeta(NIP-92) 優先
+            imageUrl = imageUrlRegex.find(row.content)?.value,
         )
     }
 
@@ -136,4 +166,8 @@ class EventRepository(
     private fun tagsToJson(tags: List<List<String>>): String = buildJsonArray {
         tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) }
     }.toString()
+
+    private companion object {
+        val TAG_KEYS = setOf("t", "e", "p")
+    }
 }

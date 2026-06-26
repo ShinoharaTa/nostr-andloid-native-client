@@ -27,6 +27,7 @@ data class Filter(
     val since: Long? = null,
     val until: Long? = null,
     val limit: Int? = null,
+    val search: String? = null,           // NIP-50
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         ids?.let { putJsonArray("ids") { it.forEach { v -> add(v) } } }
@@ -37,6 +38,7 @@ data class Filter(
         since?.let { put("since", it) }
         until?.let { put("until", it) }
         limit?.let { put("limit", it) }
+        search?.let { put("search", it) }
     }
 }
 

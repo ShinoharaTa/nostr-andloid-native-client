@@ -50,10 +50,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val db = createDatabase(DriverFactory(applicationContext))
-        repository = EventRepository(db, appScope, DEFAULT_RELAYS).apply {
-            start()
-            subscribeHomeFeed()
-        }
+        // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。
+        repository = EventRepository(db, appScope, DEFAULT_RELAYS).apply { start() }
 
         setContent { App(repository) }
     }

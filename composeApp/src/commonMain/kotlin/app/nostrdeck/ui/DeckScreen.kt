@@ -21,9 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -141,10 +143,18 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
 
     when (spec.renderer) {
         ColumnRenderer.FEED -> {
-            // FOLLOWING カラムは実データ（Repository）があれば DB の Flow を購読、無ければ仮データ。
+            // 実データ対象のフィード種別はカラム=REQ で購読し DB Flow を表示。
+            // 通知/DM はログイン pubkey や復号が要るため当面は仮データ。
             val repo = LocalRepository.current
-            val notes = if (repo != null && spec.kind == ColumnKind.FOLLOWING) {
-                repo.notes.collectAsState(initial = emptyList()).value
+            val live = repo != null && spec.kind in LIVE_FEED_KINDS
+            if (live) {
+                DisposableEffect(spec.id) {
+                    repo!!.subscribeColumn(spec.id, spec.filter)
+                    onDispose { repo.unsubscribeColumn(spec.id) }
+                }
+            }
+            val notes = if (live) {
+                remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
             } else {
                 SampleData.feedFor(spec)
             }
@@ -170,6 +180,11 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         )
     }
 }
+
+/** 実データ購読の対象とするフィード種別（通知/DM はログイン pubkey/復号が要るため除外）。 */
+private val LIVE_FEED_KINDS = setOf(
+    ColumnKind.FOLLOWING, ColumnKind.GLOBAL, ColumnKind.HASHTAG, ColumnKind.PROFILE,
+)
 
 /** 現在ピン留め済みのチャンネル room の channelId 集合（一覧の📌表示用）。 */
 private fun pinnedChannelIds(state: DeckState): Set<String> =
