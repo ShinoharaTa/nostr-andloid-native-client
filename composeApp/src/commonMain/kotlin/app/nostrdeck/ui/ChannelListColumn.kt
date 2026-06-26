@@ -45,8 +45,8 @@ fun ChannelListColumn(
     pinnedChannelIds: Set<String>,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
-    onPin: () -> Unit = {},
-    onClose: () -> Unit = {},
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
     onChannelClick: (Channel) -> Unit = {},
     onPinChannel: (Channel) -> Unit = {},
 ) {

@@ -1,51 +1,66 @@
 package app.nostrdeck.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import app.nostrdeck.data.SampleData
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 
 /**
- * アプリの骨格。**幅でナビの器を入れ替える**（whiteboard「アダプティブ・ナビゲーション」）。
- *  - Compact  : 下部 NavigationBar + Deck(Pager)
- *  - Expanded : 左 NavigationRail + Deck(横スクロール)
+ * アプリの骨格。**宛先ごとにレイアウトを持つ**：
+ *  - Home          : Deck（複数カラム横スクロール）
+ *  - Public Chat/DM/設定 : list-detail 2ペイン（Compact では1ペイン+プッシュ）
+ *  - 通知          : 単一フィード
+ * ナビの器は幅で入れ替え（Compact=下 NavigationBar / Expanded=左 NavigationRail）。
  */
 @Composable
 fun AppScaffold(state: DeckState) {
-    // Android の戻る: 一時カラム(スレッド/ルーム/一覧)があれば閉じる。無ければ OS 既定。
-    PlatformBackHandler(enabled = state.hasTransient) { state.back() }
-
-    // edge-to-edge のためコンテンツがシステムバー下に潜らないようインセットを適用。
-    // フォルダブルのステータスバー・タスクバー被りを防ぐ。
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
         val isCompact = maxWidth.value < COMPACT_BREAKPOINT_DP
 
+        // Android 戻る: 宛先ごとに「詳細→一覧」「一時カラムを閉じる」を処理。
+        val backEnabled = when (state.navDest) {
+            NavDest.HOME -> state.hasTransient
+            NavDest.CHANNELS -> isCompact && state.publicChatRoom != null
+            NavDest.DM -> isCompact && state.dmThread != null
+            NavDest.SETTINGS -> isCompact && state.settingsSection != null
+            else -> false
+        }
+        PlatformBackHandler(enabled = backEnabled) {
+            when (state.navDest) {
+                NavDest.HOME -> state.back()
+                NavDest.CHANNELS -> state.publicChatRoom = null
+                NavDest.DM -> state.dmThread = null
+                NavDest.SETTINGS -> state.settingsSection = null
+                else -> {}
+            }
+        }
+
         if (isCompact) {
             Column(Modifier.fillMaxSize()) {
-                DeckArea(state, isCompact = true, modifier = Modifier.weight(1f))
+                Box(Modifier.weight(1f)) { Destination(state, isCompact = true) }
                 BottomBar(state)
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                DeckRail(state, onOpenChannelList = { state.openTransient(SampleData.channelListColumn) })
-                DeckArea(state, isCompact = false, modifier = Modifier.weight(1f))
+                DeckRail(state)
+                Box(Modifier.weight(1f)) { Destination(state, isCompact = false) }
             }
         }
     }
@@ -54,13 +69,25 @@ fun AppScaffold(state: DeckState) {
 private const val COMPACT_BREAKPOINT_DP = 600  // WindowSizeClass の Compact 上限相当
 
 @Composable
+private fun Destination(state: DeckState, isCompact: Boolean) {
+    when (state.navDest) {
+        NavDest.HOME -> DeckArea(state, isCompact = isCompact)
+        NavDest.CHANNELS -> PublicChatScreen(state, isCompact)
+        NavDest.DM -> DmScreen(state, isCompact)
+        NavDest.NOTIFICATIONS -> NotificationsScreen()
+        NavDest.SETTINGS -> SettingsScreen(state, isCompact)
+        NavDest.SEARCH -> SearchScreen()
+    }
+}
+
+@Composable
 private fun BottomBar(state: DeckState) {
     NavigationBar {
         NavItem(state, NavDest.HOME, Icons.Outlined.Home, "ホーム")
-        NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, "検索")
         NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, "通知")
+        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "Chat")
         NavItem(state, NavDest.DM, Icons.Outlined.MailOutline, "DM")
-        NavItem(state, NavDest.SETTINGS, Icons.Outlined.Person, "自分")
+        NavItem(state, NavDest.SETTINGS, Icons.Outlined.Settings, "設定")
     }
 }
 

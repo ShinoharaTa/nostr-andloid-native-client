@@ -107,6 +107,15 @@ data class Channel(
     val lastMessage: String = "",
 )
 
+/** DM 会話一覧の行（NIP-17 想定）。 */
+data class DmConversation(
+    val pubkey: String,
+    val name: String,
+    val handle: String,
+    val lastMessage: String,
+    val unread: Int = 0,
+)
+
 /** NIP-28 チャンネルメッセージ（kind:42）の表示用。チャット行。 */
 data class ChannelMessage(
     val event: NostrEvent,

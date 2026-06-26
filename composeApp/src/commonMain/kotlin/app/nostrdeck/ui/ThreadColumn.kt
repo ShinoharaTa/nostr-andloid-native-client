@@ -39,8 +39,8 @@ fun ThreadColumn(
     entries: List<ThreadEntry>,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
-    onPin: () -> Unit = {},
-    onClose: () -> Unit = {},
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
 ) {
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(

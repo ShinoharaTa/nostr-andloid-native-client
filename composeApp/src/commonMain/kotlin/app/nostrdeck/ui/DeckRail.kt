@@ -16,12 +16,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -46,7 +46,7 @@ import app.nostrdeck.theme.DeckColors
  * （Compact では下部 BottomBar に降りる＝アダプティブ）
  */
 @Composable
-fun DeckRail(state: DeckState, onOpenChannelList: () -> Unit) {
+fun DeckRail(state: DeckState) {
     Column(
         Modifier.width(60.dp).fillMaxHeight().background(DeckColors.Bg)
             .border(0.dp, DeckColors.Border).verticalScroll(rememberScrollState())
@@ -64,11 +64,12 @@ fun DeckRail(state: DeckState, onOpenChannelList: () -> Unit) {
         NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = 3) {
             state.navDest = NavDest.NOTIFICATIONS
         }
+        // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
+        NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
+            state.navDest = NavDest.CHANNELS
+        }
         NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM, badge = 1) {
             state.navDest = NavDest.DM
-        }
-        NavIcon(Icons.Outlined.Tag, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
-            state.navDest = NavDest.CHANNELS; onOpenChannelList()
         }
 
         Divider26()

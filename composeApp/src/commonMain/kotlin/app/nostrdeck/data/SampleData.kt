@@ -5,6 +5,7 @@ import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
@@ -132,5 +133,39 @@ object SampleData {
         kind = ColumnKind.CHANNEL_ROOM, renderer = ColumnRenderer.ROOM,
         filter = ReqFilter(kinds = listOf(42), channelId = channel.id),
         pinned = false, order = 100, unread = channel.unread,
+    )
+
+    fun channelById(id: String): Channel? = channels.firstOrNull { it.id == id }
+
+    // ---- DM（NIP-17 想定） ----
+    val dmConversations = names.mapIndexed { i, (name, handle) ->
+        DmConversation(
+            pubkey = "pk_$name", name = name, handle = handle,
+            lastMessage = bodies[i % bodies.size].take(28),
+            unread = if (i % 3 == 0) i % 4 else 0,
+        )
+    }
+
+    fun dmMessages(pubkey: String): List<ChannelMessage> = List(6) { i ->
+        val (name, handle) = names[i % names.size]
+        val mine = i % 2 == 0
+        ChannelMessage(
+            event = NostrEvent(
+                id = "dm_${pubkey}_$i", pubkey = pubkey, kind = 1059,
+                createdAt = 1_750_000_000 + i * 60L,
+                content = listOf("やあ", "NIP-17 の DM だよ", "了解！", "あとで送る", "👍", "ありがとう")[i % 6],
+            ),
+            author = profile(if (mine) "あなた" else name, handle),
+            isMine = mine, continuation = false,
+        )
+    }
+
+    // ---- 設定（左メニュー / 右内容） ----
+    val settingsSections = listOf(
+        "account" to "アカウント",
+        "signer" to "ログイン方法",
+        "relays" to "リレー",
+        "appearance" to "表示",
+        "about" to "このアプリについて",
     )
 }

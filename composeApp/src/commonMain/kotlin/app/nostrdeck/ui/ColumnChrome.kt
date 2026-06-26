@@ -59,11 +59,14 @@ fun ColumnHeader(
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        HeaderIcon(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
-            tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
-        if (pinned) {
+        // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
+        if (onPin != null) {
+            HeaderIcon(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
+                tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
+        }
+        if (pinned && onPin != null) {
             HeaderIcon(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
-        } else {
+        } else if (onClose != null) {
             HeaderIcon(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
         }
     }

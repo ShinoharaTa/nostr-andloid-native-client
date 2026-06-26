@@ -28,6 +28,11 @@ class DeckState(initial: List<ColumnSpec>) {
     /** レール/下タブの選択中宛先。 */
     var navDest by mutableStateOf(NavDest.HOME)
 
+    // 各 list-detail 宛先で選択中の項目（右ペイン）。Compact では null=一覧 / 非null=詳細。
+    var publicChatRoom by mutableStateOf<String?>(null)   // 選択中チャンネル id
+    var dmThread by mutableStateOf<String?>(null)         // 選択中の相手 pubkey
+    var settingsSection by mutableStateOf<String?>(null)  // 選択中の設定セクション
+
     /** レールアイコン/タブから要求されたジャンプ先カラム id（消費後に null へ）。 */
     var jumpTarget by mutableStateOf<String?>(null)
         private set

@@ -28,8 +28,8 @@ fun FeedColumn(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     offline: Boolean = false,
-    onPin: () -> Unit = {},
-    onClose: () -> Unit = {},
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
     onNoteClick: (NoteUi) -> Unit = {},
 ) {
     Column(modifier.background(DeckColors.Surface)) {
