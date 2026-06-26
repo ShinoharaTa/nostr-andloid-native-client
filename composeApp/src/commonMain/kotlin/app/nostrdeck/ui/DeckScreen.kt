@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -119,12 +120,21 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
     val onClose = { state.close(spec.id) }
 
     when (spec.renderer) {
-        ColumnRenderer.FEED -> FeedColumn(
-            spec, SampleData.feedFor(spec), modifier, listState,
-            offline = spec.kind == ColumnKind.NOTIFICATIONS,
-            onPin = onPin, onClose = onClose,
-            onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) },
-        )
+        ColumnRenderer.FEED -> {
+            // FOLLOWING カラムは実データ（Repository）があれば DB の Flow を購読、無ければ仮データ。
+            val repo = LocalRepository.current
+            val notes = if (repo != null && spec.kind == ColumnKind.FOLLOWING) {
+                repo.notes.collectAsState(initial = emptyList()).value
+            } else {
+                SampleData.feedFor(spec)
+            }
+            FeedColumn(
+                spec, notes, modifier, listState,
+                offline = spec.kind == ColumnKind.NOTIFICATIONS,
+                onPin = onPin, onClose = onClose,
+                onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) },
+            )
+        }
         ColumnRenderer.THREAD -> ThreadColumn(
             spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose,
         )

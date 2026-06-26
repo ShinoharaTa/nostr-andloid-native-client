@@ -1,23 +1,25 @@
 package app.nostrdeck
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
+import app.nostrdeck.ui.LocalRepository
 
 /**
  * アプリのルート（Android/iOS 共通の入口）。
- *
- * DeckState を保持し AppScaffold へ渡す。AppScaffold が幅でナビ/レイアウトを分岐する。
- * NOTE: remember は折り↔展開のコンフィグ変更で破棄される。本番は ViewModel /
- *   rememberSaveable へ hoist してカラム構成とスクロール位置を保持する（whiteboard TODO）。
+ * [repository] が渡されれば実データ、null なら SampleData にフォールバック。
  */
 @Composable
-fun App() {
+fun App(repository: EventRepository? = null) {
     DeckTheme {
         val state = remember { DeckState(SampleData.columns) }
-        AppScaffold(state)
+        CompositionLocalProvider(LocalRepository provides repository) {
+            AppScaffold(state)
+        }
     }
 }

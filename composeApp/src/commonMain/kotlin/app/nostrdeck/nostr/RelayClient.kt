@@ -1,0 +1,104 @@
+package app.nostrdeck.nostr
+
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * 単一リレーへの WebSocket 接続（NIP-01）。
+ * 切断時は指数バックオフ+ジッターで再接続し、購読中の REQ を張り直す。
+ */
+class RelayClient(
+    val url: String,
+    private val scope: CoroutineScope,
+) {
+    private val client = HttpClient { install(WebSockets) }
+    private val _messages = MutableSharedFlow<RelayMessage>(extraBufferCapacity = 512)
+    val messages = _messages.asSharedFlow()
+
+    private val outgoing = Channel<String>(Channel.BUFFERED)
+    private val activeReqs = mutableMapOf<String, String>()  // subId → REQ json
+    private var job: Job? = null
+
+    var connected: Boolean = false
+        private set
+
+    fun start() {
+        if (job != null) return
+        job = scope.launch {
+            var backoff = 1000L
+            while (isActive) {
+                try {
+                    client.webSocket(urlString = url) {
+                        backoff = 1000L
+                        runSession(this)
+                    }
+                } catch (t: CancellationException) {
+                    throw t
+                } catch (_: Throwable) {
+                    // 接続失敗/切断 → 下でバックオフ
+                }
+                connected = false
+                if (!isActive) break
+                delay(backoff + (0..500).random())
+                backoff = (backoff * 2).coerceAtMost(30_000)
+            }
+        }
+    }
+
+    private suspend fun runSession(session: DefaultClientWebSocketSession) {
+        connected = true
+        // (再)接続時に購読中の REQ を張り直す
+        activeReqs.values.forEach { outgoing.trySend(it) }
+        val sender = scope.launch {
+            try {
+                while (true) session.send(Frame.Text(outgoing.receive()))
+            } catch (_: ClosedReceiveChannelException) {
+            }
+        }
+        try {
+            for (frame in session.incoming) {
+                if (frame is Frame.Text) _messages.emit(RelayProtocol.parse(frame.readText()))
+            }
+        } finally {
+            sender.cancel()
+        }
+    }
+
+    /** 購読開始（同じ subId は上書き）。 */
+    fun subscribe(subId: String, vararg filters: Filter) {
+        val req = RelayProtocol.req(subId, *filters)
+        activeReqs[subId] = req
+        outgoing.trySend(req)
+    }
+
+    /** 購読停止（CLOSE 送信）。 */
+    fun unsubscribe(subId: String) {
+        activeReqs.remove(subId)
+        outgoing.trySend(RelayProtocol.close(subId))
+    }
+
+    /** イベント送信（publish）。 */
+    fun publish(eventJson: String) {
+        outgoing.trySend(eventJson)
+    }
+
+    fun stop() {
+        job?.cancel()
+        job = null
+        client.close()
+    }
+}

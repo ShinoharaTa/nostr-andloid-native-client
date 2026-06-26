@@ -14,6 +14,14 @@ CREATE TABLE event (
 CREATE INDEX event_pubkey_idx ON event(pubkey);
 CREATE INDEX event_kind_created_idx ON event(kind, created_at);
 
+insertEvent:
+INSERT OR IGNORE INTO event(id, pubkey, kind, created_at, content, tags_json, sig)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- フィード（kind:1 を新しい順）。M1 の global/購読結果の表示に使う。
+recentNotes:
+SELECT * FROM event WHERE kind = 1 ORDER BY created_at DESC LIMIT ?;
+
 -- ============ profile: kind:0。pubkey ごとに最新1件だけ（dedup） ============
 CREATE TABLE profile (
     pubkey      TEXT NOT NULL PRIMARY KEY,
@@ -36,6 +44,9 @@ WHERE pubkey = ? AND updated_at < ?;
 
 profilesByPubkeys:
 SELECT * FROM profile WHERE pubkey IN ?;
+
+profileByPubkey:
+SELECT * FROM profile WHERE pubkey = ?;
 
 -- 期限切れ（TTL 超過）のプロフィール pubkey を取得 → バッチ REQ の対象
 staleProfiles:
