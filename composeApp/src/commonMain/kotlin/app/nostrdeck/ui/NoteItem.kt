@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
 import coil3.compose.AsyncImage
@@ -96,7 +97,14 @@ private fun formatSats(sats: Long): String = when {
     else -> sats.toString()
 }
 
-private fun relativeTime(@Suppress("UNUSED_PARAMETER") createdAt: Long): String {
-    // TODO: 実時刻との差分から算出。モックでは固定表示。
-    return "4m"
+private fun relativeTime(createdAt: Long): String {
+    val diff = currentUnixTime() - createdAt
+    return when {
+        diff < 10 -> "now"
+        diff < 60 -> "${diff}s"
+        diff < 3600 -> "${diff / 60}m"
+        diff < 86400 -> "${diff / 3600}h"
+        diff < 604800 -> "${diff / 86400}d"
+        else -> "${diff / 604800}w"
+    }
 }

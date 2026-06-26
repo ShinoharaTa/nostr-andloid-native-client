@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
@@ -76,7 +77,7 @@ private fun MessageBubble(m: ChannelMessage) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(m.author.name, color = DeckColors.Accent2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(6.dp))
-                    Text("19:0${m.event.id.last()}", color = DeckColors.Text3, fontSize = 10.sp)
+                    Text(relativeTime(m.event.createdAt), color = DeckColors.Text3, fontSize = 10.sp)
                 }
                 Spacer(Modifier.size(2.dp))
             }
@@ -106,6 +107,18 @@ private fun Bubble(m: ChannelMessage) {
         fontSize = 13.sp,
         modifier = Modifier.background(bgColor, shape).padding(horizontal = 11.dp, vertical = 7.dp),
     )
+}
+
+private fun relativeTime(createdAt: Long): String {
+    val diff = currentUnixTime() - createdAt
+    return when {
+        diff < 10 -> "now"
+        diff < 60 -> "${diff}s"
+        diff < 3600 -> "${diff / 60}m"
+        diff < 86400 -> "${diff / 3600}h"
+        diff < 604800 -> "${diff / 86400}d"
+        else -> "${diff / 604800}w"
+    }
 }
 
 @Composable

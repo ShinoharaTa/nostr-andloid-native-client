@@ -9,9 +9,12 @@ import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.UnsignedEvent
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayMessage
+import app.nostrdeck.nostr.RelayProtocol
+import app.nostrdeck.signer.SignerProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -86,6 +89,21 @@ class EventRepository(
         search = search,
         limit = limit,
     )
+
+    /**
+     * kind:1 ノートを投稿（NIP-01）。
+     * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
+     */
+    suspend fun publishNote(content: String) {
+        val unsigned = UnsignedEvent(kind = 1, content = content)
+        val signed = SignerProvider.current().sign(unsigned)
+        val payload = RelayProtocol.event(signed)
+        // 楽観的ローカル挿入（即時に自分のノートを表示）。
+        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, signed.content, "[]", signed.sig)
+        q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
+        relays.forEach { it.publish(payload) }
+        // TODO: handle OK/NIP-20, retry from publish_queue
+    }
 
     // ---- kind:0 バッチ解決 ----
     private val authorRequests = Channel<String>(Channel.UNLIMITED)

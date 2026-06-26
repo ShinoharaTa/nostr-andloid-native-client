@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
@@ -32,6 +33,13 @@ fun FeedColumn(
     onClose: (() -> Unit)? = null,
     onNoteClick: (NoteUi) -> Unit = {},
 ) {
+    // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
+    // 下までスクロールしている場合は読書位置を保つため動かさない。
+    LaunchedEffect(notes.firstOrNull()?.event?.id) {
+        if (listState.firstVisibleItemIndex <= 2) {
+            listState.animateScrollToItem(0)
+        }
+    }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,

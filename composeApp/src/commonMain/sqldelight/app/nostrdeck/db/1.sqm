@@ -1,0 +1,20 @@
+-- Migration v1 -> v2.
+--
+-- Workflow: on each schema change, bump the schema version and add <prev>.sqm.
+-- The file name is the version you migrate FROM. SQLDelight derives the schema
+-- version from the migration files (highest <n>.sqm + 1), so adding this 1.sqm
+-- makes NostrDb.Schema.version == 2. The next change adds 2.sqm (-> version 3),
+-- then 3.sqm, etc. SQLDelight applies any .sqm whose <oldVersion> is >= the
+-- on-disk DB version, in order, when the driver opens an older DB.
+--
+-- This baseline brings a pre-existing v1 DB (which predates the tag index) up to
+-- the current schema by creating the event_tag table and its index, mirroring the
+-- definition in Nostr.sq. IF NOT EXISTS keeps it safe to (re)apply.
+
+CREATE TABLE IF NOT EXISTS event_tag (
+    event_id TEXT NOT NULL,
+    tag      TEXT NOT NULL,   -- 't','e','p'…
+    value    TEXT NOT NULL,
+    PRIMARY KEY (event_id, tag, value)
+);
+CREATE INDEX IF NOT EXISTS event_tag_idx ON event_tag(tag, value);

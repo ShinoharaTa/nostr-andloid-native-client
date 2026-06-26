@@ -8,17 +8,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 
@@ -64,11 +69,23 @@ fun AppScaffold(state: DeckState) {
             }
         }
 
+        // ノート投稿の入口（右下に浮かべる）。
+        FloatingActionButton(
+            onClick = { state.showCompose = true },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        ) {
+            Icon(Icons.Outlined.Edit, "投稿")
+        }
+
         if (state.showAddColumn) {
             AddColumnSheet(
                 onDismiss = { state.showAddColumn = false },
                 onAdd = { spec -> state.addColumn(spec); state.showAddColumn = false },
             )
+        }
+
+        if (state.showCompose) {
+            ComposeSheet(onDismiss = { state.showCompose = false })
         }
     }
 }

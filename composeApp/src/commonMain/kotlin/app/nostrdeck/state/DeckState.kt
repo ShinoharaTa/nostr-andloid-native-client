@@ -42,6 +42,9 @@ class DeckState(initial: List<ColumnSpec>) {
     /** カラム追加シート（テンプレ選択）の表示状態。 */
     var showAddColumn by mutableStateOf(false)
 
+    /** ノート投稿シートの表示状態。 */
+    var showCompose by mutableStateOf(false)
+
     /** テンプレから生成したカラムを末尾に追加（永続=pinned）してジャンプ。 */
     fun addColumn(spec: ColumnSpec) {
         columns.add(spec)

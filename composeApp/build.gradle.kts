@@ -86,6 +86,10 @@ sqldelight {
     databases {
         create("NostrDb") {
             packageName.set("app.nostrdeck.db")
+            // マイグレーション運用: スキーマ変更のたびに version を上げ <prev>.sqm を追加する。
+            // SQLDelight は .sqm ファイルからスキーマ version を導出する（最大の <n>.sqm + 1）。
+            // verifyMigrations: .sqm を順に適用した結果が Nostr.sq の現行スキーマと一致するか検証。
+            verifyMigrations.set(true)
         }
     }
 }

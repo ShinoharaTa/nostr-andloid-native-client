@@ -12,13 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.crypto.Nip19
+import app.nostrdeck.crypto.hexToBytes
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
@@ -98,6 +107,76 @@ private fun SignerSettings() {
                 "$m" + if (done) "" else "（未実装）",
                 color = if (done) DeckColors.Text else DeckColors.Text3, fontSize = 13.sp,
             )
+        }
+    }
+
+    Spacer(Modifier.size(16.dp))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(16.dp))
+    LocalSignerLogin()
+}
+
+/**
+ * ローカル署名のログイン UI：nsec の取り込み or 新規生成。
+ * SignerProvider.vault() に対して操作し、現在の npub を表示する。
+ */
+@Composable
+private fun LocalSignerLogin() {
+    // import/generate のたびに公開鍵を読み直すためのトリガ。
+    var refresh by remember { mutableStateOf(0) }
+    var nsecInput by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // publicKeyHex() は suspend。refresh をキーに収集して npub を求める。
+    val npub by produceState<String?>(null, refresh) {
+        value = try {
+            Nip19.hexToNpub(SignerProvider.current().publicKeyHex())
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.size(8.dp))
+    Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = 12.sp)
+    Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = 12.sp)
+
+    Spacer(Modifier.size(14.dp))
+    OutlinedTextField(
+        value = nsecInput,
+        onValueChange = { nsecInput = it; error = null },
+        singleLine = true,
+        label = { Text("nsec を貼り付けて取り込み") },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    error?.let {
+        Spacer(Modifier.size(4.dp))
+        Text(it, color = DeckColors.Accent, fontSize = 12.sp)
+    }
+
+    Spacer(Modifier.size(10.dp))
+    Row(Modifier.fillMaxWidth()) {
+        Button(onClick = {
+            val s = nsecInput.trim()
+            try {
+                val hex = Nip19.nsecToHex(s)
+                SignerProvider.importPrivateKey(hex.hexToBytes())
+                nsecInput = ""
+                error = null
+                refresh++
+            } catch (e: Throwable) {
+                error = "nsec の取り込みに失敗: ${e.message}"
+            }
+        }) {
+            Text("取り込み")
+        }
+        Spacer(Modifier.size(12.dp))
+        Button(onClick = {
+            SignerProvider.generateNewKey()
+            error = null
+            refresh++
+        }) {
+            Text("新規生成")
         }
     }
 }
