@@ -123,7 +123,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             spec, SampleData.feedFor(spec), modifier, listState,
             offline = spec.kind == ColumnKind.NOTIFICATIONS,
             onPin = onPin, onClose = onClose,
-            onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note)) },
+            onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) },
         )
         ColumnRenderer.THREAD -> ThreadColumn(
             spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose,
@@ -131,7 +131,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         ColumnRenderer.CHANNEL_LIST -> ChannelListColumn(
             spec, SampleData.channels, pinnedChannelIds(state), modifier, listState,
             onPin = onPin, onClose = onClose,
-            onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch)) },
+            onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch), originId = spec.id) },
             onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
         )
         ColumnRenderer.ROOM -> ChannelRoomColumn(

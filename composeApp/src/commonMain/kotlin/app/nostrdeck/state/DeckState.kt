@@ -46,10 +46,18 @@ class DeckState(initial: List<ColumnSpec>) {
     fun jumpTo(columnId: String) { jumpTarget = columnId }
     fun consumeJump() { jumpTarget = null }
 
-    /** 一時カラムを追加（既にあれば既存へジャンプ）。スレッド/ルームを開くときに使う。 */
-    fun openTransient(spec: ColumnSpec) {
+    // (一時カラム id → 開いた元カラム id) の戻りスタック。back の戻り先に使う。
+    private val originStack = mutableListOf<Pair<String, String?>>()
+
+    /**
+     * 一時カラムを追加（既にあれば既存へジャンプ）。スレッド/ルームを開くときに使う。
+     * [originId] を渡すと、戻る操作でその元カラムへ復帰する。
+     */
+    fun openTransient(spec: ColumnSpec, originId: String? = null) {
         val existing = columns.firstOrNull { it.id == spec.id }
         if (existing == null) columns.add(spec.copy(pinned = false))
+        originStack.removeAll { it.first == spec.id }
+        originStack.add(spec.id to originId)
         jumpTo(spec.id)
     }
 
@@ -77,6 +85,17 @@ class DeckState(initial: List<ColumnSpec>) {
      * 直前のカラムへジャンプする。閉じる対象が無ければ false（= アプリ終了に委ねる）。
      */
     fun back(): Boolean {
+        // 開いた順に積んだ origin スタックから最後の一時カラムを閉じ、元カラムへ戻る。
+        val top = originStack.removeLastOrNull()
+        if (top != null) {
+            val (transientId, originId) = top
+            columns.removeAll { it.id == transientId && !it.pinned }
+            val target = originId?.takeIf { id -> columns.any { it.id == id } }
+                ?: columns.lastOrNull { it.pinned }?.id
+            target?.let { jumpTo(it) }
+            return true
+        }
+        // フォールバック: スタックに無い一時カラムを末尾から閉じる
         val idx = columns.indexOfLast { !it.pinned }
         if (idx < 0) return false
         columns.removeAt(idx)
