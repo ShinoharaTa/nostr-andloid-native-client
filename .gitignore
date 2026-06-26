@@ -9,3 +9,4 @@ xcuserdata/
 *.xcworkspace/xcuserdata/
 .kotlin/
 .claude/settings.local.json
+.device-shots/

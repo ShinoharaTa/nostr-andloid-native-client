@@ -3,7 +3,10 @@ package app.nostrdeck.ui
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
@@ -26,7 +29,9 @@ import app.nostrdeck.state.NavDest
  */
 @Composable
 fun AppScaffold(state: DeckState) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // edge-to-edge のためコンテンツがシステムバー下に潜らないようインセットを適用。
+    // フォルダブルのステータスバー・タスクバー被りを防ぐ。
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
         val isCompact = maxWidth.value < COMPACT_BREAKPOINT_DP
 
         if (isCompact) {
