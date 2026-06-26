@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -24,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +75,17 @@ private fun ExpandedDeck(state: DeckState) {
             )
             Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Border))
         }
+        // 末尾のカラム追加（テンプレシートを開く）
+        Box(
+            Modifier.width(64.dp).fillMaxHeight().clickable { state.showAddColumn = true },
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Box(
+                Modifier.padding(top = 14.dp).size(40.dp).clip(CircleShape)
+                    .border(1.5.dp, DeckColors.BorderStrong, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("＋", color = DeckColors.Text3, fontSize = 20.sp) }
+        }
     }
 }
 
@@ -105,6 +119,12 @@ private fun CompactPager(state: DeckState) {
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             }
+            // カラム追加
+            Text(
+                "＋", color = DeckColors.Text2, fontSize = 13.sp,
+                modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
+                    .background(DeckColors.Surface2).padding(horizontal = 12.dp, vertical = 6.dp),
+            )
         }
         HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
             val spec = state.columns[page]

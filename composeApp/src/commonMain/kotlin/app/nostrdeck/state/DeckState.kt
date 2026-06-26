@@ -39,6 +39,15 @@ class DeckState(initial: List<ColumnSpec>) {
 
     val pinnedColumns: List<ColumnSpec> get() = columns.filter { it.pinned }
 
+    /** カラム追加シート（テンプレ選択）の表示状態。 */
+    var showAddColumn by mutableStateOf(false)
+
+    /** テンプレから生成したカラムを末尾に追加（永続=pinned）してジャンプ。 */
+    fun addColumn(spec: ColumnSpec) {
+        columns.add(spec)
+        jumpTo(spec.id)
+    }
+
     /** カラムごとのスクロール位置を保持（recomposition を跨いで維持）。 */
     private val listStates = mutableMapOf<String, LazyListState>()
     fun listStateFor(id: String): LazyListState = listStates.getOrPut(id) { LazyListState() }

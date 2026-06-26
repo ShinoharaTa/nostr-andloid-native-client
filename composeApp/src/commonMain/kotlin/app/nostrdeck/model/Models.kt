@@ -79,6 +79,8 @@ data class ReqFilter(
     val since: Long? = null,
     /** NIP-28: kind:42 を特定チャンネルに絞る #e（チャンネル作成イベント id）。 */
     val channelId: String? = null,
+    /** NIP-50 全文検索ワード。 */
+    val search: String? = null,
 )
 
 /** 回線種別ティア（whiteboard.md の NetworkPolicy）。Repository 層だけが参照する。 */

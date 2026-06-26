@@ -63,6 +63,13 @@ fun AppScaffold(state: DeckState) {
                 Box(Modifier.weight(1f)) { Destination(state, isCompact = false) }
             }
         }
+
+        if (state.showAddColumn) {
+            AddColumnSheet(
+                onDismiss = { state.showAddColumn = false },
+                onAdd = { spec -> state.addColumn(spec); state.showAddColumn = false },
+            )
+        }
     }
 }
 

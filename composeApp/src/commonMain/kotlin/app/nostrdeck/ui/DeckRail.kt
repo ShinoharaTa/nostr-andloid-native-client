@@ -79,7 +79,8 @@ fun DeckRail(state: DeckState) {
         state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.jumpTo(col.id) } }
 
         Box(
-            Modifier.size(38.dp).clip(CircleShape).border(1.5.dp, DeckColors.BorderStrong, CircleShape),
+            Modifier.size(38.dp).clip(CircleShape).border(1.5.dp, DeckColors.BorderStrong, CircleShape)
+                .clickable { state.showAddColumn = true },
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3, modifier = Modifier.size(18.dp)) }
 
