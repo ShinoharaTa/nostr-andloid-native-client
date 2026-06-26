@@ -5,52 +5,53 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import kotlin.math.abs
 
 /**
- * pubkey から決定的にグラデーションを生成するプレースホルダ。
+ * プレースホルダアバター。グラデーション禁止のため**無彩色のグレー1色＋イニシャル**。
+ * seed から決定的にグレーの濃淡だけを変える（色相は持たない）。
  * 実装では Profile.pictureUrl を Coil で読み、未取得時のフォールバックにする。
- * （designs/index.html の grad() と同じ発想）
  */
 @Composable
-fun GradientAvatar(seed: String, modifier: Modifier = Modifier) {
-    Box(modifier.size(DeckDimens.AvatarSize).clip(CircleShape).background(gradientBrush(seed)))
+fun Avatar(seed: String, modifier: Modifier = Modifier) {
+    val shade = monoShade(seed)
+    Box(
+        modifier.size(DeckDimens.AvatarSize).clip(CircleShape).background(shade),
+        contentAlignment = Alignment.Center,
+    ) { Initial(seed) }
 }
 
-/** チャンネルアイコン等の角丸四角版（親 Box を満たす）。 */
+/** 角丸四角版（チャンネルアイコン等）。親 Box を満たす。 */
 @Composable
-fun GradientSquare(seed: String, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(gradientBrush(seed)))
+fun AvatarSquare(seed: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(monoShade(seed)),
+        contentAlignment = Alignment.Center,
+    ) { Initial(seed) }
 }
 
-fun gradientBrush(seed: String): Brush {
+@Composable
+private fun Initial(seed: String) {
+    val ch = seed.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+    Text(ch, color = DeckColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+}
+
+/** seed → 無彩色のグレー（明度のみ変化、色相なし）。 */
+private fun monoShade(seed: String): Color {
     var h = 0
     for (c in seed) h = (h * 31 + c.code)
-    val a = abs(h) % 360
-    val b = abs(h shr 3) % 360
-    return Brush.linearGradient(
-        listOf(hsl(a.toFloat(), 0.65f, 0.55f), hsl(b.toFloat(), 0.70f, 0.42f)),
-        start = Offset.Zero, end = Offset.Infinite,
-    )
-}
-
-private fun hsl(h: Float, s: Float, l: Float): Color {
-    val c = (1 - abs(2 * l - 1)) * s
-    val hp = h / 60f
-    val x = c * (1 - abs(hp % 2 - 1))
-    val (r, g, b) = when {
-        hp < 1 -> Triple(c, x, 0f); hp < 2 -> Triple(x, c, 0f)
-        hp < 3 -> Triple(0f, c, x); hp < 4 -> Triple(0f, x, c)
-        hp < 5 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
-    }
-    val m = l - c / 2
-    return Color(r + m, g + m, b + m)
+    val v = 56 + (abs(h) % 56)   // 56..111 のダークグレー帯
+    return Color(v / 255f, v / 255f, v / 255f)
 }

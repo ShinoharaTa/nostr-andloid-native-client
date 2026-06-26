@@ -31,7 +31,7 @@ import app.nostrdeck.theme.DeckColors
 @Composable
 fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(13.dp)) {
-        GradientAvatar(note.author.name)
+        Avatar(note.author.name)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {

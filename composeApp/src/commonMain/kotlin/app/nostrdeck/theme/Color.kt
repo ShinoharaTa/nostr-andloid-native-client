@@ -20,13 +20,14 @@ object DeckColors {
     val Text2  = Color(0xFFA7A8B3)
     val Text3  = Color(0xFF6F7080)
 
-    // accent (Nostr purple)
-    val Accent     = Color(0xFFA855F7)
-    val Accent2    = Color(0xFF8B5CF6)
-    val AccentWeak = Color(0x24A855F7)
+    // accent: モノクロ基調。ブランドカラー(紫)は持たない。
+    // 「選択中/アクティブ」は彩度ゼロの明色で示し、Damus/Nostr 的な紫を避ける。
+    val Accent     = Color(0xFFF2F2F5)  // アクティブな文字/アイコン（ほぼ白）
+    val Accent2    = Color(0xFFC9C9D0)  // セカンダリ（チャット名など）
+    val AccentWeak = Color(0x14FFFFFF)  // 選択チップ/ナビの淡い下地（白の薄被せ）
 
-    // action colors
-    val Zap    = Color(0xFFF7B955)
-    val Repost = Color(0xFF4ADE80)
-    val Like   = Color(0xFFF76E8E)
+    // action colors: 無彩色（アイコンは色で意味づけしない。形と数値で区別）
+    val Zap    = Color(0xFFE7E7EA)  // pin アクティブ・ルームヘッダ・オフライン表示
+    val Repost = Color(0xFFC9C9D0)
+    val Like   = Color(0xFF8A8A93)
 }

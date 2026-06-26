@@ -74,7 +74,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(DeckColors.Surface3)) {
-            GradientSquare(ch.name)
+            AvatarSquare(ch.name)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -92,7 +92,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
             Box(
                 Modifier.clip(CircleShape).background(DeckColors.Accent).padding(horizontal = 6.dp, vertical = 1.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("${ch.unread}", color = DeckColors.Text, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
         }
         Icon(
             Icons.Outlined.PushPin, "ピン留め",

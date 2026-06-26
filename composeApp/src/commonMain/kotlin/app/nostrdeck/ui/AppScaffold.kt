@@ -29,6 +29,9 @@ import app.nostrdeck.state.NavDest
  */
 @Composable
 fun AppScaffold(state: DeckState) {
+    // Android の戻る: 一時カラム(スレッド/ルーム/一覧)があれば閉じる。無ければ OS 既定。
+    PlatformBackHandler(enabled = state.hasTransient) { state.back() }
+
     // edge-to-edge のためコンテンツがシステムバー下に潜らないようインセットを適用。
     // フォルダブルのステータスバー・タスクバー被りを防ぐ。
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {

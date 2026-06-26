@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,23 +89,22 @@ private fun MessageBubble(m: ChannelMessage) {
 @Composable
 private fun AvatarSlot(m: ChannelMessage) {
     Box(Modifier.padding(horizontal = 8.dp)) {
-        if (!m.continuation) GradientAvatar(m.author.name, Modifier.size(30.dp))
+        if (!m.continuation) Avatar(m.author.name, Modifier.size(30.dp))
         else Spacer(Modifier.size(30.dp))
     }
 }
 
 @Composable
 private fun Bubble(m: ChannelMessage) {
+    // グラデーション禁止。自分=明色べた塗り＋暗色文字、相手=暗色サーフェス＋明色文字。
     val shape = if (m.isMine) RoundedCornerShape(12.dp, 4.dp, 12.dp, 12.dp)
     else RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp)
-    val bg = if (m.isMine)
-        Modifier.background(Brush.linearGradient(listOf(DeckColors.Accent, DeckColors.Accent2)), shape)
-    else Modifier.background(DeckColors.Surface2, shape)
+    val bgColor = if (m.isMine) DeckColors.Accent else DeckColors.Surface2
     Text(
         m.event.content,
-        color = if (m.isMine) DeckColors.Text else DeckColors.Text,
+        color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
         fontSize = 13.sp,
-        modifier = bg.padding(horizontal = 11.dp, vertical = 7.dp),
+        modifier = Modifier.background(bgColor, shape).padding(horizontal = 11.dp, vertical = 7.dp),
     )
 }
 
@@ -123,9 +121,8 @@ private fun Composer() {
         )
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(34.dp).clip(CircleShape)
-                .background(Brush.linearGradient(listOf(DeckColors.Accent, DeckColors.Accent2))),
+            Modifier.size(34.dp).clip(CircleShape).background(DeckColors.Accent),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Text, modifier = Modifier.size(16.dp)) }
+        ) { Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Bg, modifier = Modifier.size(16.dp)) }
     }
 }

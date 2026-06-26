@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
@@ -33,6 +35,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
+import kotlinx.coroutines.launch
 
 /**
  * Deck の本体。レイアウトは [isCompact]（= ウィンドウ幅）で分岐：
@@ -74,6 +77,7 @@ private fun ExpandedDeck(state: DeckState) {
 @Composable
 private fun CompactPager(state: DeckState) {
     val pager = rememberPagerState(pageCount = { state.columns.size })
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.jumpTarget) {
         val target = state.jumpTarget ?: return@LaunchedEffect
@@ -94,6 +98,8 @@ private fun CompactPager(state: DeckState) {
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (active) DeckColors.Accent else DeckColors.Text2,
                     modifier = Modifier.clip(CircleShape)
+                        // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）
+                        .clickable { scope.launch { pager.animateScrollToPage(i) } }
                         .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 )

@@ -56,7 +56,7 @@ fun DeckRail(state: DeckState, onOpenChannelList: () -> Unit) {
         Box(
             Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(DeckColors.Accent),
             contentAlignment = Alignment.Center,
-        ) { Text("N", color = DeckColors.Text, fontWeight = FontWeight.Black, fontSize = 17.sp) }
+        ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = 17.sp) }
         Spacer(Modifier.size(6.dp))
 
         NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.navDest = NavDest.HOME }
@@ -85,7 +85,7 @@ fun DeckRail(state: DeckState, onOpenChannelList: () -> Unit) {
         Spacer(Modifier.size(16.dp))
         NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.navDest = NavDest.SETTINGS }
         Spacer(Modifier.size(4.dp))
-        GradientAvatar("me", Modifier.size(34.dp))
+        Avatar("me", Modifier.size(34.dp))
     }
 }
 

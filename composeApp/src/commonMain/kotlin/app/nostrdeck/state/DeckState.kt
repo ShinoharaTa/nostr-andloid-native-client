@@ -64,6 +64,21 @@ class DeckState(initial: List<ColumnSpec>) {
         if (from in columns.indices && to in columns.indices) columns.add(to, columns.removeAt(from))
     }
 
+    /** 戻る操作で閉じられる一時カラムがあるか（システムバック有効判定）。 */
+    val hasTransient: Boolean get() = columns.any { !it.pinned }
+
+    /**
+     * システムバック（Android の戻る）。最後に開いた一時カラム（スレッド/ルーム/一覧）を閉じ、
+     * 直前のカラムへジャンプする。閉じる対象が無ければ false（= アプリ終了に委ねる）。
+     */
+    fun back(): Boolean {
+        val idx = columns.indexOfLast { !it.pinned }
+        if (idx < 0) return false
+        columns.removeAt(idx)
+        (columns.getOrNull(idx - 1) ?: columns.lastOrNull())?.let { jumpTo(it.id) }
+        return true
+    }
+
     private inline fun replace(id: String, transform: (ColumnSpec) -> ColumnSpec) {
         val i = columns.indexOfFirst { it.id == id }
         if (i >= 0) columns[i] = transform(columns[i])
