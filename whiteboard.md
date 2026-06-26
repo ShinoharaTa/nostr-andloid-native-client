@@ -3,7 +3,7 @@
 モバイル向けネイティブ Nostr クライアント（Deck 型 UI）のフレームワーク選定と設計メモ。
 作成日: 2026-06-25
 
-関連: [UI 設計方針](./designs/ui-design-principles.md) / [モック](./designs/index.html) / [デザイントークン](./designs/tokens.css)
+関連: [タスク/ロードマップ](./TASKS.md) / [UI 設計方針](./designs/ui-design-principles.md) / [モック](./designs/index.html) / [デザイントークン](./designs/tokens.css)
 
 ---
 

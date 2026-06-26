@@ -1,0 +1,71 @@
+# 開発タスク / ロードマップ
+
+設計は [whiteboard.md](./whiteboard.md)・[UI設計方針](./designs/ui-design-principles.md)。
+現状: UI スキャフォールド（全画面・2ペイン・Deck）＋ Signer/LocalSigner 実装済み。**すべて SampleData（仮データ）**。
+方針: まず**1本の縦切り（実リレー→DB→画面）**を通し、その後に横展開する。
+
+凡例: ⬜ 未着手 / 🟡 進行中 / ✅ 完了 ・ 優先度 P0(最優先)〜P2
+
+---
+
+## M1. 縦切り: 実リレーの Following が画面に出る（最優先）
+「実際に Nostr につながる」最初の到達点。これが出れば以降は載せるだけ。
+
+- ⬜ P0 SQLDelight ドライバ生成（Android/iOS）＋ DB 初期化・DI
+- ⬜ P0 Ktor WebSocket で **1リレー接続**（接続/購読/受信の最小往復）
+- ⬜ P0 `REQ`/`EVENT`/`EOSE`/`CLOSE` の最小プロトコル（NIP-01）
+- ⬜ P0 受信 kind:1 を **id/sig 検証**して `event` テーブルへ保存
+- ⬜ P0 Repository（cache-first 読み）：FeedColumn を SampleData→DB 読みに差し替え
+- ⬜ P1 kind:0 を素朴に解決して著者名/アバター表示（バッチ化は M3）
+
+**完了条件**: 既定リレーに接続し、フォロー中フィードが実イベントで描画される。
+
+---
+
+## M2. リレー基盤の本実装
+- ⬜ P0 リレープール（複数接続・指数バックオフ＋ジッター・`relay_status`）
+- ⬜ P0 **カラム=REQ ライフサイクル**：表示中のみ購読 active、オフスクリーンは `CLOSE`
+- ⬜ P1 `since` 差分取得（再接続時の取りこぼし最小化）
+- ⬜ P2 Negentropy（NIP-77）対応リレーで集合差分同期
+
+## M3. プロフィール解決（kind:0）— 体感に最も効く
+- ⬜ P0 ビューポート駆動 + バッチ（`{kinds:[0],authors:[...]}`）+ デバウンス
+- ⬜ P1 アウトボックス（NIP-65 / kind:10002）で取得先リレーを選ぶ
+- ⬜ P1 二層キャッシュ（可視=メモリLRU / 全件=ディスク）+ TTL
+- ⬜ P1 `insertProfileIfAbsent` / `updateProfileIfNewer` で dedup
+
+## M4. 投稿・署名・配信
+- ⬜ P0 `UnsignedEvent` 作成 → `Signer.sign` → publish（投稿/返信）
+- ⬜ P0 **publish_queue**：DB に楽観反映 → オンライン復帰でフラッシュ（NIP-20 OK 反映）
+- ⬜ P1 リアクション/リポスト（kind:7 / kind:6）
+- ⬜ P2 zap（NIP-57 / kind:9734・9735、LNURL）
+
+## M5. 鍵・ログイン
+- ⬜ P0 secure な `KeyVault`：Android Keystore / iOS Keychain
+- ⬜ P0 ログイン UI（nsec インポート / 新規生成、npub 表示）
+- ⬜ P1 NIP-46（リモート bunker, iOS可）か NIP-55（Amber）どちらか実装
+- ⬜ P2 Nosskey（パスキー WebAuthn PRF）
+
+## M6. NIP 機能拡充
+- ⬜ P1 NIP-10 スレッド：e/p タグから実ツリー構築（現状は仮）
+- ⬜ P1 NIP-28 パブリックチャット：kind:40/41/42、kind:43/44 モデレーション
+- ⬜ P1 画像：Coil3 + imeta(NIP-92/93) blurhash プレースホルダ
+- ⬜ P1 NIP-17 DM：gift wrap + **NIP-44 暗号**（Signer.nip44Encrypt/Decrypt 実装）
+- ⬜ P2 NIP-42（リレー AUTH、自前リレー保護）
+
+## M7. プラットフォーム仕上げ
+- ⬜ P1 `NetworkPolicy` actual 実装（ConnectivityManager / NWPathMonitor）→ ティア別更新
+- ⬜ P1 背景同期：WorkManager（Android）/ BGTaskScheduler（iOS, WiFi＋充電時）
+- ⬜ P1 ヒンジのガター（androidx.window FoldingFeature）
+- ⬜ P2 カラムのドラッグ並べ替え（現状 `DeckState.move` のみ）
+- ⬜ P2 iOS ビルド（iosApp の Xcode プロジェクト生成・要 Xcode）
+- ⬜ P2 アクセシビリティ（最小タップ48dp・フォントスケール・片手）
+
+---
+
+## 横断的に常に守る（設計方針）
+- UI はローカル DB だけを読む（SSOT / stale-while-revalidate）
+- カラム/スレッド/ルームは ColumnSpec に統一、pin で永続化
+- 署名は Signer 抽象越し（アプリ本体は方式を知らない）
+- モノクロ基調・グラデーション禁止（[UI設計方針](./designs/ui-design-principles.md)）
+- 変更は実機ビルドで検証してからコミット
