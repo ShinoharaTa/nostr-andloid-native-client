@@ -16,6 +16,14 @@ data class NostrEvent(
     val sig: String = "",
 )
 
+/** 署名前イベント（content/kind/tags を指定し、id・pubkey・sig・created_at は署名時に確定）。 */
+data class UnsignedEvent(
+    val kind: Int,
+    val content: String,
+    val tags: List<List<String>> = emptyList(),
+    val createdAt: Long = 0,    // 0 のとき署名時に現在時刻を充填
+)
+
 /** kind:0 プロフィール。pubkey ごとに createdAt 最大の1件だけ保持（dedup 済み）。 */
 data class Profile(
     val pubkey: String,

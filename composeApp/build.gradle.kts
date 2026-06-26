@@ -44,6 +44,7 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
             implementation(libs.secp256k1)
+            implementation(libs.kotlincrypto.sha2)
             implementation(libs.multiplatform.settings)
         }
         androidMain.dependencies {
@@ -51,10 +52,14 @@ kotlin {
             implementation(libs.androidx.window)          // FoldingFeature
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android)
+            implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
         }
     }
 }

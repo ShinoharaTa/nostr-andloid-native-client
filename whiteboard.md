@@ -262,6 +262,34 @@ enum class NetworkTier { UNMETERED, METERED, CONSTRAINED, OFFLINE }
 
 ---
 
+## 署名・鍵管理（Signer 抽象）
+
+アプリ本体は「どう署名されるか」を知らない。`Signer` インターフェース1枚で全方式を吸収（設計方針 P6）。
+
+### Signer 実装
+| 実装 | 鍵の所在 | 対応 | 状態 |
+|---|---|---|---|
+| `LocalSigner` | nsec を端末保管、secp256k1-kmp で Schnorr 署名 | Android/iOS | ✅ 実装・id検証済 |
+| `NosskeySigner` | パスキー(WebAuthn PRF)で暗号化した nsec | Android/iOS | 🟡 スタブ |
+| `Nip55Signer` | 外部署名アプリ(Amber)へ Intent 委譲 | Android のみ | 🟡 スタブ |
+| `Nip46Signer` | リモート署名(bunker, リレー経由) | Android/iOS | 🟡 スタブ |
+| `Nip07Signer` | window.nostr | WebView/CMP Web・Desktop | ⬜ 文脈限定 |
+
+### NIP-07 / Nosskey の扱い
+- **NIP-07 はブラウザ拡張 API** なのでネイティブには直接来ない。等価の委譲は **NIP-55（Android/Amber）/ NIP-46（iOS可・本命）**。NIP-07 本体は将来 WebView や CMP の Web/Desktop ターゲット用。
+- **Nosskey = パスキー(WebAuthn PRF)で nsec を暗号化/導出**。Android=Credential Manager、iOS=ASAuthorization passkeys の PRF 出力で nsec を復号 → 署名は LocalSigner と同経路。`KeyVault` の一実装として収まる。
+
+### 鍵保管（KeyVault）
+- `InMemoryKeyVault`（開発用）→ 本番は `KeystoreKeyVault`(Android Keystore) / `KeychainKeyVault`(iOS Keychain) / `NosskeyKeyVault` に差し替え。
+- 配信キュー（オフライン設計）の「署名 → publish」段に `Signer.sign` を挟む。
+
+### 実装メモ
+- イベントID/直列化 = `crypto/Nip01`（NIP-01 正準直列化 + SHA-256）。**ユニットテストで検証済**（順序・エスケープ・決定性）。
+- Schnorr = secp256k1-kmp（Android は jni-android 同梱）。コンパイル済・実機/エミュでの署名往復は未検証。
+- NIP-44（DM 暗号）は未実装（ECDH+HKDF+ChaCha20+HMAC）。`capabilities` で出し分け。
+
+---
+
 ## 参考実装
 - **Amethyst / Quartz**（Kotlin+Compose, GitHub: vitorpamplona/amethyst）：プロトコル層（購読・検証・署名・NIP・鍵管理）の手本。Deck UI は単一カラム+タブなので UI の手本ではない。
 - **Coracle / Nostrudel**（web）：Deck の UX・カラム運用の手本。
