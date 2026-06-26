@@ -11,14 +11,16 @@
 ## M1. 縦切り: 実リレーの Following が画面に出る（最優先）
 「実際に Nostr につながる」最初の到達点。これが出れば以降は載せるだけ。
 
-- ⬜ P0 SQLDelight ドライバ生成（Android/iOS）＋ DB 初期化・DI
-- ⬜ P0 Ktor WebSocket で **1リレー接続**（接続/購読/受信の最小往復）
-- ⬜ P0 `REQ`/`EVENT`/`EOSE`/`CLOSE` の最小プロトコル（NIP-01）
-- ⬜ P0 受信 kind:1 を **id/sig 検証**して `event` テーブルへ保存
-- ⬜ P0 Repository（cache-first 読み）：FeedColumn を SampleData→DB 読みに差し替え
-- ⬜ P1 kind:0 を素朴に解決して著者名/アバター表示（バッチ化は M3）
+- ✅ P0 SQLDelight ドライバ生成（Android/iOS）＋ DB 初期化・DI
+- ✅ P0 Ktor WebSocket で **1リレー接続**（接続/購読/受信の最小往復）
+- ✅ P0 `REQ`/`EVENT`/`EOSE`/`CLOSE` の最小プロトコル（NIP-01）
+- ✅ P0 受信 kind:1 を **id/sig 検証**して `event` テーブルへ保存
+- ✅ P0 Repository（cache-first 読み）：FeedColumn を SampleData→DB 読みに差し替え
+- ⬜ P1 kind:0 を解決して著者名/アバター表示（→ M3。現状は hex 表示）
+- ⬜ P2 相対時刻を created_at から算出（現状 NoteItem は "4m" 固定）
 
 **完了条件**: 既定リレーに接続し、フォロー中フィードが実イベントで描画される。
+→ ✅ **達成**（Pixel 10 Pro Fold 実機で relay.damus.io/nos.lol の実投稿を確認）。
 
 ---
 
