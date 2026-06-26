@@ -48,6 +48,9 @@ SELECT * FROM profile WHERE pubkey IN ?;
 profileByPubkey:
 SELECT * FROM profile WHERE pubkey = ?;
 
+allProfiles:
+SELECT * FROM profile;
+
 -- 期限切れ（TTL 超過）のプロフィール pubkey を取得 → バッチ REQ の対象
 staleProfiles:
 SELECT pubkey FROM profile WHERE updated_at < ?;

@@ -31,10 +31,12 @@
 - ⬜ P2 Negentropy（NIP-77）対応リレーで集合差分同期
 
 ## M3. プロフィール解決（kind:0）— 体感に最も効く
-- ⬜ P0 ビューポート駆動 + バッチ（`{kinds:[0],authors:[...]}`）+ デバウンス
+- ✅ P0 受信著者をバッチ（`{kinds:[0],authors:[...]}`）+ 400ms デバウンスで解決
+- ✅ P0 notes Flow を event×profile の combine にし、解決後に名前/アバターが自動反映
 - ⬜ P1 アウトボックス（NIP-65 / kind:10002）で取得先リレーを選ぶ
-- ⬜ P1 二層キャッシュ（可視=メモリLRU / 全件=ディスク）+ TTL
-- ⬜ P1 `insertProfileIfAbsent` / `updateProfileIfNewer` で dedup
+- ⬜ P1 二層キャッシュ（可視=メモリLRU / 全件=ディスク）+ TTL（現状は DB + combine）
+- ✅ P1 `insertProfileIfAbsent` / `updateProfileIfNewer` で dedup
+- → ✅ **実機確認**: 151 プロフィール解決・実名/nip05/アバター画像を描画、未解決は hex+モノクロにフォールバック
 
 ## M4. 投稿・署名・配信
 - ⬜ P0 `UnsignedEvent` 作成 → `Signer.sign` → publish（投稿/返信）

@@ -13,9 +13,12 @@ import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -36,20 +39,61 @@ class EventRepository(
     private val relays = relayUrls.map { RelayClient(it, scope) }
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** DB の最近の kind:1 を NoteUi にして流す（cache-first / stale-while-revalidate）。 */
-    val notes: Flow<List<NoteUi>> =
-        q.recentNotes(200L).asFlow().mapToList(Dispatchers.Default).map { rows -> rows.map(::toNoteUi) }
+    /**
+     * DB の最近の kind:1 を NoteUi にして流す。
+     * event 表と profile 表の**両方**を監視して combine するので、後から kind:0 が解決すると
+     * 著者名/アバターが自動で差し変わる（M3）。
+     */
+    val notes: Flow<List<NoteUi>> = combine(
+        q.recentNotes(200L).asFlow().mapToList(Dispatchers.Default),
+        q.allProfiles().asFlow().mapToList(Dispatchers.Default),
+    ) { rows, profiles ->
+        val byPubkey = profiles.associateBy { it.pubkey }
+        rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]) }
+    }
 
     fun start() {
         relays.forEach { relay ->
             relay.start()
             scope.launch { relay.messages.collect(::onMessage) }
         }
+        scope.launch { profileBatchLoop() }
     }
 
     /** M1: グローバルな kind:1 を購読（フォローリスト確定までの暫定）。 */
     fun subscribeHomeFeed(limit: Int = 100) {
         relays.forEach { it.subscribe("home", Filter(kinds = listOf(1), limit = limit)) }
+    }
+
+    // ---- kind:0 バッチ解決 ----
+    // 著者 pubkey を Channel に流し、単一コルーチンで 400ms バーストをまとめて 1 本の REQ に。
+    private val authorRequests = Channel<String>(Channel.UNLIMITED)
+
+    private fun requestProfile(pubkey: String) {
+        authorRequests.trySend(pubkey)
+    }
+
+    private suspend fun profileBatchLoop() {
+        val requested = mutableSetOf<String>()
+        val pending = mutableSetOf<String>()
+        while (true) {
+            val first = authorRequests.receive()
+            if (first !in requested) pending.add(first)
+            // デバウンス窓: 静かになるまで追加収集
+            withTimeoutOrNull(400) {
+                while (true) {
+                    val next = authorRequests.receive()
+                    if (next !in requested) pending.add(next)
+                }
+            }
+            if (pending.isEmpty()) continue
+            requested.addAll(pending)
+            pending.clear()
+            // 累積した全著者を 1 本の購読で（kind:0 は更新頻度が低い）
+            relays.forEach {
+                it.subscribe("profiles", Filter(kinds = listOf(0), authors = requested.toList()))
+            }
+        }
     }
 
     private fun onMessage(msg: RelayMessage) {
@@ -59,14 +103,17 @@ class EventRepository(
     private fun ingest(e: NostrEvent) {
         if (!EventCrypto.verify(e)) return
         when (e.kind) {
-            1 -> q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+            1 -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                requestProfile(e.pubkey)   // 著者の kind:0 をバッチ要求
+            }
             0 -> upsertProfile(e)
         }
     }
 
     private fun upsertProfile(e: NostrEvent) {
         val o = runCatching { json.parseToJsonElement(e.content).jsonObject }.getOrNull()
-        val name = o?.get("display_name")?.jsonPrimitive?.contentOrNull
+        val name = o?.get("display_name")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: o?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
         val nip05 = o?.get("nip05")?.jsonPrimitive?.contentOrNull ?: ""
         val picture = o?.get("picture")?.jsonPrimitive?.contentOrNull
@@ -74,8 +121,7 @@ class EventRepository(
         q.updateProfileIfNewer(name, nip05, picture, e.createdAt, e.pubkey, e.createdAt)
     }
 
-    private fun toNoteUi(row: Event): NoteUi {
-        val prof = q.profileByPubkey(row.pubkey).executeAsOneOrNull()
+    private fun toNoteUi(row: Event, prof: app.nostrdeck.db.Profile?): NoteUi {
         val name = prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10)
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
