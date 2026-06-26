@@ -89,7 +89,7 @@ private fun MessageBubble(m: ChannelMessage) {
 @Composable
 private fun AvatarSlot(m: ChannelMessage) {
     Box(Modifier.padding(horizontal = 8.dp)) {
-        if (!m.continuation) Avatar(m.author.name, Modifier.size(30.dp))
+        if (!m.continuation) Avatar(m.author.name, m.author.pictureUrl, Modifier.size(30.dp))
         else Spacer(Modifier.size(30.dp))
     }
 }

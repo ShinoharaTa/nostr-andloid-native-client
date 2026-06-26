@@ -12,34 +12,60 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import kotlin.math.abs
 
 /**
- * プレースホルダアバター。グラデーション禁止のため**無彩色のグレー1色＋イニシャル**。
- * seed から決定的にグレーの濃淡だけを変える（色相は持たない）。
- * 実装では Profile.pictureUrl を Coil で読み、未取得時のフォールバックにする。
+ * アバター。[pictureUrl] があればプロキシ経由で読み（Coil がローカルキャッシュ）、
+ * 無ければグラデーション禁止のモノクロ1色＋イニシャル。
  */
 @Composable
-fun Avatar(seed: String, modifier: Modifier = Modifier) {
-    val shade = monoShade(seed)
-    Box(
-        modifier.size(DeckDimens.AvatarSize).clip(CircleShape).background(shade),
-        contentAlignment = Alignment.Center,
-    ) { Initial(seed) }
+fun Avatar(seed: String, pictureUrl: String? = null, modifier: Modifier = Modifier) {
+    val shape = CircleShape
+    if (!pictureUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalPlatformContext.current)
+                .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80))
+                .crossfade(true).build(),
+            contentDescription = seed,
+            modifier = modifier.size(DeckDimens.AvatarSize).clip(shape).background(DeckColors.Surface3),
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        Box(
+            modifier.size(DeckDimens.AvatarSize).clip(shape).background(monoShade(seed)),
+            contentAlignment = Alignment.Center,
+        ) { Initial(seed) }
+    }
 }
 
 /** 角丸四角版（チャンネルアイコン等）。親 Box を満たす。 */
 @Composable
-fun AvatarSquare(seed: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(monoShade(seed)),
-        contentAlignment = Alignment.Center,
-    ) { Initial(seed) }
+fun AvatarSquare(seed: String, pictureUrl: String? = null, modifier: Modifier = Modifier) {
+    if (!pictureUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalPlatformContext.current)
+                .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80))
+                .crossfade(true).build(),
+            contentDescription = seed,
+            modifier = modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        Box(
+            modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(monoShade(seed)),
+            contentAlignment = Alignment.Center,
+        ) { Initial(seed) }
+    }
 }
 
 @Composable

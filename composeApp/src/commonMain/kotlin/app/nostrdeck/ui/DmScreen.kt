@@ -84,7 +84,7 @@ private fun DmList(
                         .clickable { onSelect(c) }.padding(13.dp, 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(c.name, Modifier.size(40.dp))
+                    Avatar(c.name, modifier = Modifier.size(40.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,

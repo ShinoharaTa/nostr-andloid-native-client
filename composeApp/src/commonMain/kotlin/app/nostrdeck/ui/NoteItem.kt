@@ -1,13 +1,16 @@
 package app.nostrdeck.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.Bolt
@@ -18,20 +21,26 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 
 /** 1ノート。designs/index.html の .note と対応。 */
 @Composable
 fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(13.dp)) {
-        Avatar(note.author.name)
+        Avatar(note.author.name, note.author.pictureUrl)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
@@ -49,7 +58,19 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
             Spacer(Modifier.size(3.dp))
             Text(note.event.content, color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp)
 
-            // TODO: imageUrl があれば blurhash プレースホルダ → Coil で本体を非同期ロード
+            // 画像: プロキシで圧縮した URL を Coil で読む（ディスクキャッシュにあればローカルから）
+            note.imageUrl?.let { url ->
+                Spacer(Modifier.size(9.dp))
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalPlatformContext.current)
+                        .data(ImageProxy.proxied(url, width = 800, quality = 75))
+                        .crossfade(true).build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(DeckColors.Surface2),
+                    contentScale = ContentScale.Crop,
+                )
+            }
             Spacer(Modifier.size(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 ActionChip(Icons.AutoMirrored.Outlined.Reply, note.replies.toString(), DeckColors.Accent)

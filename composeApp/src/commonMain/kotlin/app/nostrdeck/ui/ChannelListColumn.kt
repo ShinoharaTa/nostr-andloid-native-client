@@ -74,7 +74,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(DeckColors.Surface3)) {
-            AvatarSquare(ch.name)
+            AvatarSquare(ch.name, ch.pictureUrl)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {

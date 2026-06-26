@@ -86,7 +86,7 @@ fun DeckRail(state: DeckState) {
         Spacer(Modifier.size(16.dp))
         NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.navDest = NavDest.SETTINGS }
         Spacer(Modifier.size(4.dp))
-        Avatar("me", Modifier.size(34.dp))
+        Avatar("me", modifier = Modifier.size(34.dp))
     }
 }
 

@@ -80,8 +80,12 @@ class EventRepository(
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
             author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url),
+            imageUrl = imageUrlRegex.find(row.content)?.value,   // TODO(M6): imeta(NIP-92) 優先
         )
     }
+
+    private val imageUrlRegex =
+        Regex("""https?://\S+?\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 
     private fun tagsToJson(tags: List<List<String>>): String = buildJsonArray {
         tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) }
