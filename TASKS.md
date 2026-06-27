@@ -16,8 +16,8 @@
 - ✅ P0 `REQ`/`EVENT`/`EOSE`/`CLOSE` の最小プロトコル（NIP-01）
 - ✅ P0 受信 kind:1 を **id/sig 検証**して `event` テーブルへ保存
 - ✅ P0 Repository（cache-first 読み）：FeedColumn を SampleData→DB 読みに差し替え
-- ⬜ P1 kind:0 を解決して著者名/アバター表示（→ M3。現状は hex 表示）
-- ⬜ P2 相対時刻を created_at から算出（現状 NoteItem は "4m" 固定）
+- ✅ P1 kind:0 を解決して著者名/アバター表示（→ M3）
+- ✅ P2 相対時刻を created_at から算出
 
 **完了条件**: 既定リレーに接続し、フォロー中フィードが実イベントで描画される。
 → ✅ **達成**（Pixel 10 Pro Fold 実機で relay.damus.io/nos.lol の実投稿を確認）。
@@ -36,22 +36,32 @@
 ## M3. プロフィール解決（kind:0）— 体感に最も効く
 - ✅ P0 受信著者をバッチ（`{kinds:[0],authors:[...]}`）+ 400ms デバウンスで解決
 - ✅ P0 notes Flow を event×profile の combine にし、解決後に名前/アバターが自動反映
-- ⬜ P1 アウトボックス（NIP-65 / kind:10002）で取得先リレーを選ぶ
+- 🟡 P1 アウトボックス（NIP-65 / kind:10002）：リレーリスト取得・`relay`テーブル永続・設定UIは✅。配信のwrite限定最適化は未
 - ⬜ P1 二層キャッシュ（可視=メモリLRU / 全件=ディスク）+ TTL（現状は DB + combine）
 - ✅ P1 `insertProfileIfAbsent` / `updateProfileIfNewer` で dedup
 - → ✅ **実機確認**: 151 プロフィール解決・実名/nip05/アバター画像を描画、未解決は hex+モノクロにフォールバック
 
 ## M4. 投稿・署名・配信
-- ⬜ P0 `UnsignedEvent` 作成 → `Signer.sign` → publish（投稿/返信）
-- ⬜ P0 **publish_queue**：DB に楽観反映 → オンライン復帰でフラッシュ（NIP-20 OK 反映）
-- ⬜ P1 リアクション/リポスト（kind:7 / kind:6）
+- ✅ P0 `UnsignedEvent` 作成 → `Signer.sign` → publish（投稿）
+- 🟡 P0 **publish_queue**：DB 楽観反映 + enqueue は✅。オンライン復帰フラッシュ/NIP-20 OK 反映は未
+- 🟡 P1 リアクション/リポスト表示（kind:7 / kind:6）→ **M8 で実装中**
+- ⬜ P1 返信投稿（NIP-10 e/p タグ付き kind:1）
 - ⬜ P2 zap（NIP-57 / kind:9734・9735、LNURL）
 
 ## M5. 鍵・ログイン
-- ⬜ P0 secure な `KeyVault`：Android Keystore / iOS Keychain
-- ⬜ P0 ログイン UI（nsec インポート / 新規生成、npub 表示）
-- ⬜ P1 NIP-46（リモート bunker, iOS可）か NIP-55（Amber）どちらか実装
-- ⬜ P2 Nosskey（パスキー WebAuthn PRF）
+- ✅ P0 secure な `KeyVault`：Android Keystore（iOS Keychain は未）
+- ✅ P0 ログイン UI（nsec インポート / 新規生成、npub 表示、パスワード欄+自動入力、鍵切替ガード）
+- ⬜ P1 NIP-46（リモート bunker, iOS可）
+- ⬜ P2 Nosskey（パスキー WebAuthn PRF・要ドメイン+assetlinks）
+- ⬜ P2 iOS Keychain の `KeyVault` actual
+
+## M8. タイムライン表示の拡充（並列 worktree で進行中）
+フォロー中タイムラインの「読み物」としての質を上げる。
+- 🟡 P1 **リポスト/QuoteRepost 表示**（NIP-18）：kind:6 リポストは元ノートを「🔁 ○○がリポスト」付きで、
+  kind:1+`q`タグ/kind:1引用は引用カード付きで表示。`event`テーブルに格納しタグ索引で解決（新テーブル無し）
+- 🟡 P1 **長文の折りたたみ**：一定行数/文字数を超えたら省略し「もっと見る」で展開（CollapsibleText）
+- 🟡 P1 **絵文字リアクション表示**（NIP-25 kind:7 / NIP-30 カスタム絵文字）：対象ノートごとに
+  絵文字別カウント集計、カスタム絵文字(`emoji`タグの shortcode→URL)を画像表示。`event`格納+集計クエリ
 
 ## M6. NIP 機能拡充
 - ⬜ P1 NIP-10 スレッド：e/p タグから実ツリー構築（現状は仮）
