@@ -8,6 +8,7 @@ import app.nostrdeck.db.NostrDb
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
+import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.model.UnsignedEvent
@@ -26,12 +27,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -54,6 +57,31 @@ class EventRepository(
 
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
     private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
+
+    /**
+     * [M8-react] note_id→集約リアクション一覧（NIP-25/30）。各フィードと combine して NoteUi に載せる。
+     * kind:7 行を「最後の e タグ=対象ノート」単位でグルーピングし、正規化キーで件数を数える。
+     * カスタム絵文字(NIP-30)の URL は各行の tags_json の `emoji` タグから解決する。
+     */
+    private val reactionsFlow: Flow<Map<String, List<ReactionUi>>> =
+        q.reactionsForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            val byNote = HashMap<String, LinkedHashMap<String, ReactionAgg>>()
+            rows.forEach { row ->
+                val tags = parseTags(row.tags_json)
+                // NIP-25: 対象は最後の e タグ。多重 e による重複カウントを避ける。
+                val lastE = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1) ?: return@forEach
+                if (lastE != row.note_id) return@forEach
+                val r = normalizeReaction(row.content, tags)
+                val bucket = byNote.getOrPut(row.note_id) { LinkedHashMap() }
+                val agg = bucket.getOrPut(r.key) { ReactionAgg(r.key, r.display, r.imageUrl) }
+                agg.count++
+                if (agg.imageUrl == null && r.imageUrl != null) agg.imageUrl = r.imageUrl
+            }
+            byNote.mapValues { (_, m) ->
+                m.values.map { ReactionUi(it.key, it.display, it.count, it.imageUrl) }
+                    .sortedByDescending { it.count }
+            }
+        }
 
     /** ログイン中ユーザーの公開鍵（kind:3 の自分判定とフォロー解決に使う）。 */
     private var myPubkey: String? = null
@@ -192,7 +220,8 @@ class EventRepository(
         followingJobs[columnId] = scope.launch {
             follows.collect { authors ->
                 if (authors.isNotEmpty()) {
-                    subscribeAll(columnId, Filter(kinds = listOf(1), authors = authors, limit = 100))
+                    // [M8-react] kind:7 も購読してフォロー中ユーザーのリアクションを取り込む（v1 スコープ）。
+                    subscribeAll(columnId, Filter(kinds = listOf(1, 7), authors = authors, limit = 100))
                 }
             }
         }
@@ -206,17 +235,18 @@ class EventRepository(
             else combine(
                 q.feedByAuthors(authors, 0L).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
-            ) { rows, profiles ->
+                reactionsFlow,  // [M8-react]
+            ) { rows, profiles, reactions ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { toNoteUi(it, byPubkey[it.pubkey]) }
+                rows.map { toNoteUi(it, byPubkey[it.pubkey]).copy(reactions = reactions[it.id].orEmpty()) }
             }
         }
 
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。 */
     fun columnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
-        combine(rowsFlow(filter), profilesFlow) { rows, profiles ->
+        combine(rowsFlow(filter), profilesFlow, reactionsFlow) { rows, profiles, reactions ->
             val byPubkey = profiles.associateBy { it.pubkey }
-            rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]) }
+            rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]).copy(reactions = reactions[row.id].orEmpty()) }
         }
 
     private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
@@ -288,6 +318,12 @@ class EventRepository(
                 indexTags(e)
                 requestProfile(e.pubkey)
             }
+            7 -> {
+                // [M8-react] NIP-25 リアクション。content を正規化("+"/空→❤️)して保存し e タグを索引化。
+                val content = when (e.content) { "+", "" -> "❤️"; else -> e.content }
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+            }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
             10002 -> updateRelayList(e)
@@ -357,6 +393,38 @@ class EventRepository(
     private fun tagsToJson(tags: List<List<String>>): String = buildJsonArray {
         tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) }
     }.toString()
+
+    // ---- [M8-react] リアクション集約ヘルパ ----
+
+    /** 集約中の可変ホルダ（key ごとに件数とカスタム絵文字 URL を貯める）。 */
+    private class ReactionAgg(val key: String, val display: String, var imageUrl: String?) {
+        var count: Int = 0
+    }
+
+    /** tags_json（[[..],[..]]）を List<List<String>> に復元。壊れていれば空。 */
+    private fun parseTags(tagsJson: String): List<List<String>> = runCatching {
+        json.parseToJsonElement(tagsJson).jsonArray.map { arr ->
+            arr.jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * kind:7 の content を集約キー/表示/カスタム絵文字 URL へ正規化する。
+     *  - "+"/空 → ❤️（like）、"-" → 👎
+     *  - ":shortcode:" → NIP-30 カスタム絵文字。emoji タグから URL を解決（無ければ文字表示）
+     *  - それ以外 → unicode 絵文字をそのままキーにする
+     */
+    private fun normalizeReaction(content: String, tags: List<List<String>>): ReactionUi {
+        val c = content.trim()
+        if (c == "+" || c.isEmpty()) return ReactionUi("❤️", "❤️", 0)
+        if (c == "-") return ReactionUi("👎", "👎", 0)
+        if (c.length >= 2 && c.startsWith(":") && c.endsWith(":")) {
+            val shortcode = c.substring(1, c.length - 1)
+            val url = tags.firstOrNull { it.size >= 3 && it[0] == "emoji" && it[1] == shortcode }?.get(2)
+            return ReactionUi(c, c, 0, url)
+        }
+        return ReactionUi(c, c, 0)
+    }
 
     private companion object {
         val TAG_KEYS = setOf("t", "e", "p")

@@ -192,3 +192,11 @@ DELETE FROM channel;
 
 clearPublishQueue:
 DELETE FROM publish_queue;
+
+-- [M8-react] kind:7 リアクション行を対象ノート(最後の e タグ=event_tag)単位で取得。
+-- 集約/カスタム絵文字URL解決(tags_json)は Kotlin 側で行う。
+reactionsForTargets:
+SELECT et.value AS note_id, e.content, e.tags_json
+FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 7 AND et.tag = 'e';

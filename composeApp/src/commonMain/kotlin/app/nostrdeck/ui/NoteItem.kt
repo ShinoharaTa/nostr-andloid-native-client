@@ -79,6 +79,11 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
                 ActionChip(Icons.Outlined.Bolt, formatSats(note.zapsSats), DeckColors.Zap)
                 ActionChip(Icons.Outlined.FavoriteBorder, note.likes.toString(), DeckColors.Like)
             }
+            // [M8-react] 集約絵文字リアクション（NIP-25/30）
+            if (note.reactions.isNotEmpty()) {
+                Spacer(Modifier.size(7.dp))
+                ReactionRow(note.reactions)
+            }
         }
     }
 }
