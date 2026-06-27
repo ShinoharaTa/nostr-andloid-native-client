@@ -39,9 +39,11 @@ fun CollapsibleText(text: String, modifier: Modifier = Modifier, collapsedMaxLin
     // 折りたたみ時に溢れたか。初回(折りたたみ)レイアウトで判定する。
     var isOverflowing by remember { mutableStateOf(false) }
 
+    // URL/nostr:/#タグ をリンク化・短縮した装飾本文。
+    val annotated = remember(text) { noteAnnotated(text) }
     Column(modifier) {
         Text(
-            text,
+            annotated,
             color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
