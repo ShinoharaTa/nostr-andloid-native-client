@@ -109,6 +109,21 @@ data class NoteUi(
     val zapsSats: Long = 0,
     val likes: Int = 0,
     val imageUrl: String? = null,   // imeta 由来。blurhash プレースホルダ前提
+    val reactions: List<ReactionUi> = emptyList(),  // [M8-react] NIP-25/30 集約リアクション
+)
+
+/**
+ * [M8-react] 集約済みリアクション1種（NIP-25 kind:7）。
+ *  - [key]      集約キー（正規化済み絵文字 or ":shortcode:"）
+ *  - [display]  表示文字列（unicode 絵文字 or ":shortcode:"）
+ *  - [count]    同一絵文字の合計数
+ *  - [imageUrl] NIP-30 カスタム絵文字の画像 URL（無ければ display を文字表示）
+ */
+data class ReactionUi(
+    val key: String,
+    val display: String,
+    val count: Int,
+    val imageUrl: String? = null,
 )
 
 /** NIP-28 チャンネル（kind:40 作成 + kind:41 最新メタ）。一覧カラムの行。 */
