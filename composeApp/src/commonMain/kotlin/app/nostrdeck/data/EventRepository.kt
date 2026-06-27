@@ -31,9 +31,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 
 /**
  * SSOT リポジトリ。リレー購読→検証→DB 書き込み、読みは DB の Flow。
@@ -192,7 +196,8 @@ class EventRepository(
         followingJobs[columnId] = scope.launch {
             follows.collect { authors ->
                 if (authors.isNotEmpty()) {
-                    subscribeAll(columnId, Filter(kinds = listOf(1), authors = authors, limit = 100))
+                    // [M8-repost] kind:6/16(リポスト) もフォロー集合から購読して取りこぼさない。
+                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16), authors = authors, limit = 100))
                 }
             }
         }
@@ -204,11 +209,12 @@ class EventRepository(
         follows.flatMapLatest { authors ->
             if (authors.isEmpty()) flowOf(emptyList())
             else combine(
-                q.feedByAuthors(authors, 0L).asFlow().mapToList(Dispatchers.Default),
+                // [M8-repost] kind:1 + kind:6/16 リポストを含めて取得し、表示用に展開する。
+                q.feedFollowingWithReposts(authors, 0L).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
             ) { rows, profiles ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { toNoteUi(it, byPubkey[it.pubkey]) }
+                rows.mapNotNull { toFollowingNoteUi(it, byPubkey) }  // [M8-repost]
             }
         }
 
@@ -288,6 +294,19 @@ class EventRepository(
                 indexTags(e)
                 requestProfile(e.pubkey)
             }
+            // [M8-repost] NIP-18 リポスト(kind:6) / 汎用リポスト(kind:16)。
+            //   本体を保存し q/e を索引、リポスト主の profile を要求。content に元イベント JSON が
+            //   埋め込まれていれば元も保存して eventById で解決可能にする（無ければ e タグの id を参照）。
+            6, 16 -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+                parseEmbeddedEvent(e.content)?.let { orig ->
+                    q.insertEvent(orig.id, orig.pubkey, orig.kind.toLong(), orig.createdAt, orig.content, tagsToJson(orig.tags), orig.sig)
+                    indexTags(orig)
+                    requestProfile(orig.pubkey)
+                }
+            }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
             10002 -> updateRelayList(e)
@@ -351,6 +370,73 @@ class EventRepository(
         )
     }
 
+    // ---- [M8-repost] フォロー中タイムラインのリポスト/引用展開 ----
+
+    /**
+     * [M8-repost] フォロー中の1行を表示用 NoteUi に。
+     *  - kind:6/16 … 元ノートを表示し repostedBy にリポスト主を設定（元が解決できなければ null=非表示）。
+     *  - kind:1    … q タグがあれば quoted に引用元を解決して載せる。
+     */
+    private fun toFollowingNoteUi(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi? {
+        return when (row.kind.toInt()) {
+            6, 16 -> {
+                val tags = parseTags(row.tags_json)
+                val origId = tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+                val original = origId?.let { resolveNoteUi(it, byPubkey) }
+                    ?: parseEmbeddedEvent(row.content)?.let { noteUiFromEvent(it, byPubkey) }
+                    ?: return null
+                original.copy(repostedBy = profileFor(row.pubkey, byPubkey))
+            }
+            else -> {
+                val tags = parseTags(row.tags_json)
+                val quotedId = tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
+                toNoteUi(row, byPubkey[row.pubkey]).copy(quoted = quotedId?.let { resolveNoteUi(it, byPubkey) })
+            }
+        }
+    }
+
+    /** [M8-repost] イベント id を DB から解決して表示用 NoteUi に（無ければ null）。 */
+    private fun resolveNoteUi(eventId: String, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi? {
+        val row = q.eventById(eventId).executeAsOneOrNull() ?: return null
+        return toNoteUi(row, byPubkey[row.pubkey])
+    }
+
+    /** [M8-repost] NostrEvent + 解決済み profile → NoteUi（content 埋め込みの元ノート用）。 */
+    private fun noteUiFromEvent(ev: NostrEvent, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi {
+        val prof = byPubkey[ev.pubkey]
+        val name = prof?.name?.takeIf { it.isNotBlank() } ?: ev.pubkey.take(10)
+        return NoteUi(
+            event = ev,
+            author = Profile(ev.pubkey, name, prof?.handle ?: "", prof?.picture_url),
+            imageUrl = imageUrlRegex.find(ev.content)?.value,
+        )
+    }
+
+    /** [M8-repost] pubkey → 表示用 Profile（未解決なら短縮 pubkey を名前に）。 */
+    private fun profileFor(pubkey: String, byPubkey: Map<String, app.nostrdeck.db.Profile>): Profile {
+        val p = byPubkey[pubkey]
+        return Profile(pubkey, p?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10), p?.handle ?: "", p?.picture_url)
+    }
+
+    /** [M8-repost] tags_json を List<List<String>> に復元（q/e タグ参照の解決用）。 */
+    private fun parseTags(tagsJson: String): List<List<String>> = runCatching {
+        json.parseToJsonElement(tagsJson).jsonArray.map { t -> t.jsonArray.map { it.jsonPrimitive.content } }
+    }.getOrDefault(emptyList())
+
+    /** [M8-repost] NIP-18: kind:6 の content に埋め込まれた元イベント JSON を NostrEvent へ（無ければ null）。 */
+    private fun parseEmbeddedEvent(content: String): NostrEvent? = runCatching {
+        val o = json.parseToJsonElement(content).jsonObject
+        NostrEvent(
+            id = o["id"]!!.jsonPrimitive.content,
+            pubkey = o["pubkey"]!!.jsonPrimitive.content,
+            kind = o["kind"]!!.jsonPrimitive.int,
+            createdAt = o["created_at"]!!.jsonPrimitive.long,
+            content = o["content"]!!.jsonPrimitive.content,
+            tags = (o["tags"] as? JsonArray)?.map { t -> t.jsonArray.map { it.jsonPrimitive.content } } ?: emptyList(),
+            sig = o["sig"]?.jsonPrimitive?.contentOrNull ?: "",
+        )
+    }.getOrNull()
+
     private val imageUrlRegex =
         Regex("""https?://\S+?\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 
@@ -359,6 +445,6 @@ class EventRepository(
     }.toString()
 
     private companion object {
-        val TAG_KEYS = setOf("t", "e", "p")
+        val TAG_KEYS = setOf("t", "e", "p", "q")  // [M8-repost] "q"=NIP-18 引用参照を索引
     }
 }

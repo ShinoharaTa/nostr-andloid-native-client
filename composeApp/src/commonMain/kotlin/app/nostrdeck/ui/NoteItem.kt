@@ -40,7 +40,12 @@ import coil3.request.crossfade
 /** 1ノート。designs/index.html の .note と対応。 */
 @Composable
 fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().padding(13.dp)) {
+  // [M8-repost] リポストヘッダを本体の上に重ねるため Column で包む
+  Column(modifier.fillMaxWidth()) {
+    note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
+        RepostHeader(it.name, Modifier.padding(start = 13.dp, top = 10.dp))
+    }
+    Row(Modifier.fillMaxWidth().padding(13.dp)) {
         Avatar(note.author.name, note.author.pictureUrl)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -58,6 +63,12 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.size(3.dp))
             Text(note.event.content, color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp)
+
+            // [M8-repost] 引用リポスト（q タグ）の埋め込みカード
+            note.quoted?.let {
+                Spacer(Modifier.size(8.dp))
+                QuotedNoteCard(it)
+            }
 
             // 画像: プロキシで圧縮した URL を Coil で読む（ディスクキャッシュにあればローカルから）
             note.imageUrl?.let { url ->
@@ -81,6 +92,7 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
             }
         }
     }
+  }  // [M8-repost] 包んだ Column を閉じる
 }
 
 @Composable

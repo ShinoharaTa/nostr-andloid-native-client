@@ -109,6 +109,8 @@ data class NoteUi(
     val zapsSats: Long = 0,
     val likes: Int = 0,
     val imageUrl: String? = null,   // imeta 由来。blurhash プレースホルダ前提
+    val repostedBy: Profile? = null,  // [M8-repost] kind:6/16 のリポスト主（非nullなら「がリポスト」ヘッダ）
+    val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
 )
 
 /** NIP-28 チャンネル（kind:40 作成 + kind:41 最新メタ）。一覧カラムの行。 */
