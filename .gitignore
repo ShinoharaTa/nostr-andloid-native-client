@@ -10,3 +10,6 @@ xcuserdata/
 .kotlin/
 .claude/settings.local.json
 .device-shots/
+
+# Claude Code agent worktrees
+.claude/worktrees/

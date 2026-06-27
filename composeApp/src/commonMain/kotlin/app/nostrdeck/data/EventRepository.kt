@@ -239,15 +239,47 @@ class EventRepository(
      * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
      */
     suspend fun publishNote(content: String) {
-        val unsigned = UnsignedEvent(kind = 1, content = content)
+        // NIP-24/NIP-12: 本文中の #ハッシュタグ を 't' タグ（小文字・# なし）として付与。
+        val hashtags = hashtagsIn(content)
+        val tags = hashtags.map { listOf("t", it) }
+        val unsigned = UnsignedEvent(kind = 1, content = content, tags = tags)
         val signed = SignerProvider.current().sign(unsigned)
         val payload = RelayProtocol.event(signed)
-        // 楽観的ローカル挿入（即時に自分のノートを表示）。
-        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, signed.content, "[]", signed.sig)
+        // 楽観的ローカル挿入（即時に自分のノートを表示）。タグも保存・索引する。
+        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, signed.content, tagsToJson(signed.tags), signed.sig)
+        indexTags(signed)
         q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
         // TODO(outbox): write リレー優先で配信する。現状は接続中の全リレーへ送る。
         relays.values.forEach { it.publish(payload) }
+        // レコメンド用に使用したハッシュタグを記録（最近順）。
+        hashtags.forEach { tag ->
+            q.insertHashtagIfAbsent(tag, signed.createdAt)
+            q.touchHashtag(signed.createdAt, tag)
+        }
         // TODO: handle OK/NIP-20, retry from publish_queue
+    }
+
+    /** 投稿で使ったハッシュタグ（最近順）。ComposeSheet のレコメンド/最近5件に使う。 */
+    fun usedHashtagsFlow(): Flow<List<String>> =
+        q.usedHashtagsByRecency().asFlow().mapToList(Dispatchers.Default)
+
+    /**
+     * 本文から #ハッシュタグ を抽出（小文字化・重複除去・順序保持）。
+     * Unicode 対応（日本語タグも可）：'#' の後、letter/digit/'_' が続く範囲を1タグとする。
+     */
+    private fun hashtagsIn(content: String): List<String> {
+        val out = LinkedHashSet<String>()
+        var i = 0
+        while (i < content.length) {
+            if (content[i] == '#') {
+                val start = i + 1
+                var j = start
+                while (j < content.length && (content[j].isLetterOrDigit() || content[j] == '_')) j++
+                if (j > start) out.add(content.substring(start, j).lowercase())
+                i = j
+            } else i++
+        }
+        return out.toList()
     }
 
     // ---- kind:0 バッチ解決 ----
