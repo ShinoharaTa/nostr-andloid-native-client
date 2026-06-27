@@ -218,3 +218,14 @@ SELECT et.value AS note_id, e.content, e.tags_json
 FROM event e
 JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND et.tag = 'e';
+
+-- [M8-repost] フォロー中タイムライン（kind:1 通常 + kind:6/16 NIP-18 リポスト）を新しい順に。
+feedFollowingWithReposts:
+SELECT * FROM event
+WHERE kind IN (1, 6, 16) AND pubkey IN ? AND created_at > ?
+ORDER BY created_at DESC
+LIMIT 200;
+
+-- [M8-repost] イベント id 単一解決（リポスト元 / 引用ノートの解決用）。
+eventById:
+SELECT * FROM event WHERE id = ? LIMIT 1;

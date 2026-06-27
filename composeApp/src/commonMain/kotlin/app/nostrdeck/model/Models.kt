@@ -110,6 +110,8 @@ data class NoteUi(
     val likes: Int = 0,
     val imageUrl: String? = null,   // imeta 由来。blurhash プレースホルダ前提
     val reactions: List<ReactionUi> = emptyList(),  // [M8-react] NIP-25/30 集約リアクション
+    val repostedBy: Profile? = null,  // [M8-repost] kind:6/16 のリポスト主（非nullなら「がリポスト」ヘッダ）
+    val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
 )
 
 /**
