@@ -166,6 +166,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 offline = spec.kind == ColumnKind.NOTIFICATIONS,
                 onPin = onPin, onClose = onClose,
                 onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) },
+                onReply = { note -> state.replyTo = note.event; state.showCompose = true },
             )
         }
         ColumnRenderer.THREAD -> ThreadColumn(

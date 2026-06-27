@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
@@ -56,6 +57,9 @@ class EventRepository(
     private val relays = LinkedHashMap<String, RelayClient>()
     /** 新規リレー接続時に張り直すための購読中フィルタ（subId→filters）。 */
     private val activeSubs = mutableMapOf<String, List<Filter>>()
+    /** relays / activeSubs への全アクセスを直列化する単一スレッド相当のディスパッチャ（CME 回避）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val relayDispatcher = Dispatchers.Default.limitedParallelism(1)
     private val json = Json { ignoreUnknownKeys = true }
 
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
@@ -120,25 +124,35 @@ class EventRepository(
         }
     }
 
-    /** リレーへ接続（未接続なら）。接続済みの購読を張り直して取りこぼしを防ぐ。 */
+    /**
+     * リレーへ接続（未接続なら）。接続済みの購読を張り直して取りこぼしを防ぐ。
+     * relays/activeSubs の読み書きは relayDispatcher（単一スレッド相当）に直列化する。
+     */
     private fun ensureRelay(url: String) {
-        if (relays.containsKey(url)) return
-        val client = RelayClient(url, scope)
-        relays[url] = client
-        client.start()
-        scope.launch { client.messages.collect(::onMessage) }
-        activeSubs.forEach { (subId, filters) -> client.subscribe(subId, *filters.toTypedArray()) }
+        scope.launch(relayDispatcher) {
+            if (relays.containsKey(url)) return@launch
+            val client = RelayClient(url, scope)
+            relays[url] = client
+            client.start()
+            scope.launch { client.messages.collect(::onMessage) }
+            activeSubs.forEach { (subId, filters) -> client.subscribe(subId, *filters.toTypedArray()) }
+        }
     }
 
     /** 全リレーへ購読（subId 上書き）。新規リレー接続時の張り直し用に記録する。 */
     private fun subscribeAll(subId: String, vararg filters: Filter) {
-        activeSubs[subId] = filters.toList()
-        relays.values.forEach { it.subscribe(subId, *filters) }
+        val list = filters.toList()
+        scope.launch(relayDispatcher) {
+            activeSubs[subId] = list
+            relays.values.forEach { it.subscribe(subId, *list.toTypedArray()) }
+        }
     }
 
     private fun unsubscribeAll(subId: String) {
-        activeSubs.remove(subId)
-        relays.values.forEach { it.unsubscribe(subId) }
+        scope.launch(relayDispatcher) {
+            activeSubs.remove(subId)
+            relays.values.forEach { it.unsubscribe(subId) }
+        }
     }
 
     // ---- リレー設定（NIP-65 / 手動）: Settings から編集する明示的な置き場 ----
@@ -189,9 +203,11 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
 
-            // 開いているカラムの REQ を張り直して取りこぼしを防ぐ。
-            activeSubs.forEach { (subId, filters) ->
-                relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
+            // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
+            withContext(relayDispatcher) {
+                activeSubs.forEach { (subId, filters) ->
+                    relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
+                }
             }
         }
     }
@@ -279,23 +295,65 @@ class EventRepository(
      */
     suspend fun publishNote(content: String) {
         // NIP-24/NIP-12: 本文中の #ハッシュタグ を 't' タグ（小文字・# なし）として付与。
-        val hashtags = hashtagsIn(content)
-        val tags = hashtags.map { listOf("t", it) }
-        val unsigned = UnsignedEvent(kind = 1, content = content, tags = tags)
+        val tags = hashtagsIn(content).map { listOf("t", it) }
+        val signed = publishSigned(UnsignedEvent(kind = 1, content = content, tags = tags))
+        recordHashtags(content, signed.createdAt)
+    }
+
+    /** [M8] NIP-25 リアクション（kind:7）。デフォルトは "+"（♡=いいね）。即時にカウント反映。 */
+    suspend fun publishReaction(target: NostrEvent, emoji: String = "+") {
+        publishSigned(
+            UnsignedEvent(
+                kind = 7, content = emoji,
+                tags = listOf(listOf("e", target.id), listOf("p", target.pubkey)),
+            ),
+        )
+    }
+
+    /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
+    suspend fun publishRepost(target: NostrEvent) {
+        publishSigned(
+            UnsignedEvent(
+                kind = 6, content = "",
+                tags = listOf(listOf("e", target.id), listOf("p", target.pubkey)),
+            ),
+        )
+    }
+
+    /** [M8] NIP-10 返信（kind:1）。e(reply マーカー) + p を付け、本文の #タグも 't' 化する。 */
+    suspend fun publishReply(target: NostrEvent, text: String) {
+        val tags = listOf(listOf("e", target.id, "", "reply"), listOf("p", target.pubkey)) +
+            hashtagsIn(text).map { listOf("t", it) }
+        val signed = publishSigned(UnsignedEvent(kind = 1, content = text, tags = tags))
+        recordHashtags(text, signed.createdAt)
+    }
+
+    /**
+     * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
+     * 署名済みイベントを返す（ハッシュタグ記録の createdAt 等に使う）。
+     */
+    private suspend fun publishSigned(unsigned: UnsignedEvent): NostrEvent {
         val signed = SignerProvider.current().sign(unsigned)
         val payload = RelayProtocol.event(signed)
-        // 楽観的ローカル挿入（即時に自分のノートを表示）。タグも保存・索引する。
-        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, signed.content, tagsToJson(signed.tags), signed.sig)
+        // kind:7 は ingest と同じ正規化("+"/空→❤️)でローカル保存し、集約表示と整合させる。
+        val storedContent =
+            if (signed.kind == 7) (if (signed.content == "+" || signed.content.isEmpty()) "❤️" else signed.content)
+            else signed.content
+        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, storedContent, tagsToJson(signed.tags), signed.sig)
         indexTags(signed)
         q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
-        // TODO(outbox): write リレー優先で配信する。現状は接続中の全リレーへ送る。
-        relays.values.forEach { it.publish(payload) }
-        // レコメンド用に使用したハッシュタグを記録（最近順）。
-        hashtags.forEach { tag ->
-            q.insertHashtagIfAbsent(tag, signed.createdAt)
-            q.touchHashtag(signed.createdAt, tag)
-        }
+        // TODO(outbox): write リレー優先で配信する。現状は接続中の全リレーへ送る（relayDispatcher で直列化）。
+        withContext(relayDispatcher) { relays.values.forEach { it.publish(payload) } }
         // TODO: handle OK/NIP-20, retry from publish_queue
+        return signed
+    }
+
+    /** レコメンド用に使用したハッシュタグを記録（最近順）。 */
+    private fun recordHashtags(content: String, ts: Long) {
+        hashtagsIn(content).forEach { tag ->
+            q.insertHashtagIfAbsent(tag, ts)
+            q.touchHashtag(ts, tag)
+        }
     }
 
     /** 投稿で使ったハッシュタグ（最近順）。ComposeSheet のレコメンド/最近5件に使う。 */

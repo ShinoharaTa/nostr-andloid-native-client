@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.NostrEvent
 
 /** 左レール/下タブのグローバル宛先（アプリ機能）。コンテンツはカラム側。 */
 enum class NavDest { HOME, SEARCH, NOTIFICATIONS, DM, CHANNELS, SETTINGS }
@@ -44,6 +45,9 @@ class DeckState(initial: List<ColumnSpec>) {
 
     /** ノート投稿シートの表示状態。 */
     var showCompose by mutableStateOf(false)
+
+    /** 返信対象（非null なら ComposeSheet は返信モード）。送信/破棄でクリアする。 */
+    var replyTo by mutableStateOf<NostrEvent?>(null)
 
     /** テンプレから生成したカラムを末尾に追加（永続=pinned）してジャンプ。 */
     fun addColumn(spec: ColumnSpec) {

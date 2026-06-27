@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.theme.DeckColors
 import kotlinx.coroutines.launch
 
@@ -42,7 +43,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ComposeSheet(onDismiss: () -> Unit) {
+fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
@@ -68,7 +69,7 @@ fun ComposeSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Text(
-                "ノートを投稿",
+                if (replyTo != null) "返信" else "ノートを投稿",
                 color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(20.dp, 8.dp),
             )
@@ -110,11 +111,14 @@ fun ComposeSheet(onDismiss: () -> Unit) {
                     Button(
                         onClick = {
                             val content = text
-                            scope.launch { repo?.publishNote(content) }
+                            scope.launch {
+                                if (replyTo != null) repo?.publishReply(replyTo, content)
+                                else repo?.publishNote(content)
+                            }
                             onDismiss()
                         },
                         enabled = text.isNotBlank(),
-                    ) { Text("送信") }
+                    ) { Text(if (replyTo != null) "返信" else "送信") }
                 }
             }
         }

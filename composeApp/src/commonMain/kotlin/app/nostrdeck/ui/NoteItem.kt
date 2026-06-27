@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,10 +38,17 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.launch
 
-/** 1ノート。designs/index.html の .note と対応。 */
+/**
+ * 1ノート。designs/index.html の .note と対応。
+ * アクション: 💬返信([onReply]) / 🔁リポスト(kind:6) / ♡リアクション(kind:7 "+")。
+ * リポスト・リアクションは [LocalRepository] 経由でその場で送信する。
+ */
 @Composable
-fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
+fun NoteItem(note: NoteUi, modifier: Modifier = Modifier, onReply: (() -> Unit)? = null) {
+  val repo = LocalRepository.current
+  val scope = rememberCoroutineScope()
   // [M8-repost] リポストヘッダを本体の上に重ねるため Column で包む
   Column(modifier.fillMaxWidth()) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
@@ -85,10 +94,12 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.size(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                ActionChip(Icons.AutoMirrored.Outlined.Reply, note.replies.toString(), DeckColors.Accent)
-                ActionChip(Icons.Outlined.Repeat, note.reposts.toString(), DeckColors.Repost)
+                ActionChip(Icons.AutoMirrored.Outlined.Reply, note.replies.toString(), DeckColors.Accent, onClick = onReply)
+                ActionChip(Icons.Outlined.Repeat, note.reposts.toString(), DeckColors.Repost,
+                    onClick = { scope.launch { repo?.publishRepost(note.event) } })
                 ActionChip(Icons.Outlined.Bolt, formatSats(note.zapsSats), DeckColors.Zap)
-                ActionChip(Icons.Outlined.FavoriteBorder, note.likes.toString(), DeckColors.Like)
+                ActionChip(Icons.Outlined.FavoriteBorder, note.likes.toString(), DeckColors.Like,
+                    onClick = { scope.launch { repo?.publishReaction(note.event, "+") } })
             }
             // [M8-react] 集約絵文字リアクション（NIP-25/30）
             if (note.reactions.isNotEmpty()) {
@@ -101,8 +112,13 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ActionChip(icon: ImageVector, label: String, tint: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 10.dp)) {
+private fun ActionChip(icon: ImageVector, label: String, tint: Color, onClick: (() -> Unit)? = null) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(end = 10.dp, top = 2.dp, bottom = 2.dp),
+    ) {
         Icon(icon, contentDescription = null, tint = DeckColors.Text3, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(4.dp))
         Text(label, color = DeckColors.Text3, fontSize = 11.5.sp)

@@ -77,7 +77,10 @@ fun AppScaffold(state: DeckState) {
         }
 
         if (state.showCompose) {
-            ComposeSheet(onDismiss = { state.showCompose = false })
+            ComposeSheet(
+                onDismiss = { state.showCompose = false; state.replyTo = null },
+                replyTo = state.replyTo,
+            )
         }
     }
 }
