@@ -57,7 +57,7 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier) {
                 Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = 11.5.sp)
             }
             Spacer(Modifier.size(3.dp))
-            Text(note.event.content, color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp)
+            CollapsibleText(note.event.content) // [M8-collapse]
 
             // 画像: プロキシで圧縮した URL を Coil で読む（ディスクキャッシュにあればローカルから）
             note.imageUrl?.let { url ->
