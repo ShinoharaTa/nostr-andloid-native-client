@@ -146,17 +146,20 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             // 実データ対象のフィード種別はカラム=REQ で購読し DB Flow を表示。
             // 通知/DM はログイン pubkey や復号が要るため当面は仮データ。
             val repo = LocalRepository.current
+            // FOLLOWING は自分の kind:3（フォロー先）を authors にして購読・表示する。
+            val isFollowing = repo != null && spec.kind == ColumnKind.FOLLOWING
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             if (live) {
                 DisposableEffect(spec.id) {
-                    repo!!.subscribeColumn(spec.id, spec.filter)
-                    onDispose { repo.unsubscribeColumn(spec.id) }
+                    if (isFollowing) repo!!.subscribeFollowing(spec.id)
+                    else repo!!.subscribeColumn(spec.id, spec.filter)
+                    onDispose { repo!!.unsubscribeColumn(spec.id) }
                 }
             }
-            val notes = if (live) {
-                remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
-            } else {
-                SampleData.feedFor(spec)
+            val notes = when {
+                isFollowing -> remember(spec.id) { repo!!.followingFeed() }.collectAsState(emptyList()).value
+                live -> remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
+                else -> SampleData.feedFor(spec)
             }
             FeedColumn(
                 spec, notes, modifier, listState,

@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
+import app.nostrdeck.signer.KeystoreKeyVault
+import app.nostrdeck.signer.SignerProvider
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
@@ -48,6 +50,11 @@ class MainActivity : ComponentActivity() {
                 .crossfade(true)
                 .build()
         }
+
+        // 鍵保管を Android Keystore 実装に差し替える。nsec の取り込み/新規生成は
+        // ここで注入した vault に永続化され、再起動後も同じ鍵が復元される。
+        // 鍵未設定なら useVault が新規生成する（=毎インストールに永続 ID が付く）。
+        SignerProvider.useVault(KeystoreKeyVault(applicationContext))
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。

@@ -12,18 +12,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
@@ -88,6 +96,7 @@ private fun SettingsContent(sectionId: String) {
         Spacer(Modifier.size(14.dp))
         when (sectionId) {
             "signer" -> SignerSettings()
+            "relays" -> RelaySettings()
             else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = 13.sp)
         }
     }
@@ -117,15 +126,87 @@ private fun SignerSettings() {
 }
 
 /**
+ * リレー設定（NIP-65 Inbox/Outbox）。kind:10002 から自動取得した read/write リレーを
+ * ここに**明示**し、手動で追加・削除できる（取得/配信に使うリレーの編集可能な置き場）。
+ *  - read  = Inbox  : 自分宛（メンション/リプライ）を読みに行く
+ *  - write = Outbox : 自分の投稿を流す
+ */
+@Composable
+private fun RelaySettings() {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("リレー情報を利用できません", color = DeckColors.Text3, fontSize = 13.sp)
+        return
+    }
+    val relays by repo.relaysFlow().collectAsState(emptyList())
+    var input by remember { mutableStateOf("") }
+
+    Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = 12.sp)
+    Spacer(Modifier.size(4.dp))
+    Text(
+        "kind:10002 から自動取得し、ここで編集できます。read=Inbox（自分宛を読む）/ write=Outbox（投稿を流す）。",
+        color = DeckColors.Text3, fontSize = 11.sp,
+    )
+    Spacer(Modifier.size(14.dp))
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it },
+            singleLine = true,
+            label = { Text("wss://…") },
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.size(8.dp))
+        Button(onClick = { repo.addRelay(input); input = "" }) { Text("追加") }
+    }
+
+    Spacer(Modifier.size(12.dp))
+    HorizontalDivider(color = DeckColors.Border)
+
+    LazyColumn(Modifier.fillMaxWidth()) {
+        items(relays, key = { it.url }) { r ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(r.url, color = DeckColors.Text, fontSize = 13.sp)
+                    Text(
+                        buildString {
+                            if (r.read != 0L) append("Inbox ")
+                            if (r.write != 0L) append("Outbox ")
+                            append("· ${r.source}")
+                        },
+                        color = DeckColors.Text3, fontSize = 11.sp,
+                    )
+                }
+                Text(
+                    "削除", color = DeckColors.Accent, fontSize = 12.sp,
+                    modifier = Modifier.clickable { repo.removeRelay(r.url) }.padding(8.dp),
+                )
+            }
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
+/**
  * ローカル署名のログイン UI：nsec の取り込み or 新規生成。
  * SignerProvider.vault() に対して操作し、現在の npub を表示する。
  */
 @Composable
 private fun LocalSignerLogin() {
+    val repo = LocalRepository.current
     // import/generate のたびに公開鍵を読み直すためのトリガ。
     var refresh by remember { mutableStateOf(0) }
     var nsecInput by remember { mutableStateOf("") }
+    var reveal by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // 鍵の切り替えは破壊的（依存データが飛ぶ）ので確認ダイアログで一旦止める。
+    // 取り込みは検証済み hex を保持、生成は true で確認待ち。
+    var pendingImportHex by remember { mutableStateOf<String?>(null) }
+    var confirmGenerate by remember { mutableStateOf(false) }
 
     // publicKeyHex() は suspend。refresh をキーに収集して npub を求める。
     val npub by produceState<String?>(null, refresh) {
@@ -147,7 +228,19 @@ private fun LocalSignerLogin() {
         onValueChange = { nsecInput = it; error = null },
         singleLine = true,
         label = { Text("nsec を貼り付けて取り込み") },
-        modifier = Modifier.fillMaxWidth(),
+        // 秘密鍵なのでパスワード扱い：マスク表示 + パスワードキーボード + 自動入力対応。
+        // 中身を目視確認できるよう表示/非表示トグルを付ける（自動入力の取り違え検知用）。
+        visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        trailingIcon = {
+            Text(
+                if (reveal) "隠す" else "表示",
+                color = DeckColors.Accent, fontSize = 12.sp,
+                modifier = Modifier.clickable { reveal = !reveal }.padding(8.dp),
+            )
+        },
+        modifier = Modifier.fillMaxWidth()
+            .secretAutofill { nsecInput = it; error = null },
     )
     error?.let {
         Spacer(Modifier.size(4.dp))
@@ -157,13 +250,17 @@ private fun LocalSignerLogin() {
     Spacer(Modifier.size(10.dp))
     Row(Modifier.fillMaxWidth()) {
         Button(onClick = {
-            val s = nsecInput.trim()
+            // 改行・空白は除去（折り返しコピーや自動入力の混入対策）。先に検証し、
+            // 正しい nsec のときだけ確認ダイアログを出す（破壊的操作の手前で止める）。
+            val s = nsecInput.filterNot { it.isWhitespace() }
             try {
-                val hex = Nip19.nsecToHex(s)
-                SignerProvider.importPrivateKey(hex.hexToBytes())
-                nsecInput = ""
+                require(s.startsWith("nsec1")) {
+                    val head = s.take(8).ifBlank { "(空)" }
+                    "nsec1… で始まる秘密鍵を入力してください（入力の先頭: $head）。" +
+                        "自動入力で別の値が入っていないか「表示」で確認してください。"
+                }
+                pendingImportHex = Nip19.nsecToHex(s)  // 検証も兼ねる
                 error = null
-                refresh++
             } catch (e: Throwable) {
                 error = "nsec の取り込みに失敗: ${e.message}"
             }
@@ -171,12 +268,58 @@ private fun LocalSignerLogin() {
             Text("取り込み")
         }
         Spacer(Modifier.size(12.dp))
-        Button(onClick = {
-            SignerProvider.generateNewKey()
-            error = null
-            refresh++
-        }) {
+        Button(onClick = { confirmGenerate = true }) {
             Text("新規生成")
         }
     }
+
+    // --- 鍵切り替えの確認（破壊的操作のガード） ---
+    pendingImportHex?.let { hex ->
+        KeySwitchConfirm(
+            title = "この nsec に切り替えますか？",
+            onConfirm = {
+                SignerProvider.importPrivateKey(hex.hexToBytes())
+                repo?.reloadForNewIdentity()
+                nsecInput = ""
+                pendingImportHex = null
+                error = null
+                refresh++
+            },
+            onDismiss = { pendingImportHex = null },
+        )
+    }
+    if (confirmGenerate) {
+        KeySwitchConfirm(
+            title = "新しい鍵を生成しますか？",
+            onConfirm = {
+                SignerProvider.generateNewKey()
+                repo?.reloadForNewIdentity()
+                confirmGenerate = false
+                error = null
+                refresh++
+            },
+            onDismiss = { confirmGenerate = false },
+        )
+    }
+}
+
+/**
+ * 鍵切り替えの確認ダイアログ。現在のアカウントに紐づくデータが破棄され、
+ * 新しい鍵で読み直しになることを明示してから実行する。
+ */
+@Composable
+private fun KeySwitchConfirm(title: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Text(
+                "現在のアカウントのフォロー・リレーリスト(NIP-65)・タイムライン履歴・" +
+                    "プロフィールのキャッシュはすべて破棄され、新しい鍵で読み直します。" +
+                    "この操作は元に戻せません。",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("切り替える") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    )
 }

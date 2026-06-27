@@ -83,6 +83,20 @@ data class ReqFilter(
     val search: String? = null,
 )
 
+/**
+ * NIP-65 リレーリストの1エントリ（Inbox/Outbox モデル）。
+ *  - [read]  Inbox  : 自分宛（メンション/リプライ）を読みに行くリレー
+ *  - [write] Outbox : 自分の投稿を流すリレー
+ *  - [source] 由来 : 'nip65'(kind:10002) | 'default'(初期値) | 'manual'(手動)
+ * kind:10002 の `r` タグ（マーカー無し=read+write 両方）に対応。
+ */
+data class RelayPref(
+    val url: String,
+    val read: Boolean = true,
+    val write: Boolean = true,
+    val source: String = "manual",
+)
+
 /** 回線種別ティア（whiteboard.md の NetworkPolicy）。Repository 層だけが参照する。 */
 enum class NetworkTier { UNMETERED, METERED, CONSTRAINED, OFFLINE }
 

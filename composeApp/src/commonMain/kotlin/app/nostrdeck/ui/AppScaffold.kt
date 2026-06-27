@@ -59,22 +59,14 @@ fun AppScaffold(state: DeckState) {
 
         if (isCompact) {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { Destination(state, isCompact = true) }
+                ContentWithCompose(state, isCompact = true, Modifier.weight(1f))
                 BottomBar(state)
             }
         } else {
             Row(Modifier.fillMaxSize()) {
                 DeckRail(state)
-                Box(Modifier.weight(1f)) { Destination(state, isCompact = false) }
+                ContentWithCompose(state, isCompact = false, Modifier.weight(1f))
             }
-        }
-
-        // ノート投稿の入口（右下に浮かべる）。
-        FloatingActionButton(
-            onClick = { state.showCompose = true },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-        ) {
-            Icon(Icons.Outlined.Edit, "投稿")
         }
 
         if (state.showAddColumn) {
@@ -91,6 +83,26 @@ fun AppScaffold(state: DeckState) {
 }
 
 private const val COMPACT_BREAKPOINT_DP = 600  // WindowSizeClass の Compact 上限相当
+
+/**
+ * 宛先の内容 + 投稿 FAB を重ねる。FAB は内容領域の右下に置く（= Compact では
+ * BottomBar の上に浮く）ので、下部ナビの「設定」等を覆わない。投稿はタイムライン
+ * （Home Deck）の操作なので HOME でのみ表示する。
+ */
+@Composable
+private fun ContentWithCompose(state: DeckState, isCompact: Boolean, modifier: Modifier) {
+    Box(modifier.fillMaxSize()) {
+        Destination(state, isCompact = isCompact)
+        if (state.navDest == NavDest.HOME) {
+            FloatingActionButton(
+                onClick = { state.showCompose = true },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            ) {
+                Icon(Icons.Outlined.Edit, "投稿")
+            }
+        }
+    }
+}
 
 @Composable
 private fun Destination(state: DeckState, isCompact: Boolean) {

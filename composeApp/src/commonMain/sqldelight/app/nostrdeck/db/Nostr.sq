@@ -18,6 +18,10 @@ insertEvent:
 INSERT OR IGNORE INTO event(id, pubkey, kind, created_at, content, tags_json, sig)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
+-- 鍵切り替え時の「履歴を全部飛ばして読み直し」用の全消去。
+clearEvents:
+DELETE FROM event;
+
 -- フィード（kind:1 を新しい順）。M1 の global/購読結果の表示に使う。
 recentNotes:
 SELECT * FROM event WHERE kind = 1 ORDER BY created_at DESC LIMIT ?;
@@ -37,6 +41,9 @@ CREATE INDEX event_tag_idx ON event_tag(tag, value);
 
 insertTag:
 INSERT OR IGNORE INTO event_tag(event_id, tag, value) VALUES (?, ?, ?);
+
+clearTags:
+DELETE FROM event_tag;
 
 feedByHashtag:
 SELECT event.* FROM event
@@ -73,9 +80,42 @@ SELECT * FROM profile WHERE pubkey = ?;
 allProfiles:
 SELECT * FROM profile;
 
+clearProfiles:
+DELETE FROM profile;
+
 -- 期限切れ（TTL 超過）のプロフィール pubkey を取得 → バッチ REQ の対象
 staleProfiles:
 SELECT pubkey FROM profile WHERE updated_at < ?;
+
+-- ============ relay: 取得/配信に使うリレー集合（NIP-65 Inbox/Outbox + 手動） ============
+-- 「どのリレーから取得し、どこへ流すか」の SSOT。ユーザーが後で編集できる明示的な置き場。
+--  read  = Inbox  : 自分宛（メンション/リプライ等）を読みに行くリレー
+--  write = Outbox : 自分の投稿を流すリレー
+--  source: 'nip65'(kind:10002 由来) | 'default'(初期値) | 'manual'(手動追加)
+CREATE TABLE relay (
+    url    TEXT NOT NULL PRIMARY KEY,
+    read   INTEGER NOT NULL DEFAULT 1,
+    write  INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'manual'
+);
+
+-- NIP-65/手動の確定値で上書き（read/write/source を反映）。
+upsertRelay:
+INSERT OR REPLACE INTO relay(url, read, write, source) VALUES (?, ?, ?, ?);
+
+-- ブートストラップ等、既にあれば触らない初期投入。
+insertRelayIfAbsent:
+INSERT OR IGNORE INTO relay(url, read, write, source) VALUES (?, ?, ?, ?);
+
+allRelays:
+SELECT * FROM relay ORDER BY source ASC, url ASC;
+
+deleteRelay:
+DELETE FROM relay WHERE url = ?;
+
+-- 鍵切り替え時：旧アカウント由来(NIP-65)のリレーだけ消す（default/manual は残す）。
+clearNip65Relays:
+DELETE FROM relay WHERE source = 'nip65';
 
 -- ============ relay_status: 接続健全性 ============
 CREATE TABLE relay_status (
@@ -146,3 +186,9 @@ CREATE TABLE channel (
 
 channelsByActivity:
 SELECT * FROM channel ORDER BY last_message_at DESC;
+
+clearChannels:
+DELETE FROM channel;
+
+clearPublishQueue:
+DELETE FROM publish_queue;
