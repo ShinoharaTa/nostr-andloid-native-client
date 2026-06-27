@@ -69,7 +69,7 @@ object SampleData {
             author = profile(name, handle),
             replies = 3 + (i * 7) % 90, reposts = 9 + (i * 13) % 200,
             zapsSats = 1000L + (i * 800), likes = 30 + (i * 17) % 400,
-            imageUrl = if ((seed + i) % 4 == 3) "https://example/img_$i.jpg" else null,
+            images = if ((seed + i) % 4 == 3) listOf("https://example/img_$i.jpg") else emptyList(),
         )
     }
 

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,8 +91,48 @@ class EventRepository(
             }
         }
 
+    /**
+     * [M8-counts] note_id→(リプライ数, リポスト数)。NIP に総数の概念は無いので、
+     * 「自分のリレーから取り込めた範囲」のベストエフォート集計（kind:1 の e=リプライ / kind:6=リポスト）。
+     */
+    private val engagementFlow: Flow<Map<String, Engagement>> =
+        q.engagementForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            val m = HashMap<String, Engagement>()
+            rows.forEach { r ->
+                val cur = m[r.note_id] ?: Engagement()
+                m[r.note_id] = when (r.kind) {
+                    1L -> cur.copy(replies = r.cnt.toInt())
+                    6L -> cur.copy(reposts = r.cnt.toInt())
+                    else -> cur
+                }
+            }
+            m
+        }
+
     /** ログイン中ユーザーの公開鍵（kind:3 の自分判定とフォロー解決に使う）。 */
     private var myPubkey: String? = null
+    /** [M8-counts] 自分の公開鍵を Flow でも公開（♡/リポスト済み判定が鍵切替に追従するため）。 */
+    private val myPubkeyFlow = MutableStateFlow<String?>(null)
+
+    /** [M8-counts] 自分が♡済みのノート id 集合（公開鍵の変化に追従）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val myReactedFlow: Flow<Set<String>> = myPubkeyFlow.flatMapLatest { pk ->
+        if (pk == null) flowOf(emptySet())
+        else q.myReactedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
+    }
+
+    /** [M8-counts] 自分がリポスト済みのノート id 集合。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val myRepostedFlow: Flow<Set<String>> = myPubkeyFlow.flatMapLatest { pk ->
+        if (pk == null) flowOf(emptySet())
+        else q.myRepostedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
+    }
+
+    /** [M8-counts] フィードに載せる集約メタ（リアクション/反応数/自分の状態）を1つに束ねる。 */
+    private val noteMetaFlow: Flow<NoteMeta> =
+        combine(reactionsFlow, engagementFlow, myReactedFlow, myRepostedFlow) { r, e, mr, mp ->
+            NoteMeta(r, e, mr, mp)
+        }
 
     /** 自分の kind:3 由来のフォロー集合（p タグ）。FOLLOWING カラムの authors。 */
     private val follows = MutableStateFlow<List<String>>(emptyList())
@@ -118,7 +159,7 @@ class EventRepository(
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
         scope.launch {
             val me = SignerProvider.current().publicKeyHex()
-            myPubkey = me
+            myPubkey = me; myPubkeyFlow.value = me
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
         }
@@ -183,7 +224,7 @@ class EventRepository(
     fun reloadForNewIdentity() {
         scope.launch {
             val me = SignerProvider.current().publicKeyHex()
-            myPubkey = me
+            myPubkey = me; myPubkeyFlow.value = me
 
             // 旧アカウント依存の解決済み状態をリセット。
             follows.value = emptyList(); followsAt = 0L
@@ -255,24 +296,38 @@ class EventRepository(
                 // [M8-repost] kind:1 + kind:6/16 リポストを含めて取得し、表示用に展開する。
                 q.feedFollowingWithReposts(authors, 0L).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
-                reactionsFlow,  // [M8-react]
-            ) { rows, profiles, reactions ->
+                noteMetaFlow,  // [M8-react/counts] リアクション/反応数/自分の状態
+            ) { rows, profiles, meta ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                // [M8-repost] リポストは元ノートに展開。[M8-react] リアクションは表示ノートの id に付与。
-                rows.mapNotNull { row ->
-                    toFollowingNoteUi(row, byPubkey)?.let { ui ->
-                        ui.copy(reactions = reactions[ui.event.id].orEmpty())
-                    }
-                }
-            }
+                // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
+                // 同一ノートを複数人がリポスト/元と重複 → 表示 id が衝突するので id で重複排除（LazyColumn key 一意化）。
+                rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
+                    .distinctBy { it.event.id }
+            // 変換（eventById 解決・集約付与）は重いので Default に載せ、UI スレッドを塞がない（ANR 対策）。
+            }.flowOn(Dispatchers.Default)
         }
 
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。 */
     fun columnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
-        combine(rowsFlow(filter), profilesFlow, reactionsFlow) { rows, profiles, reactions ->
+        combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta ->
             val byPubkey = profiles.associateBy { it.pubkey }
-            rows.map { row -> toNoteUi(row, byPubkey[row.pubkey]).copy(reactions = reactions[row.id].orEmpty()) }
-        }
+            rows.map { row -> applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta) }
+        }.flowOn(Dispatchers.Default)
+
+    /** [M8-counts] 集約メタを NoteUi に反映（reactions / 反応数 / ♡・リポスト済み）。 */
+    private fun applyMeta(ui: NoteUi, meta: NoteMeta): NoteUi {
+        val id = ui.event.id
+        val eng = meta.engagement[id]
+        val likes = meta.reactions[id]?.firstOrNull { it.key == "❤️" }?.count ?: 0
+        return ui.copy(
+            reactions = meta.reactions[id].orEmpty(),
+            replies = eng?.replies ?: 0,
+            reposts = eng?.reposts ?: 0,
+            likes = likes,
+            mineReacted = id in meta.myReacted,
+            mineReposted = id in meta.myReposted,
+        )
+    }
 
     private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
         filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
@@ -308,6 +363,23 @@ class EventRepository(
                 tags = listOf(listOf("e", target.id), listOf("p", target.pubkey)),
             ),
         )
+    }
+
+    /**
+     * [M8-counts] ♡ のトグル。未リアクションなら "+" を送信、既にリアクション済みなら
+     * NIP-09 削除イベント(kind:5)で取り消し、ローカルからも除去する（ハイライト/数が即反映）。
+     */
+    suspend fun toggleReaction(target: NostrEvent) {
+        val pk = myPubkey ?: SignerProvider.current().publicKeyHex().also {
+            myPubkey = it; myPubkeyFlow.value = it
+        }
+        val mineId = q.myReactionIdFor(pk, target.id).executeAsOneOrNull()
+        if (mineId != null) {
+            publishSigned(UnsignedEvent(kind = 5, content = "", tags = listOf(listOf("e", mineId))))
+            q.transaction { q.deleteEventById(mineId); q.deleteTagsForEvent(mineId) }
+        } else {
+            publishReaction(target, "+")
+        }
     }
 
     /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
@@ -492,10 +564,11 @@ class EventRepository(
 
     private fun toNoteUi(row: Event, prof: app.nostrdeck.db.Profile?): NoteUi {
         val name = prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10)
+        val (text, images) = extractMedia(row.content)
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
             author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url),
-            imageUrl = imageUrlRegex.find(row.content)?.value,
+            text = text, images = images,
         )
     }
 
@@ -534,10 +607,11 @@ class EventRepository(
     private fun noteUiFromEvent(ev: NostrEvent, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi {
         val prof = byPubkey[ev.pubkey]
         val name = prof?.name?.takeIf { it.isNotBlank() } ?: ev.pubkey.take(10)
+        val (text, images) = extractMedia(ev.content)
         return NoteUi(
             event = ev,
             author = Profile(ev.pubkey, name, prof?.handle ?: "", prof?.picture_url),
-            imageUrl = imageUrlRegex.find(ev.content)?.value,
+            text = text, images = images,
         )
     }
 
@@ -564,11 +638,35 @@ class EventRepository(
     private val imageUrlRegex =
         Regex("""https?://\S+?\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 
+    /** content から画像URLを抽出し、本文からは除去した (表示本文, 画像URL一覧) を返す。 */
+    private fun extractMedia(content: String): Pair<String?, List<String>> {
+        val urls = imageUrlRegex.findAll(content).map { it.value }.toList()
+        if (urls.isEmpty()) return null to emptyList()
+        var text = content
+        urls.forEach { text = text.replace(it, "") }
+        // URL 除去で生じた余分な空白/空行を整理。
+        text = text.replace(Regex("""[ \t]{2,}"""), " ")
+            .replace(Regex("""\n{3,}"""), "\n\n")
+            .trim()
+        return text.ifBlank { null } to urls.distinct()
+    }
+
     private fun tagsToJson(tags: List<List<String>>): String = buildJsonArray {
         tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) }
     }.toString()
 
-    // ---- [M8-react] リアクション集約ヘルパ ----
+    // ---- [M8] 集約ヘルパ ----
+
+    /** [M8-counts] ノードの反応数（ローカルに見えた分のリプライ/リポスト）。 */
+    private data class Engagement(val replies: Int = 0, val reposts: Int = 0)
+
+    /** [M8-counts] フィードに載せる集約メタの束。 */
+    private data class NoteMeta(
+        val reactions: Map<String, List<ReactionUi>>,
+        val engagement: Map<String, Engagement>,
+        val myReacted: Set<String>,
+        val myReposted: Set<String>,
+    )
 
     /** 集約中の可変ホルダ（key ごとに件数とカスタム絵文字 URL を貯める）。 */
     private class ReactionAgg(val key: String, val display: String, var imageUrl: String?) {

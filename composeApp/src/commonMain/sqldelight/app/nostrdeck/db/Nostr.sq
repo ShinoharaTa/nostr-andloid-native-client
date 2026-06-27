@@ -229,3 +229,37 @@ LIMIT 200;
 -- [M8-repost] イベント id 単一解決（リポスト元 / 引用ノートの解決用）。
 eventById:
 SELECT * FROM event WHERE id = ? LIMIT 1;
+
+-- [M8-counts] ローカルに取り込めた範囲での反応数（リプライ=kind1 / リポスト=kind6）を
+-- 対象ノート(e タグ)別・種別別に集計。いいね数(kind7)は reactionsForTargets から算出する。
+-- ※ NIP に全体総数の概念は無く、これは「自分のリレーから見えた分」のベストエフォート集計。
+engagementForTargets:
+SELECT et.value AS note_id, e.kind AS kind, COUNT(*) AS cnt
+FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE et.tag = 'e' AND e.kind IN (1, 6)
+GROUP BY et.value, e.kind;
+
+-- [M8-counts] 自分がリアクション済みのノート id 集合（♡ のハイライト/トグル用）。
+myReactedNoteIds:
+SELECT et.value FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
+
+-- [M8-counts] 自分がリポスト済みのノート id 集合。
+myRepostedNoteIds:
+SELECT et.value FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 6 AND e.pubkey = ? AND et.tag = 'e';
+
+-- [M8-counts] 指定ノートに対する自分のリアクション(kind7) id（取り消し=NIP-09 削除の対象）。
+myReactionIdFor:
+SELECT e.id FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e' AND et.value = ? LIMIT 1;
+
+deleteEventById:
+DELETE FROM event WHERE id = ?;
+
+deleteTagsForEvent:
+DELETE FROM event_tag WHERE event_id = ?;

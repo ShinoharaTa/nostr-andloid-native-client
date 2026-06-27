@@ -108,10 +108,13 @@ data class NoteUi(
     val reposts: Int = 0,
     val zapsSats: Long = 0,
     val likes: Int = 0,
-    val imageUrl: String? = null,   // imeta 由来。blurhash プレースホルダ前提
+    val text: String? = null,       // 画像URL等を除いた表示用本文（null なら event.content）
+    val images: List<String> = emptyList(),  // 本文中の画像URL（複数可）。表示はグリッド/カルーセル
     val reactions: List<ReactionUi> = emptyList(),  // [M8-react] NIP-25/30 集約リアクション
     val repostedBy: Profile? = null,  // [M8-repost] kind:6/16 のリポスト主（非nullなら「がリポスト」ヘッダ）
     val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
+    val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
+    val mineReposted: Boolean = false, // [M8-counts] 自分がリポスト済み
 )
 
 /**
