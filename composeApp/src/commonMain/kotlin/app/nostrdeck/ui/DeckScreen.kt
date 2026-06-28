@@ -169,9 +169,24 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 onReply = { note -> state.replyTo = note.event; state.showCompose = true },
             )
         }
-        ColumnRenderer.THREAD -> ThreadColumn(
-            spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose,
-        )
+        ColumnRenderer.THREAD -> {
+            val repo = LocalRepository.current
+            val focusId = spec.filter.eventId
+            if (repo != null && focusId != null) {
+                DisposableEffect(spec.id) {
+                    repo.subscribeThread(spec.id, focusId)
+                    onDispose { repo.unsubscribeColumn(spec.id) }
+                }
+                val entries = remember(spec.id) { repo.threadFeed(focusId) }
+                    .collectAsState(emptyList()).value
+                ThreadColumn(
+                    spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
+                    onReply = { note -> state.replyTo = note.event; state.showCompose = true },
+                )
+            } else {
+                ThreadColumn(spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose)
+            }
+        }
         ColumnRenderer.CHANNEL_LIST -> ChannelListColumn(
             spec, SampleData.channels, pinnedChannelIds(state), modifier, listState,
             onPin = onPin, onClose = onClose,

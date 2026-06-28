@@ -11,6 +11,7 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.UnsignedEvent
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
@@ -313,6 +314,89 @@ class EventRepository(
             val byPubkey = profiles.associateBy { it.pubkey }
             rows.map { row -> applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta) }
         }.flowOn(Dispatchers.Default)
+
+    // ---- [M9-thread] NIP-10 スレッド ----
+
+    /** スレッド購読：起点ノートとその root を id 指定で取得し、root/起点宛の返信(#e)を購読する。 */
+    fun subscribeThread(columnId: String, focusId: String) {
+        if (!openColumns.add(columnId)) return
+        val ids = threadAnchorIds(focusId)
+        subscribeAll(
+            columnId,
+            Filter(ids = ids),
+            Filter(kinds = listOf(1), eTags = ids, limit = 200),
+        )
+    }
+
+    /** スレッド表示（深さ付きで root→返信を並べる）。DB の差分に追従する。 */
+    fun threadFeed(focusId: String): Flow<List<ThreadEntry>> {
+        val ids = threadAnchorIds(focusId)
+        val rootId = ids.lastOrNull() ?: focusId
+        return combine(
+            q.threadEvents(ids).asFlow().mapToList(Dispatchers.Default),
+            profilesFlow,
+        ) { rows, profiles ->
+            buildThread(rows, focusId, rootId, profiles.associateBy { it.pubkey })
+        }.flowOn(Dispatchers.Default)
+    }
+
+    /** 起点 id とその root id（DB の focus イベントの e タグから解決。無ければ focus 自身）。 */
+    private fun threadAnchorIds(focusId: String): List<String> {
+        val focus = q.eventById(focusId).executeAsOneOrNull()
+        val rootId = focus?.let { rootOf(parseTags(it.tags_json)) } ?: focusId
+        return listOf(focusId, rootId).distinct()
+    }
+
+    /** 取得済みイベント群から深さ優先のスレッドを組む（NIP-10 の e マーカー/位置で親を決める）。 */
+    private fun buildThread(
+        rows: List<Event>, focusId: String, rootId: String,
+        byPubkey: Map<String, app.nostrdeck.db.Profile>,
+    ): List<ThreadEntry> {
+        val byId = rows.associateBy { it.id }
+        val parentOf = rows.associate { it.id to replyParentOf(parseTags(it.tags_json)) }
+        val children = HashMap<String, MutableList<Event>>()
+        rows.forEach { row ->
+            val p = parentOf[row.id]
+            if (p != null && byId.containsKey(p)) children.getOrPut(p) { mutableListOf() }.add(row)
+        }
+        val out = ArrayList<ThreadEntry>()
+        fun visit(row: Event, depth: Int) {
+            val parentId = parentOf[row.id]
+            val replyToName = parentId?.let { byId[it] }?.let { parent ->
+                byPubkey[parent.pubkey]?.name?.takeIf { it.isNotBlank() } ?: parent.pubkey.take(8)
+            }
+            out.add(
+                ThreadEntry(
+                    note = toNoteUi(row, byPubkey[row.pubkey]),
+                    depth = depth, replyToName = replyToName,
+                    isRoot = row.id == rootId, isFocused = row.id == focusId,
+                ),
+            )
+            children[row.id]?.sortedBy { it.created_at }?.forEach { visit(it, depth + 1) }
+        }
+        // 親が取得集合に居ない（=スレッドの起点）行から DFS。
+        rows.filter { parentOf[it.id] == null || parentOf[it.id] !in byId }
+            .sortedBy { it.created_at }
+            .forEach { visit(it, 0) }
+        return out
+    }
+
+    /** NIP-10: 返信先（reply マーカー → root マーカー → 位置で末尾の e）。 */
+    private fun replyParentOf(tags: List<List<String>>): String? {
+        val es = tags.filter { it.size >= 2 && it[0] == "e" }
+        if (es.isEmpty()) return null
+        es.firstOrNull { it.size >= 4 && it[3] == "reply" }?.let { return it[1] }
+        es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
+        return es.last()[1]
+    }
+
+    /** NIP-10: root（root マーカー → 位置で先頭の e）。 */
+    private fun rootOf(tags: List<List<String>>): String? {
+        val es = tags.filter { it.size >= 2 && it[0] == "e" }
+        if (es.isEmpty()) return null
+        es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
+        return es.first()[1]
+    }
 
     /** [M8-counts] 集約メタを NoteUi に反映（reactions / 反応数 / ♡・リポスト済み）。 */
     private fun applyMeta(ui: NoteUi, meta: NoteMeta): NoteUi {

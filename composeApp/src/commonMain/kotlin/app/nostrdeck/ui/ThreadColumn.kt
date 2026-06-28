@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.theme.DeckColors
 
@@ -41,6 +43,7 @@ fun ThreadColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    onReply: (NoteUi) -> Unit = {},
 ) {
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -52,16 +55,18 @@ fun ThreadColumn(
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             items(entries, key = { it.note.event.id }) { entry ->
-                ThreadRow(entry)
+                ThreadRow(entry, onReply = { onReply(entry.note) })
                 HorizontalDivider(color = DeckColors.Border)
             }
         }
-        ReplyBox()
+        // 下部の返信ボックスは起点（フォーカス）ノート、無ければ先頭への返信。
+        val replyTarget = entries.firstOrNull { it.isFocused } ?: entries.firstOrNull()
+        ReplyBox(enabled = replyTarget != null, onClick = { replyTarget?.let { onReply(it.note) } })
     }
 }
 
 @Composable
-private fun ThreadRow(entry: ThreadEntry) {
+private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit) {
     val bg = when {
         entry.isFocused -> DeckColors.AccentWeak
         entry.isRoot -> DeckColors.Accent.copy(alpha = 0.05f)
@@ -77,14 +82,16 @@ private fun ThreadRow(entry: ThreadEntry) {
                 modifier = Modifier.padding(start = 13.dp, top = 8.dp),
             )
         }
-        NoteItem(entry.note)
+        NoteItem(entry.note, onReply = onReply)
     }
 }
 
 @Composable
-private fun ReplyBox() {
+private fun ReplyBox(enabled: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(DeckColors.Surface).padding(11.dp),
+        Modifier.fillMaxWidth().background(DeckColors.Surface)
+            .let { if (enabled) it.clickable(onClick = onClick) else it }
+            .padding(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

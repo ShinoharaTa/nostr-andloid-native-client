@@ -258,6 +258,14 @@ SELECT e.id FROM event e
 JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e' AND et.value = ? LIMIT 1;
 
+-- [M9-thread] スレッド構成イベント: 指定 id 群そのもの + それらを e タグで参照する kind:1。
+threadEvents:
+SELECT DISTINCT event.* FROM event
+LEFT JOIN event_tag ON event.id = event_tag.event_id
+WHERE event.id IN :ids
+   OR (event_tag.tag = 'e' AND event_tag.value IN :ids)
+ORDER BY event.created_at ASC;
+
 deleteEventById:
 DELETE FROM event WHERE id = ?;
 

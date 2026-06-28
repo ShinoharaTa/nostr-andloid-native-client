@@ -90,7 +90,7 @@ object SampleData {
     fun threadColumnFor(note: NoteUi) = ColumnSpec(
         id = "thread_${note.event.id}", title = "スレッド", subtitle = "一時表示 · NIP-10",
         kind = ColumnKind.THREAD, renderer = ColumnRenderer.THREAD,
-        filter = ReqFilter(kinds = listOf(1)), pinned = false, order = 100,
+        filter = ReqFilter(kinds = listOf(1), eventId = note.event.id), pinned = false, order = 100,
     )
 
     // ---- NIP-28 チャンネル ----

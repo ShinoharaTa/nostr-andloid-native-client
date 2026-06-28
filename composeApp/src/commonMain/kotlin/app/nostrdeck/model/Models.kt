@@ -81,6 +81,8 @@ data class ReqFilter(
     val channelId: String? = null,
     /** NIP-50 全文検索ワード。 */
     val search: String? = null,
+    /** NIP-10 スレッド: 表示の起点となるノート id（タップしたノート）。 */
+    val eventId: String? = null,
 )
 
 /**
