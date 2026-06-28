@@ -44,6 +44,8 @@ fun ThreadColumn(
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     onReply: (NoteUi) -> Unit = {},
+    onQuote: (NoteUi) -> Unit = {},
+    onAuthorClick: ((String) -> Unit)? = null,
 ) {
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -55,7 +57,7 @@ fun ThreadColumn(
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             items(entries, key = { it.note.event.id }) { entry ->
-                ThreadRow(entry, onReply = { onReply(entry.note) })
+                ThreadRow(entry, onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) }, onAuthorClick = onAuthorClick)
                 HorizontalDivider(color = DeckColors.Border)
             }
         }
@@ -66,7 +68,7 @@ fun ThreadColumn(
 }
 
 @Composable
-private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit) {
+private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit, onQuote: () -> Unit = {}, onAuthorClick: ((String) -> Unit)? = null) {
     val bg = when {
         entry.isFocused -> DeckColors.AccentWeak
         entry.isRoot -> DeckColors.Accent.copy(alpha = 0.05f)
@@ -82,7 +84,7 @@ private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit) {
                 modifier = Modifier.padding(start = 13.dp, top = 8.dp),
             )
         }
-        NoteItem(entry.note, onReply = onReply)
+        NoteItem(entry.note, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick)
     }
 }
 

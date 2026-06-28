@@ -36,7 +36,7 @@ fun QuotedNoteCard(note: NoteUi, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.size(3.dp))
         Text(
-            note.event.content,
+            note.text ?: note.event.content,
             color = DeckColors.Text2,
             fontSize = 12.5.sp,
             lineHeight = 18.sp,

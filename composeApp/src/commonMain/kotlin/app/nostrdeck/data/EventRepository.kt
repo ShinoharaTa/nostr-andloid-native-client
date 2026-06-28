@@ -6,8 +6,26 @@ import app.nostrdeck.crypto.EventCrypto
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.db.Event
 import app.nostrdeck.db.NostrDb
+import app.nostrdeck.crypto.Nip19
+import io.ktor.client.HttpClient
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.util.encodeBase64
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.NotificationKind
+import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.model.RelayPref
@@ -68,48 +86,9 @@ class EventRepository(
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
     private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
 
-    /**
-     * [M8-react] note_id→集約リアクション一覧（NIP-25/30）。各フィードと combine して NoteUi に載せる。
-     * kind:7 行を「最後の e タグ=対象ノート」単位でグルーピングし、正規化キーで件数を数える。
-     * カスタム絵文字(NIP-30)の URL は各行の tags_json の `emoji` タグから解決する。
-     */
-    private val reactionsFlow: Flow<Map<String, List<ReactionUi>>> =
-        q.reactionsForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
-            val byNote = HashMap<String, LinkedHashMap<String, ReactionAgg>>()
-            rows.forEach { row ->
-                val tags = parseTags(row.tags_json)
-                // NIP-25: 対象は最後の e タグ。多重 e による重複カウントを避ける。
-                val lastE = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1) ?: return@forEach
-                if (lastE != row.note_id) return@forEach
-                val r = normalizeReaction(row.content, tags)
-                val bucket = byNote.getOrPut(row.note_id) { LinkedHashMap() }
-                val agg = bucket.getOrPut(r.key) { ReactionAgg(r.key, r.display, r.imageUrl) }
-                agg.count++
-                if (agg.imageUrl == null && r.imageUrl != null) agg.imageUrl = r.imageUrl
-            }
-            byNote.mapValues { (_, m) ->
-                m.values.map { ReactionUi(it.key, it.display, it.count, it.imageUrl) }
-                    .sortedByDescending { it.count }
-            }
-        }
-
-    /**
-     * [M8-counts] note_id→(リプライ数, リポスト数)。NIP に総数の概念は無いので、
-     * 「自分のリレーから取り込めた範囲」のベストエフォート集計（kind:1 の e=リプライ / kind:6=リポスト）。
-     */
-    private val engagementFlow: Flow<Map<String, Engagement>> =
-        q.engagementForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
-            val m = HashMap<String, Engagement>()
-            rows.forEach { r ->
-                val cur = m[r.note_id] ?: Engagement()
-                m[r.note_id] = when (r.kind) {
-                    1L -> cur.copy(replies = r.cnt.toInt())
-                    6L -> cur.copy(reposts = r.cnt.toInt())
-                    else -> cur
-                }
-            }
-            m
-        }
+    // [M10] リアクション数/リプライ数/リポスト数の集約はタイムライン表示に不要（数字は出さない）。
+    // 集計クエリ(reactionsForTargets/engagementForTargets)は購読/DBを無駄に使うため使用しない。
+    // 自分宛のリアクション/リポストは通知としてタイムラインに混ぜ込む（notificationsFeed）。
 
     /** ログイン中ユーザーの公開鍵（kind:3 の自分判定とフォロー解決に使う）。 */
     private var myPubkey: String? = null
@@ -130,11 +109,9 @@ class EventRepository(
         else q.myRepostedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
     }
 
-    /** [M8-counts] フィードに載せる集約メタ（リアクション/反応数/自分の状態）を1つに束ねる。 */
+    /** [M10] フィードに載せるメタは「自分が♡/リポスト済みか」だけ（ボタンのハイライト用）。 */
     private val noteMetaFlow: Flow<NoteMeta> =
-        combine(reactionsFlow, engagementFlow, myReactedFlow, myRepostedFlow) { r, e, mr, mp ->
-            NoteMeta(r, e, mr, mp)
-        }
+        combine(myReactedFlow, myRepostedFlow) { mr, mp -> NoteMeta(mr, mp) }
 
     /** 自分の kind:3 由来のフォロー集合（p タグ）。FOLLOWING カラムの authors。 */
     private val follows = MutableStateFlow<List<String>>(emptyList())
@@ -156,7 +133,10 @@ class EventRepository(
                 rows.forEach { ensureRelay(it.url) }
             }
         }
+        // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
+        DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong()) }
         scope.launch { profileBatchLoop() }
+        scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
         scope.launch {
@@ -255,6 +235,36 @@ class EventRepository(
         }
     }
 
+    /**
+     * [safety] ローカルキャッシュ（イベント/タグ/プロフィール/チャンネル/送信待ち）を強制消去して
+     * 取り直す。鍵・リレー設定(default/manual/NIP-65)・使用ハッシュタグは保持する。
+     * stale なプロフィール（後から追加した kind:0 の列が空のまま等）や、不要に溜まった
+     * キャッシュを安全に掃除・リセットするための手動操作。
+     */
+    fun purgeCache() {
+        scope.launch {
+            // 解決済みフォロー集合(in-memory)は保持。イベント/プロフィール等のキャッシュのみ全消去。
+            q.transaction {
+                q.clearEvents()
+                q.clearTags()
+                q.clearProfiles()
+                q.clearChannels()
+                q.clearPublishQueue()
+            }
+            // 自分のフォロー(kind:3)・リレーリスト(kind:10002)と開いているカラムを張り直して再構築。
+            val me = myPubkey
+            if (me != null) {
+                subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
+                subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
+            }
+            withContext(relayDispatcher) {
+                activeSubs.forEach { (subId, filters) ->
+                    relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
+                }
+            }
+        }
+    }
+
     // ---- カラム = REQ ライフサイクル ----
     private val openColumns = mutableSetOf<String>()
 
@@ -267,6 +277,7 @@ class EventRepository(
     /** カラム除去/オフスクリーン時に CLOSE。 */
     fun unsubscribeColumn(columnId: String) {
         followingJobs.remove(columnId)?.cancel()
+        notifJobs.remove(columnId)?.cancel()
         if (openColumns.remove(columnId)) unsubscribeAll(columnId)
     }
 
@@ -281,24 +292,28 @@ class EventRepository(
         if (!openColumns.add(columnId)) return
         followingJobs[columnId] = scope.launch {
             follows.collect { authors ->
-                if (authors.isNotEmpty()) {
-                    // kind:1 本文 + kind:6/16 リポスト[M8-repost] + kind:7 リアクション[M8-react] をまとめて購読。
-                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 7), authors = authors, limit = 100))
+                // [M10] 自分の投稿もフォロー中タイムラインに出す（authors に自分を含める）。
+                val withMe = (authors + listOfNotNull(myPubkey)).distinct()
+                if (withMe.isNotEmpty()) {
+                    // kind:1 本文 + kind:6/16 リポスト[M8-repost]（リアクション数は出さないので kind:7 は購読しない）。
+                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16), authors = withMe, limit = 100))
                 }
             }
         }
     }
 
-    /** フォロー中フィード（フォロー集合の更新に追従。空なら空タイムライン）。 */
+    /** フォロー中フィード（フォロー集合の更新に追従。自分の投稿も含む）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun followingFeed(): Flow<List<NoteUi>> =
-        follows.flatMapLatest { authors ->
+        follows.flatMapLatest { follows ->
+            // [M10] 自分の投稿も表示するため authors に自分を含める。
+            val authors = (follows + listOfNotNull(myPubkey)).distinct()
             if (authors.isEmpty()) flowOf(emptyList())
             else combine(
                 // [M8-repost] kind:1 + kind:6/16 リポストを含めて取得し、表示用に展開する。
                 q.feedFollowingWithReposts(authors, 0L).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
-                noteMetaFlow,  // [M8-react/counts] リアクション/反応数/自分の状態
+                noteMetaFlow,  // [M10] 自分の♡/リポスト済み状態（ボタンのハイライト用）
             ) { rows, profiles, meta ->
                 val byPubkey = profiles.associateBy { it.pubkey }
                 // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
@@ -309,12 +324,95 @@ class EventRepository(
             }.flowOn(Dispatchers.Default)
         }
 
+    /**
+     * [M10] ホームタイムラインの混在フィード。フォロー中の投稿に、自分宛の
+     * リアクション/リポスト通知をコンパクトに混ぜて新しい順に返す（nostter 風）。
+     */
+    fun followingFeedMixed(): Flow<List<FeedEntry>> =
+        combine(followingFeed(), notificationsFeed(), follows) { notes, notifs, follows ->
+            val followSet = follows.toSet()
+            // 件数表示は不要。混ぜ込むのは「自分へのリアクション/リポスト」だけ
+            //（リプライ/メンションは本文ノートとして既に流れるため重複させない）。
+            val notices = notifs.filter { n ->
+                when (n.kind) {
+                    NotificationKind.REACTION -> true
+                    // リポストはフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
+                    NotificationKind.REPOST -> n.actor.pubkey !in followSet
+                    else -> false
+                }
+            }
+            (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) })
+                .sortedByDescending { it.sortAt }
+        }.flowOn(Dispatchers.Default)
+
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。 */
     fun columnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
         combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta ->
             val byPubkey = profiles.associateBy { it.pubkey }
-            rows.map { row -> applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta) }
+            rows.map { row ->
+                applyMeta(toNoteUi(row, byPubkey[row.pubkey]).copy(replyParent = resolveReplyParent(row, byPubkey)), meta)
+            }
         }.flowOn(Dispatchers.Default)
+
+    // ---- [M10-notif] 通知（自分=#p 宛のリプライ/メンション/リアクション/リポスト） ----
+    private val notifJobs = mutableMapOf<String, Job>()
+
+    /** 通知の購読。自分の公開鍵が定まるたびに #p=自分 の REQ を貼り直す。 */
+    fun subscribeNotifications(columnId: String) {
+        if (!openColumns.add(columnId)) return
+        notifJobs[columnId] = scope.launch {
+            myPubkeyFlow.collect { me ->
+                if (me != null) {
+                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 7), pTags = listOf(me), limit = 200))
+                }
+            }
+        }
+    }
+
+    /** 通知フィード（自分宛イベントを種別ごとに整形して新しい順に）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun notificationsFeed(): Flow<List<NotificationUi>> =
+        myPubkeyFlow.flatMapLatest { me ->
+            if (me == null) flowOf(emptyList())
+            else combine(
+                q.notificationsFor(me).asFlow().mapToList(Dispatchers.Default),
+                profilesFlow,
+            ) { rows, profiles ->
+                val byPubkey = profiles.associateBy { it.pubkey }
+                rows.map { toNotification(it, byPubkey) }
+            }.flowOn(Dispatchers.Default)
+        }
+
+    /** 自分宛イベント1件を通知行へ整形。種別は kind と #e の有無で判定（NIP-10/18/25）。 */
+    private fun toNotification(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>): NotificationUi {
+        val tags = parseTags(row.tags_json)
+        // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
+        val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+        val actor = profileFor(row.pubkey, byPubkey)
+        val snippet = target?.let { id ->
+            q.eventById(id).executeAsOneOrNull()?.let { (extractMedia(it.content).first ?: it.content).take(80) }
+        }
+        return when (row.kind.toInt()) {
+            7 -> {
+                // NIP-25/30: "+"/空→❤️、":shortcode:" は emoji タグから画像URLを解決。
+                val rx = normalizeReaction(row.content, tags)
+                NotificationUi(row.id, NotificationKind.REACTION, actor, row.created_at,
+                    reaction = rx.display, reactionImageUrl = rx.imageUrl,
+                    targetNoteId = target, targetSnippet = snippet)
+            }
+            6, 16 -> NotificationUi(row.id, NotificationKind.REPOST, actor, row.created_at,
+                targetNoteId = target, targetSnippet = snippet)
+            else -> {
+                val isReply = tags.any { it.size >= 2 && it[0] == "e" }
+                NotificationUi(
+                    row.id, if (isReply) NotificationKind.REPLY else NotificationKind.MENTION,
+                    actor, row.created_at,
+                    text = extractMedia(row.content).first ?: row.content,
+                    targetNoteId = target, targetSnippet = snippet,
+                )
+            }
+        }
+    }
 
     // ---- [M9-thread] NIP-10 スレッド ----
 
@@ -399,31 +497,50 @@ class EventRepository(
         return es.first()[1]
     }
 
-    /** [M8-counts] 集約メタを NoteUi に反映（reactions / 反応数 / ♡・リポスト済み）。 */
-    private fun applyMeta(ui: NoteUi, meta: NoteMeta): NoteUi {
-        val id = ui.event.id
-        val eng = meta.engagement[id]
-        val likes = meta.reactions[id]?.firstOrNull { it.key == "❤️" }?.count ?: 0
-        return ui.copy(
-            reactions = meta.reactions[id].orEmpty(),
-            replies = eng?.replies ?: 0,
-            reposts = eng?.reposts ?: 0,
-            likes = likes,
-            mineReacted = id in meta.myReacted,
-            mineReposted = id in meta.myReposted,
-        )
-    }
+    /** [M10] 自分の♡/リポスト済み状態だけを NoteUi に反映（ボタンのハイライト用）。 */
+    private fun applyMeta(ui: NoteUi, meta: NoteMeta): NoteUi = ui.copy(
+        mineReacted = ui.event.id in meta.myReacted,
+        mineReposted = ui.event.id in meta.myReposted,
+    )
 
     // ---- [M9-profile] プロフィール表示 / フォロー操作 ----
 
     /** 指定 pubkey の解決済みプロフィール（kind:0）を流す。未取得なら null。 */
     fun profileFlow(pubkey: String): Flow<Profile?> =
         q.profileByPubkey(pubkey).asFlow().mapToList(Dispatchers.Default).map { rows ->
-            rows.firstOrNull()?.let { Profile(it.pubkey, it.name, it.handle, it.picture_url, it.updated_at) }
+            rows.firstOrNull()?.let {
+                Profile(it.pubkey, it.name, it.handle, it.picture_url, it.updated_at, it.about, it.website, it.lud16, it.banner)
+            }
         }
 
     /** プロフィール画面を開いたとき等に kind:0 の取得を促す（バッチ REQ に投入）。 */
     fun loadProfile(pubkey: String) = requestProfile(pubkey)
+
+    /** [M10] 本文メンション解決用に pubkey(hex)→表示名 のマップを流す（名前が空のものは除外）。 */
+    fun profileNames(): Flow<Map<String, String>> =
+        profilesFlow.map { rows -> rows.filter { it.name.isNotBlank() }.associate { it.pubkey to it.name } }
+
+    /** [M11-compose] ログイン中の公開鍵（アバターのシード等に使う。未確定なら null）。 */
+    fun loggedInPubkey(): Flow<String?> = myPubkeyFlow
+
+    /** [M11-compose] ログイン中アカウント自身の解決済みプロフィール（投稿モーダルのヘッダ表示用）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun myProfileFlow(): Flow<Profile?> =
+        myPubkeyFlow.flatMapLatest { me -> if (me == null) flowOf(null) else profileFlow(me) }
+
+    /**
+     * [M11] メンション補完用：キャッシュ済みプロフィールを name / handle(nip05) の前方一致で検索。
+     * 大文字小文字を無視し、name が非空のものを優先して最大 [limit] 件返す（同期・キャッシュのみ）。
+     */
+    fun searchProfiles(prefix: String, limit: Int = 8): List<Profile> {
+        val p = prefix.trim().lowercase()
+        if (p.isEmpty()) return emptyList()
+        return q.allProfiles().executeAsList()
+            .filter { it.name.lowercase().startsWith(p) || it.handle.lowercase().startsWith(p) }
+            .sortedByDescending { it.name.isNotBlank() }
+            .take(limit)
+            .map { Profile(it.pubkey, it.name, it.handle, it.picture_url, it.updated_at) }
+    }
 
     /** 自分がこの pubkey をフォロー中か（kind:3 の更新に追従）。 */
     fun isFollowingFlow(pubkey: String): Flow<Boolean> = follows.map { pubkey in it }
@@ -512,6 +629,19 @@ class EventRepository(
         )
     }
 
+    /**
+     * [M10] NIP-18 引用リポスト（kind:1）。q タグ + p タグで参照し、本文末尾に nostr:nevent… を添える。
+     * 表示側は q タグから引用元を解決して埋め込みカードにする（toFollowingNoteUi）。
+     */
+    suspend fun publishQuote(target: NostrEvent, text: String) {
+        val note = runCatching { Nip19.hexToNote(target.id) }.getOrNull()
+        val body = if (note != null) (if (text.isBlank()) "nostr:$note" else "$text\nnostr:$note") else text
+        val tags = listOf(listOf("q", target.id), listOf("p", target.pubkey)) +
+            hashtagsIn(text).map { listOf("t", it) }
+        val signed = publishSigned(UnsignedEvent(kind = 1, content = body, tags = tags))
+        recordHashtags(text, signed.createdAt)
+    }
+
     /** [M8] NIP-10 返信（kind:1）。e(reply マーカー) + p を付け、本文の #タグも 't' 化する。 */
     suspend fun publishReply(target: NostrEvent, text: String) {
         val tags = listOf(listOf("e", target.id, "", "reply"), listOf("p", target.pubkey)) +
@@ -576,6 +706,33 @@ class EventRepository(
 
     private fun requestProfile(pubkey: String) {
         authorRequests.trySend(pubkey)
+    }
+
+    // ---- [M10] イベント id バッチ解決（返信先の親ノートなど未キャッシュ分を取得） ----
+    private val eventRequests = Channel<String>(Channel.UNLIMITED)
+
+    private fun requestEvent(id: String) {
+        eventRequests.trySend(id)
+    }
+
+    private suspend fun eventBatchLoop() {
+        val requested = mutableSetOf<String>()
+        val pending = mutableSetOf<String>()
+        while (true) {
+            val first = eventRequests.receive()
+            if (first !in requested) pending.add(first)
+            withTimeoutOrNull(400) {
+                while (true) {
+                    val next = eventRequests.receive()
+                    if (next !in requested) pending.add(next)
+                }
+            }
+            if (pending.isEmpty()) continue
+            requested.addAll(pending)
+            pending.clear()
+            // id 指定でまとめて取得。届いたら ingest され、フィードが再解決される。
+            subscribeAll("events", Filter(ids = requested.toList(), limit = requested.size))
+        }
     }
 
     private suspend fun profileBatchLoop() {
@@ -673,22 +830,34 @@ class EventRepository(
     }
 
     private fun upsertProfile(e: NostrEvent) {
+        // NIP-01 kind:0 の content は JSON 文字列（user metadata）。標準フィールドを整理して取り込む。
         val o = runCatching { json.parseToJsonElement(e.content).jsonObject }.getOrNull()
-        val name = o?.get("display_name")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-            ?: o?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-        val nip05 = o?.get("nip05")?.jsonPrimitive?.contentOrNull ?: ""
-        val picture = o?.get("picture")?.jsonPrimitive?.contentOrNull
-        q.insertProfileIfAbsent(e.pubkey, name, nip05, picture, e.createdAt)
-        q.updateProfileIfNewer(name, nip05, picture, e.createdAt, e.pubkey, e.createdAt)
+        fun str(vararg keys: String): String? =
+            keys.firstNotNullOfOrNull { k -> o?.get(k)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } }
+        // 表示名は display_name(または displayName) を優先、無ければ name。
+        val name = str("display_name", "displayName", "name") ?: ""
+        val nip05 = str("nip05") ?: ""                        // NIP-05 認証ID(name@domain)
+        val picture = str("picture")                          // アバター
+        val about = str("about") ?: ""                        // 自己紹介(bio)
+        val website = str("website")                          // ウェブサイト
+        val lud16 = str("lud16", "lud06")                     // Lightning アドレス(NIP-57)
+        val banner = str("banner")                            // ヘッダ画像
+        q.insertProfileIfAbsent(e.pubkey, name, nip05, picture, e.createdAt, about, website, lud16, banner)
+        q.updateProfileIfNewer(name, nip05, picture, e.createdAt, about, website, lud16, banner, e.pubkey, e.createdAt)
     }
 
     private fun toNoteUi(row: Event, prof: app.nostrdeck.db.Profile?): NoteUi {
         val name = prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10)
         val (text, images) = extractMedia(row.content)
+        val tags = parseTags(row.tags_json)
+        // NIP-10: kind:1 が #e を持てば返信（プロフィールの「投稿/リプライ」振り分け用）。
+        val isReply = row.kind.toInt() == 1 && tags.any { it.size >= 2 && it[0] == "e" }
+        // NIP-30: 本文中の :shortcode: → 画像URL のマップ。
+        val emojis = tags.filter { it.size >= 3 && it[0] == "emoji" }.associate { it[1] to it[2] }
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
-            author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url),
-            text = text, images = images,
+            author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16),
+            text = text, images = images, isReply = isReply, customEmojis = emojis,
         )
     }
 
@@ -712,7 +881,10 @@ class EventRepository(
             else -> {
                 val tags = parseTags(row.tags_json)
                 val quotedId = tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
-                toNoteUi(row, byPubkey[row.pubkey]).copy(quoted = quotedId?.let { resolveNoteUi(it, byPubkey) })
+                toNoteUi(row, byPubkey[row.pubkey]).copy(
+                    quoted = quotedId?.let { resolveNoteUi(it, byPubkey) },
+                    replyParent = resolveReplyParent(row, byPubkey),
+                )
             }
         }
     }
@@ -721,6 +893,16 @@ class EventRepository(
     private fun resolveNoteUi(eventId: String, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi? {
         val row = q.eventById(eventId).executeAsOneOrNull() ?: return null
         return toNoteUi(row, byPubkey[row.pubkey])
+    }
+
+    /**
+     * [M10] kind:1 が返信(#e)なら、その親ノートを解決して返す（返信の文脈表示用）。
+     * キャッシュに無ければ id 指定で取得を促し、届き次第フィードが再解決される。
+     */
+    private fun resolveReplyParent(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi? {
+        if (row.kind.toInt() != 1) return null
+        val parentId = replyParentOf(parseTags(row.tags_json)) ?: return null
+        return resolveNoteUi(parentId, byPubkey) ?: run { requestEvent(parentId); null }
     }
 
     /** [M8-repost] NostrEvent + 解決済み profile → NoteUi（content 埋め込みの元ノート用）。 */
@@ -777,21 +959,11 @@ class EventRepository(
 
     // ---- [M8] 集約ヘルパ ----
 
-    /** [M8-counts] ノードの反応数（ローカルに見えた分のリプライ/リポスト）。 */
-    private data class Engagement(val replies: Int = 0, val reposts: Int = 0)
-
-    /** [M8-counts] フィードに載せる集約メタの束。 */
+    /** [M10] フィードに載せるメタ（自分が♡/リポスト済みか）。 */
     private data class NoteMeta(
-        val reactions: Map<String, List<ReactionUi>>,
-        val engagement: Map<String, Engagement>,
         val myReacted: Set<String>,
         val myReposted: Set<String>,
     )
-
-    /** 集約中の可変ホルダ（key ごとに件数とカスタム絵文字 URL を貯める）。 */
-    private class ReactionAgg(val key: String, val display: String, var imageUrl: String?) {
-        var count: Int = 0
-    }
 
     /** tags_json（[[..],[..]]）を List<List<String>> に復元。壊れていれば空。 */
     private fun parseTags(tagsJson: String): List<List<String>> = runCatching {
@@ -818,7 +990,117 @@ class EventRepository(
         return ReactionUi(c, c, 0)
     }
 
+    // ---- [M11] media upload (NIP-96/98) ----
+
+    /** 画像アップロードと NIP-96 探索に使う HttpClient（リレーの WebSocket とは別系統）。 */
+    private val uploadHttp = HttpClient()
+
+    /** [M11] DB のメディアサーバ一覧（Settings 用）。enabled/順序つき。 */
+    fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
+        q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
+
+    /** [M11] メディアサーバを手動追加（末尾に。enabled 既定 true）。 */
+    fun addMediaServer(url: String) {
+        val u = url.trim().trimEnd('/')
+        if (u.isBlank()) return
+        val next = q.allMediaServers().executeAsList().size.toLong()
+        q.insertMediaServerIfAbsent(u, 1, next)
+    }
+
+    /** [M11] メディアサーバを設定から除去。 */
+    fun removeMediaServer(url: String) = q.deleteMediaServer(url)
+
+    /** [M11] メディアサーバの有効/無効を切替え。 */
+    fun setMediaServerEnabled(url: String, enabled: Boolean) =
+        q.setMediaServerEnabled(if (enabled) 1 else 0, url)
+
+    /**
+     * [M11] 画像をアップロードして表示用 URL を返す。
+     * 有効なメディアサーバ(NIP-96)を順に試し、最初に成功した URL を返す。全滅なら null。
+     */
+    suspend fun uploadImage(bytes: ByteArray, mime: String, filename: String = "image"): String? =
+        withContext(Dispatchers.Default) {
+            for (s in q.enabledMediaServers().executeAsList()) {
+                val url = runCatching { uploadToServer(s.url, bytes, mime, filename) }.getOrNull()
+                if (!url.isNullOrBlank()) return@withContext url
+            }
+            null
+        }
+
+    /**
+     * [M11] NIP-96 サーバへ1ファイルをアップロードする。
+     *  1. `<server>/.well-known/nostr/nip96.json` を引いて api_url を解決（失敗時は既定パス）。
+     *  2. api_url へ multipart/form-data（part 名 `file`）を POST。Authorization は NIP-98。
+     *  3. レスポンス JSON から URL を抽出（nip94_event.tags の "url" / トップレベル "url"）。
+     */
+    private suspend fun uploadToServer(server: String, bytes: ByteArray, mime: String, filename: String): String? {
+        val base = server.trim().trimEnd('/')
+        val apiUrl = discoverApiUrl(base) ?: "$base/api/v1/media"
+        val parts = formData {
+            append(
+                "file", bytes,
+                Headers.build {
+                    append(HttpHeaders.ContentType, mime)
+                    append(HttpHeaders.ContentDisposition, "filename=\"$filename\"")
+                },
+            )
+        }
+        val resp = uploadHttp.post(apiUrl) {
+            header(HttpHeaders.Authorization, nip98Header(apiUrl, "POST"))
+            setBody(MultiPartFormDataContent(parts))
+        }
+        return parseUploadResponse(resp.bodyAsText())
+    }
+
+    /** [M11] NIP-96 ディスカバリ。api_url（絶対/相対）を返す。失敗時 null。 */
+    private suspend fun discoverApiUrl(base: String): String? = runCatching {
+        val body = uploadHttp.get("$base/.well-known/nostr/nip96.json").bodyAsText()
+        val api = json.parseToJsonElement(body).jsonObject["api_url"]?.jsonPrimitive?.contentOrNull
+        when {
+            api.isNullOrBlank() -> null
+            api.startsWith("http") -> api
+            else -> base + (if (api.startsWith("/")) api else "/$api")
+        }
+    }.getOrNull()
+
+    /** [M11] アップロード成功レスポンスから表示用 URL を取り出す（NIP-96 / 簡易形の両対応）。 */
+    private fun parseUploadResponse(body: String): String? = runCatching {
+        val o = json.parseToJsonElement(body).jsonObject
+        val fromNip94 = o["nip94_event"]?.jsonObject?.get("tags")?.let { tags ->
+            (tags as? JsonArray)?.firstOrNull {
+                val a = it.jsonArray
+                a.size >= 2 && a[0].jsonPrimitive.contentOrNull == "url"
+            }?.jsonArray?.get(1)?.jsonPrimitive?.contentOrNull
+        }
+        fromNip94 ?: o["url"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
+
+    /**
+     * [M11] NIP-98 Authorization ヘッダ値（"Nostr <base64(署名済み kind:27235)>"）。
+     * content="", tags=[["u",url],["method",method]] の kind:27235 を署名し JSON を base64 化。
+     */
+    private suspend fun nip98Header(url: String, method: String): String {
+        val signed = SignerProvider.current().sign(
+            UnsignedEvent(kind = 27235, content = "", tags = listOf(listOf("u", url), listOf("method", method))),
+        )
+        return "Nostr " + eventToJson(signed).encodeToByteArray().encodeBase64()
+    }
+
+    /** [M11] 署名済みイベントを NIP-01 の単体イベント JSON 文字列にする。 */
+    private fun eventToJson(e: NostrEvent): String = buildJsonObject {
+        put("id", e.id)
+        put("pubkey", e.pubkey)
+        put("created_at", e.createdAt)
+        put("kind", e.kind)
+        putJsonArray("tags") { e.tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) } }
+        put("content", e.content)
+        put("sig", e.sig)
+    }.toString()
+
     private companion object {
         val TAG_KEYS = setOf("t", "e", "p", "q")  // [M8-repost] "q"=NIP-18 引用参照を索引
+
+        /** [M11] 既定のメディアサーバ(NIP-96)。start() で insert-if-absent して投入する。 */
+        val DEFAULT_MEDIA_SERVERS = listOf("https://nostrcheck.me", "https://nostr.build")
     }
 }

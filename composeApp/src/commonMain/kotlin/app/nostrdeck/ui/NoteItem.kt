@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,51 +42,66 @@ import app.nostrdeck.theme.DeckColors
 import kotlinx.coroutines.launch
 
 /**
- * 1ノート。designs/index.html の .note と対応。
- * アクション: 💬返信([onReply]) / 🔁リポスト(kind:6) / ♡リアクション(kind:7 "+")。
- * リポスト・リアクションは [LocalRepository] 経由でその場で送信する。
+ * 1ノート。アクションはアイコンのみ（数値は出さない）:
+ *  - 💬返信([onReply]) / 🔁リポスト(メニュー: リポスト=kind:6 / 引用リポスト=[onQuote]) /
+ *    ⚡Zap / ♡リアクション(kind:7 "+", トグル)。
+ * プロフィールへは著者アバター/名前タップ([onAuthorClick])のみ。本文タップは外側の onNoteClick。
  */
 @Composable
 fun NoteItem(
     note: NoteUi,
     modifier: Modifier = Modifier,
     onReply: (() -> Unit)? = null,
+    onQuote: (() -> Unit)? = null,
     onAuthorClick: ((String) -> Unit)? = null,
 ) {
   val repo = LocalRepository.current
   val scope = rememberCoroutineScope()
-  var confirmRepost by remember { mutableStateOf(false) }
+  var repostMenu by remember { mutableStateOf(false) }
+  var showZap by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
-  // [M8-repost] リポストヘッダを本体の上に重ねるため Column で包む
   Column(modifier.fillMaxWidth()) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = 13.dp, top = 10.dp))
     }
     Row(Modifier.fillMaxWidth().padding(13.dp)) {
-        Avatar(note.author.name, note.author.pictureUrl, authorTap)
+        // アバターを少し下げて名前の文字位置に揃える。
+        Avatar(note.author.name, note.author.pictureUrl, Modifier.padding(top = 4.dp).then(authorTap))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
+            // 名前+ハンドルを左、時刻は右端に固定（残り幅はグループが占有）。
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    note.author.name, color = DeckColors.Text,
-                    fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).then(authorTap),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(note.author.handle, color = DeckColors.Text3, fontSize = 11.5.sp, maxLines = 1)
-                Spacer(Modifier.weight(1f))
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        note.author.name, color = DeckColors.Text,
+                        fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false).then(authorTap),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        note.author.handle, color = DeckColors.Text3, fontSize = 11.5.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = 11.5.sp)
             }
             Spacer(Modifier.size(3.dp))
-            // 画像URLを除去した本文（画像は下にグリッド/カルーセルで表示する）。
-            CollapsibleText(note.text ?: note.event.content) // [M8-collapse]
+            // 画像URLを除去した本文（画像は下にグリッド/カルーセルで表示する）。NIP-30 絵文字は画像化。
+            CollapsibleText(note.text ?: note.event.content, emojis = note.customEmojis) // [M8-collapse]
 
             // [M8-repost] 引用リポスト（q タグ）の埋め込みカード
             note.quoted?.let {
                 Spacer(Modifier.size(8.dp))
                 QuotedNoteCard(it)
+            }
+
+            // [M10] 返信(NIP-10)の親ノート（返信元）を投稿の下部にカード表示（ラベルなし）。
+            note.replyParent?.let { parent ->
+                Spacer(Modifier.size(8.dp))
+                QuotedNoteCard(parent)
             }
 
             // 画像: 1枚=単一 / 複数=グリッド / 10枚以上=カルーセル。タップで Lightbox。
@@ -92,69 +110,64 @@ fun NoteItem(
                 NoteImages(note.images)
             }
             Spacer(Modifier.size(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                ActionChip(Icons.AutoMirrored.Outlined.Reply, note.replies.toString(), DeckColors.Accent, onClick = onReply)
-                ActionChip(Icons.Outlined.Repeat, note.reposts.toString(), DeckColors.Repost,
-                    active = note.mineReposted, onClick = { confirmRepost = true })
-                ActionChip(Icons.Outlined.Bolt, formatSats(note.zapsSats), DeckColors.Zap)
-                // ♡: 自分が押していれば塗りハート + ハイライト。タップでトグル（再タップで取り消し）。
-                ActionChip(
+            // [M10] アクションはアイコンのみ（数値なし）。すべてボタンとして機能する。
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                ActionButton(Icons.AutoMirrored.Outlined.Reply, DeckColors.Text3, onClick = onReply)
+                Box {
+                    ActionButton(
+                        Icons.Outlined.Repeat,
+                        if (note.mineReposted) DeckColors.Boost else DeckColors.Text3,
+                        onClick = { repostMenu = true },
+                    )
+                    DropdownMenu(expanded = repostMenu, onDismissRequest = { repostMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("リポスト") },
+                            onClick = { repostMenu = false; scope.launch { repo?.publishRepost(note.event) } },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("引用リポスト") },
+                            onClick = { repostMenu = false; onQuote?.invoke() },
+                        )
+                    }
+                }
+                ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                ActionButton(
                     if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    note.likes.toString(), DeckColors.Like, active = note.mineReacted,
+                    if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
                     onClick = { scope.launch { repo?.toggleReaction(note.event) } },
                 )
             }
-            // [M8-react] 集約絵文字リアクション（NIP-25/30）
-            if (note.reactions.isNotEmpty()) {
-                Spacer(Modifier.size(7.dp))
-                ReactionRow(note.reactions)
-            }
         }
     }
-  }  // [M8-repost] 包んだ Column を閉じる
+  }
 
-  // [M8-counts] リポストは誤タップ防止のため確認ダイアログを挟む。
-  if (confirmRepost) {
+  // [M10] Zap: lud16 を提示（自動 Zap=NIP-57 は今後）。ボタンとしては機能する。
+  if (showZap) {
+      val lud = note.author.lud16
       AlertDialog(
-          onDismissRequest = { confirmRepost = false },
-          title = { Text(if (note.mineReposted) "リポスト済みです" else "リポストしますか？") },
-          text = { Text("このノートをあなたのフォロワーに共有します（NIP-18 / kind:6）。") },
-          confirmButton = {
-              TextButton(onClick = {
-                  confirmRepost = false
-                  scope.launch { repo?.publishRepost(note.event) }
-              }) { Text("リポスト") }
+          onDismissRequest = { showZap = false },
+          title = { Text("⚡ Zap") },
+          text = {
+              Text(
+                  if (!lud.isNullOrBlank())
+                      "${note.author.name} の Lightning アドレス:\n$lud\n\n自動 Zap（NIP-57）は今後対応します。"
+                  else "このユーザーは Lightning アドレス(lud16)を設定していません。",
+              )
           },
-          dismissButton = { TextButton(onClick = { confirmRepost = false }) { Text("キャンセル") } },
+          confirmButton = { TextButton(onClick = { showZap = false }) { Text("閉じる") } },
       )
   }
 }
 
+/** アイコンのみのアクションボタン（数値ラベルなし）。 */
 @Composable
-private fun ActionChip(
-    icon: ImageVector,
-    label: String,
-    tint: Color,
-    active: Boolean = false,
-    onClick: (() -> Unit)? = null,
-) {
-    // active のときだけ色付き（押下済みを表す）。通常はモノクロのサブ文字色。
-    val color = if (active) tint else DeckColors.Text3
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
+    Icon(
+        icon, contentDescription = null, tint = tint,
         modifier = Modifier
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(end = 10.dp, top = 2.dp, bottom = 2.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(label, color = color, fontSize = 11.5.sp)
-    }
-}
-
-private fun formatSats(sats: Long): String = when {
-    sats >= 1000 -> "${sats / 1000}.${(sats % 1000) / 100}k"
-    else -> sats.toString()
+            .padding(vertical = 2.dp).size(17.dp),
+    )
 }
 
 private fun relativeTime(createdAt: Long): String {

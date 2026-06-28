@@ -150,43 +150,66 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             // FOLLOWING は自分の kind:3（フォロー先）を authors にして購読・表示する。
             val isFollowingFeed = repo != null && spec.kind == ColumnKind.FOLLOWING
             val isProfile = repo != null && spec.kind == ColumnKind.PROFILE
+            val isNotifications = repo != null && spec.kind == ColumnKind.NOTIFICATIONS
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             val profilePubkey = spec.filter.authors.firstOrNull()
             if (live) {
                 DisposableEffect(spec.id) {
-                    if (isFollowingFeed) repo!!.subscribeFollowing(spec.id)
-                    else repo!!.subscribeColumn(spec.id, spec.filter)
-                    if (isProfile && profilePubkey != null) repo!!.loadProfile(profilePubkey)
-                    onDispose { repo!!.unsubscribeColumn(spec.id) }
+                    if (isFollowingFeed) {
+                        repo!!.subscribeFollowing(spec.id)
+                        repo.subscribeNotifications("home_notif")  // 自分宛リアクション/リポストを混ぜ込むため
+                    } else {
+                        repo!!.subscribeColumn(spec.id, spec.filter)
+                    }
+                    if (isProfile && profilePubkey != null) repo.loadProfile(profilePubkey)
+                    onDispose {
+                        repo.unsubscribeColumn(spec.id)
+                        if (isFollowingFeed) repo.unsubscribeColumn("home_notif")
+                    }
                 }
             }
-            val notes = when {
-                isFollowingFeed -> remember(spec.id) { repo!!.followingFeed() }.collectAsState(emptyList()).value
-                live -> remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
-                else -> SampleData.feedFor(spec)
-            }
-            val openProfile: (String) -> Unit = { pk -> state.openTransient(SampleData.profileColumnFor(pk), originId = spec.id) }
-            val openThread: (NoteUi) -> Unit = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) }
+            val openProfile: (String) -> Unit = { pk -> state.openProfile(pk) }
+            // ノートタップは新カラムではなく全幅オーバーレイ（最大幅制限）でスレッドを開く。
+            val openThread: (NoteUi) -> Unit = { note -> state.openThreadDetail(note.event.id) }
             val doReply: (NoteUi) -> Unit = { note -> state.replyTo = note.event; state.showCompose = true }
-            if (isProfile && profilePubkey != null) {
-                val scope = rememberCoroutineScope()
-                val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
-                val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
-                ProfileColumn(
-                    spec, profilePubkey, profile, following, notes, modifier, listState,
-                    onPin = onPin, onClose = onClose,
-                    onFollowToggle = {
-                        scope.launch { if (following) repo!!.unfollow(profilePubkey) else repo!!.follow(profilePubkey) }
-                    },
-                    onReply = doReply, onAuthorClick = openProfile, onNoteClick = openThread,
-                )
-            } else {
-                FeedColumn(
-                    spec, notes, modifier, listState,
-                    offline = spec.kind == ColumnKind.NOTIFICATIONS,
-                    onPin = onPin, onClose = onClose,
-                    onNoteClick = openThread, onReply = doReply, onAuthorClick = openProfile,
-                )
+            val doQuote: (NoteUi) -> Unit = { note -> state.quoting = note.event; state.showCompose = true }
+            when {
+                isFollowingFeed -> {
+                    // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
+                    val entries = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState(emptyList()).value
+                    FollowingFeedColumn(
+                        spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
+                        onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
+                        onNoticeClick = { id -> state.openThreadDetail(id) },
+                    )
+                }
+                isNotifications -> {
+                    // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。
+                    NotificationsColumn(state, spec, modifier, listState, onPin = onPin, onClose = onClose)
+                }
+                isProfile && profilePubkey != null -> {
+                    val scope = rememberCoroutineScope()
+                    val notes = remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
+                    val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
+                    val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
+                    ProfileColumn(
+                        spec, profilePubkey, profile, following, notes, modifier, listState,
+                        onPin = onPin, onClose = onClose,
+                        onFollowToggle = {
+                            scope.launch { if (following) repo!!.unfollow(profilePubkey) else repo!!.follow(profilePubkey) }
+                        },
+                        onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile, onNoteClick = openThread,
+                    )
+                }
+                else -> {
+                    val notes = if (live) remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
+                    else SampleData.feedFor(spec)
+                    FeedColumn(
+                        spec, notes, modifier, listState,
+                        onPin = onPin, onClose = onClose,
+                        onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
+                    )
+                }
             }
         }
         ColumnRenderer.THREAD -> {
@@ -202,6 +225,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 ThreadColumn(
                     spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
                     onReply = { note -> state.replyTo = note.event; state.showCompose = true },
+                    onQuote = { note -> state.quoting = note.event; state.showCompose = true },
+                    onAuthorClick = { pk -> state.openProfile(pk) },
                 )
             } else {
                 ThreadColumn(spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose)

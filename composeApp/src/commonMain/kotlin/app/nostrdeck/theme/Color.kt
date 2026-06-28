@@ -30,4 +30,7 @@ object DeckColors {
     val Zap    = Color(0xFFE7E7EA)  // pin アクティブ・ルームヘッダ・オフライン表示
     val Repost = Color(0xFFC9C9D0)
     val Like   = Color(0xFF8A8A93)
+
+    // 通知一覧でリポストを示す控えめなグリーン（暗いモノクロ基調に馴染む彩度に抑える）。
+    val Boost  = Color(0xFF4FA77A)
 }

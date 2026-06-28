@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -8,6 +9,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.theme.DeckColors
 
 /**
@@ -20,7 +22,11 @@ import app.nostrdeck.theme.DeckColors
  * TODO: メンションは NIP-19 復号で `@表示名` に解決、タップでプロフィール/スレッドを開く。
  *       ハッシュタグはタップで該当カラムを開く。
  */
-fun noteAnnotated(text: String): AnnotatedString = buildAnnotatedString {
+fun noteAnnotated(
+    text: String,
+    resolveName: ((String) -> String?)? = null,
+    emojis: Map<String, String> = emptyMap(),
+): AnnotatedString = buildAnnotatedString {
     val accent = SpanStyle(color = DeckColors.Accent, fontWeight = FontWeight.Medium)
     var i = 0
     val n = text.length
@@ -35,8 +41,15 @@ fun noteAnnotated(text: String): AnnotatedString = buildAnnotatedString {
             text.startsWith("nostr:", i) && i + 6 < n && isBech(text[i + 6]) -> {
                 val end = bechEnd(text, i + 6)
                 val bech = text.substring(i + 6, end)
-                withStyle(accent) { append(mentionLabel(bech)) }
+                withStyle(accent) { append(mentionLabel(bech, resolveName)) }
                 i = end
+            }
+            // NIP-30: :shortcode: が emoji タグにあればインライン画像で描く。
+            text[i] == ':' && emojis.isNotEmpty() && shortcodeEnd(text, i).let { it > 0 && text.substring(i + 1, it) in emojis } -> {
+                val close = shortcodeEnd(text, i)
+                val code = text.substring(i + 1, close)
+                appendInlineContent("emoji:$code", ":$code:")
+                i = close + 1
             }
             text[i] == '#' && i + 1 < n && isTagChar(text[i + 1]) -> {
                 var j = i + 1
@@ -69,7 +82,19 @@ private fun bechEnd(s: String, start: Int): Int {
 
 private fun isTagChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_'
 
-private fun mentionLabel(bech: String): String {
+/** start は ':'。`:shortcode:` の終端 ':' の index を返す（無効なら -1）。 */
+private fun shortcodeEnd(s: String, start: Int): Int {
+    var j = start + 1
+    while (j < s.length && (s[j].isLetterOrDigit() || s[j] == '_' || s[j] == '-')) j++
+    return if (j < s.length && s[j] == ':' && j > start + 1) j else -1
+}
+
+private fun mentionLabel(bech: String, resolveName: ((String) -> String?)?): String {
+    // npub は hex に復号して表示名を引く。解決できれば @name、無ければ短縮 npub。
+    if (bech.startsWith("npub1")) {
+        val name = runCatching { Nip19.npubToHex(bech) }.getOrNull()?.let { resolveName?.invoke(it) }
+        if (!name.isNullOrBlank()) return "@$name"
+    }
     val prefix = if (bech.startsWith("npub1") || bech.startsWith("nprofile1")) "@" else "↗"
     val short = if (bech.length > 14) bech.take(12) + "…" else bech
     return prefix + short

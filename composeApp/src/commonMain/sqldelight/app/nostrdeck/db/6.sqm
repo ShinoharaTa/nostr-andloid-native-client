@@ -1,0 +1,8 @@
+-- v6 -> v7: メディアサーバ（NIP-96 画像アップロード先）テーブルを追加。
+-- ユーザー編集可。既定値は EventRepository.start() で insert-if-absent。
+-- relay/used_hashtag と同様、新規テーブルなので CREATE IF NOT EXISTS のみ。
+CREATE TABLE IF NOT EXISTS media_server (
+    url        TEXT NOT NULL PRIMARY KEY,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);

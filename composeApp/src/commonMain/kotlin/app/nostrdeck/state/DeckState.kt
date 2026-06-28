@@ -12,6 +12,16 @@ import app.nostrdeck.model.NostrEvent
 enum class NavDest { HOME, SEARCH, NOTIFICATIONS, DM, CHANNELS, SETTINGS }
 
 /**
+ * 全幅で重ねる詳細ルート（どの宛先からでもプロフィール/スレッドを開ける）。
+ * Deck の細いカラムではなく、コンテンツ領域いっぱいの adaptive 2ペイン/タブで描く。
+ * [DeckState.detailStack] にスタックし、戻るで pop する（プロフィール↔スレッドを行き来できる）。
+ */
+sealed interface DetailRoute {
+    data class ProfileView(val pubkey: String) : DetailRoute
+    data class ThreadView(val eventId: String) : DetailRoute
+}
+
+/**
  * Deck 全体の状態ホルダ（whiteboard「統合モデル」）。
  *
  * フィード/スレッド/ルームをすべて [columns] の ColumnSpec として保持し、
@@ -48,6 +58,38 @@ class DeckState(initial: List<ColumnSpec>) {
 
     /** 返信対象（非null なら ComposeSheet は返信モード）。送信/破棄でクリアする。 */
     var replyTo by mutableStateOf<NostrEvent?>(null)
+
+    /** 引用リポスト対象（非null なら ComposeSheet は引用モード）。送信/破棄でクリアする。 */
+    var quoting by mutableStateOf<NostrEvent?>(null)
+
+    /**
+     * 全幅詳細ルートのスタック（プロフィール/スレッド）。非空ならコンテンツ領域に重ねて表示。
+     * 末尾が現在表示中。戻る/閉じるで pop。宛先を切り替えると clear する。
+     */
+    val detailStack = mutableStateListOf<DetailRoute>()
+    val hasDetail: Boolean get() = detailStack.isNotEmpty()
+
+    /** プロフィールを全幅で開く（同じ pubkey が末尾なら何もしない）。 */
+    fun openProfile(pubkey: String) {
+        if ((detailStack.lastOrNull() as? DetailRoute.ProfileView)?.pubkey == pubkey) return
+        detailStack.add(DetailRoute.ProfileView(pubkey))
+    }
+
+    /** スレッドを全幅で開く（プロフィール内のノートタップ等）。 */
+    fun openThreadDetail(eventId: String) {
+        if ((detailStack.lastOrNull() as? DetailRoute.ThreadView)?.eventId == eventId) return
+        detailStack.add(DetailRoute.ThreadView(eventId))
+    }
+
+    /** 詳細ルートを1つ閉じる。閉じたら true（戻る操作で消費）。 */
+    fun popDetail(): Boolean {
+        if (detailStack.isEmpty()) return false
+        detailStack.removeAt(detailStack.lastIndex)
+        return true
+    }
+
+    /** 宛先切替時に詳細ルートを畳む（下タブ/レールで別機能へ移るとき）。 */
+    fun clearDetail() { detailStack.clear() }
 
     /** テンプレから生成したカラムを末尾に追加（永続=pinned）してジャンプ。 */
     fun addColumn(spec: ColumnSpec) {

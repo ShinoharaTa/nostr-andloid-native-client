@@ -1,10 +1,15 @@
 package app.nostrdeck.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
@@ -21,11 +26,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
+import app.nostrdeck.theme.DeckColors
 
 /**
  * アプリの骨格。**宛先ごとにレイアウトを持つ**：
@@ -39,8 +47,8 @@ fun AppScaffold(state: DeckState) {
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
         val isCompact = maxWidth.value < COMPACT_BREAKPOINT_DP
 
-        // Android 戻る: 宛先ごとに「詳細→一覧」「一時カラムを閉じる」を処理。
-        val backEnabled = when (state.navDest) {
+        // Android 戻る: まず全幅詳細(プロフィール/スレッド)を閉じ、無ければ宛先ごとの処理。
+        val backEnabled = state.hasDetail || when (state.navDest) {
             NavDest.HOME -> state.hasTransient
             NavDest.CHANNELS -> isCompact && state.publicChatRoom != null
             NavDest.DM -> isCompact && state.dmThread != null
@@ -48,6 +56,7 @@ fun AppScaffold(state: DeckState) {
             else -> false
         }
         PlatformBackHandler(enabled = backEnabled) {
+            if (state.popDetail()) return@PlatformBackHandler
             when (state.navDest) {
                 NavDest.HOME -> state.back()
                 NavDest.CHANNELS -> state.publicChatRoom = null
@@ -78,8 +87,9 @@ fun AppScaffold(state: DeckState) {
 
         if (state.showCompose) {
             ComposeSheet(
-                onDismiss = { state.showCompose = false; state.replyTo = null },
+                onDismiss = { state.showCompose = false; state.replyTo = null; state.quoting = null },
                 replyTo = state.replyTo,
+                quoting = state.quoting,
             )
         }
     }
@@ -96,7 +106,10 @@ private const val COMPACT_BREAKPOINT_DP = 600  // WindowSizeClass の Compact �
 private fun ContentWithCompose(state: DeckState, isCompact: Boolean, modifier: Modifier) {
     Box(modifier.fillMaxSize()) {
         Destination(state, isCompact = isCompact)
-        if (state.navDest == NavDest.HOME) {
+        // 全幅の詳細ルート（プロフィール/スレッド）。非空なら宛先の上に重ねる。
+        if (state.hasDetail) DetailOverlay(state, isCompact = isCompact)
+        // 投稿 FAB はホームのタイムライン操作。詳細ルート表示中は隠す。
+        if (state.navDest == NavDest.HOME && !state.hasDetail) {
             FloatingActionButton(
                 onClick = { state.showCompose = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
@@ -113,9 +126,56 @@ private fun Destination(state: DeckState, isCompact: Boolean) {
         NavDest.HOME -> DeckArea(state, isCompact = isCompact)
         NavDest.CHANNELS -> PublicChatScreen(state, isCompact)
         NavDest.DM -> DmScreen(state, isCompact)
-        NavDest.NOTIFICATIONS -> NotificationsScreen()
+        NavDest.NOTIFICATIONS -> NotificationsScreen(state)
         NavDest.SETTINGS -> SettingsScreen(state, isCompact)
         NavDest.SEARCH -> SearchScreen()
+    }
+}
+
+/**
+ * detailStack の末尾を描画。
+ *  - プロフィール: 全幅で 2ペイン/タブ。
+ *  - スレッド/通知単体: 新カラムではなく、最大幅を制限した中央パネル（Expanded時）。
+ *    背景はスクリムで暗転し、外側タップで閉じる。Compact では従来通り全画面。
+ */
+@Composable
+private fun DetailOverlay(state: DeckState, isCompact: Boolean) {
+    when (val top = state.detailStack.last()) {
+        is app.nostrdeck.state.DetailRoute.ProfileView ->
+            ProfileScreen(state, isCompact, top.pubkey)
+        is app.nostrdeck.state.DetailRoute.ThreadView ->
+            ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
+                ThreadDetail(state, top.eventId)
+            }
+    }
+}
+
+/** Expanded では中央寄せ・最大幅 [maxWidthDp] のパネル + スクリム。Compact は全画面。 */
+@Composable
+private fun ConstrainedOverlay(
+    isCompact: Boolean,
+    onScrimClick: () -> Unit,
+    maxWidthDp: Int = 520,
+    content: @Composable () -> Unit,
+) {
+    if (isCompact) {
+        Box(Modifier.fillMaxSize().background(DeckColors.Bg)) { content() }
+        return
+    }
+    val scrimSource = remember { MutableInteractionSource() }
+    val panelSource = remember { MutableInteractionSource() }
+    Box(
+        Modifier.fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(interactionSource = scrimSource, indication = null, onClick = onScrimClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // パネル内のタップはスクリムへ伝播させない（吸収）。
+        Box(
+            Modifier.widthIn(max = maxWidthDp.dp).fillMaxHeight()
+                .background(DeckColors.Bg)
+                .clickable(interactionSource = panelSource, indication = null, onClick = {}),
+        ) { content() }
     }
 }
 
@@ -136,7 +196,7 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
 ) {
     NavigationBarItem(
         selected = state.navDest == dest,
-        onClick = { state.navDest = dest },
+        onClick = { state.clearDetail(); state.navDest = dest },
         icon = { Icon(icon, label) },
     )
 }

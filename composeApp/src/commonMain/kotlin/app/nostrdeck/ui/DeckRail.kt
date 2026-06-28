@@ -59,24 +59,24 @@ fun DeckRail(state: DeckState) {
         ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = 17.sp) }
         Spacer(Modifier.size(6.dp))
 
-        NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.navDest = NavDest.HOME }
-        NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.navDest = NavDest.SEARCH }
+        NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
+        NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
         NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = 3) {
-            state.navDest = NavDest.NOTIFICATIONS
+            state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
         }
         // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
         NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
-            state.navDest = NavDest.CHANNELS
+            state.clearDetail(); state.navDest = NavDest.CHANNELS
         }
         NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM, badge = 1) {
-            state.navDest = NavDest.DM
+            state.clearDetail(); state.navDest = NavDest.DM
         }
 
         Divider26()
         Text("PIN", color = DeckColors.Text3, fontSize = 8.5.sp, letterSpacing = 1.sp)
 
         // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
-        state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.jumpTo(col.id) } }
+        state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
 
         Box(
             Modifier.size(38.dp).clip(CircleShape).border(1.5.dp, DeckColors.BorderStrong, CircleShape)
@@ -85,7 +85,7 @@ fun DeckRail(state: DeckState) {
         ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3, modifier = Modifier.size(18.dp)) }
 
         Spacer(Modifier.size(16.dp))
-        NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.navDest = NavDest.SETTINGS }
+        NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
         Spacer(Modifier.size(4.dp))
         Avatar("me", modifier = Modifier.size(34.dp))
     }

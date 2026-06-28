@@ -17,6 +17,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -97,8 +99,119 @@ private fun SettingsContent(sectionId: String) {
         when (sectionId) {
             "signer" -> SignerSettings()
             "relays" -> RelaySettings()
+            "media" -> MediaSettings()
+            "data" -> DataSettings()
             else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = 13.sp)
         }
+    }
+}
+
+/**
+ * [M11] メディアサーバー（NIP-96 画像アップロード先）。有効なサーバを上から順に試す。
+ * 認証は NIP-98。追加/削除/有効切替が可能。
+ */
+@Composable
+private fun MediaSettings() {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("メディアサーバー情報を利用できません", color = DeckColors.Text3, fontSize = 13.sp)
+        return
+    }
+    val servers by repo.mediaServersFlow().collectAsState(emptyList())
+    var input by remember { mutableStateOf("") }
+
+    Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = 12.sp)
+    Spacer(Modifier.size(4.dp))
+    Text(
+        "投稿に画像を添付すると、有効なサーバを上から順に試してアップロードします。",
+        color = DeckColors.Text3, fontSize = 11.sp,
+    )
+    Spacer(Modifier.size(14.dp))
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = input, onValueChange = { input = it }, singleLine = true,
+            label = { Text("https://…") }, modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.size(8.dp))
+        Button(onClick = { repo.addMediaServer(input); input = "" }) { Text("追加") }
+    }
+
+    Spacer(Modifier.size(12.dp))
+    HorizontalDivider(color = DeckColors.Border)
+
+    val switchColors = SwitchDefaults.colors(
+        checkedThumbColor = DeckColors.Bg,
+        checkedTrackColor = DeckColors.Accent,
+        uncheckedThumbColor = DeckColors.Text3,
+        uncheckedTrackColor = DeckColors.Surface2,
+        uncheckedBorderColor = DeckColors.Border,
+    )
+
+    LazyColumn(Modifier.fillMaxWidth()) {
+        items(servers, key = { it.url }) { s ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(s.url, color = DeckColors.Text, fontSize = 13.sp)
+                    Text(if (s.enabled != 0L) "有効" else "無効", color = DeckColors.Text3, fontSize = 11.sp)
+                }
+                Switch(
+                    checked = s.enabled != 0L,
+                    onCheckedChange = { repo.setMediaServerEnabled(s.url, it) },
+                    colors = switchColors,
+                )
+                Text(
+                    "削除", color = DeckColors.Accent, fontSize = 12.sp,
+                    modifier = Modifier.clickable { repo.removeMediaServer(s.url) }.padding(8.dp),
+                )
+            }
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
+/**
+ * データ・キャッシュ。安全のための「強制キャッシュパージ」。
+ * 端末内のキャッシュ（イベント/プロフィール/チャンネル/送信待ち）を全消去してリレーから取り直す。
+ * 鍵・リレー設定・ハッシュタグ履歴は保持する。stale なプロフィール等のリセットにも使える。
+ */
+@Composable
+private fun DataSettings() {
+    val repo = LocalRepository.current
+    var confirm by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf(false) }
+
+    Text(
+        "端末内に保存しているキャッシュ（タイムライン履歴・プロフィール・チャンネル・送信待ち）を" +
+            "すべて消去し、リレーから取り直します。鍵・リレー設定・ハッシュタグ履歴は保持されます。",
+        color = DeckColors.Text2, fontSize = 13.sp, lineHeight = 19.sp,
+    )
+    Spacer(Modifier.size(16.dp))
+    Button(onClick = { confirm = true }, enabled = repo != null) {
+        Text("キャッシュを強制消去")
+    }
+    if (done) {
+        Spacer(Modifier.size(10.dp))
+        Text("キャッシュを消去し、再取得を開始しました。", color = DeckColors.Accent, fontSize = 12.5.sp)
+    }
+
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("キャッシュを消去しますか？") },
+            text = {
+                Text(
+                    "保存済みのイベント・プロフィール・チャンネル・送信待ちをすべて削除し、" +
+                        "リレーから取り直します。鍵やリレー設定は消えません。この操作は元に戻せません。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { repo?.purgeCache(); confirm = false; done = true }) {
+                    Text("消去する")
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("キャンセル") } },
+        )
     }
 }
 

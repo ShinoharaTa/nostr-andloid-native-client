@@ -29,20 +29,25 @@ import kotlin.math.abs
  * 無ければグラデーション禁止のモノクロ1色＋イニシャル。
  */
 @Composable
-fun Avatar(seed: String, pictureUrl: String? = null, modifier: Modifier = Modifier) {
+fun Avatar(
+    seed: String,
+    pictureUrl: String? = null,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = DeckDimens.AvatarSize,
+) {
     val shape = CircleShape
     if (!pictureUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80))
+                .data(ImageProxy.proxied(pictureUrl, width = 256, quality = 80))
                 .crossfade(true).build(),
             contentDescription = seed,
-            modifier = modifier.size(DeckDimens.AvatarSize).clip(shape).background(DeckColors.Surface3),
+            modifier = modifier.size(size).clip(shape).background(DeckColors.Surface3),
             contentScale = ContentScale.Crop,
         )
     } else {
         Box(
-            modifier.size(DeckDimens.AvatarSize).clip(shape).background(monoShade(seed)),
+            modifier.size(size).clip(shape).background(monoShade(seed)),
             contentAlignment = Alignment.Center,
         ) { Initial(seed) }
     }

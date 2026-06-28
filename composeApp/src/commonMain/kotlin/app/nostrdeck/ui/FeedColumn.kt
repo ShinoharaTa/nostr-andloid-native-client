@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
 
@@ -33,6 +34,7 @@ fun FeedColumn(
     onClose: (() -> Unit)? = null,
     onNoteClick: (NoteUi) -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
+    onQuote: (NoteUi) -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
 ) {
     // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
@@ -54,8 +56,59 @@ fun FeedColumn(
             items(notes, key = { it.event.id }) { note ->
                 NoteItem(
                     note, Modifier.clickable { onNoteClick(note) },
-                    onReply = { onReply(note) }, onAuthorClick = onAuthorClick,
+                    onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                 )
+                HorizontalDivider(color = DeckColors.Border)
+            }
+        }
+    }
+}
+
+/**
+ * [M10] フォロー中タイムライン（投稿＋自分宛のリアクション/リポスト通知を混在）。
+ * Post は通常のノート、Notice は通知行（NoticeRow）でコンパクトに表示する（nostter 風）。
+ */
+@Composable
+fun FollowingFeedColumn(
+    spec: ColumnSpec,
+    entries: List<FeedEntry>,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
+    onNoteClick: (NoteUi) -> Unit = {},
+    onReply: (NoteUi) -> Unit = {},
+    onQuote: (NoteUi) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
+    onNoticeClick: (String) -> Unit = {},
+) {
+    LaunchedEffect(entries.firstOrNull()?.sortAt) {
+        if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
+    }
+    Column(modifier.background(DeckColors.Surface)) {
+        ColumnHeader(
+            title = spec.title, subtitle = spec.subtitle,
+            leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
+            onPin = onPin, onClose = onClose,
+        )
+        HorizontalDivider(color = DeckColors.Border)
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            items(
+                entries,
+                key = { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } },
+            ) { entry ->
+                when (entry) {
+                    is FeedEntry.Post -> NoteItem(
+                        entry.note, Modifier.clickable { onNoteClick(entry.note) },
+                        onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
+                        onAuthorClick = onAuthorClick,
+                    )
+                    is FeedEntry.Notice -> NoticeRow(
+                        entry.notif,
+                        onClick = { onNoticeClick(entry.notif.targetNoteId ?: entry.notif.id) },
+                        onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
+                    )
+                }
                 HorizontalDivider(color = DeckColors.Border)
             }
         }

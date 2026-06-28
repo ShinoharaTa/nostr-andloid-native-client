@@ -1,0 +1,16 @@
+-- v4 -> v5: プロフィール詳細（bio/website/lightning）を保持する列を追加。
+--
+-- 補足: このプロジェクトの .sqm は「空DBに順次適用」して検証される。profile は
+-- 基底スキーマ(Nostr.sq)側のテーブルで migration 連鎖には現れないため、まず旧スキーマで
+-- CREATE IF NOT EXISTS して検証コンテキストに用意してから ALTER する。
+-- 実機の既存DBには profile が既に在るので CREATE はスキップされ、ALTER のみ効く。
+CREATE TABLE IF NOT EXISTS profile (
+    pubkey      TEXT NOT NULL PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    handle      TEXT NOT NULL DEFAULT '',
+    picture_url TEXT,
+    updated_at  INTEGER NOT NULL
+);
+ALTER TABLE profile ADD COLUMN about TEXT NOT NULL DEFAULT '';
+ALTER TABLE profile ADD COLUMN website TEXT;
+ALTER TABLE profile ADD COLUMN lud16 TEXT;

@@ -57,19 +57,25 @@ CREATE TABLE profile (
     name        TEXT NOT NULL DEFAULT '',
     handle      TEXT NOT NULL DEFAULT '',
     picture_url TEXT,
-    updated_at  INTEGER NOT NULL
+    updated_at  INTEGER NOT NULL,
+    about       TEXT NOT NULL DEFAULT '',  -- kind:0 の自己紹介(bio)
+    website     TEXT,                       -- kind:0 website
+    lud16       TEXT,                       -- kind:0 lightning address(NIP-57)
+    banner      TEXT                        -- kind:0 banner(ヘッダ画像URL)
 );
 
 -- created_at が新しいときだけ反映（古い kind:0 で上書きしない）。
 -- UPSERT(ON CONFLICT DO UPDATE) は SQLite 3.24+ で、Android API26 同梱の 3.18 では不可。
 -- INSERT OR IGNORE + UPDATE...WHERE の2文で「新しいものだけ反映」を表現する。
 insertProfileIfAbsent:
-INSERT OR IGNORE INTO profile(pubkey, name, handle, picture_url, updated_at)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO profile(pubkey, name, handle, picture_url, updated_at, about, website, lud16, banner)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- 置換可能イベント(kind:0)は created_at が同じでも反映する（<=）。
+-- スキーマに後から列(about/banner 等)を足した場合、同 created_at の既存行へバックフィルするため。
 updateProfileIfNewer:
-UPDATE profile SET name = ?, handle = ?, picture_url = ?, updated_at = ?
-WHERE pubkey = ? AND updated_at < ?;
+UPDATE profile SET name = ?, handle = ?, picture_url = ?, updated_at = ?, about = ?, website = ?, lud16 = ?, banner = ?
+WHERE pubkey = ? AND updated_at <= ?;
 
 profilesByPubkeys:
 SELECT * FROM profile WHERE pubkey IN ?;
@@ -230,6 +236,17 @@ LIMIT 200;
 eventById:
 SELECT * FROM event WHERE id = ? LIMIT 1;
 
+-- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
+-- リアクション(kind7) を新しい順に。自分自身の操作は除外。
+notificationsFor:
+SELECT DISTINCT event.* FROM event
+JOIN event_tag ON event.id = event_tag.event_id
+WHERE event_tag.tag = 'p' AND event_tag.value = :me
+  AND event.kind IN (1, 6, 16, 7)
+  AND event.pubkey != :me
+ORDER BY event.created_at DESC
+LIMIT 200;
+
 -- [M8-counts] ローカルに取り込めた範囲での反応数（リプライ=kind1 / リポスト=kind6）を
 -- 対象ノート(e タグ)別・種別別に集計。いいね数(kind7)は reactionsForTargets から算出する。
 -- ※ NIP に全体総数の概念は無く、これは「自分のリレーから見えた分」のベストエフォート集計。
@@ -271,3 +288,29 @@ DELETE FROM event WHERE id = ?;
 
 deleteTagsForEvent:
 DELETE FROM event_tag WHERE event_id = ?;
+
+-- ============ [M11] media_server: 画像アップロード先（NIP-96）の設定 ============
+-- ユーザーが編集できるメディアサーバ集合。uploadImage が enabled 順に試す。
+-- 既定値は EventRepository.start() で insert-if-absent して投入する。
+CREATE TABLE media_server (
+    url        TEXT NOT NULL PRIMARY KEY,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- SQLite 3.18 は UPSERT 不可なので INSERT OR IGNORE（relay/used_hashtag と同方針）。
+insertMediaServerIfAbsent:
+INSERT OR IGNORE INTO media_server(url, enabled, sort_order) VALUES (?, ?, ?);
+
+allMediaServers:
+SELECT * FROM media_server ORDER BY sort_order ASC, url ASC;
+
+-- アップロードで実際に試す対象（有効なものを順に）。
+enabledMediaServers:
+SELECT * FROM media_server WHERE enabled = 1 ORDER BY sort_order ASC, url ASC;
+
+deleteMediaServer:
+DELETE FROM media_server WHERE url = ?;
+
+setMediaServerEnabled:
+UPDATE media_server SET enabled = ? WHERE url = ?;

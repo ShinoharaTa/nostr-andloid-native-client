@@ -23,6 +23,9 @@ object Nip19 {
     /** 64文字 hex 秘密鍵 → nsec(bech32)。 */
     fun hexToNsec(hex: String): String = encodeFixed("nsec", hex)
 
+    /** 64文字 hex イベント id → note(bech32)（NIP-19 引用参照等）。 */
+    fun hexToNote(hex: String): String = encodeFixed("note", hex)
+
     private fun encodeFixed(hrp: String, hex: String): String {
         val data = hex.hexToBytes()
         require(data.size == 32) { "$hrp のペイロードは 32byte（hex 64文字）: ${data.size}byte" }

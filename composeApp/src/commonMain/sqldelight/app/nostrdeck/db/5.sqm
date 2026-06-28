@@ -1,0 +1,4 @@
+-- v5 -> v6: プロフィールに banner(ヘッダ画像URL) を追加。
+-- profile は 4.sqm で検証コンテキストに用意済みなので ALTER のみで足りる。
+-- 実機の既存DB(v5)では profile が在るのでそのまま列追加される（データ保持）。
+ALTER TABLE profile ADD COLUMN banner TEXT;

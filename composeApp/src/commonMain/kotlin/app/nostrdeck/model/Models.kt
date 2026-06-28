@@ -31,6 +31,10 @@ data class Profile(
     val handle: String,       // nip05 等
     val pictureUrl: String? = null,
     val updatedAt: Long = 0,
+    val about: String = "",        // 自己紹介(bio)
+    val website: String? = null,   // website
+    val lud16: String? = null,     // lightning address (NIP-57)
+    val banner: String? = null,    // ヘッダ画像URL
 )
 
 /**
@@ -115,8 +119,11 @@ data class NoteUi(
     val reactions: List<ReactionUi> = emptyList(),  // [M8-react] NIP-25/30 集約リアクション
     val repostedBy: Profile? = null,  // [M8-repost] kind:6/16 のリポスト主（非nullなら「がリポスト」ヘッダ）
     val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
+    val replyParent: NoteUi? = null,  // [M10] NIP-10 返信先（解決できた親ノート。返信の文脈表示用）
     val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
     val mineReposted: Boolean = false, // [M8-counts] 自分がリポスト済み
+    val isReply: Boolean = false,      // [M9-profile] kind:1 が #e を持つ返信か（プロフィールのタブ振り分け用）
+    val customEmojis: Map<String, String> = emptyMap(), // [M10] NIP-30 本文カスタム絵文字 shortcode→画像URL
 )
 
 /**
@@ -132,6 +139,43 @@ data class ReactionUi(
     val count: Int,
     val imageUrl: String? = null,
 )
+
+/** [M10-notif] 通知の種別。 */
+enum class NotificationKind { REPLY, MENTION, REACTION, REPOST }
+
+/**
+ * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。
+ *  - [actor]         アクションした人（返信/リアクション/リポストの主）
+ *  - [reaction]      REACTION の絵文字（NIP-25。"+"/空は ❤️ に正規化済み）
+ *  - [text]          REPLY/MENTION の本文プレビュー
+ *  - [targetSnippet] 対象（＝自分の）ノートの抜粋（解決できた範囲）
+ *  - [targetNoteId]  対象ノート id（タップでスレッドを開く）
+ */
+data class NotificationUi(
+    val id: String,
+    val kind: NotificationKind,
+    val actor: Profile,
+    val createdAt: Long,
+    val reaction: String? = null,         // REACTION の表示文字（絵文字 or :shortcode:）
+    val reactionImageUrl: String? = null, // NIP-30 カスタム絵文字の画像URL（あれば画像表示）
+    val text: String? = null,
+    val targetSnippet: String? = null,
+    val targetNoteId: String? = null,
+)
+
+/**
+ * [M10] ホームタイムラインに混在表示する1行。通常の投稿(Post)と、自分宛の
+ * リアクション/リポスト通知(Notice)を時系列でひとつのリストに混ぜる（nostter 風）。
+ */
+sealed interface FeedEntry {
+    val sortAt: Long
+    data class Post(val note: NoteUi) : FeedEntry {
+        override val sortAt: Long get() = note.event.createdAt
+    }
+    data class Notice(val notif: NotificationUi) : FeedEntry {
+        override val sortAt: Long get() = notif.createdAt
+    }
+}
 
 /** NIP-28 チャンネル（kind:40 作成 + kind:41 最新メタ）。一覧カラムの行。 */
 data class Channel(

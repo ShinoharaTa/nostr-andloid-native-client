@@ -48,6 +48,7 @@ fun ProfileColumn(
     onClose: (() -> Unit)? = null,
     onFollowToggle: () -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
+    onQuote: (NoteUi) -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
     onNoteClick: (NoteUi) -> Unit = {},
 ) {
@@ -67,7 +68,7 @@ fun ProfileColumn(
             items(notes, key = { it.event.id }) { note ->
                 NoteItem(
                     note, Modifier.clickable { onNoteClick(note) },
-                    onReply = { onReply(note) }, onAuthorClick = onAuthorClick,
+                    onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                 )
                 HorizontalDivider(color = DeckColors.Border)
             }
