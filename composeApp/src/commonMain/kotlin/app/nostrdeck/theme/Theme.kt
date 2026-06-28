@@ -15,12 +15,25 @@ object DeckDimens {
 
 private val DarkScheme = darkColorScheme(
     primary      = DeckColors.Accent,
+    onPrimary    = DeckColors.Bg,        // 明色 primary 上は暗色文字
+    // FAB は primaryContainer を使う。未指定だと M3 既定の紫が漏れる（Damus 風）ので明示的にモノクロ化。
+    primaryContainer   = DeckColors.Accent,
+    onPrimaryContainer = DeckColors.Bg,
+    secondaryContainer   = DeckColors.Surface2,
+    onSecondaryContainer = DeckColors.Text,
+    tertiaryContainer   = DeckColors.Surface2,
+    onTertiaryContainer = DeckColors.Text,
+    // 未読バッジは error を使う。既定のピンクを避け、白地+暗色数字のモノクロに。
+    error          = DeckColors.Accent,
+    onError        = DeckColors.Bg,
+    errorContainer = DeckColors.Accent,
+    onErrorContainer = DeckColors.Bg,
     background   = DeckColors.Bg,
     surface      = DeckColors.Surface,
     surfaceVariant = DeckColors.Surface2,
-    onPrimary    = DeckColors.Bg,        // 明色 primary 上は暗色文字
     onBackground = DeckColors.Text,
     onSurface    = DeckColors.Text,
+    onSurfaceVariant = DeckColors.Text2,
     outline      = DeckColors.Border,
 )
 
