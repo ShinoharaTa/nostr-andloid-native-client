@@ -33,6 +33,7 @@ fun FeedColumn(
     onClose: (() -> Unit)? = null,
     onNoteClick: (NoteUi) -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
 ) {
     // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
     // 下までスクロールしている場合は読書位置を保つため動かさない。
@@ -51,7 +52,10 @@ fun FeedColumn(
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             if (offline) item { OfflineBanner(pendingCount = 3) }
             items(notes, key = { it.event.id }) { note ->
-                NoteItem(note, Modifier.clickable { onNoteClick(note) }, onReply = { onReply(note) })
+                NoteItem(
+                    note, Modifier.clickable { onNoteClick(note) },
+                    onReply = { onReply(note) }, onAuthorClick = onAuthorClick,
+                )
                 HorizontalDivider(color = DeckColors.Border)
             }
         }

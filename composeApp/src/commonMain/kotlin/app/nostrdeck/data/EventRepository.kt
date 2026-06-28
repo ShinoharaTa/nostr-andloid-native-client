@@ -3,6 +3,7 @@ package app.nostrdeck.data
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.nostrdeck.crypto.EventCrypto
+import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.db.Event
 import app.nostrdeck.db.NostrDb
 import app.nostrdeck.model.NostrEvent
@@ -411,6 +412,41 @@ class EventRepository(
             mineReacted = id in meta.myReacted,
             mineReposted = id in meta.myReposted,
         )
+    }
+
+    // ---- [M9-profile] プロフィール表示 / フォロー操作 ----
+
+    /** 指定 pubkey の解決済みプロフィール（kind:0）を流す。未取得なら null。 */
+    fun profileFlow(pubkey: String): Flow<Profile?> =
+        q.profileByPubkey(pubkey).asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.firstOrNull()?.let { Profile(it.pubkey, it.name, it.handle, it.picture_url, it.updated_at) }
+        }
+
+    /** プロフィール画面を開いたとき等に kind:0 の取得を促す（バッチ REQ に投入）。 */
+    fun loadProfile(pubkey: String) = requestProfile(pubkey)
+
+    /** 自分がこの pubkey をフォロー中か（kind:3 の更新に追従）。 */
+    fun isFollowingFlow(pubkey: String): Flow<Boolean> = follows.map { pubkey in it }
+
+    /** フォロー追加（kind:3 を publish）。楽観的に follows へ反映。 */
+    suspend fun follow(pubkey: String) {
+        val cur = follows.value
+        if (pubkey in cur) return
+        publishContacts(cur + pubkey)
+    }
+
+    /** フォロー解除。 */
+    suspend fun unfollow(pubkey: String) {
+        val cur = follows.value
+        if (pubkey !in cur) return
+        publishContacts(cur - pubkey)
+    }
+
+    /** 現在のフォロー集合を kind:3（p タグ）として publish し、楽観反映する。 */
+    private suspend fun publishContacts(list: List<String>) {
+        publishSigned(UnsignedEvent(kind = 3, content = "", tags = list.map { listOf("p", it) }))
+        followsAt = currentUnixTime()
+        follows.value = list
     }
 
     private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {

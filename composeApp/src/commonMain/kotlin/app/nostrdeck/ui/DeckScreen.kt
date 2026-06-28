@@ -38,6 +38,7 @@ import app.nostrdeck.data.SampleData
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -147,27 +148,46 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             // 通知/DM はログイン pubkey や復号が要るため当面は仮データ。
             val repo = LocalRepository.current
             // FOLLOWING は自分の kind:3（フォロー先）を authors にして購読・表示する。
-            val isFollowing = repo != null && spec.kind == ColumnKind.FOLLOWING
+            val isFollowingFeed = repo != null && spec.kind == ColumnKind.FOLLOWING
+            val isProfile = repo != null && spec.kind == ColumnKind.PROFILE
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
+            val profilePubkey = spec.filter.authors.firstOrNull()
             if (live) {
                 DisposableEffect(spec.id) {
-                    if (isFollowing) repo!!.subscribeFollowing(spec.id)
+                    if (isFollowingFeed) repo!!.subscribeFollowing(spec.id)
                     else repo!!.subscribeColumn(spec.id, spec.filter)
+                    if (isProfile && profilePubkey != null) repo!!.loadProfile(profilePubkey)
                     onDispose { repo!!.unsubscribeColumn(spec.id) }
                 }
             }
             val notes = when {
-                isFollowing -> remember(spec.id) { repo!!.followingFeed() }.collectAsState(emptyList()).value
+                isFollowingFeed -> remember(spec.id) { repo!!.followingFeed() }.collectAsState(emptyList()).value
                 live -> remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
                 else -> SampleData.feedFor(spec)
             }
-            FeedColumn(
-                spec, notes, modifier, listState,
-                offline = spec.kind == ColumnKind.NOTIFICATIONS,
-                onPin = onPin, onClose = onClose,
-                onNoteClick = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) },
-                onReply = { note -> state.replyTo = note.event; state.showCompose = true },
-            )
+            val openProfile: (String) -> Unit = { pk -> state.openTransient(SampleData.profileColumnFor(pk), originId = spec.id) }
+            val openThread: (NoteUi) -> Unit = { note -> state.openTransient(SampleData.threadColumnFor(note), originId = spec.id) }
+            val doReply: (NoteUi) -> Unit = { note -> state.replyTo = note.event; state.showCompose = true }
+            if (isProfile && profilePubkey != null) {
+                val scope = rememberCoroutineScope()
+                val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
+                val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
+                ProfileColumn(
+                    spec, profilePubkey, profile, following, notes, modifier, listState,
+                    onPin = onPin, onClose = onClose,
+                    onFollowToggle = {
+                        scope.launch { if (following) repo!!.unfollow(profilePubkey) else repo!!.follow(profilePubkey) }
+                    },
+                    onReply = doReply, onAuthorClick = openProfile, onNoteClick = openThread,
+                )
+            } else {
+                FeedColumn(
+                    spec, notes, modifier, listState,
+                    offline = spec.kind == ColumnKind.NOTIFICATIONS,
+                    onPin = onPin, onClose = onClose,
+                    onNoteClick = openThread, onReply = doReply, onAuthorClick = openProfile,
+                )
+            }
         }
         ColumnRenderer.THREAD -> {
             val repo = LocalRepository.current

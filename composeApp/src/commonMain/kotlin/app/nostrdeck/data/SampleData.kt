@@ -93,6 +93,16 @@ object SampleData {
         filter = ReqFilter(kinds = listOf(1), eventId = note.event.id), pinned = false, order = 100,
     )
 
+    /** [M9-profile] 著者タップで開く一時プロフィールカラム（kind:0 取得 + 本人の投稿一覧）。 */
+    fun profileColumnFor(pubkey: String, name: String? = null) = ColumnSpec(
+        id = "profile_$pubkey",
+        title = name?.takeIf { it.isNotBlank() } ?: pubkey.take(8),
+        subtitle = "プロフィール",
+        kind = ColumnKind.PROFILE, renderer = ColumnRenderer.FEED,
+        filter = ReqFilter(kinds = listOf(0, 1), authors = listOf(pubkey)),
+        pinned = false, order = 100,
+    )
+
     // ---- NIP-28 チャンネル ----
     val channels = listOf(
         Channel("ch_njp", "Nostr Japan", "日本語のNostr雑談", members = 340, unread = 12,

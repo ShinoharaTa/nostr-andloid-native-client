@@ -44,17 +44,24 @@ import kotlinx.coroutines.launch
  * リポスト・リアクションは [LocalRepository] 経由でその場で送信する。
  */
 @Composable
-fun NoteItem(note: NoteUi, modifier: Modifier = Modifier, onReply: (() -> Unit)? = null) {
+fun NoteItem(
+    note: NoteUi,
+    modifier: Modifier = Modifier,
+    onReply: (() -> Unit)? = null,
+    onAuthorClick: ((String) -> Unit)? = null,
+) {
   val repo = LocalRepository.current
   val scope = rememberCoroutineScope()
   var confirmRepost by remember { mutableStateOf(false) }
+  // 著者(アバター/名前)タップでプロフィールを開く。
+  val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
   // [M8-repost] リポストヘッダを本体の上に重ねるため Column で包む
   Column(modifier.fillMaxWidth()) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = 13.dp, top = 10.dp))
     }
     Row(Modifier.fillMaxWidth().padding(13.dp)) {
-        Avatar(note.author.name, note.author.pictureUrl)
+        Avatar(note.author.name, note.author.pictureUrl, authorTap)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
@@ -62,7 +69,7 @@ fun NoteItem(note: NoteUi, modifier: Modifier = Modifier, onReply: (() -> Unit)?
                     note.author.name, color = DeckColors.Text,
                     fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f, fill = false).then(authorTap),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(note.author.handle, color = DeckColors.Text3, fontSize = 11.5.sp, maxLines = 1)
