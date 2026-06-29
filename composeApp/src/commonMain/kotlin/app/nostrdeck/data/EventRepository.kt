@@ -45,6 +45,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -548,7 +549,7 @@ class EventRepository(
             }
             out.add(
                 ThreadEntry(
-                    note = toNoteUi(row, byPubkey[row.pubkey]),
+                    note = withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey),
                     depth = depth, replyToName = replyToName,
                     isRoot = row.id == rootId, isFocused = row.id == focusId,
                 ),
@@ -797,6 +798,8 @@ class EventRepository(
         eventRequests.trySend(id)
     }
 
+    private var eventReqSeq = 0
+
     private suspend fun eventBatchLoop() {
         val requested = mutableSetOf<String>()
         val pending = mutableSetOf<String>()
@@ -810,10 +813,19 @@ class EventRepository(
                 }
             }
             if (pending.isEmpty()) continue
+            val batch = pending.toList()
             requested.addAll(pending)
             pending.clear()
-            // id 指定でまとめて取得。届いたら ingest され、フィードが再解決される。
-            subscribeAll("events", Filter(ids = requested.toList(), limit = requested.size))
+            // 「今回の新規 id だけ」を一意の subId で取得する。
+            // 累積 id を1つの sub に積み続けるとフィルタが肥大化し、リレーの ids 上限
+            // （strfry/Damus は ~1000）を超えた時点で REQ ごと拒否され、以降の id 解決が
+            // 全滅する（引用元/返信元が一切展開されなくなる）。バッチ毎に新しい sub にする。
+            batch.chunked(500).forEach { chunk ->
+                val subId = "events-${eventReqSeq++}"
+                subscribeAll(subId, Filter(ids = chunk, limit = chunk.size))
+                // 蓄積イベントは EOSE 後すぐ届く。一定時間で CLOSE して sub を溜めない。
+                scope.launch { delay(10_000); unsubscribeAll(subId) }
+            }
         }
     }
 

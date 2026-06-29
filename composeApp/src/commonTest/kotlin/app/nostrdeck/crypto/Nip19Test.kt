@@ -87,4 +87,14 @@ class Nip19Test {
         val hex = Nip19.eventBechToHex(nevent)
         assertTrue(hex != null && hex.length == 64, "64文字 hex に復号できる: $hex")
     }
+
+    // 実データ: q タグの id と本文 nevent が一致することを確認（復号の正しさ）。
+    @Test
+    fun damus_nevent_matches_q_tag_id() {
+        val nevent = "nevent1qqsfyg708nnmj2easy96w4cy6j4j6asnc9j2z02lx2u9p63em6mg9uqpz3mhxu" +
+            "e69uhhyetvv9ujuerpd46hxtnfduq3camnwvaz7tmwdaehgu3wvf5hgcm0d9hx2u3wwdhkx6tpdsqs6amnwvaz7tmwda" +
+            "ejumr0dsq3vamnwvaz7tmjv4kxz7fwwpexjmtpdshxuet5qgs0z853ckl5smauhycds2q36qntzya9e7mhhj9tj9pe57" +
+            "u8txstqjsrqsqqqqqpdd05mm"
+        assertEquals("9223cf3ce7b92b3d810ba75704d4ab2d7613c164a13d5f32b850ea39deb682f0", Nip19.eventBechToHex(nevent))
+    }
 }
