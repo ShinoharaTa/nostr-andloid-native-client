@@ -374,7 +374,7 @@ fun ThreadDetail(state: DeckState, eventId: String) {
         ?.collectAsState(emptyList())?.value ?: emptyList()
     ThreadColumn(
         spec, entries, Modifier.fillMaxSize(),
-        onClose = { state.popDetail() },
+        onBack = { state.popDetail() },
         onReply = { state.replyTo = it.event; state.showCompose = true },
         onQuote = { state.quoting = it.event; state.showCompose = true },
         onAuthorClick = { state.openProfile(it) },

@@ -13,9 +13,18 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/** リレー接続状態（UI のステータス表示用・モノクロ ●/◑/○）。 */
+enum class RelayConnState { CONNECTING, CONNECTED, DISCONNECTED }
+
+/** UI 表示用のリレー1件の接続状態スナップショット。 */
+data class RelayConn(val url: String, val state: RelayConnState)
 
 /**
  * 単一リレーへの WebSocket 接続（NIP-01）。
@@ -33,14 +42,17 @@ class RelayClient(
     private val activeReqs = mutableMapOf<String, String>()  // subId → REQ json
     private var job: Job? = null
 
-    var connected: Boolean = false
-        private set
+    private val _state = MutableStateFlow(RelayConnState.CONNECTING)
+    /** 接続状態（UI 監視用）。接続中/接続済/切断。 */
+    val state: StateFlow<RelayConnState> = _state.asStateFlow()
+    val connected: Boolean get() = _state.value == RelayConnState.CONNECTED
 
     fun start() {
         if (job != null) return
         job = scope.launch {
             var backoff = 1000L
             while (isActive) {
+                _state.value = RelayConnState.CONNECTING
                 try {
                     client.webSocket(urlString = url) {
                         backoff = 1000L
@@ -51,7 +63,7 @@ class RelayClient(
                 } catch (_: Throwable) {
                     // 接続失敗/切断 → 下でバックオフ
                 }
-                connected = false
+                _state.value = RelayConnState.DISCONNECTED
                 if (!isActive) break
                 delay(backoff + (0..500).random())
                 backoff = (backoff * 2).coerceAtMost(30_000)
@@ -60,7 +72,7 @@ class RelayClient(
     }
 
     private suspend fun runSession(session: DefaultClientWebSocketSession) {
-        connected = true
+        _state.value = RelayConnState.CONNECTED
         // (再)接続時に購読中の REQ を張り直す
         activeReqs.values.forEach { outgoing.trySend(it) }
         val sender = scope.launch {
@@ -99,6 +111,7 @@ class RelayClient(
     fun stop() {
         job?.cancel()
         job = null
+        _state.value = RelayConnState.DISCONNECTED
         client.close()
     }
 }

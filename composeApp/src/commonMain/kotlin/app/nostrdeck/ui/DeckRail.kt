@@ -28,6 +28,11 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,6 +90,15 @@ fun DeckRail(state: DeckState) {
         ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3, modifier = Modifier.size(18.dp)) }
 
         Spacer(Modifier.size(16.dp))
+        // リレー接続ステータスの集約インジケータ（◑ 3/4）。タップで一覧ポップアップ。
+        val repo = LocalRepository.current
+        if (repo != null) {
+            val conns by repo.relayConnFlow().collectAsState()
+            var showRelays by remember { mutableStateOf(false) }
+            RelayRailIndicator(conns) { showRelays = true }
+            if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
+            Spacer(Modifier.size(8.dp))
+        }
         NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
         Spacer(Modifier.size(4.dp))
         Avatar("me", modifier = Modifier.size(34.dp))

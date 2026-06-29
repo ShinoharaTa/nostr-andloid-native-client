@@ -180,6 +180,10 @@ DELETE FROM pinned_column WHERE id = ?;
 reorderColumn:
 UPDATE pinned_column SET sort_order = ? WHERE id = ?;
 
+-- ピン留めカラム全消し（永続化は「全消し→現状を並び順で再INSERT」で原子的に行う）。
+clearPinnedColumns:
+DELETE FROM pinned_column;
+
 -- ============ NIP-28 チャンネル一覧（kind:40/41 を集約したキャッシュ） ============
 CREATE TABLE channel (
     id           TEXT NOT NULL PRIMARY KEY,  -- kind:40 イベント id

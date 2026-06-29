@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,7 +12,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
@@ -44,6 +47,7 @@ fun FeedColumn(
             listState.animateScrollToItem(0)
         }
     }
+    val scope = rememberCoroutineScope()
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -51,14 +55,20 @@ fun FeedColumn(
             onPin = onPin, onClose = onClose,
         )
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            if (offline) item { OfflineBanner(pendingCount = 3) }
-            items(notes, key = { it.event.id }) { note ->
-                NoteItem(
-                    note, Modifier.clickable { onNoteClick(note) },
-                    onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
-                )
-                HorizontalDivider(color = DeckColors.Border)
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                if (offline) item { OfflineBanner(pendingCount = 3) }
+                items(notes, key = { it.event.id }) { note ->
+                    NoteItem(
+                        note, Modifier.clickable { onNoteClick(note) },
+                        onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
+                    )
+                    HorizontalDivider(color = DeckColors.Border)
+                }
+            }
+            // 下を読んでいる間に積まれた新着だけピル表示。タップで最上部へ。
+            NewItemsPill(rememberNewItemsCount(notes.map { it.event.id }, listState)) {
+                scope.launch { listState.animateScrollToItem(0) }
             }
         }
     }
@@ -85,6 +95,8 @@ fun FollowingFeedColumn(
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
         if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
     }
+    val scope = rememberCoroutineScope()
+    val keys = entries.map { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -92,24 +104,26 @@ fun FollowingFeedColumn(
             onPin = onPin, onClose = onClose,
         )
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            items(
-                entries,
-                key = { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } },
-            ) { entry ->
-                when (entry) {
-                    is FeedEntry.Post -> NoteItem(
-                        entry.note, Modifier.clickable { onNoteClick(entry.note) },
-                        onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
-                        onAuthorClick = onAuthorClick,
-                    )
-                    is FeedEntry.Notice -> NoticeRow(
-                        entry.notif,
-                        onClick = { onNoticeClick(entry.notif.targetNoteId ?: entry.notif.id) },
-                        onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
-                    )
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                items(entries, key = { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } }) { entry ->
+                    when (entry) {
+                        is FeedEntry.Post -> NoteItem(
+                            entry.note, Modifier.clickable { onNoteClick(entry.note) },
+                            onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
+                            onAuthorClick = onAuthorClick,
+                        )
+                        is FeedEntry.Notice -> NoticeRow(
+                            entry.notif,
+                            onClick = { onNoticeClick(entry.notif.targetNoteId ?: entry.notif.id) },
+                            onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
+                        )
+                    }
+                    HorizontalDivider(color = DeckColors.Border)
                 }
-                HorizontalDivider(color = DeckColors.Border)
+            }
+            NewItemsPill(rememberNewItemsCount(keys, listState)) {
+                scope.launch { listState.animateScrollToItem(0) }
             }
         }
     }

@@ -31,10 +31,17 @@ sealed interface DetailRoute {
  *   コンフィグ変更で破棄されるため、本番では ViewModel / rememberSaveable へ
  *   hoist してスクロール位置とともに保持する（whiteboard の TODO）。
  */
-class DeckState(initial: List<ColumnSpec>) {
+class DeckState(
+    initial: List<ColumnSpec>,
+    /** ピン留め集合が変化したら呼ばれる（永続化フック）。null ならメモリのみ。 */
+    private val onPinnedChanged: ((List<ColumnSpec>) -> Unit)? = null,
+) {
 
     /** ピン留め(永続) + 一時(transient) を順序付きで保持。Deck/レールの SSOT。 */
     val columns = mutableStateListOf<ColumnSpec>().apply { addAll(initial.sortedBy { it.order }) }
+
+    /** ピン留め集合（順序込み）を永続化フックへ通知する。 */
+    private fun persistPinned() = onPinnedChanged?.invoke(columns.filter { it.pinned })
 
     /** レール/下タブの選択中宛先。 */
     var navDest by mutableStateOf(NavDest.HOME)
@@ -94,6 +101,7 @@ class DeckState(initial: List<ColumnSpec>) {
     /** テンプレから生成したカラムを末尾に追加（永続=pinned）してジャンプ。 */
     fun addColumn(spec: ColumnSpec) {
         columns.add(spec)
+        if (spec.pinned) persistPinned()
         jumpTo(spec.id)
     }
 
@@ -120,10 +128,10 @@ class DeckState(initial: List<ColumnSpec>) {
     }
 
     /** 一時カラムを固定（永続セットへ昇格）。SSOT は SQLDelight の pinned_column。 */
-    fun pin(columnId: String) = replace(columnId) { it.copy(pinned = true) }
+    fun pin(columnId: String) { replace(columnId) { it.copy(pinned = true) }; persistPinned() }
 
     /** 固定解除（一時カラムへ降格。開いたままだが閉じられるようになる）。 */
-    fun unpin(columnId: String) = replace(columnId) { it.copy(pinned = false) }
+    fun unpin(columnId: String) { replace(columnId) { it.copy(pinned = false) }; persistPinned() }
 
     /** カラムを閉じる（一時カラムのみ。ピン留めは unpin してから）。 */
     fun close(columnId: String) {
@@ -132,7 +140,10 @@ class DeckState(initial: List<ColumnSpec>) {
 
     /** ドラッグ並べ替え（from→to）。 */
     fun move(from: Int, to: Int) {
-        if (from in columns.indices && to in columns.indices) columns.add(to, columns.removeAt(from))
+        if (from in columns.indices && to in columns.indices) {
+            columns.add(to, columns.removeAt(from))
+            persistPinned()
+        }
     }
 
     /** 戻る操作で閉じられる一時カラムがあるか（システムバック有効判定）。 */

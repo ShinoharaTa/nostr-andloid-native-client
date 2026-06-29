@@ -21,7 +21,14 @@ import app.nostrdeck.ui.LocalRepository
 @Composable
 fun App(repository: EventRepository? = null) {
     DeckTheme {
-        val state = remember { DeckState(SampleData.columns) }
+        // カラム構成は pinned_column に永続化する。初回（空）のみ既定をseedして保存し、
+        // 以降は保存済みを復元。追加/固定/解除/並べ替えのたびに DeckState から保存する。
+        val state = remember {
+            val persisted = repository?.loadPinnedColumns().orEmpty()
+            val initial = persisted.ifEmpty { SampleData.columns }
+            if (persisted.isEmpty()) repository?.persistPinnedColumns(SampleData.columns.filter { it.pinned })
+            DeckState(initial, onPinnedChanged = { cols -> repository?.persistPinnedColumns(cols) })
+        }
         // 本文メンション(@npub…)解決用の pubkey→name マップを供給（実データ時のみ）。
         val names by (repository?.profileNames()?.collectAsState(emptyMap<String, String>())
             ?: remember { mutableStateOf(emptyMap<String, String>()) })

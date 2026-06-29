@@ -1,5 +1,7 @@
 package app.nostrdeck.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * ドメインモデル（whiteboard.md の DB スキーマに対応）。
  * commonMain なので Android/iOS 双方で共有される。
@@ -75,6 +77,7 @@ enum class ColumnKind {
 enum class ColumnRenderer { FEED, THREAD, CHANNEL_LIST, ROOM }
 
 /** Nostr REQ のフィルタ（NIP-01）。カラム購読のライフサイクルの単位。 */
+@Serializable
 data class ReqFilter(
     val kinds: List<Int> = listOf(1),
     val authors: List<String> = emptyList(),

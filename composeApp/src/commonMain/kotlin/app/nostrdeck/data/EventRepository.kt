@@ -21,6 +21,9 @@ import io.ktor.util.encodeBase64
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.nostrdeck.model.ColumnKind
+import app.nostrdeck.model.ColumnRenderer
+import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
@@ -34,6 +37,7 @@ import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.UnsignedEvent
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
+import app.nostrdeck.nostr.RelayConn
 import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.signer.SignerProvider
@@ -44,6 +48,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -158,8 +164,21 @@ class EventRepository(
             relays[url] = client
             client.start()
             scope.launch { client.messages.collect(::onMessage) }
+            // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
+            scope.launch { client.state.collect { withContext(relayDispatcher) { refreshRelayConns() } } }
             activeSubs.forEach { (subId, filters) -> client.subscribe(subId, *filters.toTypedArray()) }
         }
+    }
+
+    // ---- リレー接続ステータス（UI 表示用・モノクロ ●/◑/○）----
+    private val _relayConns = MutableStateFlow<List<RelayConn>>(emptyList())
+    /** 各リレーの接続状態（url 昇順）。レール集約インジケータ/カラムヘッダが購読する。 */
+    fun relayConnFlow(): StateFlow<List<RelayConn>> = _relayConns.asStateFlow()
+
+    /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
+    private fun refreshRelayConns() {
+        _relayConns.value = relays.entries.sortedBy { it.key }
+            .map { RelayConn(it.key, it.value.state.value) }
     }
 
     /** 全リレーへ購読（subId 上書き）。新規リレー接続時の張り直し用に記録する。 */
@@ -261,6 +280,41 @@ class EventRepository(
                 activeSubs.forEach { (subId, filters) ->
                     relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
                 }
+            }
+        }
+    }
+
+    // ---- ピン留めカラムの永続化（SSOT = pinned_column）----
+
+    /**
+     * 永続化済みのピン留めカラムを読み出す（起動時に DeckState の初期値へ）。
+     * 壊れた行（未知の kind/renderer・不正 JSON）はスキップする。
+     */
+    fun loadPinnedColumns(): List<ColumnSpec> =
+        q.pinnedColumns().executeAsList().mapNotNull { row ->
+            runCatching {
+                ColumnSpec(
+                    id = row.id, title = row.title, subtitle = row.subtitle,
+                    kind = ColumnKind.valueOf(row.kind),
+                    renderer = ColumnRenderer.valueOf(row.renderer),
+                    filter = json.decodeFromString(ReqFilter.serializer(), row.filter_json),
+                    pinned = true, order = row.sort_order.toInt(),
+                )
+            }.getOrNull()
+        }
+
+    /**
+     * 現在のピン留めカラム集合を丸ごと保存する（全消し→並び順で再INSERT）。
+     * 追加/固定/解除/並べ替えのたびに呼ぶ。順序は引数のリスト順。
+     */
+    fun persistPinnedColumns(specs: List<ColumnSpec>) {
+        q.transaction {
+            q.clearPinnedColumns()
+            specs.forEachIndexed { i, s ->
+                q.pinColumn(
+                    s.id, s.title, s.subtitle, s.kind.name, s.renderer.name,
+                    json.encodeToString(ReqFilter.serializer(), s.filter), i.toLong(),
+                )
             }
         }
     }

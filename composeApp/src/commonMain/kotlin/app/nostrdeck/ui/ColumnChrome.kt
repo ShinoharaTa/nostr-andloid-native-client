@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.PushPin
@@ -43,16 +44,25 @@ fun ColumnHeader(
     iconBg: Color = DeckColors.AccentWeak,
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    /** 非null なら先頭アイコン位置に「←」戻る矢印を出す（単体画面の確実な戻り導線）。 */
+    onBack: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
-            contentAlignment = Alignment.Center,
-        ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(15.dp)) }
+        if (onBack != null) {
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(19.dp)) }
+        } else {
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
+                contentAlignment = Alignment.Center,
+            ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(15.dp)) }
+        }
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
