@@ -1,0 +1,7 @@
+-- v7 -> v8: 汎用 KV テーブル app_setting を追加。
+-- last-seen 等のローカル状態を文字列 KV で保持（例: notifications_seen_at）。
+-- 新規テーブルなので CREATE IF NOT EXISTS のみ。
+CREATE TABLE IF NOT EXISTS app_setting (
+    key   TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);

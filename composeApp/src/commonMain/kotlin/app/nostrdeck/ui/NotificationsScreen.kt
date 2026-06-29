@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -64,6 +65,8 @@ fun NotificationsScreen(state: DeckState) {
         onDispose { repo.unsubscribeColumn("notifications") }
     }
     val items = remember { repo.notificationsFeed() }.collectAsState().value
+    // 表示中は受信のたびに閲覧済みにする（レールの未読バッジを 0 に保つ）。
+    LaunchedEffect(items) { repo.markNotificationsSeen() }
 
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ColumnHeader(
@@ -102,6 +105,8 @@ fun NotificationsColumn(
         onDispose { repo.unsubscribeColumn(spec.id) }
     }
     val items = remember(spec.id) { repo.notificationsFeed() }.collectAsState().value
+    // 通知カラムが見えている間も閲覧済みにする（レールの未読バッジを 0 に保つ）。
+    LaunchedEffect(items) { repo.markNotificationsSeen() }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,

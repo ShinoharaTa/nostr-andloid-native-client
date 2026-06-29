@@ -318,3 +318,17 @@ DELETE FROM media_server WHERE url = ?;
 
 setMediaServerEnabled:
 UPDATE media_server SET enabled = ? WHERE url = ?;
+
+-- ============ app_setting: 汎用 KV（last-seen 等のローカル状態） ============
+-- アプリのローカル状態を文字列 KV で保持する小さなテーブル。
+-- 例: notifications_seen_at = 通知を最後に閲覧した時刻（unix 秒）。未読バッジ算出に使う。
+CREATE TABLE app_setting (
+    key   TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+getSetting:
+SELECT value FROM app_setting WHERE key = ?;
+
+putSetting:
+INSERT OR REPLACE INTO app_setting(key, value) VALUES (?, ?);

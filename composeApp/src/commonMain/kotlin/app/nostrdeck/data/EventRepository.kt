@@ -129,6 +129,11 @@ class EventRepository(
     val relayList = MutableStateFlow<List<RelayPref>>(emptyList())
     private var relayListAt = 0L
 
+    /** 通知を最後に閲覧した時刻（unix 秒）。app_setting に永続化し、未読バッジの基準にする。 */
+    private val notificationsSeenAt = MutableStateFlow(
+        q.getSetting(KEY_NOTIFICATIONS_SEEN_AT).executeAsOneOrNull()?.toLongOrNull() ?: 0L
+    )
+
     fun start() {
         // ブートストラップ・リレーへ接続（DB に 'default' として記録。既存があれば触らない）。
         bootstrapUrls.forEach { url ->
@@ -451,6 +456,22 @@ class EventRepository(
         buildNotificationsFeed().stateIn(scope, feedSharing, emptyList())
     }
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
+
+    /** レール用の通知未読数。最後に閲覧した時刻より新しい通知の件数（最大99）。 */
+    private val notificationsUnreadCache: StateFlow<Int> by lazy {
+        combine(notificationsFeed(), notificationsSeenAt) { items, seen ->
+            items.count { it.createdAt > seen }.coerceAtMost(99)
+        }.stateIn(scope, feedSharing, 0)
+    }
+    fun notificationsUnread(): StateFlow<Int> = notificationsUnreadCache
+
+    /** 通知を閲覧済みにする（先頭の通知時刻を seen-at として永続化）。未読バッジが 0 に戻る。 */
+    fun markNotificationsSeen() {
+        val latest = notificationsFeed().value.maxOfOrNull { it.createdAt } ?: return
+        if (latest <= notificationsSeenAt.value) return
+        notificationsSeenAt.value = latest
+        scope.launch(Dispatchers.Default) { q.putSetting(KEY_NOTIFICATIONS_SEEN_AT, latest.toString()) }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun buildNotificationsFeed(): Flow<List<NotificationUi>> =
@@ -1184,5 +1205,8 @@ class EventRepository(
 
         /** [M11] 既定のメディアサーバ(NIP-96)。start() で insert-if-absent して投入する。 */
         val DEFAULT_MEDIA_SERVERS = listOf("https://nostrcheck.me", "https://nostr.build")
+
+        /** app_setting: 通知を最後に閲覧した時刻（unix 秒）。未読バッジの基準。 */
+        const val KEY_NOTIFICATIONS_SEEN_AT = "notifications_seen_at"
     }
 }
