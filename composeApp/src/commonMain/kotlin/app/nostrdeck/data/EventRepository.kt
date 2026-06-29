@@ -129,11 +129,6 @@ class EventRepository(
     val relayList = MutableStateFlow<List<RelayPref>>(emptyList())
     private var relayListAt = 0L
 
-    /** 通知を最後に閲覧した時刻（unix 秒）。app_setting に永続化し、未読バッジの基準にする。 */
-    private val notificationsSeenAt = MutableStateFlow(
-        q.getSetting(KEY_NOTIFICATIONS_SEEN_AT).executeAsOneOrNull()?.toLongOrNull() ?: 0L
-    )
-
     fun start() {
         // ブートストラップ・リレーへ接続（DB に 'default' として記録。既存があれば触らない）。
         bootstrapUrls.forEach { url ->
@@ -456,22 +451,6 @@ class EventRepository(
         buildNotificationsFeed().stateIn(scope, feedSharing, emptyList())
     }
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
-
-    /** レール用の通知未読数。最後に閲覧した時刻より新しい通知の件数（最大99）。 */
-    private val notificationsUnreadCache: StateFlow<Int> by lazy {
-        combine(notificationsFeed(), notificationsSeenAt) { items, seen ->
-            items.count { it.createdAt > seen }.coerceAtMost(99)
-        }.stateIn(scope, feedSharing, 0)
-    }
-    fun notificationsUnread(): StateFlow<Int> = notificationsUnreadCache
-
-    /** 通知を閲覧済みにする（先頭の通知時刻を seen-at として永続化）。未読バッジが 0 に戻る。 */
-    fun markNotificationsSeen() {
-        val latest = notificationsFeed().value.maxOfOrNull { it.createdAt } ?: return
-        if (latest <= notificationsSeenAt.value) return
-        notificationsSeenAt.value = latest
-        scope.launch(Dispatchers.Default) { q.putSetting(KEY_NOTIFICATIONS_SEEN_AT, latest.toString()) }
-    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun buildNotificationsFeed(): Flow<List<NotificationUi>> =
@@ -986,37 +965,39 @@ class EventRepository(
     }
 
     /**
-     * 引用(q タグ / 本文中の nostr:nevent・note)と返信親を解決して NoteUi に載せる。
-     *  - q タグがあれば最優先で解決（未取得なら requestEvent で取得を促す）。
-     *  - q タグが無ければ本文中の最初の nostr:nevent1.../note1... を引用元として展開し、
-     *    その参照トークンは本文から取り除く（リンクの羅列でなく埋め込みカードで見せる）。
+     * 引用(本文中の nostr:nevent・note / q タグ)と返信親を解決して NoteUi に載せる。
+     *  - 本文の参照は「解決できたときだけ」カード化し、その参照トークンを本文から取り除く。
+     *    解決できない（未取得の）参照はリンク(↗note1…)のまま残す（届けば次の再解決で展開）。
+     *  - 本文に参照が無い場合は q タグから引用元を補完する。
      */
     private fun withQuoteAndReply(
         base: NoteUi, row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>,
     ): NoteUi {
-        val tags = parseTags(row.tags_json)
-        val quotedId = tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
-        // 本文中の nostr:nevent/note 参照は常に取り除く（カードで見せるので重複の "↗note1…" を出さない）。
         val (cleaned, inlineQuoted) = resolveInlineQuote(base.text, byPubkey)
-        // 引用元は q タグを最優先（未取得なら取得を促す）。無ければ本文参照から解決したものを使う。
-        val quoted = if (quotedId != null) {
-            resolveNoteUi(quotedId, byPubkey) ?: run { requestEvent(quotedId); null }
-        } else {
-            inlineQuoted
+        val quoted = inlineQuoted ?: run {
+            // 本文に解決できる参照が無い → q タグから補完（未取得なら取得を促す）。
+            val quotedId = parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
+            quotedId?.let { resolveNoteUi(it, byPubkey) ?: run { requestEvent(it); null } }
         }
         return base.copy(text = cleaned, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
     }
 
-    /** 本文中の最初の nostr:nevent1.../note1... を引用元 NoteUi に解決し、参照を除いた本文を返す。 */
+    /**
+     * 本文中の最初の nostr:nevent1.../note1... を引用元 NoteUi に解決する。
+     *  - 解決できれば (参照を除いた本文, 引用 NoteUi) を返す。
+     *  - 未取得なら requestEvent で取得を促し、(本文はそのまま=リンクを残す, null) を返す。
+     */
     private fun resolveInlineQuote(
         text: String?, byPubkey: Map<String, app.nostrdeck.db.Profile>,
     ): Pair<String?, NoteUi?> {
         if (text.isNullOrEmpty()) return text to null
         val ref = findEventRef(text) ?: return text to null
         val (start, end, hexId) = ref
-        val quoted = resolveNoteUi(hexId, byPubkey) ?: run { requestEvent(hexId); null }
-        // 参照を除いた本文。空文字でも null にはしない（null だと表示側が生 content にフォールバックし
-        // 取り除いたはずの nostr:nevent が再び出てしまうため）。
+        val quoted = resolveNoteUi(hexId, byPubkey)
+        if (quoted == null) {
+            requestEvent(hexId)
+            return text to null  // 未解決はリンクのまま残す
+        }
         val cleaned = (text.substring(0, start) + text.substring(end)).trim()
         return cleaned to quoted
     }
@@ -1249,8 +1230,5 @@ class EventRepository(
 
         /** [M11] 既定のメディアサーバ(NIP-96)。start() で insert-if-absent して投入する。 */
         val DEFAULT_MEDIA_SERVERS = listOf("https://nostrcheck.me", "https://nostr.build")
-
-        /** app_setting: 通知を最後に閲覧した時刻（unix 秒）。未読バッジの基準。 */
-        const val KEY_NOTIFICATIONS_SEEN_AT = "notifications_seen_at"
     }
 }

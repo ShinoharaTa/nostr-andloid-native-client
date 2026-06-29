@@ -65,11 +65,10 @@ fun DeckRail(state: DeckState) {
         Spacer(Modifier.size(6.dp))
 
         val repo = LocalRepository.current
-        val notifUnread = if (repo != null) repo.notificationsUnread().collectAsState().value else 0
 
         NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
         NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-        NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
+        NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS) {
             state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
         }
         // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
