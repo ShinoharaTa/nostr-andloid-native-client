@@ -63,7 +63,7 @@ fun NotificationsScreen(state: DeckState) {
         repo.subscribeNotifications("notifications")
         onDispose { repo.unsubscribeColumn("notifications") }
     }
-    val items = remember { repo.notificationsFeed() }.collectAsState(emptyList()).value
+    val items = remember { repo.notificationsFeed() }.collectAsState().value
 
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ColumnHeader(
@@ -101,7 +101,7 @@ fun NotificationsColumn(
         repo.subscribeNotifications(spec.id)
         onDispose { repo.unsubscribeColumn(spec.id) }
     }
-    val items = remember(spec.id) { repo.notificationsFeed() }.collectAsState(emptyList()).value
+    val items = remember(spec.id) { repo.notificationsFeed() }.collectAsState().value
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,

@@ -48,8 +48,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -379,10 +381,23 @@ class EventRepository(
         }
 
     /**
+     * 画面遷移（タブ切替・詳細表示）で都度フィードが空に戻る問題を避けるため、
+     * フィードを共有ホット StateFlow にして「直近の値」を保持する。
+     * WhileSubscribed(5s): 離脱しても 5 秒は上流を生かし、最後の値を再購読へ即返す。
+     */
+    private val feedSharing = SharingStarted.WhileSubscribed(5_000)
+
+    /**
      * [M10] ホームタイムラインの混在フィード。フォロー中の投稿に、自分宛の
      * リアクション/リポスト通知をコンパクトに混ぜて新しい順に返す（nostter 風）。
+     * 遷移で空に戻らないよう StateFlow にキャッシュ（[feedSharing]）。
      */
-    fun followingFeedMixed(): Flow<List<FeedEntry>> =
+    private val followingMixedCache: StateFlow<List<FeedEntry>> by lazy {
+        buildFollowingFeedMixed().stateIn(scope, feedSharing, emptyList())
+    }
+    fun followingFeedMixed(): StateFlow<List<FeedEntry>> = followingMixedCache
+
+    private fun buildFollowingFeedMixed(): Flow<List<FeedEntry>> =
         combine(followingFeed(), notificationsFeed(), follows) { notes, notifs, follows ->
             val followSet = follows.toSet()
             // 件数表示は不要。混ぜ込むのは「自分へのリアクション/リポスト」だけ
@@ -399,8 +414,15 @@ class EventRepository(
                 .sortedByDescending { it.sortAt }
         }.flowOn(Dispatchers.Default)
 
-    /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。 */
-    fun columnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
+    /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。
+     *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]）。 */
+    private val columnFeedCache = mutableMapOf<ReqFilter, StateFlow<List<NoteUi>>>()
+    fun columnFeed(filter: ReqFilter): StateFlow<List<NoteUi>> =
+        columnFeedCache.getOrPut(filter) {
+            buildColumnFeed(filter).stateIn(scope, feedSharing, emptyList())
+        }
+
+    private fun buildColumnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
         combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta ->
             val byPubkey = profiles.associateBy { it.pubkey }
             rows.map { row ->
@@ -423,9 +445,15 @@ class EventRepository(
         }
     }
 
-    /** 通知フィード（自分宛イベントを種別ごとに整形して新しい順に）。 */
+    /** 通知フィード（自分宛イベントを種別ごとに整形して新しい順に）。
+     *  ホーム混在フィードと通知タブの双方が購読するので StateFlow にキャッシュ（[feedSharing]）。 */
+    private val notificationsCache: StateFlow<List<NotificationUi>> by lazy {
+        buildNotificationsFeed().stateIn(scope, feedSharing, emptyList())
+    }
+    fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun notificationsFeed(): Flow<List<NotificationUi>> =
+    private fun buildNotificationsFeed(): Flow<List<NotificationUi>> =
         myPubkeyFlow.flatMapLatest { me ->
             if (me == null) flowOf(emptyList())
             else combine(
@@ -930,7 +958,7 @@ class EventRepository(
                 val original = origId?.let { resolveNoteUi(it, byPubkey) }
                     ?: parseEmbeddedEvent(row.content)?.let { noteUiFromEvent(it, byPubkey) }
                     ?: return null
-                original.copy(repostedBy = profileFor(row.pubkey, byPubkey))
+                original.copy(repostedBy = profileFor(row.pubkey, byPubkey), repostAt = row.created_at)
             }
             else -> {
                 val tags = parseTags(row.tags_json)

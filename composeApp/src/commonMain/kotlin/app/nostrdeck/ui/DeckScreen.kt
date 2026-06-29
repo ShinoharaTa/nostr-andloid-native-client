@@ -176,7 +176,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             when {
                 isFollowingFeed -> {
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
-                    val entries = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState(emptyList()).value
+                    val entries = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
@@ -189,7 +189,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 }
                 isProfile && profilePubkey != null -> {
                     val scope = rememberCoroutineScope()
-                    val notes = remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
+                    val notes = remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
                     val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
                     ProfileColumn(
@@ -202,7 +202,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     )
                 }
                 else -> {
-                    val notes = if (live) remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState(emptyList()).value
+                    val notes = if (live) remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     else SampleData.feedFor(spec)
                     FeedColumn(
                         spec, notes, modifier, listState,
