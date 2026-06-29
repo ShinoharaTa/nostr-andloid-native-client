@@ -83,7 +83,9 @@ object Bech32 {
         for (i in CHARSET.indices) rev[CHARSET[i].code] = i
     }
     private val GENERATORS = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
-    private const val MAX_LENGTH = 90
+    // BIP-173 の 90 文字制限は NIP-19 では適用されない（nevent/nprofile/naddr は
+    // リレーヒント等の TLV を含み 90 文字を容易に超える）。暴走入力を避ける緩い上限のみ。
+    private const val MAX_LENGTH = 2048
 
     /** 5bit シンボル列 [data] を hrp 付きで bech32 文字列に。 */
     fun encode(hrp: String, data: IntArray): String {

@@ -44,6 +44,13 @@ fun noteAnnotated(
                 withStyle(accent) { append(mentionLabel(bech, resolveName)) }
                 i = end
             }
+            // 素の bech32 エンティティ（nostr: 接頭辞なし）。語中ヒットを避けるため直前が英数字なら対象外。
+            bareEntityAt(text, i) -> {
+                val end = bechEnd(text, i)
+                val bech = text.substring(i, end)
+                withStyle(accent) { append(mentionLabel(bech, resolveName)) }
+                i = end
+            }
             // NIP-30: :shortcode: が emoji タグにあればインライン画像で描く。
             text[i] == ':' && emojis.isNotEmpty() && shortcodeEnd(text, i).let { it > 0 && text.substring(i + 1, it) in emojis } -> {
                 val close = shortcodeEnd(text, i)
@@ -70,6 +77,13 @@ private fun urlEnd(s: String, start: Int): Int {
     while (e < s.length && !s[e].isWhitespace()) e++
     while (e > start && s[e - 1] in ").,!?；。、）】」』") e--
     return e
+}
+
+/** 素の bech32 エンティティ（npub/nprofile/note/nevent/naddr）の先頭か。語中は除外。 */
+private val BARE_ENTITY_PREFIXES = listOf("nprofile1", "nevent1", "naddr1", "npub1", "note1")
+private fun bareEntityAt(s: String, i: Int): Boolean {
+    if (i > 0 && (s[i - 1] in '0'..'9' || s[i - 1] in 'a'..'z' || s[i - 1] in 'A'..'Z')) return false
+    return BARE_ENTITY_PREFIXES.any { s.startsWith(it, i) }
 }
 
 /** bech32 は ASCII 小英数字（大文字・1/b/i/o を除く）。後続が日本語でも誤って取り込まない。 */

@@ -1002,17 +1002,14 @@ class EventRepository(
         return cleaned to quoted
     }
 
-    /** 本文を走査し最初の解決可能な nostr:nevent1.../note1... を (開始, 終了, hex id) で返す。 */
+    /**
+     * 本文を走査し最初の解決可能な nevent1.../note1... を (開始, 終了, hex id) で返す。
+     * `nostr:` 接頭辞付き・素の表記の両方に対応（接頭辞があれば開始位置に含めて除去する）。
+     */
     private fun findEventRef(text: String): Triple<Int, Int, String>? {
-        var i = text.indexOf("nostr:")
-        while (i >= 0) {
-            val bechStart = i + 6
-            if (text.startsWith("nevent1", bechStart) || text.startsWith("note1", bechStart)) {
-                var e = bechStart
-                while (e < text.length && (text[e] in '0'..'9' || text[e] in 'a'..'z')) e++
-                Nip19.eventBechToHex(text.substring(bechStart, e))?.let { return Triple(i, e, it) }
-            }
-            i = text.indexOf("nostr:", bechStart)
+        for (m in EVENT_REF_REGEX.findAll(text)) {
+            val bech = m.value.removePrefix("nostr:")
+            Nip19.eventBechToHex(bech)?.let { return Triple(m.range.first, m.range.last + 1, it) }
         }
         return null
     }
@@ -1230,5 +1227,8 @@ class EventRepository(
 
         /** [M11] 既定のメディアサーバ(NIP-96)。start() で insert-if-absent して投入する。 */
         val DEFAULT_MEDIA_SERVERS = listOf("https://nostrcheck.me", "https://nostr.build")
+
+        /** 本文中の nevent1.../note1...（nostr: 接頭辞は任意）。直前が英数字の語中ヒットは除外。 */
+        val EVENT_REF_REGEX = Regex("(?<![a-z0-9])(nostr:)?(nevent1|note1)[a-z0-9]+")
     }
 }

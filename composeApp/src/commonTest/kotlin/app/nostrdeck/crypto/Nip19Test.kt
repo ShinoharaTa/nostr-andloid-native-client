@@ -68,4 +68,23 @@ class Nip19Test {
     fun non_32byte_payload_is_rejected() {
         assertFailsWith<IllegalArgumentException> { Nip19.hexToNpub("ab") }
     }
+
+    // note(32byte 単発) は event id をそのまま hex 化できる。
+    @Test
+    fun note_decodes_to_event_id() {
+        val hex = "ab".repeat(32)
+        val note = Nip19.hexToNote(hex)
+        assertEquals(hex, Nip19.eventBechToHex(note))
+    }
+
+    // nevent(TLV) は type=0(event id) を取り出す。リレー/著者ヒントを含む 90 文字超の
+    // 実データ（165文字）でも BIP-173 の長さ制限に引っかからず復号できること。
+    @Test
+    fun long_nevent_decodes_to_event_id() {
+        val nevent = "nevent1qvzqqqqqqypzpp9sc34tdxdvxh4jeg5xgu9ctcypmvsg0n00vwfjydkr" +
+            "jaqh0qh4qyfhwumn8ghj7urj9eeks6twduejumn9wsqzqls5u87ccud6ryf2yv6fv78ev7zjslfs08cgwnpfdrp0nj3xz0e7a7s3c6"
+        assertTrue(nevent.length > 90, "テスト前提: 90文字超の nevent")
+        val hex = Nip19.eventBechToHex(nevent)
+        assertTrue(hex != null && hex.length == 64, "64文字 hex に復号できる: $hex")
+    }
 }
