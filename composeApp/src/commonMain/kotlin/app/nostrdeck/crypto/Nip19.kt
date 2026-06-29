@@ -26,6 +26,37 @@ object Nip19 {
     /** 64文字 hex イベント id → note(bech32)（NIP-19 引用参照等）。 */
     fun hexToNote(hex: String): String = encodeFixed("note", hex)
 
+    /**
+     * note(32byte 単発) / nevent(TLV) の bech32 → 64文字 hex イベント id。
+     * 解析できなければ null（チェックサム不正・未対応 hrp など）。
+     *  - note   : 32byte の event id をそのまま hex 化。
+     *  - nevent : TLV を走査し type=0(special=event id, 32byte) を取り出す（NIP-19）。
+     */
+    fun eventBechToHex(bech: String): String? = runCatching {
+        val (hrp, five) = Bech32.decode(bech)
+        val data = Bech32.convertBits(five, 5, 8, false)
+        val bytes = ByteArray(data.size) { data[it].toByte() }
+        when (hrp) {
+            "note" -> if (bytes.size == 32) bytes.toHex() else null
+            "nevent" -> readTlvSpecial(bytes)?.takeIf { it.size == 32 }?.toHex()
+            else -> null
+        }
+    }.getOrNull()
+
+    /** TLV(NIP-19) を走査して type=0(special) の value を返す。 */
+    private fun readTlvSpecial(tlv: ByteArray): ByteArray? {
+        var i = 0
+        while (i + 2 <= tlv.size) {
+            val type = tlv[i].toInt() and 0xFF
+            val len = tlv[i + 1].toInt() and 0xFF
+            val start = i + 2
+            if (start + len > tlv.size) return null
+            if (type == 0) return tlv.copyOfRange(start, start + len)
+            i = start + len
+        }
+        return null
+    }
+
     private fun encodeFixed(hrp: String, hex: String): String {
         val data = hex.hexToBytes()
         require(data.size == 32) { "$hrp のペイロードは 32byte（hex 64文字）: ${data.size}byte" }

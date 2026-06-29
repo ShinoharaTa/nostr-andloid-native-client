@@ -2,8 +2,11 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,22 +18,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -39,6 +52,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.launch
 
 /**
  * 本文中の画像を表示する。
@@ -46,35 +60,38 @@ import coil3.request.crossfade
  *  - 2〜9枚       : グリッド（2/4枚は2列、それ以外は3列）
  *  - 10枚以上     : 横スクロールのカルーセル
  * いずれもタップで元画像（プロキシ非経由のフル解像度）を Lightbox 全画面表示する。
+ * Lightbox は複数画像のスワイプ移動・ピンチズーム・パンに対応する。
  */
 @Composable
 fun NoteImages(urls: List<String>, modifier: Modifier = Modifier) {
-    var lightbox by remember { mutableStateOf<String?>(null) }
-    val open: (String) -> Unit = { lightbox = it }
+    // タップした画像の index（null=閉）。Lightbox は urls 全体を受け取り前後にスワイプできる。
+    var lightboxIndex by remember { mutableStateOf<Int?>(null) }
+    val open: (Int) -> Unit = { lightboxIndex = it }
 
     when {
         urls.isEmpty() -> Unit
         urls.size == 1 -> Thumb(
             urls[0], proxyWidth = 800,
-            modifier = modifier.fillMaxWidth().height(200.dp), onClick = { open(urls[0]) },
+            modifier = modifier.fillMaxWidth().height(200.dp), onClick = { open(0) },
         )
         urls.size >= 10 -> ImageCarousel(urls, modifier, open)
         else -> ImageGrid(urls, modifier, open)
     }
 
-    lightbox?.let { url -> Lightbox(url) { lightbox = null } }
+    lightboxIndex?.let { idx -> Lightbox(urls, idx) { lightboxIndex = null } }
 }
 
 @Composable
-private fun ImageGrid(urls: List<String>, modifier: Modifier, onClick: (String) -> Unit) {
+private fun ImageGrid(urls: List<String>, modifier: Modifier, onClick: (Int) -> Unit) {
     val cols = when (urls.size) { 2, 4 -> 2; else -> 3 }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        urls.chunked(cols).forEach { rowUrls ->
+        urls.chunked(cols).forEachIndexed { rowIdx, rowUrls ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                rowUrls.forEach { url ->
+                rowUrls.forEachIndexed { colIdx, url ->
+                    val index = rowIdx * cols + colIdx
                     Thumb(
                         url, proxyWidth = 400,
-                        modifier = Modifier.weight(1f).aspectRatio(1f), onClick = { onClick(url) },
+                        modifier = Modifier.weight(1f).aspectRatio(1f), onClick = { onClick(index) },
                     )
                 }
                 // 端数行は空セルで列幅をそろえる。
@@ -85,13 +102,13 @@ private fun ImageGrid(urls: List<String>, modifier: Modifier, onClick: (String) 
 }
 
 @Composable
-private fun ImageCarousel(urls: List<String>, modifier: Modifier, onClick: (String) -> Unit) {
+private fun ImageCarousel(urls: List<String>, modifier: Modifier, onClick: (Int) -> Unit) {
     Row(
         modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        urls.forEach { url ->
-            Thumb(url, proxyWidth = 280, modifier = Modifier.size(140.dp), onClick = { onClick(url) })
+        urls.forEachIndexed { index, url ->
+            Thumb(url, proxyWidth = 280, modifier = Modifier.size(140.dp), onClick = { onClick(index) })
         }
     }
 }
@@ -111,37 +128,140 @@ private fun Thumb(url: String, proxyWidth: Int, modifier: Modifier, onClick: () 
     )
 }
 
-/** 元画像（プロキシ非経由）の全画面表示。タップで閉じる。ピンチでズーム可。 */
+/**
+ * 元画像（プロキシ非経由）の全画面表示。複数画像はスワイプで前後に移動。
+ *  - 1倍       : 横スワイプで前/次の画像（HorizontalPager）。
+ *  - 拡大中     : 1本指ドラッグでパン（スワイプ量に追従）。端まで来てさらにドラッグすると前/次へ。
+ *  - ダブルタップでズームのトグル、シングルタップ/×で閉じる。
+ */
 @Composable
-private fun Lightbox(url: String, onDismiss: () -> Unit) {
+private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        var scale by remember { mutableStateOf(1f) }
-        var offsetX by remember { mutableStateOf(0f) }
-        var offsetY by remember { mutableStateOf(0f) }
-        val transform = rememberTransformableState { zoomChange, panChange, _ ->
-            scale = (scale * zoomChange).coerceIn(1f, 5f)
-            offsetX += panChange.x
-            offsetY += panChange.y
-            if (scale == 1f) { offsetX = 0f; offsetY = 0f }
-        }
-        Box(
-            Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center,
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(url).crossfade(true).build(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-                    .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY)
-                    .transformable(transform),
-            )
+        val pager = rememberPagerState(initialPage = startIndex.coerceIn(0, urls.size - 1)) { urls.size }
+        val scope = rememberCoroutineScope()
+        // 現在ページが拡大中はページャのスワイプを無効化し、パン/端ハンドオフを自前で処理する。
+        var pagerScrollEnabled by remember { mutableStateOf(true) }
+
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            HorizontalPager(
+                state = pager,
+                userScrollEnabled = pagerScrollEnabled,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                ZoomableImage(
+                    url = urls[page],
+                    onTap = onDismiss,
+                    onZoomChange = { zoomed -> if (page == pager.currentPage) pagerScrollEnabled = !zoomed },
+                    onEdgeSwipe = { dir ->
+                        val target = page + dir
+                        if (target in urls.indices) scope.launch { pager.animateScrollToPage(target) }
+                    },
+                )
+            }
+
+            if (urls.size > 1) {
+                Text(
+                    "${pager.currentPage + 1} / ${urls.size}",
+                    color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+                )
+            }
             Icon(
                 Icons.Filled.Close, contentDescription = "閉じる", tint = Color.White,
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(28.dp)
                     .clickable(onClick = onDismiss),
             )
         }
+    }
+}
+
+/** 端ハンドオフ（拡大中に画像の端からさらにドラッグ）を発火する閾値(px)。 */
+private const val EDGE_HANDOFF_THRESHOLD = 140f
+
+/**
+ * ピンチズーム + 1本指パンに対応した1枚画像。
+ * `detectTransformGestures` を使うことで（multi-touch 専用の transformable と違い）
+ * 1本指ドラッグのパンがスワイプ量に追従する。パンは画像境界でクランプし、端を越えて
+ * さらにドラッグすると [onEdgeSwipe] で前後の画像へ移る。
+ */
+@Composable
+private fun ZoomableImage(
+    url: String,
+    onTap: () -> Unit,
+    onZoomChange: (Boolean) -> Unit,
+    onEdgeSwipe: (Int) -> Unit,
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    var edgeAccum by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(scale) { onZoomChange(scale > 1.01f) }
+
+    Box(
+        Modifier.fillMaxSize()
+            .onSizeChanged { boxSize = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = {
+                        if (scale > 1.01f) {
+                            scale = 1f; offset = Offset.Zero; edgeAccum = 0f
+                        } else {
+                            scale = 2.5f
+                        }
+                    },
+                )
+            }
+            .pointerInput(Unit) {
+                // 1倍かつ1本指のドラッグはページャに委ねる（横スワイプで画像送り）。
+                // 拡大中、またはピンチ(2本指)のときだけ自前で処理する。
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.count { it.pressed }
+                        val pinching = pressed >= 2
+                        if (scale > 1.01f || pinching) {
+                            val zoom = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            val newScale = (scale * zoom).coerceIn(1f, 5f)
+                            val maxX = ((newScale - 1f) * boxSize.width / 2f).coerceAtLeast(0f)
+                            val maxY = ((newScale - 1f) * boxSize.height / 2f).coerceAtLeast(0f)
+                            var nx = offset.x + pan.x
+                            var ny = offset.y + pan.y
+                            // 横方向: 境界を越えた分を edgeAccum に貯め、閾値超過で画像送り。
+                            if (newScale > 1.01f) {
+                                when {
+                                    nx > maxX -> { edgeAccum += nx - maxX; nx = maxX }
+                                    nx < -maxX -> { edgeAccum += nx + maxX; nx = -maxX }
+                                    else -> edgeAccum = 0f
+                                }
+                                if (edgeAccum > EDGE_HANDOFF_THRESHOLD) {
+                                    edgeAccum = 0f; onEdgeSwipe(-1)  // 左端を越えて右ドラッグ → 前へ
+                                } else if (edgeAccum < -EDGE_HANDOFF_THRESHOLD) {
+                                    edgeAccum = 0f; onEdgeSwipe(1)   // 右端を越えて左ドラッグ → 次へ
+                                }
+                            }
+                            scale = newScale
+                            offset = if (newScale > 1.01f) {
+                                Offset(nx.coerceIn(-maxX, maxX), ny.coerceIn(-maxY, maxY))
+                            } else {
+                                edgeAccum = 0f; Offset.Zero
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalPlatformContext.current)
+                .data(url).crossfade(true).build(),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
+        )
     }
 }

@@ -39,6 +39,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,13 +85,23 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
 
-    // 添付画像（送信時にまとめてアップロード）。本文へは差し込まないので入力が飛ばない。
-    val images = remember { mutableStateListOf<PickedImage>() }
+    // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
+    val images = remember { mutableStateListOf<ComposeAttachment>() }
     var resolution by remember { mutableStateOf(ImageResolution.MID) }
     var sending by remember { mutableStateOf(false) }
 
-    // 複数選択ピッカー → 添付リストへ追加（アップロードは送信時）。
-    val picker = rememberImagePicker { picked -> images.addAll(picked) }
+    // 複数選択ピッカー → 添付リストへ追加し、即圧縮を走らせる（アップロードは送信時）。
+    val picker = rememberImagePicker { picked ->
+        picked.forEach { p ->
+            val att = ComposeAttachment(p)
+            images.add(att)
+            scope.launch { att.compress(resolution) }
+        }
+    }
+    // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
+    LaunchedEffect(resolution) {
+        images.forEach { att -> scope.launch { att.compress(resolution) } }
+    }
 
     // ログイン中アカウント（ヘッダ表示）。
     val myPubkey = repo?.loggedInPubkey()?.collectAsState(null)?.value
@@ -134,9 +146,9 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
         if (canSend) {
             sending = true
             scope.launch {
-                // 解像度変換 → NIP-96 アップロード（順番維持）。失敗分は捨てる。
-                val urls = images.mapNotNull { img ->
-                    val p = processImage(img, resolution)
+                // 圧縮は選択時に開始済み。未完了分だけここで待って NIP-96 アップロード（順番維持）。
+                val urls = images.mapNotNull { att ->
+                    val p = att.processed ?: processImage(att.src, resolution)
                     repo?.uploadImage(p.bytes, p.mime, p.name)
                 }
                 val parts = buildList {
@@ -325,28 +337,75 @@ private fun BodyField(text: String, onChange: (String) -> Unit, modifier: Modifi
     }
 }
 
-/** 添付画像の横スクロール・カルーセル。各サムネに削除(×)。 */
+/**
+ * 添付画像の横スクロール・カルーセル。各サムネに削除(×)。
+ * サムネ下部に圧縮の進捗/結果（例: 1.5MB→293KB）を表示する。
+ */
 @Composable
-private fun ImageCarousel(images: List<PickedImage>, onRemove: (Int) -> Unit) {
+private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Unit) {
     val ctx = LocalPlatformContext.current
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(images.size) { i ->
-            Box(Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)).background(DeckColors.Surface3)) {
-                AsyncImage(
-                    model = ImageRequest.Builder(ctx).data(images[i].bytes).build(),
-                    contentDescription = "添付画像",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Icon(
-                    Icons.Outlined.Close, contentDescription = "削除", tint = Color.White,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
-                        .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                        .clickable { onRemove(i) }.padding(3.dp).size(15.dp),
-                )
+            val att = images[i]
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)).background(DeckColors.Surface3)) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(ctx).data(att.src.bytes).build(),
+                        contentDescription = "添付画像",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Icon(
+                        Icons.Outlined.Close, contentDescription = "削除", tint = Color.White,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
+                            .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { onRemove(i) }.padding(3.dp).size(15.dp),
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                val processed = att.processed
+                Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
+                    when {
+                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
+                        processed != null && processed.bytes.size < att.src.bytes.size -> Text(
+                            "${humanSize(att.src.bytes.size)}→${humanSize(processed.bytes.size)}",
+                            color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * 添付画像1枚の状態。選択時に [compress] を走らせ、結果と圧縮中フラグを Compose 状態で保持する。
+ * カルーセルの容量表示と送信時のアップロードはこの [processed] を使う。
+ */
+@Stable
+class ComposeAttachment(val src: PickedImage) {
+    var processed by mutableStateOf<PickedImage?>(null)
+        private set
+    var processing by mutableStateOf(true)
+        private set
+
+    /** 指定解像度で圧縮し直す（解像度変更や追加時に呼ぶ）。失敗時は原画像を保持。 */
+    suspend fun compress(resolution: ImageResolution) {
+        processing = true
+        processed = processImage(src, resolution)
+        processing = false
+    }
+}
+
+/** バイト数を 1.5MB / 293KB / 512B のように人間可読へ（KMP 共通実装）。 */
+private fun humanSize(bytes: Int): String = when {
+    bytes >= 1024 * 1024 -> {
+        val mb = (bytes * 10L / (1024 * 1024)) / 10.0  // 小数第1位まで
+        "${mb}MB"
+    }
+    bytes >= 1024 -> "${bytes / 1024}KB"
+    else -> "${bytes}B"
 }
 
 /** 解像度プリセット選択（低/中/高 = 長辺リサイズ）。モノクロのセグメント風。 */

@@ -431,7 +431,7 @@ class EventRepository(
         combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta ->
             val byPubkey = profiles.associateBy { it.pubkey }
             rows.map { row ->
-                applyMeta(toNoteUi(row, byPubkey[row.pubkey]).copy(replyParent = resolveReplyParent(row, byPubkey)), meta)
+                applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta)
             }
         }.flowOn(Dispatchers.Default)
 
@@ -981,15 +981,59 @@ class EventRepository(
                     ?: return null
                 original.copy(repostedBy = profileFor(row.pubkey, byPubkey), repostAt = row.created_at)
             }
-            else -> {
-                val tags = parseTags(row.tags_json)
-                val quotedId = tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
-                toNoteUi(row, byPubkey[row.pubkey]).copy(
-                    quoted = quotedId?.let { resolveNoteUi(it, byPubkey) },
-                    replyParent = resolveReplyParent(row, byPubkey),
-                )
-            }
+            else -> withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey)
         }
+    }
+
+    /**
+     * 引用(q タグ / 本文中の nostr:nevent・note)と返信親を解決して NoteUi に載せる。
+     *  - q タグがあれば最優先で解決（未取得なら requestEvent で取得を促す）。
+     *  - q タグが無ければ本文中の最初の nostr:nevent1.../note1... を引用元として展開し、
+     *    その参照トークンは本文から取り除く（リンクの羅列でなく埋め込みカードで見せる）。
+     */
+    private fun withQuoteAndReply(
+        base: NoteUi, row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>,
+    ): NoteUi {
+        val tags = parseTags(row.tags_json)
+        val quotedId = tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
+        // 本文中の nostr:nevent/note 参照は常に取り除く（カードで見せるので重複の "↗note1…" を出さない）。
+        val (cleaned, inlineQuoted) = resolveInlineQuote(base.text, byPubkey)
+        // 引用元は q タグを最優先（未取得なら取得を促す）。無ければ本文参照から解決したものを使う。
+        val quoted = if (quotedId != null) {
+            resolveNoteUi(quotedId, byPubkey) ?: run { requestEvent(quotedId); null }
+        } else {
+            inlineQuoted
+        }
+        return base.copy(text = cleaned, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
+    }
+
+    /** 本文中の最初の nostr:nevent1.../note1... を引用元 NoteUi に解決し、参照を除いた本文を返す。 */
+    private fun resolveInlineQuote(
+        text: String?, byPubkey: Map<String, app.nostrdeck.db.Profile>,
+    ): Pair<String?, NoteUi?> {
+        if (text.isNullOrEmpty()) return text to null
+        val ref = findEventRef(text) ?: return text to null
+        val (start, end, hexId) = ref
+        val quoted = resolveNoteUi(hexId, byPubkey) ?: run { requestEvent(hexId); null }
+        // 参照を除いた本文。空文字でも null にはしない（null だと表示側が生 content にフォールバックし
+        // 取り除いたはずの nostr:nevent が再び出てしまうため）。
+        val cleaned = (text.substring(0, start) + text.substring(end)).trim()
+        return cleaned to quoted
+    }
+
+    /** 本文を走査し最初の解決可能な nostr:nevent1.../note1... を (開始, 終了, hex id) で返す。 */
+    private fun findEventRef(text: String): Triple<Int, Int, String>? {
+        var i = text.indexOf("nostr:")
+        while (i >= 0) {
+            val bechStart = i + 6
+            if (text.startsWith("nevent1", bechStart) || text.startsWith("note1", bechStart)) {
+                var e = bechStart
+                while (e < text.length && (text[e] in '0'..'9' || text[e] in 'a'..'z')) e++
+                Nip19.eventBechToHex(text.substring(bechStart, e))?.let { return Triple(i, e, it) }
+            }
+            i = text.indexOf("nostr:", bechStart)
+        }
+        return null
     }
 
     /** [M8-repost] イベント id を DB から解決して表示用 NoteUi に（無ければ null）。 */

@@ -111,7 +111,7 @@ fun NoteItem(
             }
             Spacer(Modifier.size(8.dp))
             // [M10] アクションはアイコンのみ（数値なし）。すべてボタンとして機能する。
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                 ActionButton(Icons.AutoMirrored.Outlined.Reply, DeckColors.Text3, onClick = onReply)
                 Box {
                     ActionButton(
@@ -159,14 +159,14 @@ fun NoteItem(
   }
 }
 
-/** アイコンのみのアクションボタン（数値ラベルなし）。 */
+/** アイコンのみのアクションボタン（数値ラベルなし）。一回り大きめでタップしやすく。 */
 @Composable
 private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
     Icon(
         icon, contentDescription = null, tint = tint,
         modifier = Modifier
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(vertical = 2.dp).size(17.dp),
+            .padding(vertical = 2.dp).size(21.dp),
     )
 }
 
