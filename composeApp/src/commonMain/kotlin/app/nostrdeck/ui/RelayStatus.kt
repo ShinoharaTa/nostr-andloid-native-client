@@ -1,7 +1,6 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,20 +29,26 @@ import app.nostrdeck.nostr.RelayConn
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
 
+// リレー接続状態の信号色（接続=緑 / 接続中=黄 / 切断=グレー）。状態を一目で判別するための例外的な配色。
+private val RelayGreen = Color(0xFF3FB950)
+private val RelayAmber = Color(0xFFD8A11A)
+
+/** リレー接続状態の色（緑/黄/グレー）。 */
+fun relayStateColor(state: RelayConnState): Color = when (state) {
+    RelayConnState.CONNECTED -> RelayGreen
+    RelayConnState.CONNECTING -> RelayAmber
+    RelayConnState.DISCONNECTED -> DeckColors.Text3
+}
+
 /**
- * リレー接続状態の点（モノクロ）。
- *  - CONNECTED   : 塗り ●（白）
- *  - CONNECTING  : 半 ◑（淡色で塗り）
- *  - DISCONNECTED: 輪郭 ○（枠のみ）
+ * リレー接続状態の点（信号色・塗り）。
+ *  - CONNECTED   : 緑 ●
+ *  - CONNECTING  : 黄 ●
+ *  - DISCONNECTED: グレー ●
  */
 @Composable
 fun RelayStatusDot(state: RelayConnState, size: Int = 8) {
-    val m = Modifier.size(size.dp).clip(CircleShape)
-    when (state) {
-        RelayConnState.CONNECTED -> Box(m.background(DeckColors.Text))
-        RelayConnState.CONNECTING -> Box(m.background(DeckColors.Text3))
-        RelayConnState.DISCONNECTED -> Box(m.border(1.dp, DeckColors.Text3, CircleShape))
-    }
+    Box(Modifier.size(size.dp).clip(CircleShape).background(relayStateColor(state)))
 }
 
 /** 集約点。全接続=塗り / 一部接続=淡 / 全切断=輪郭。 */
@@ -113,7 +118,7 @@ private fun RelayStatusRow(c: RelayConn) {
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(10.dp))
-        Text(statusLabel(c.state), color = statusColor(c.state), fontSize = 11.5.sp)
+        Text(statusLabel(c.state), color = relayStateColor(c.state), fontSize = 11.5.sp)
     }
 }
 
@@ -121,10 +126,4 @@ private fun statusLabel(s: RelayConnState): String = when (s) {
     RelayConnState.CONNECTED -> "接続"
     RelayConnState.CONNECTING -> "接続中"
     RelayConnState.DISCONNECTED -> "切断"
-}
-
-private fun statusColor(s: RelayConnState): Color = when (s) {
-    RelayConnState.CONNECTED -> DeckColors.Text2
-    RelayConnState.CONNECTING -> DeckColors.Text3
-    RelayConnState.DISCONNECTED -> DeckColors.Text3
 }
