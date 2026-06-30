@@ -109,6 +109,10 @@ CREATE TABLE relay (
 upsertRelay:
 INSERT OR REPLACE INTO relay(url, read, write, source) VALUES (?, ?, ?, ?);
 
+-- Settings の Read/Write チェック切替（既存リレーの read/write だけ更新。source は維持）。
+setRelayReadWrite:
+UPDATE relay SET read = ?, write = ? WHERE url = ?;
+
 -- ブートストラップ等、既にあれば触らない初期投入。
 insertRelayIfAbsent:
 INSERT OR IGNORE INTO relay(url, read, write, source) VALUES (?, ?, ?, ?);
@@ -332,3 +336,42 @@ SELECT value FROM app_setting WHERE key = ?;
 
 putSetting:
 INSERT OR REPLACE INTO app_setting(key, value) VALUES (?, ?);
+
+-- ============ used_emoji: 過去に飛ばした絵文字（リアクションピッカーの「最近」） ============
+-- content = 送信した content（Unicode 絵文字 or ":shortcode:"）。image_url はカスタムのみ。
+-- 最近/よく使う順で先頭に出す。used_hashtag と同方針（UPSERT 不可なので2文）。
+CREATE TABLE used_emoji (
+    content   TEXT NOT NULL PRIMARY KEY,
+    image_url TEXT,
+    last_used INTEGER NOT NULL,
+    uses      INTEGER NOT NULL DEFAULT 1
+);
+
+insertUsedEmojiIfAbsent:
+INSERT OR IGNORE INTO used_emoji(content, image_url, last_used, uses) VALUES (?, ?, ?, 1);
+
+touchUsedEmoji:
+UPDATE used_emoji SET last_used = ?, uses = uses + 1, image_url = ? WHERE content = ?;
+
+usedEmojisByRecency:
+SELECT * FROM used_emoji ORDER BY last_used DESC LIMIT 64;
+
+clearUsedEmojis:
+DELETE FROM used_emoji;
+
+-- ============ custom_emoji: NIP-51 自分の絵文字リスト（kind:10030 + 参照 kind:30030） ============
+-- shortcode→画像URL。リスト/セット受信のたびに upsert。鍵切替で全消し（アカウント別）。
+CREATE TABLE custom_emoji (
+    shortcode  TEXT NOT NULL PRIMARY KEY,
+    image_url  TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+upsertCustomEmoji:
+INSERT OR REPLACE INTO custom_emoji(shortcode, image_url, updated_at) VALUES (?, ?, ?);
+
+allCustomEmojis:
+SELECT * FROM custom_emoji ORDER BY shortcode ASC;
+
+clearCustomEmojis:
+DELETE FROM custom_emoji;

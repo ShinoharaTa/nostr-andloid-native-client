@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -27,7 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -240,9 +244,10 @@ private fun SignerSettings() {
 
 /**
  * リレー設定（NIP-65 Inbox/Outbox）。kind:10002 から自動取得した read/write リレーを
- * ここに**明示**し、手動で追加・削除できる（取得/配信に使うリレーの編集可能な置き場）。
- *  - read  = Inbox  : 自分宛（メンション/リプライ）を読みに行く
- *  - write = Outbox : 自分の投稿を流す
+ * ここに**明示**し、各行の Read/Write チェックで編集できる。
+ *  - Read  = Inbox  : 自分宛（メンション/リプライ）を読みに行く（=購読接続する）
+ *  - Write = Outbox : 自分の投稿を流す（配信時のみ送信。常時接続はしない）
+ * 「保存」で現在の設定を kind:10002 として署名し、Write リレー ∪ 接続中リレーへ配信する。
  */
 @Composable
 private fun RelaySettings() {
@@ -253,11 +258,15 @@ private fun RelaySettings() {
     }
     val relays by repo.relaysFlow().collectAsState(emptyList())
     var input by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val toast = rememberToaster()
+    var publishing by remember { mutableStateOf(false) }
 
     Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = 12.sp)
     Spacer(Modifier.size(4.dp))
     Text(
-        "kind:10002 から自動取得し、ここで編集できます。read=Inbox（自分宛を読む）/ write=Outbox（投稿を流す）。",
+        "Read=Inbox（自分宛を読む・購読接続）/ Write=Outbox（投稿を流す）。" +
+            "チェックを編集して「保存」で kind:10002 を公開します。",
         color = DeckColors.Text3, fontSize = 11.sp,
     )
     Spacer(Modifier.size(14.dp))
@@ -275,25 +284,35 @@ private fun RelaySettings() {
     }
 
     Spacer(Modifier.size(12.dp))
+    Button(
+        enabled = !publishing,
+        onClick = {
+            publishing = true
+            scope.launch {
+                val ok = repo.publishRelayList()
+                publishing = false
+                toast(if (ok) "リレーリストを公開しました" else "公開に失敗しました（鍵を確認してください）")
+            }
+        },
+    ) { Text(if (publishing) "保存中…" else "保存") }
+
+    Spacer(Modifier.size(12.dp))
     HorizontalDivider(color = DeckColors.Border)
 
     LazyColumn(Modifier.fillMaxWidth()) {
         items(relays, key = { it.url }) { r ->
+            val read = r.read != 0L
+            val write = r.write != 0L
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(r.url, color = DeckColors.Text, fontSize = 13.sp)
-                    Text(
-                        buildString {
-                            if (r.read != 0L) append("Inbox ")
-                            if (r.write != 0L) append("Outbox ")
-                            append("· ${r.source}")
-                        },
-                        color = DeckColors.Text3, fontSize = 11.sp,
-                    )
+                    Text("· ${r.source}", color = DeckColors.Text3, fontSize = 11.sp)
                 }
+                RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
+                RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
                 Text(
                     "削除", color = DeckColors.Accent, fontSize = 12.sp,
                     modifier = Modifier.clickable { repo.removeRelay(r.url) }.padding(8.dp),
@@ -301,6 +320,26 @@ private fun RelaySettings() {
             }
             HorizontalDivider(color = DeckColors.Border)
         }
+    }
+}
+
+/** リレー行の Read/Write チェック（ラベル + Checkbox・モノクロ）。 */
+@Composable
+private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 2.dp),
+    ) {
+        Text(label, color = DeckColors.Text3, fontSize = 10.sp)
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = DeckColors.Accent,
+                uncheckedColor = DeckColors.Text3,
+                checkmarkColor = DeckColors.Bg,
+            ),
+        )
     }
 }
 

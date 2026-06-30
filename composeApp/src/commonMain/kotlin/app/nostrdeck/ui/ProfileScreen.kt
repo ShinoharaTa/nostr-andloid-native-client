@@ -276,7 +276,7 @@ private fun ProfileHeaderCard(
             )
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(2.dp))
-                Text(it, color = DeckColors.Text2, fontSize = 13.sp)
+                Nip05Handle(pubkey, it, fontSize = 13.sp)
             }
             npub?.let {
                 Spacer(Modifier.height(4.dp))
@@ -305,7 +305,7 @@ private fun ProfileBanner(url: String?) {
     if (!url.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(ImageProxy.proxied(url, width = 900, quality = 80))
+                .data(ImageProxy.proxied(url, width = 900, quality = 80, animated = true))
                 .crossfade(true).build(),
             contentDescription = "banner",
             modifier = Modifier.fillMaxWidth().height(120.dp).background(DeckColors.Surface3),

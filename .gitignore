@@ -13,3 +13,8 @@ xcuserdata/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# リリース署名（秘匿情報・絶対にコミットしない）
+keystore.properties
+*.jks
+*.keystore

@@ -65,7 +65,7 @@ fun CollapsibleText(
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(ctx)
-                        .data(ImageProxy.proxied(url, width = 64, quality = 80)).crossfade(true).build(),
+                        .data(ImageProxy.proxied(url, width = 64, quality = 80, animated = true)).crossfade(true).build(),
                     contentDescription = ":$code:",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(20.dp),

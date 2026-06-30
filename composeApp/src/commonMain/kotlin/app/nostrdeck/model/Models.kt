@@ -144,6 +144,15 @@ data class ReactionUi(
     val imageUrl: String? = null,
 )
 
+/**
+ * 自分のカスタム絵文字1件（NIP-30/NIP-51）。kind:10030 の emoji タグ・参照先 kind:30030 から解決。
+ * リアクション送信時は content=":[shortcode]:"、tags に ["emoji", shortcode, url] を付ける。
+ */
+data class CustomEmoji(val shortcode: String, val url: String)
+
+/** 過去に飛ばした絵文字（used_emoji）。content=Unicode 絵文字 or ":shortcode:"、url はカスタムのみ。 */
+data class UsedEmoji(val content: String, val imageUrl: String?)
+
 /** [M10-notif] 通知の種別。 */
 enum class NotificationKind { REPLY, MENTION, REACTION, REPOST }
 

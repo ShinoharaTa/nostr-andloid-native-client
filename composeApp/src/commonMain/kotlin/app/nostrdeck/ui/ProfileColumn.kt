@@ -95,7 +95,7 @@ private fun ProfileHeaderCard(
                 )
                 profile?.handle?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.size(2.dp))
-                    Text(it, color = DeckColors.Text2, fontSize = 12.5.sp)
+                    Nip05Handle(pubkey, it, fontSize = 12.5.sp)
                 }
             }
             FollowButton(isFollowing, onFollowToggle)

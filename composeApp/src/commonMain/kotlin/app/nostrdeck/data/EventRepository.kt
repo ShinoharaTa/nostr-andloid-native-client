@@ -24,6 +24,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
@@ -35,6 +36,7 @@ import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.UnsignedEvent
+import app.nostrdeck.model.UsedEmoji
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayConn
@@ -130,16 +132,20 @@ class EventRepository(
     val relayList = MutableStateFlow<List<RelayPref>>(emptyList())
     private var relayListAt = 0L
 
+    /** 自分の kind:10030（NIP-51 絵文字リスト）の最新 created_at（古い版を無視）。 */
+    private var emojiListAt = 0L
+
     fun start() {
         // ブートストラップ・リレーへ接続（DB に 'default' として記録。既存があれば触らない）。
         bootstrapUrls.forEach { url ->
             q.insertRelayIfAbsent(url, 1, 1, "default")
             ensureRelay(url)
         }
-        // 永続化済みリレー（前回の NIP-65/手動分）にも接続する。
+        // 永続化済みリレーのうち read(Inbox) を有効にしたものだけ購読接続する。
+        // write 専用(Outbox)リレーは購読せず、配信時に一時接続して EVENT を送る（NIP-65 outbox）。
         scope.launch {
             q.allRelays().asFlow().mapToList(Dispatchers.Default).collect { rows ->
-                rows.forEach { ensureRelay(it.url) }
+                rows.forEach { if (it.read != 0L) ensureRelay(it.url) }
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
@@ -153,6 +159,7 @@ class EventRepository(
             myPubkey = me; myPubkeyFlow.value = me
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
+            subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
         }
     }
 
@@ -217,6 +224,55 @@ class EventRepository(
     /** リレーを設定から外す（次回起動で接続対象から除外。現セッションの接続は維持）。 */
     fun removeRelay(url: String) {
         q.deleteRelay(url)
+        // 購読接続中なら閉じる（write 専用は元から接続していないので無害）。
+        scope.launch(relayDispatcher) {
+            relays.remove(url)?.let { it.stop(); refreshRelayConns() }
+        }
+    }
+
+    /**
+     * Settings の Read/Write チェック切替。DB の read/write を更新し、接続を追従させる。
+     *  - read=true へ  : 未接続なら購読接続する（Inbox として読む）。
+     *  - read=false へ : 購読接続を閉じる（write 専用は配信時のみ一時接続）。
+     * write は配信先の選別に使うだけで、ここでは接続を張らない（NIP-65 outbox）。
+     */
+    fun setRelayReadWrite(url: String, read: Boolean, write: Boolean) {
+        q.setRelayReadWrite(if (read) 1 else 0, if (write) 1 else 0, url)
+        scope.launch(relayDispatcher) {
+            if (read) {
+                if (!relays.containsKey(url)) ensureRelay(url)
+            } else {
+                relays.remove(url)?.let { it.stop(); refreshRelayConns() }
+            }
+        }
+    }
+
+    /**
+     * 現在のリレー設定（DB）を kind:10002（NIP-65）として署名・配信する。
+     * `r` タグは read+write=マーカー無し / read のみ="read" / write のみ="write"。
+     * 配信先は [publishTargets]（write リレー ∪ 接続中リレー）。Settings の「保存して公開」から呼ぶ。
+     * 返り値は配信できたか（署名鍵が無い等で失敗したら false）。
+     */
+    suspend fun publishRelayList(): Boolean {
+        val rows = q.allRelays().executeAsList()
+        val tags = rows.mapNotNull { r ->
+            val read = r.read != 0L
+            val write = r.write != 0L
+            when {
+                read && write -> listOf("r", r.url)
+                read -> listOf("r", r.url, "read")
+                write -> listOf("r", r.url, "write")
+                else -> null  // read/write 両方オフのリレーは公開リストに出さない
+            }
+        }
+        return runCatching {
+            val signed = publishSigned(UnsignedEvent(kind = 10002, content = "", tags = tags))
+            // 自分の最新版として記録し、購読エコーで古い扱いされないようにする。
+            relayListAt = signed.createdAt
+            relayList.value = rows.filter { it.read != 0L || it.write != 0L }
+                .map { RelayPref(it.url, it.read != 0L, it.write != 0L, it.source) }
+            true
+        }.getOrElse { false }
     }
 
     /**
@@ -233,6 +289,7 @@ class EventRepository(
             // 旧アカウント依存の解決済み状態をリセット。
             follows.value = emptyList(); followsAt = 0L
             relayList.value = emptyList(); relayListAt = 0L
+            emojiListAt = 0L
 
             // 履歴・キャッシュを全消去（NIP-65 リレーも。default/manual は維持）。
             q.transaction {
@@ -242,11 +299,13 @@ class EventRepository(
                 q.clearChannels()
                 q.clearPublishQueue()
                 q.clearNip65Relays()
+                q.clearCustomEmojis()  // カスタム絵文字リストはアカウント別なので消す。
             }
 
-            // 新しい鍵でフォロー(kind:3)・リレーリスト(kind:10002)を取り直す。
+            // 新しい鍵でフォロー(kind:3)・リレーリスト(kind:10002)・絵文字リスト(kind:10030)を取り直す。
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
+            subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
@@ -599,6 +658,29 @@ class EventRepository(
     /** プロフィール画面を開いたとき等に kind:0 の取得を促す（バッチ REQ に投入）。 */
     fun loadProfile(pubkey: String) = requestProfile(pubkey)
 
+    /**
+     * NIP-05 検証。`nip05`（kind:0 の handle, 例: name@example.com）を
+     * `https://<domain>/.well-known/nostr.json?name=<local>` で引き、
+     * 返ってきた pubkey が当該ユーザーの hex と一致するか確認する。
+     * 一致 → true（OK）／不一致・取得失敗・不正形式 → false（異常）。
+     */
+    suspend fun verifyNip05(pubkey: String, nip05: String): Boolean = withContext(Dispatchers.Default) {
+        runCatching {
+            val id = nip05.trim()
+            if (id.isEmpty()) return@runCatching false
+            val at = id.indexOf('@')
+            // 「name@domain」。@ が無い場合はドメインのみとみなし local="_"（ルート識別子）。
+            val local = if (at >= 0) id.substring(0, at) else "_"
+            val domain = (if (at >= 0) id.substring(at + 1) else id).lowercase()
+            if (domain.isEmpty() || !domain.contains('.')) return@runCatching false
+            val url = "https://$domain/.well-known/nostr.json?name=$local"
+            val body = uploadHttp.get(url).bodyAsText()
+            val names = json.parseToJsonElement(body).jsonObject["names"]?.jsonObject ?: return@runCatching false
+            val resolved = names[local]?.jsonPrimitive?.contentOrNull ?: return@runCatching false
+            resolved.equals(pubkey, ignoreCase = true)
+        }.getOrDefault(false)
+    }
+
     /** [M10] 本文メンション解決用に pubkey(hex)→表示名 のマップを流す（名前が空のものは除外）。 */
     fun profileNames(): Flow<Map<String, String>> =
         profilesFlow.map { rows -> rows.filter { it.name.isNotBlank() }.associate { it.pubkey to it.name } }
@@ -675,15 +757,42 @@ class EventRepository(
         recordHashtags(content, signed.createdAt)
     }
 
-    /** [M8] NIP-25 リアクション（kind:7）。デフォルトは "+"（♡=いいね）。即時にカウント反映。 */
-    suspend fun publishReaction(target: NostrEvent, emoji: String = "+") {
-        publishSigned(
-            UnsignedEvent(
-                kind = 7, content = emoji,
-                tags = listOf(listOf("e", target.id), listOf("p", target.pubkey)),
-            ),
-        )
+    /**
+     * [M8] NIP-25 リアクション（kind:7）。デフォルトは "+"（♡=いいね）。即時にカウント反映。
+     * カスタム絵文字は [emoji]=":shortcode:" + [imageUrl] を渡すと NIP-30 の `emoji` タグを付ける。
+     * "+" 以外はピッカーの「最近」（used_emoji）に記録する。
+     */
+    suspend fun publishReaction(target: NostrEvent, emoji: String = "+", imageUrl: String? = null) {
+        val tags = buildList {
+            add(listOf("e", target.id))
+            add(listOf("p", target.pubkey))
+            if (imageUrl != null && emoji.length >= 2 && emoji.startsWith(":") && emoji.endsWith(":")) {
+                add(listOf("emoji", emoji.substring(1, emoji.length - 1), imageUrl))
+            }
+        }
+        publishSigned(UnsignedEvent(kind = 7, content = emoji, tags = tags))
+        recordUsedEmoji(emoji, imageUrl)
     }
+
+    /** リアクションピッカーの「最近」用に、飛ばした絵文字を記録（"+"/空は対象外）。 */
+    private fun recordUsedEmoji(content: String, imageUrl: String?) {
+        if (content == "+" || content.isEmpty()) return
+        val now = currentUnixTime()
+        q.insertUsedEmojiIfAbsent(content, imageUrl, now)
+        q.touchUsedEmoji(now, imageUrl, content)
+    }
+
+    /** リアクションピッカー: 自分のカスタム絵文字（NIP-51 kind:10030/30030 由来）一覧。 */
+    fun customEmojisFlow(): Flow<List<CustomEmoji>> =
+        q.allCustomEmojis().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.map { CustomEmoji(it.shortcode, it.image_url) }
+        }
+
+    /** リアクションピッカー: 過去に飛ばした絵文字（最近/よく使う順）。 */
+    fun recentEmojisFlow(): Flow<List<UsedEmoji>> =
+        q.usedEmojisByRecency().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.map { UsedEmoji(it.content, it.image_url) }
+        }
 
     /**
      * [M8-counts] ♡ のトグル。未リアクションなら "+" を送信、既にリアクション済みなら
@@ -747,10 +856,33 @@ class EventRepository(
         q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, storedContent, tagsToJson(signed.tags), signed.sig)
         indexTags(signed)
         q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
-        // TODO(outbox): write リレー優先で配信する。現状は接続中の全リレーへ送る（relayDispatcher で直列化）。
-        withContext(relayDispatcher) { relays.values.forEach { it.publish(payload) } }
+        // NIP-65 outbox: write(Outbox) リレー ∪ 接続中(Inbox)リレーへ配信する。
+        publishTo(payload)
         // TODO: handle OK/NIP-20, retry from publish_queue
         return signed
+    }
+
+    /**
+     * 署名済みイベント JSON を配信する。配信先は write リレー ∪ 接続中リレー。
+     * 接続中(=Inbox/read)のものはそのまま送り、未接続の write 専用リレーへは
+     * 一時接続を張って送信し、フラッシュ後に閉じる（購読は張らない）。
+     */
+    private suspend fun publishTo(payload: String) = withContext(relayDispatcher) {
+        val writeUrls = q.allRelays().executeAsList().filter { it.write != 0L }.map { it.url }
+        val connectedUrls = relays.keys.toList()
+        (writeUrls + connectedUrls).toSet().forEach { url ->
+            val c = relays[url]
+            if (c != null) c.publish(payload) else scope.launch { publishTransient(url, payload) }
+        }
+    }
+
+    /** 未接続の write 専用リレーへ一時接続で1イベントを配信する（購読なし・送信後に閉じる）。 */
+    private suspend fun publishTransient(url: String, payload: String) {
+        val c = RelayClient(url, scope)
+        c.start()
+        c.publish(payload)  // outgoing は BUFFERED。接続確立後にフラッシュされる。
+        delay(8_000)         // 送信フレームを流す猶予を取ってから閉じる。
+        c.stop()
     }
 
     /** レコメンド用に使用したハッシュタグを記録（最近順）。 */
@@ -882,7 +1014,36 @@ class EventRepository(
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
             10002 -> updateRelayList(e)
+            10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
+            30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
         }
+    }
+
+    /**
+     * 自分の kind:10030（NIP-51 絵文字リスト）。直接の `emoji` タグを取り込み、
+     * `a`(=30030:pubkey:dtag) 参照のセット作者へ購読を張って kind:30030 を取りに行く。古い版は無視。
+     */
+    private fun updateEmojiList(e: NostrEvent) {
+        if (e.pubkey != myPubkey) return
+        if (e.createdAt < emojiListAt) return
+        emojiListAt = e.createdAt
+        importEmojiTags(e)
+        e.tags.filter { it.size >= 2 && it[0] == "a" && it[1].startsWith("30030:") }.forEach { t ->
+            val author = t[1].split(":").getOrNull(1) ?: return@forEach
+            if (author.isNotBlank()) {
+                subscribeAll("emojiset_$author", Filter(kinds = listOf(30030), authors = listOf(author)))
+            }
+        }
+    }
+
+    /** kind:30030 絵文字セット。`emoji` タグ(shortcode/url)を取り込む。 */
+    private fun updateEmojiSet(e: NostrEvent) = importEmojiTags(e)
+
+    /** NIP-30 `["emoji", shortcode, url]` タグを custom_emoji へ upsert。 */
+    private fun importEmojiTags(e: NostrEvent) {
+        val now = currentUnixTime()
+        e.tags.filter { it.size >= 3 && it[0] == "emoji" && it[1].isNotBlank() && it[2].isNotBlank() }
+            .forEach { q.upsertCustomEmoji(it[1], it[2], now) }
     }
 
     /** 自分の kind:3 から p タグ（フォロー先）を取り出す。古い版は無視（created_at で判定）。 */
@@ -896,7 +1057,8 @@ class EventRepository(
     /**
      * 自分の kind:10002（NIP-65）から `r` タグを取り出してリレーリストへ。
      * マーカー無し=read+write、"read"=Inbox のみ、"write"=Outbox のみ。
-     * DB に 'nip65' として保存し、対象リレーへ接続する。古い版は無視。
+     * DB に 'nip65' として保存し、read(Inbox) のものだけ購読接続する。古い版は無視。
+     * write 専用(Outbox)は購読せず、配信時に一時接続する（NIP-65 outbox）。
      */
     private fun updateRelayList(e: NostrEvent) {
         if (e.pubkey != myPubkey) return
@@ -908,7 +1070,7 @@ class EventRepository(
         }
         entries.forEach {
             q.upsertRelay(it.url, if (it.read) 1 else 0, if (it.write) 1 else 0, "nip65")
-            ensureRelay(it.url)
+            if (it.read) ensureRelay(it.url)
         }
         relayList.value = entries
     }

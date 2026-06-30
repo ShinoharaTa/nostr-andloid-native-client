@@ -49,7 +49,7 @@ private fun ReactionChip(reaction: ReactionUi) {
             if (reaction.imageUrl != null) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalPlatformContext.current)
-                        .data(ImageProxy.proxied(reaction.imageUrl, width = 48, quality = 80))
+                        .data(ImageProxy.proxied(reaction.imageUrl, width = 48, quality = 80, animated = true))
                         .crossfade(true).build(),
                     contentDescription = reaction.display,
                     modifier = Modifier.size(16.dp),

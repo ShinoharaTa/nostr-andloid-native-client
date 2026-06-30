@@ -51,6 +51,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.window)          // FoldingFeature
+            implementation(libs.coil.gif)                  // アニメGIF/WebP デコーダ
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android)
             implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体

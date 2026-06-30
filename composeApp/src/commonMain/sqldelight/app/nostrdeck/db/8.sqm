@@ -1,0 +1,16 @@
+-- v8 -> v9: リアクション送信用の2テーブルを追加。
+--  used_emoji   : 過去に飛ばした絵文字（最近/よく使う順でピッカー先頭に出す）。
+--  custom_emoji : NIP-51(kind:10030 + 参照先 kind:30030) から解決した自分のカスタム絵文字。
+-- 新規テーブルなので CREATE IF NOT EXISTS のみ（relay/media_server と同方針）。
+CREATE TABLE IF NOT EXISTS used_emoji (
+    content   TEXT NOT NULL PRIMARY KEY,
+    image_url TEXT,
+    last_used INTEGER NOT NULL,
+    uses      INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS custom_emoji (
+    shortcode  TEXT NOT NULL PRIMARY KEY,
+    image_url  TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);

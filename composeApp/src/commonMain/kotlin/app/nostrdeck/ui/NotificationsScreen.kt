@@ -199,7 +199,7 @@ private fun LeftIndicator(n: NotificationUi) {
         n.kind == NotificationKind.REACTION && n.reactionImageUrl != null ->
             AsyncImage(
                 model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(ImageProxy.proxied(n.reactionImageUrl, width = 48, quality = 80))
+                    .data(ImageProxy.proxied(n.reactionImageUrl, width = 48, quality = 80, animated = true))
                     .crossfade(true).build(),
                 contentDescription = n.reaction,
                 modifier = top.size(glyph),

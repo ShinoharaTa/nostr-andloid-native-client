@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Repeat
@@ -59,6 +60,7 @@ fun NoteItem(
   val scope = rememberCoroutineScope()
   var repostMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
+  var showReactionPicker by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
   Column(modifier.fillMaxWidth()) {
@@ -130,12 +132,17 @@ fun NoteItem(
                         )
                     }
                 }
-                ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                // Zap先(lud16)が未設定なら ⚡ は出さない（Zap できない相手にボタンを見せない）。
+                if (!note.author.lud16.isNullOrBlank()) {
+                    ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                }
                 ActionButton(
                     if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
                     onClick = { scope.launch { repo?.toggleReaction(note.event) } },
                 )
+                // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
+                ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
             }
         }
     }
@@ -148,13 +155,18 @@ fun NoteItem(
           onDismissRequest = { showZap = false },
           title = { Text("⚡ Zap") },
           text = {
-              Text(
-                  if (!lud.isNullOrBlank())
-                      "${note.author.name} の Lightning アドレス:\n$lud\n\n自動 Zap（NIP-57）は今後対応します。"
-                  else "このユーザーは Lightning アドレス(lud16)を設定していません。",
-              )
+              // ⚡ は lud16 がある時だけ表示しているので、ここでは常に設定済み。
+              Text("${note.author.name} の Lightning アドレス:\n$lud\n\n自動 Zap（NIP-57）は今後対応します。")
           },
           confirmButton = { TextButton(onClick = { showZap = false }) { Text("閉じる") } },
+      )
+  }
+
+  // 絵文字リアクションピッカー（NIP-25/30）。選択で kind:7 を送る。
+  if (showReactionPicker) {
+      ReactionPickerSheet(
+          onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl) } },
+          onDismiss = { showReactionPicker = false },
       )
   }
 }

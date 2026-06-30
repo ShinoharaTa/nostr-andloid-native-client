@@ -9,9 +9,12 @@ import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.KeystoreKeyVault
 import app.nostrdeck.signer.SignerProvider
+import android.os.Build
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
@@ -39,7 +42,13 @@ class MainActivity : ComponentActivity() {
         // 画像: メモリ + ディスクキャッシュ(上限256MB)。URL はプロキシで圧縮済み。
         SingletonImageLoader.setSafe { ctx ->
             ImageLoader.Builder(ctx)
-                .components { add(KtorNetworkFetcherFactory()) }
+                .components {
+                    add(KtorNetworkFetcherFactory())
+                    // アニメ GIF / WebP を動かす。API28+ は ImageDecoder ベース、
+                    // それ未満(26/27)は giflib ベースの GifDecoder にフォールバック。
+                    if (Build.VERSION.SDK_INT >= 28) add(AnimatedImageDecoder.Factory())
+                    else add(GifDecoder.Factory())
+                }
                 .memoryCache { MemoryCache.Builder().maxSizePercent(ctx, 0.20).build() }
                 .diskCache {
                     DiskCache.Builder()

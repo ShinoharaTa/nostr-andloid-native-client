@@ -117,7 +117,7 @@ private fun ImageCarousel(urls: List<String>, modifier: Modifier, onClick: (Int)
 private fun Thumb(url: String, proxyWidth: Int, modifier: Modifier, onClick: () -> Unit) {
     AsyncImage(
         model = ImageRequest.Builder(LocalPlatformContext.current)
-            .data(ImageProxy.proxied(url, width = proxyWidth, quality = 75))
+            .data(ImageProxy.proxied(url, width = proxyWidth, quality = 75, animated = true))
             .crossfade(true).build(),
         contentDescription = null,
         contentScale = ContentScale.Crop,

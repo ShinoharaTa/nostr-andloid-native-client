@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -32,12 +34,9 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -59,6 +58,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.Profile
@@ -70,17 +71,17 @@ import kotlinx.coroutines.launch
 
 /**
  * ノート投稿モーダル（NIP-01 kind:1）。デッキ画面と一体感のある配色（DeckColors）。
- *  - 上部にログイン中アカウント（アイコン+名前）と閉じる/送信を置いたモーダル。
- *  - 画像は本文に URL を差し込まず、下部のサムネイル・カルーセルとして保持し、送信時に
+ *  - **画面中央に浮く Dialog**（下部固定シートではない）。フォルダブルのフローティング
+ *    キーボードが下端に浮いても投稿フォームが裏に隠れない。送信ボタンはモーダル右下。
+ *  - 画像は本文に URL を差し込まず、サムネイル・カルーセルとして保持し、送信時に
  *    まとめて圧縮(NIP-96)アップロード → 本文末尾へ URL を付与する（入力中の飛びを防ぐ）。
  *  - 画像は複数選択可。圧縮は 低/中/高（高=原寸）から選択。
  *  - 返信(replyTo)/引用(quoting)時は文脈カードで対象を明示。
  *  - 本文末尾の "@…"/"#…" でメンション/ハッシュタグ候補を出す。
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: NostrEvent? = null) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
@@ -167,107 +168,116 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = DeckColors.Surface,
-        dragHandle = null,
+    Dialog(
+        onDismissRequest = { if (!sending) onDismiss() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,        // 幅は自前で制御（大画面では中央に最大560dp）
+            dismissOnClickOutside = !sending,
+            dismissOnBackPress = !sending,
+        ),
     ) {
-        // 内容にフィットする上寄りモーダル（全画面にはしない）。本文欄は約5行から始まり、
-        // 最大10行まで伸びて以降は枠内スクロール。要素は上に詰める。
-        Column(Modifier.fillMaxWidth().imePadding()) {
-            // モーダル上部バー: 閉じる / タイトル / 送信。
-            Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        // 画面中央に浮くカード。imePadding で（ドッキング型）キーボード分だけ中央領域を詰める。
+        // フローティングキーボードは下端に浮くだけなので、中央配置のこのカードには重ならない。
+        BoxWithConstraints(
+            Modifier.fillMaxSize().imePadding(),
+            contentAlignment = Alignment.Center,
+        ) {
+            val cardMaxHeight = maxHeight - 32.dp   // 上下の余白(16dp×2)を確保
+            Column(
+                Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
+                    .heightIn(max = cardMaxHeight)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(DeckColors.Surface),
             ) {
-                Icon(
-                    Icons.Outlined.Close, contentDescription = "閉じる",
-                    tint = DeckColors.Text2,
-                    modifier = Modifier.clip(CircleShape).clickable(enabled = !sending) { onDismiss() }
-                        .padding(10.dp).size(22.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    when {
-                        replyTo != null -> "返信"
-                        quoting != null -> "引用リポスト"
-                        else -> "新規投稿"
-                    },
-                    color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.weight(1f))
-                Button(
-                    onClick = doSend, enabled = canSend,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DeckColors.Text, contentColor = DeckColors.Bg,
-                        disabledContainerColor = DeckColors.Surface3, disabledContentColor = DeckColors.Text3,
-                    ),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                // ヘッダ: 閉じる + タイトル（送信は右下へ）。
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (sending) {
-                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp, color = DeckColors.Bg)
-                        Spacer(Modifier.width(8.dp))
-                    }
+                    Icon(
+                        Icons.Outlined.Close, contentDescription = "閉じる",
+                        tint = DeckColors.Text2,
+                        modifier = Modifier.clip(CircleShape).clickable(enabled = !sending) { onDismiss() }
+                            .padding(10.dp).size(22.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
                     Text(
-                        when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
-                        fontWeight = FontWeight.SemiBold,
+                        when {
+                            replyTo != null -> "返信"
+                            quoting != null -> "引用リポスト"
+                            else -> "新規投稿"
+                        },
+                        color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     )
                 }
-            }
-            HorizontalDivider(color = DeckColors.Border)
-
-            // 内容を上に詰める単一カラム。本文は約5〜10行で可変、以降は枠内スクロール。
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 16.dp)) {
-                AccountHeader(pubkey = myPubkey, profile = myProfile)
-                if (parent != null) {
-                    Spacer(Modifier.height(12.dp))
-                    ContextCard(parent = parent, label = if (replyTo != null) "返信先" else "引用元")
-                }
-                Spacer(Modifier.height(12.dp))
-
-                BodyField(text, onChange = { text = it }, modifier = Modifier.fillMaxWidth())
-
-                // 入力中の候補（本文直下）。
-                if (mentionCandidates.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("メンション候補", color = DeckColors.Text3, fontSize = 11.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
-                        mentionCandidates.forEach { p ->
-                            MentionRow(p) { text = completeMention(text, Nip19.hexToNpub(p.pubkey)) }
-                        }
-                    }
-                } else {
-                    if (tagSuggestions.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("候補", color = DeckColors.Text3, fontSize = 11.sp)
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            tagSuggestions.forEach { tag -> TagChip(tag) { text = completeHashtag(text, tag) } }
-                        }
-                    }
-                    if (recent.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("最近のタグ", color = DeckColors.Text3, fontSize = 11.sp)
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            recent.forEach { tag -> TagChip(tag) { text = appendHashtag(text, tag) } }
-                        }
-                    }
-                }
-
-                // 添付画像カルーセル。
-                if (images.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    ImageCarousel(images, onRemove = { images.removeAt(it) })
-                }
-
-                Spacer(Modifier.height(12.dp))
                 HorizontalDivider(color = DeckColors.Border)
-                Spacer(Modifier.height(10.dp))
-                // 下部ツールバー: 画像添付 + 解像度。
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+
+                // 中段: 内容が増えても収まるようスクロール領域（カード高は画面内に収める）。
+                Column(
+                    Modifier.fillMaxWidth().weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 12.dp),
+                ) {
+                    AccountHeader(pubkey = myPubkey, profile = myProfile)
+                    if (parent != null) {
+                        Spacer(Modifier.height(12.dp))
+                        ContextCard(parent = parent, label = if (replyTo != null) "返信先" else "引用元")
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    BodyField(text, onChange = { text = it }, modifier = Modifier.fillMaxWidth())
+
+                    // 入力中の候補（本文直下）。
+                    if (mentionCandidates.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("メンション候補", color = DeckColors.Text3, fontSize = 11.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Column {
+                            mentionCandidates.forEach { p ->
+                                MentionRow(p) { text = completeMention(text, Nip19.hexToNpub(p.pubkey)) }
+                            }
+                        }
+                    } else {
+                        if (tagSuggestions.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text("候補", color = DeckColors.Text3, fontSize = 11.sp)
+                            Spacer(Modifier.height(6.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                tagSuggestions.forEach { tag -> TagChip(tag) { text = completeHashtag(text, tag) } }
+                            }
+                        }
+                        if (recent.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text("最近のタグ", color = DeckColors.Text3, fontSize = 11.sp)
+                            Spacer(Modifier.height(6.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                recent.forEach { tag -> TagChip(tag) { text = appendHashtag(text, tag) } }
+                            }
+                        }
+                    }
+
+                    // 添付画像カルーセル + 解像度（画像があるときだけ表示）。
+                    if (images.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        ImageCarousel(images, onRemove = { images.removeAt(it) })
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("解像度", color = DeckColors.Text3, fontSize = 11.sp)
+                            Spacer(Modifier.width(8.dp))
+                            ResolutionSelector(resolution, onSelect = { resolution = it })
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DeckColors.Border)
+                // 下部バー: 画像添付（左） + 送信（右下）。
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Icon(
                         Icons.Outlined.Image, contentDescription = "画像を添付",
                         tint = if (sending) DeckColors.Text3 else DeckColors.Text,
@@ -282,9 +292,23 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         Text("アップロード中…", color = DeckColors.Text3, fontSize = 11.5.sp)
                     }
                     Spacer(Modifier.weight(1f))
-                    Text("解像度", color = DeckColors.Text3, fontSize = 11.sp)
-                    Spacer(Modifier.width(8.dp))
-                    ResolutionSelector(resolution, onSelect = { resolution = it })
+                    Button(
+                        onClick = doSend, enabled = canSend,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DeckColors.Text, contentColor = DeckColors.Bg,
+                            disabledContainerColor = DeckColors.Surface3, disabledContentColor = DeckColors.Text3,
+                        ),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    ) {
+                        if (sending) {
+                            CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp, color = DeckColors.Bg)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }

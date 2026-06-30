@@ -12,11 +12,16 @@ import io.ktor.http.encodeURLParameter
 object ImageProxy {
     private const val HOST = "https://wsrv.nl/"
 
-    /** [width] px 幅・webp・品質 [quality] に圧縮した URL を返す。 */
-    fun proxied(url: String, width: Int = 600, quality: Int = 75): String {
+    /**
+     * [width] px 幅・webp・品質 [quality] に圧縮した URL を返す。
+     * [animated]=true なら `n=-1` で全フレームを保持する（GIF/アニメ WebP を動かす）。
+     * wsrv.nl は既定で先頭1フレームのみ返すため、アニメを残すには n=-1 が必須。
+     */
+    fun proxied(url: String, width: Int = 600, quality: Int = 75, animated: Boolean = false): String {
         if (url.isBlank()) return url
         val enc = url.encodeURLParameter()
         // we = 拡大しない（元が小さければそのまま）
-        return "$HOST?url=$enc&w=$width&output=webp&q=$quality&we"
+        val frames = if (animated) "&n=-1" else ""
+        return "$HOST?url=$enc&w=$width&output=webp&q=$quality&we$frames"
     }
 }

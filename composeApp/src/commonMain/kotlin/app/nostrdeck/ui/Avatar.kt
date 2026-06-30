@@ -39,7 +39,7 @@ fun Avatar(
     if (!pictureUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(ImageProxy.proxied(pictureUrl, width = 256, quality = 80))
+                .data(ImageProxy.proxied(pictureUrl, width = 256, quality = 80, animated = true))
                 .crossfade(true).build(),
             contentDescription = seed,
             modifier = modifier.size(size).clip(shape).background(DeckColors.Surface3),
@@ -59,7 +59,7 @@ fun AvatarSquare(seed: String, pictureUrl: String? = null, modifier: Modifier = 
     if (!pictureUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80))
+                .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80, animated = true))
                 .crossfade(true).build(),
             contentDescription = seed,
             modifier = modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),

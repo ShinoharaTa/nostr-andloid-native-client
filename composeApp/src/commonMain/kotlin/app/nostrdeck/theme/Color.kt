@@ -33,4 +33,8 @@ object DeckColors {
 
     // 通知一覧でリポストを示す控えめなグリーン（暗いモノクロ基調に馴染む彩度に抑える）。
     val Boost  = Color(0xFF4FA77A)
+
+    // NIP-05 検証バッジ用。OK=控えめな緑(Boost)、異常=控えめな赤(Warn)。
+    val Verified = Color(0xFF4FA77A)
+    val Warn     = Color(0xFFC76B6B)
 }
