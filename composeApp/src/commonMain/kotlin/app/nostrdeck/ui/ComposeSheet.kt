@@ -67,6 +67,7 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -246,7 +247,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             quoting != null -> "引用リポスト"
                             else -> "新規投稿"
                         },
-                        color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        color = DeckColors.Text, fontSize = DeckType.Section, fontWeight = FontWeight.SemiBold,
                     )
                 }
                 HorizontalDivider(color = DeckColors.Border)
@@ -265,7 +266,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     // 入力中の候補（本文直下）。
                     if (mentionCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Text("メンション候補", color = DeckColors.Text3, fontSize = 11.sp)
+                        Text("メンション候補", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                         Spacer(Modifier.height(6.dp))
                         Column {
                             mentionCandidates.forEach { p ->
@@ -275,7 +276,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     } else {
                         if (tagSuggestions.isNotEmpty()) {
                             Spacer(Modifier.height(10.dp))
-                            Text("候補", color = DeckColors.Text3, fontSize = 11.sp)
+                            Text("候補", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                             Spacer(Modifier.height(6.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tagSuggestions.forEach { tag -> TagChip(tag) { text = completeHashtag(text, tag) } }
@@ -283,7 +284,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         }
                         if (recent.isNotEmpty()) {
                             Spacer(Modifier.height(10.dp))
-                            Text("最近のタグ", color = DeckColors.Text3, fontSize = 11.sp)
+                            Text("最近のタグ", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                             Spacer(Modifier.height(6.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 recent.forEach { tag -> TagChip(tag) { text = appendHashtag(text, tag) } }
@@ -297,7 +298,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         ImageCarousel(images, onRemove = { images.removeAt(it) })
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("解像度", color = DeckColors.Text3, fontSize = 11.sp)
+                            Text("解像度", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                             Spacer(Modifier.width(8.dp))
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
@@ -318,7 +319,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                 sendError?.let { msg ->
                     HorizontalDivider(color = DeckColors.Border)
                     Text(
-                        msg, color = DeckColors.Text, fontSize = 12.sp,
+                        msg, color = DeckColors.Text, fontSize = DeckType.Caption,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
@@ -334,7 +335,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         val done by uploadProgress.collectAsState()
                         Text(
                             if (images.isNotEmpty()) "画像 $done/${images.size} アップロード中…" else "投稿中…",
-                            color = DeckColors.Text2, fontSize = 12.sp,
+                            color = DeckColors.Text2, fontSize = DeckType.Caption,
                         )
                         Spacer(Modifier.weight(1f))
                         // 投稿中の強制キャンセル。
@@ -379,9 +380,9 @@ private fun AccountHeader(pubkey: String?, profile: Profile?) {
         Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 38.dp)
         Spacer(Modifier.width(10.dp))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!profile?.handle.isNullOrBlank()) {
-                Text(profile!!.handle, color = DeckColors.Text3, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -409,11 +410,11 @@ private fun BodyField(
             .padding(12.dp),
     ) {
         if (text.isEmpty()) {
-            Text("いまどうしてる？", color = DeckColors.Text3, fontSize = 15.sp)
+            Text("いまどうしてる？", color = DeckColors.Text3, fontSize = DeckType.Title)
         }
         BasicTextField(
             value = text, onValueChange = onChange,
-            textStyle = TextStyle(color = DeckColors.Text, fontSize = 15.sp, lineHeight = 21.sp),
+            textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
             cursorBrush = SolidColor(DeckColors.Text),
             modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
                 .focusRequester(focusRequester),
@@ -450,12 +451,12 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                 val processed = att.processed
                 Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
                     when {
-                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1)
+                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1)
                         processed != null && processed.bytes.size < att.src.bytes.size -> Text(
                             "${humanSize(att.src.bytes.size)}→${humanSize(processed.bytes.size)}",
-                            color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1)
+                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1)
                     }
                 }
             }
@@ -504,7 +505,7 @@ private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolu
             Text(
                 r.label,
                 color = if (active) DeckColors.Bg else DeckColors.Text2,
-                fontSize = 12.5.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = DeckType.TextSm, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier
                     .clickable { onSelect(r) }
                     .background(if (active) DeckColors.Text else Color.Transparent)
@@ -529,20 +530,20 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
             .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(12.dp))
             .padding(12.dp),
     ) {
-        Text(label, color = DeckColors.Text3, fontSize = 11.sp)
+        Text(label, color = DeckColors.Text3, fontSize = DeckType.LabelSm)
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(seed = parent.pubkey, pictureUrl = profile?.pictureUrl, size = 28.dp)
             Spacer(Modifier.width(8.dp))
             Text(
-                name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                name, color = DeckColors.Text, fontSize = DeckType.Text, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         if (parent.content.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
             Text(
-                noteAnnotated(parent.content), color = DeckColors.Text2, fontSize = 13.sp,
+                noteAnnotated(parent.content), color = DeckColors.Text2, fontSize = DeckType.Text,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -564,9 +565,9 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
         Avatar(seed = profile.pubkey, pictureUrl = profile.pictureUrl, size = 28.dp)
         Spacer(Modifier.width(8.dp))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Text, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (profile.handle.isNotBlank()) {
-                Text(profile.handle, color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -576,7 +577,7 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
 private fun TagChip(tag: String, onClick: () -> Unit) {
     Text(
         "#$tag",
-        color = DeckColors.Text2, fontSize = 12.5.sp,
+        color = DeckColors.Text2, fontSize = DeckType.TextSm,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(DeckColors.Surface2)

@@ -54,6 +54,7 @@ import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckDimens
 import kotlinx.coroutines.launch
 
@@ -192,11 +193,11 @@ private fun MessageBubble(
                 Row(verticalAlignment = Alignment.Bottom) {
                     // 長い表示名は省略（… ）。時刻は右に固定。
                     Text(
-                        m.author.name, color = DeckColors.Accent2, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                        m.author.name, color = DeckColors.Accent2, fontSize = DeckType.TextSm, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false),
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(relativeTime(m.event.createdAt), color = DeckColors.Text3, fontSize = 11.5.sp)
+                    Text(relativeTime(m.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
                 }
                 Spacer(Modifier.size(2.dp))
             }
@@ -224,7 +225,7 @@ private fun ReplyQuote(parent: ChannelMessage, mine: Boolean) {
         Spacer(Modifier.width(4.dp))
         Text(
             "${parent.author.name}: ${parent.event.content}",
-            color = DeckColors.Text3, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -252,7 +253,7 @@ private fun Bubble(m: ChannelMessage, names: Map<String, String>, onReply: (() -
         Text(
             annotated,
             color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
-            fontSize = 14.sp,
+            fontSize = DeckType.Body,
             modifier = Modifier.clip(shape).background(bgColor)
                 .combinedClickable(enabled = hasActions, onClick = {}, onLongClick = { menu = true })
                 .padding(horizontal = 11.dp, vertical = 7.dp),
@@ -311,7 +312,7 @@ private fun Composer(
             Spacer(Modifier.width(6.dp))
             Text(
                 "${replyingTo.author.name} に返信: ${replyingTo.event.content}",
-                color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Icon(
@@ -330,12 +331,12 @@ private fun Composer(
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {
-                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = 13.5.sp)
+                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Subtitle)
             }
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
-                textStyle = TextStyle(color = DeckColors.Text, fontSize = 13.5.sp),
+                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Subtitle),
                 cursorBrush = SolidColor(DeckColors.Accent),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -364,7 +365,7 @@ private fun ComposerDisabled() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "メッセージを入力…", color = DeckColors.Text3, fontSize = 13.5.sp,
+            "メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Subtitle,
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(999.dp))
                 .background(DeckColors.Surface2).padding(horizontal = 14.dp, vertical = 9.dp),
         )

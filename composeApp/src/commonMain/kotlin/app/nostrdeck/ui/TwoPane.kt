@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * アダプティブな list-detail 2ペイン（PublicChat / DM / 設定で共用）。
@@ -45,6 +46,6 @@ fun TwoPane(
 @Composable
 fun DetailPlaceholder(text: String) {
     Box(Modifier.fillMaxSize().background(DeckColors.Bg), contentAlignment = Alignment.Center) {
-        Text(text, color = DeckColors.Text3, fontSize = 13.sp)
+        Text(text, color = DeckColors.Text3, fontSize = DeckType.Text)
     }
 }

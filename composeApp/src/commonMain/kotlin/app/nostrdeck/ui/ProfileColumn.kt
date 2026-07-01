@@ -30,6 +30,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * [M9-profile] プロフィールカラム：上部にプロフィールカード（アバター/名前/nip05/npub/フォロー）、
@@ -91,11 +92,11 @@ private fun ProfileHeaderCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
-                    color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                    color = DeckColors.Text, fontSize = DeckType.Section, fontWeight = FontWeight.SemiBold,
                 )
                 profile?.handle?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.size(2.dp))
-                    Nip05Handle(pubkey, it, fontSize = 12.5.sp)
+                    Nip05Handle(pubkey, it, fontSize = DeckType.TextSm)
                 }
             }
             FollowButton(isFollowing, onFollowToggle)
@@ -104,7 +105,7 @@ private fun ProfileHeaderCard(
             Spacer(Modifier.size(10.dp))
             Text(
                 it.take(20) + "…" + it.takeLast(6),
-                color = DeckColors.Text3, fontSize = 11.sp,
+                color = DeckColors.Text3, fontSize = DeckType.LabelSm,
             )
         }
     }
@@ -114,11 +115,11 @@ private fun ProfileHeaderCard(
 private fun FollowButton(isFollowing: Boolean, onClick: () -> Unit) {
     if (isFollowing) {
         OutlinedButton(onClick = onClick) {
-            Text("フォロー中", fontSize = 12.5.sp)
+            Text("フォロー中", fontSize = DeckType.TextSm)
         }
     } else {
         Button(onClick = onClick) {
-            Text("フォロー", fontSize = 12.5.sp)
+            Text("フォロー", fontSize = DeckType.TextSm)
         }
     }
 }

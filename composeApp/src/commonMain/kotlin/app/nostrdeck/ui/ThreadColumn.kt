@@ -30,6 +30,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * THREAD レンダラー：NIP-10 返信ツリー。
@@ -81,7 +82,7 @@ private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit, onQuote: () -> Un
     ) {
         if (entry.replyToName != null) {
             Text(
-                "返信先 @${entry.replyToName}", color = DeckColors.Text3, fontSize = 11.sp,
+                "返信先 @${entry.replyToName}", color = DeckColors.Text3, fontSize = DeckType.LabelSm,
                 modifier = Modifier.padding(start = 13.dp, top = 8.dp),
             )
         }
@@ -98,7 +99,7 @@ private fun ReplyBox(enabled: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "返信を書く…", color = DeckColors.Text3, fontSize = 12.5.sp,
+            "返信を書く…", color = DeckColors.Text3, fontSize = DeckType.TextSm,
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(999.dp))
                 .background(DeckColors.Surface2).padding(horizontal = 14.dp, vertical = 9.dp),
         )

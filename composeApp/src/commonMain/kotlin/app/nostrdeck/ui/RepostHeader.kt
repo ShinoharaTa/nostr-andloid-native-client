@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /** [M8-repost] NIP-18 リポストのヘッダ「🔁 {name} がリポスト」。モノクロ・控えめ表示。 */
 @Composable
@@ -30,7 +31,7 @@ fun RepostHeader(name: String, modifier: Modifier = Modifier) {
         Text(
             "$name がリポスト",
             color = DeckColors.Text3,
-            fontSize = 11.5.sp,
+            fontSize = DeckType.Label,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

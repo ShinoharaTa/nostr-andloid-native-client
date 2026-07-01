@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -76,7 +77,7 @@ fun CollapsibleText(
     Column(modifier) {
         Text(
             annotated,
-            color = DeckColors.Text, fontSize = 14.sp, lineHeight = 20.5.sp,
+            color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = 20.5.sp,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
             inlineContent = inline,
@@ -96,7 +97,7 @@ fun CollapsibleText(
             ) {
                 Text(
                     if (expanded) "閉じる" else "もっと見る",
-                    color = DeckColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    color = DeckColors.Accent, fontSize = DeckType.Caption, fontWeight = FontWeight.Medium,
                 )
                 Spacer(Modifier.width(3.dp))
                 Icon(

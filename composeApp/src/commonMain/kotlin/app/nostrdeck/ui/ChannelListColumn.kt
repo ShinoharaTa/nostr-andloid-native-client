@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.Channel
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * CHANNEL_LIST レンダラー：NIP-28 チャンネル一覧（スレッド一覧）。
@@ -79,12 +80,12 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(ch.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+                Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Subtitle, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
                     Spacer(Modifier.width(6.dp))
-                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = 10.5.sp)
+                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                 }
             }
             // 直近メッセージがあればそれを、無ければ概要(about)を副題に。両方空なら省略。
@@ -94,7 +95,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 else -> null
             }
             if (secondary != null) {
-                Text(secondary, color = DeckColors.Text2, fontSize = 12.sp,
+                Text(secondary, color = DeckColors.Text2, fontSize = DeckType.Caption,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -103,7 +104,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
             Box(
                 Modifier.clip(CircleShape).background(DeckColors.Accent).padding(horizontal = 6.dp, vertical = 1.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = DeckType.Badge, fontWeight = FontWeight.Bold) }
         }
         Icon(
             Icons.Outlined.PushPin, "ピン留め",

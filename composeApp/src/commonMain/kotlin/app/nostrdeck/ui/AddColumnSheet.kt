@@ -37,6 +37,7 @@ import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.NotifKind
 import app.nostrdeck.model.build
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * カラム追加シート。白紙のフィルタ組みではなく**絞ったテンプレから選ぶ**。
@@ -52,7 +53,7 @@ fun AddColumnSheet(onDismiss: () -> Unit, onAdd: (ColumnSpec) -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Text(
                 if (selected == null) "カラムを追加" else selected!!.label,
-                color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                color = DeckColors.Text, fontSize = DeckType.Section, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(20.dp, 8.dp),
             )
             HorizontalDivider(color = DeckColors.Border)
@@ -82,10 +83,10 @@ private fun TemplateList(onPick: (ColumnTemplate) -> Unit) {
                 Icon(columnIcon(t.toKindForIcon()), null, tint = DeckColors.Text2,
                     modifier = Modifier.padding(end = 14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(t.label, color = DeckColors.Text, fontSize = 14.sp)
-                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = 11.5.sp) }
+                    Text(t.label, color = DeckColors.Text, fontSize = DeckType.Body)
+                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = DeckType.Label) }
                 }
-                if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = 18.sp)
+                if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = DeckType.Emoji)
             }
             HorizontalDivider(color = DeckColors.Border)
         }
@@ -105,11 +106,11 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                 modifier = Modifier.fillMaxWidth(),
             )
             ColumnConfig.NOTIF_FILTER -> Column {
-                Text("表示する種別", color = DeckColors.Text2, fontSize = 12.5.sp)
+                Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.TextSm)
                 NotifKind.entries.forEach { k ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = notif[k] == true, onCheckedChange = { notif[k] = it })
-                        Text(k.label, color = DeckColors.Text, fontSize = 13.5.sp)
+                        Text(k.label, color = DeckColors.Text, fontSize = DeckType.Subtitle)
                     }
                 }
             }

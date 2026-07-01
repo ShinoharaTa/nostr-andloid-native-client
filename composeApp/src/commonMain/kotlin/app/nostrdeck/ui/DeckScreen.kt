@@ -44,6 +44,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckDimens
 import kotlinx.coroutines.launch
 
@@ -90,7 +91,7 @@ private fun ExpandedDeck(state: DeckState) {
                 Modifier.padding(top = 14.dp).size(40.dp).clip(CircleShape)
                     .border(1.5.dp, DeckColors.BorderStrong, CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("＋", color = DeckColors.Text3, fontSize = 20.sp) }
+            ) { Text("＋", color = DeckColors.Text3, fontSize = DeckType.Display) }
         }
     }
 }
@@ -121,7 +122,7 @@ private fun CompactPager(state: DeckState) {
                 state.columns.forEachIndexed { i, c ->
                     val active = pager.currentPage == i
                     Text(
-                        c.title, fontSize = 12.5.sp,
+                        c.title, fontSize = DeckType.TextSm,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (active) DeckColors.Accent else DeckColors.Text2,
                         modifier = Modifier.clip(CircleShape)
@@ -133,7 +134,7 @@ private fun CompactPager(state: DeckState) {
                 }
                 // カラム追加
                 Text(
-                    "＋", color = DeckColors.Text2, fontSize = 13.sp,
+                    "＋", color = DeckColors.Text2, fontSize = DeckType.Text,
                     modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
                         .background(DeckColors.Surface2).padding(horizontal = 12.dp, vertical = 6.dp),
                 )

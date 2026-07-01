@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -55,10 +56,10 @@ private fun ReactionChip(reaction: ReactionUi) {
                     modifier = Modifier.size(16.dp),
                 )
             } else {
-                Text(reaction.display, color = DeckColors.Text2, fontSize = 12.sp)
+                Text(reaction.display, color = DeckColors.Text2, fontSize = DeckType.Caption)
             }
             Spacer(Modifier.width(4.dp))
-            Text(reaction.count.toString(), color = DeckColors.Text2, fontSize = 11.5.sp)
+            Text(reaction.count.toString(), color = DeckColors.Text2, fontSize = DeckType.Label)
         }
     }
 }

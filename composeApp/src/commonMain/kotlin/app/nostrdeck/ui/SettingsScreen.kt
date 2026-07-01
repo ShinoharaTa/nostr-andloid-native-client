@@ -52,6 +52,7 @@ import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * 設定（Android 大画面踏襲）。list-detail 2ペイン：左=メニュー / 右=内容。
@@ -79,7 +80,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(13.dp, 12.dp)) {
-            Text("設定", color = DeckColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {
@@ -88,7 +89,7 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
                 Text(
                     label,
                     color = if (active) DeckColors.Accent else DeckColors.Text,
-                    fontSize = 13.5.sp,
+                    fontSize = DeckType.Subtitle,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier.fillMaxWidth()
                         .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
@@ -114,7 +115,7 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
                 )
                 Spacer(Modifier.size(8.dp))
             }
-            Text(title, color = DeckColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.size(14.dp))
         when (sectionId) {
@@ -122,7 +123,7 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
             "relays" -> RelaySettings()
             "media" -> MediaSettings()
             "data" -> DataSettings()
-            else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = 13.sp)
+            else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Text)
         }
     }
 }
@@ -135,17 +136,17 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
 private fun MediaSettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("メディアサーバー情報を利用できません", color = DeckColors.Text3, fontSize = 13.sp)
+        Text("メディアサーバー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Text)
         return
     }
     val servers by repo.mediaServersFlow().collectAsState(emptyList())
     var input by remember { mutableStateOf("") }
 
-    Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = 12.sp)
+    Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(4.dp))
     Text(
         "投稿に画像を添付すると、有効なサーバを上から順に試してアップロードします。",
-        color = DeckColors.Text3, fontSize = 11.sp,
+        color = DeckColors.Text3, fontSize = DeckType.LabelSm,
     )
     Spacer(Modifier.size(14.dp))
 
@@ -173,8 +174,8 @@ private fun MediaSettings() {
         items(servers, key = { it.url }) { s ->
             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(s.url, color = DeckColors.Text, fontSize = 13.sp)
-                    Text(if (s.enabled != 0L) "有効" else "無効", color = DeckColors.Text3, fontSize = 11.sp)
+                    Text(s.url, color = DeckColors.Text, fontSize = DeckType.Text)
+                    Text(if (s.enabled != 0L) "有効" else "無効", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                 }
                 Switch(
                     checked = s.enabled != 0L,
@@ -182,7 +183,7 @@ private fun MediaSettings() {
                     colors = switchColors,
                 )
                 Text(
-                    "削除", color = DeckColors.Accent, fontSize = 12.sp,
+                    "削除", color = DeckColors.Accent, fontSize = DeckType.Caption,
                     modifier = Modifier.clickable { repo.removeMediaServer(s.url) }.padding(8.dp),
                 )
             }
@@ -205,7 +206,7 @@ private fun DataSettings() {
     Text(
         "端末内に保存しているキャッシュ（タイムライン履歴・プロフィール・チャンネル・送信待ち）を" +
             "すべて消去し、リレーから取り直します。鍵・リレー設定・ハッシュタグ履歴は保持されます。",
-        color = DeckColors.Text2, fontSize = 13.sp, lineHeight = 19.sp,
+        color = DeckColors.Text2, fontSize = DeckType.Text, lineHeight = 19.sp,
     )
     Spacer(Modifier.size(16.dp))
     Button(onClick = { confirm = true }, enabled = repo != null) {
@@ -213,7 +214,7 @@ private fun DataSettings() {
     }
     if (done) {
         Spacer(Modifier.size(10.dp))
-        Text("キャッシュを消去し、再取得を開始しました。", color = DeckColors.Accent, fontSize = 12.5.sp)
+        Text("キャッシュを消去し、再取得を開始しました。", color = DeckColors.Accent, fontSize = DeckType.TextSm)
     }
 
     if (confirm) {
@@ -240,15 +241,15 @@ private fun DataSettings() {
 @Composable
 private fun SignerSettings() {
     val current = SignerProvider.current().method
-    Text("現在: $current", color = DeckColors.Text2, fontSize = 13.sp)
+    Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Text)
     Spacer(Modifier.size(12.dp))
     SignerMethod.entries.forEach { m ->
         val done = m == SignerMethod.LOCAL
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            Text(if (m == current) "● " else "○ ", color = DeckColors.Accent, fontSize = 13.sp)
+            Text(if (m == current) "● " else "○ ", color = DeckColors.Accent, fontSize = DeckType.Text)
             Text(
                 "$m" + if (done) "" else "（未実装）",
-                color = if (done) DeckColors.Text else DeckColors.Text3, fontSize = 13.sp,
+                color = if (done) DeckColors.Text else DeckColors.Text3, fontSize = DeckType.Text,
             )
         }
     }
@@ -270,7 +271,7 @@ private fun SignerSettings() {
 private fun RelaySettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("リレー情報を利用できません", color = DeckColors.Text3, fontSize = 13.sp)
+        Text("リレー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Text)
         return
     }
     val relays by repo.relaysFlow().collectAsState(emptyList())
@@ -279,12 +280,12 @@ private fun RelaySettings() {
     val toast = rememberToaster()
     var publishing by remember { mutableStateOf(false) }
 
-    Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = 12.sp)
+    Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(4.dp))
     Text(
         "Read=Inbox（自分宛を読む・購読接続）/ Write=Outbox（投稿を流す）。" +
             "チェックを編集して「保存」で kind:10002 を公開します。",
-        color = DeckColors.Text3, fontSize = 11.sp,
+        color = DeckColors.Text3, fontSize = DeckType.LabelSm,
     )
     Spacer(Modifier.size(14.dp))
 
@@ -325,13 +326,13 @@ private fun RelaySettings() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(r.url, color = DeckColors.Text, fontSize = 13.sp)
-                    Text("· ${r.source}", color = DeckColors.Text3, fontSize = 11.sp)
+                    Text(r.url, color = DeckColors.Text, fontSize = DeckType.Text)
+                    Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.LabelSm)
                 }
                 RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
                 RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
                 Text(
-                    "削除", color = DeckColors.Accent, fontSize = 12.sp,
+                    "削除", color = DeckColors.Accent, fontSize = DeckType.Caption,
                     modifier = Modifier.clickable { repo.removeRelay(r.url) }.padding(8.dp),
                 )
             }
@@ -347,7 +348,7 @@ private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean)
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 2.dp),
     ) {
-        Text(label, color = DeckColors.Text3, fontSize = 11.5.sp)
+        Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -386,10 +387,10 @@ private fun LocalSignerLogin() {
         }
     }
 
-    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.size(8.dp))
-    Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = 12.sp)
-    Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = 12.sp)
+    Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
 
     Spacer(Modifier.size(14.dp))
     OutlinedTextField(
@@ -404,7 +405,7 @@ private fun LocalSignerLogin() {
         trailingIcon = {
             Text(
                 if (reveal) "隠す" else "表示",
-                color = DeckColors.Accent, fontSize = 12.sp,
+                color = DeckColors.Accent, fontSize = DeckType.Caption,
                 modifier = Modifier.clickable { reveal = !reveal }.padding(8.dp),
             )
         },
@@ -413,7 +414,7 @@ private fun LocalSignerLogin() {
     )
     error?.let {
         Spacer(Modifier.size(4.dp))
-        Text(it, color = DeckColors.Accent, fontSize = 12.sp)
+        Text(it, color = DeckColors.Accent, fontSize = DeckType.Caption)
     }
 
     Spacer(Modifier.size(10.dp))

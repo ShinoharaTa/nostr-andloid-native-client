@@ -32,6 +32,7 @@ import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckType
 
 /**
  * DM（NIP-17 想定）の独立画面。list-detail 2ペイン。
@@ -74,7 +75,7 @@ private fun DmList(
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(13.dp, 12.dp)) {
-            Text("メッセージ", color = DeckColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {
@@ -89,9 +90,9 @@ private fun DmList(
                     Avatar(c.name, modifier = Modifier.size(40.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+                        Text(c.name, color = DeckColors.Text, fontSize = DeckType.Subtitle, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(c.lastMessage, color = DeckColors.Text2, fontSize = 12.sp,
+                        Text(c.lastMessage, color = DeckColors.Text2, fontSize = DeckType.Caption,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (c.unread > 0) {
@@ -100,7 +101,7 @@ private fun DmList(
                             Modifier.clip(CircleShape).background(DeckColors.Accent)
                                 .padding(horizontal = 6.dp, vertical = 1.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text("${c.unread}", color = DeckColors.Bg, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        ) { Text("${c.unread}", color = DeckColors.Bg, fontSize = DeckType.Badge, fontWeight = FontWeight.Bold) }
                     }
                 }
                 HorizontalDivider(color = DeckColors.Border)
