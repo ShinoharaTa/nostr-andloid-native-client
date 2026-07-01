@@ -97,4 +97,24 @@ class Nip19Test {
             "u8txstqjsrqsqqqqqpdd05mm"
         assertEquals("9223cf3ce7b92b3d810ba75704d4ab2d7613c164a13d5f32b850ea39deb682f0", Nip19.eventBechToHex(nevent))
     }
+
+    // nevent の TLV から id と relay ヒント(type=1)を取り出せること（実データ）。
+    @Test
+    fun nevent_extracts_id_and_relay_hints() {
+        val nevent = "nevent1qvzqqqqqqypzpp9sc34tdxdvxh4jeg5xgu9ctcypmvsg0n00vwfjydkr" +
+            "jaqh0qh4qyfhwumn8ghj7urj9eeks6twduejumn9wsqzqls5u87ccud6ryf2yv6fv78ev7zjslfs08cgwnpfdrp0nj3xz0e7a7s3c6"
+        val (id, relays) = Nip19.eventBechToIdAndRelays(nevent)!!
+        assertEquals(64, id.length)
+        assertTrue(relays.isNotEmpty(), "relay ヒントが取り出せる: $relays")
+        assertTrue(relays.all { it.startsWith("wss://") || it.startsWith("ws://") }, "relay は WebSocket URL: $relays")
+    }
+
+    // note(リレー無し)は id のみで relays 空。
+    @Test
+    fun note_has_no_relay_hints() {
+        val note = Nip19.hexToNote("cd".repeat(32))
+        val (id, relays) = Nip19.eventBechToIdAndRelays(note)!!
+        assertEquals("cd".repeat(32), id)
+        assertTrue(relays.isEmpty())
+    }
 }

@@ -43,6 +43,39 @@ object Nip19 {
         }
     }.getOrNull()
 
+    /**
+     * nevent(TLV) / note から event id とリレーヒントを取り出す。
+     *  - note   : id のみ（リレー無し）。
+     *  - nevent : type=0(special=id) と type=1(relay, 複数可) を返す（NIP-19）。
+     * 解析できなければ null。
+     */
+    fun eventBechToIdAndRelays(bech: String): Pair<String, List<String>>? = runCatching {
+        val (hrp, five) = Bech32.decode(bech)
+        val bytes = Bech32.convertBits(five, 5, 8, false).let { d -> ByteArray(d.size) { d[it].toByte() } }
+        when (hrp) {
+            "note" -> if (bytes.size == 32) bytes.toHex() to emptyList() else null
+            "nevent" -> {
+                var id: String? = null
+                val relays = mutableListOf<String>()
+                var i = 0
+                while (i + 2 <= bytes.size) {
+                    val type = bytes[i].toInt() and 0xFF
+                    val len = bytes[i + 1].toInt() and 0xFF
+                    val start = i + 2
+                    if (start + len > bytes.size) break
+                    val value = bytes.copyOfRange(start, start + len)
+                    when (type) {
+                        0 -> if (len == 32) id = value.toHex()
+                        1 -> relays.add(value.decodeToString())  // relay URL は ASCII
+                    }
+                    i = start + len
+                }
+                id?.let { it to relays.toList() }
+            }
+            else -> null
+        }
+    }.getOrNull()
+
     /** TLV(NIP-19) を走査して type=0(special) の value を返す。 */
     private fun readTlvSpecial(tlv: ByteArray): ByteArray? {
         var i = 0

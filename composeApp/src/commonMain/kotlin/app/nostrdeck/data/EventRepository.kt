@@ -187,7 +187,8 @@ class EventRepository(
 
     /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
     private fun refreshRelayConns() {
-        _relayConns.value = relays.entries.sortedBy { it.key }
+        // ヒント経由の一時接続はステータスに出さない（設定リレーのみ表示）。
+        _relayConns.value = relays.entries.filter { it.key !in hintRelays }.sortedBy { it.key }
             .map { RelayConn(it.key, it.value.state.value) }
     }
 
@@ -926,7 +927,28 @@ class EventRepository(
     // ---- [M10] イベント id バッチ解決（返信先の親ノートなど未キャッシュ分を取得） ----
     private val eventRequests = Channel<String>(Channel.UNLIMITED)
 
-    private fun requestEvent(id: String) {
+    /**
+     * 引用/返信の解決のために一時接続したリレーヒント集合（NIP-19/NIP-10 の relay ヒント）。
+     * 重複接続と接続数の暴発を防ぐため上限つき。ステータス表示からは除外する（設定リレーのみ表示）。
+     */
+    private val hintRelays = mutableSetOf<String>()
+
+    /**
+     * イベント id の取得を要求する。[hints] があれば、そのリレー（未接続なら上限内で一時接続）
+     * にも REQ が届くようにする。接続済み/ヒント無しなら従来どおり接続中リレーへ問い合わせる。
+     */
+    private fun requestEvent(id: String, hints: List<String> = emptyList()) {
+        if (hints.isNotEmpty()) {
+            scope.launch(relayDispatcher) {
+                for (raw in hints) {
+                    val url = raw.trim().trimEnd('/')
+                    if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                    if (relays.containsKey(url)) continue                 // 既接続なら不要
+                    if (hintRelays.size >= HINT_RELAY_CAP) break          // 接続数の暴発を防ぐ
+                    if (hintRelays.add(url)) ensureRelay(url)
+                }
+            }
+        }
         eventRequests.trySend(id)
     }
 
@@ -1149,9 +1171,11 @@ class EventRepository(
     ): NoteUi {
         val (cleaned, inlineQuoted) = resolveInlineQuote(base.text, byPubkey)
         val quoted = inlineQuoted ?: run {
-            // 本文に解決できる参照が無い → q タグから補完（未取得なら取得を促す）。
-            val quotedId = parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
-            quotedId?.let { resolveNoteUi(it, byPubkey) ?: run { requestEvent(it); null } }
+            // 本文に解決できる参照が無い → q タグから補完（relay ヒント= 3要素目。未取得なら取得を促す）。
+            val qtag = parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "q" }
+            val quotedId = qtag?.getOrNull(1)
+            val hints = qtag?.getOrNull(2)?.let { listOf(it) }.orEmpty()
+            quotedId?.let { resolveNoteUi(it, byPubkey) ?: run { requestEvent(it, hints); null } }
         }
         return base.copy(text = cleaned, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
     }
@@ -1166,24 +1190,28 @@ class EventRepository(
     ): Pair<String?, NoteUi?> {
         if (text.isNullOrEmpty()) return text to null
         val ref = findEventRef(text) ?: return text to null
-        val (start, end, hexId) = ref
-        val quoted = resolveNoteUi(hexId, byPubkey)
+        val quoted = resolveNoteUi(ref.id, byPubkey)
         if (quoted == null) {
-            requestEvent(hexId)
+            requestEvent(ref.id, ref.relays)  // nevent のリレーヒントも使って取得を促す
             return text to null  // 未解決はリンクのまま残す
         }
-        val cleaned = (text.substring(0, start) + text.substring(end)).trim()
+        val cleaned = (text.substring(0, ref.start) + text.substring(ref.end)).trim()
         return cleaned to quoted
     }
 
+    /** 本文中の nevent/note 参照1件（位置・id・埋め込みリレーヒント）。 */
+    private class EventRef(val start: Int, val end: Int, val id: String, val relays: List<String>)
+
     /**
-     * 本文を走査し最初の解決可能な nevent1.../note1... を (開始, 終了, hex id) で返す。
+     * 本文を走査し最初の解決可能な nevent1.../note1... を返す（id と nevent TLV のリレーヒント付き）。
      * `nostr:` 接頭辞付き・素の表記の両方に対応（接頭辞があれば開始位置に含めて除去する）。
      */
-    private fun findEventRef(text: String): Triple<Int, Int, String>? {
+    private fun findEventRef(text: String): EventRef? {
         for (m in EVENT_REF_REGEX.findAll(text)) {
             val bech = m.value.removePrefix("nostr:")
-            Nip19.eventBechToHex(bech)?.let { return Triple(m.range.first, m.range.last + 1, it) }
+            Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
+                return EventRef(m.range.first, m.range.last + 1, id, relays)
+            }
         }
         return null
     }
@@ -1200,8 +1228,11 @@ class EventRepository(
      */
     private fun resolveReplyParent(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>): NoteUi? {
         if (row.kind.toInt() != 1) return null
-        val parentId = replyParentOf(parseTags(row.tags_json)) ?: return null
-        return resolveNoteUi(parentId, byPubkey) ?: run { requestEvent(parentId); null }
+        val tags = parseTags(row.tags_json)
+        val parentId = replyParentOf(tags) ?: return null
+        // 返信先 e タグの relay ヒント（3要素目）があれば取得に使う。
+        val hints = tags.firstOrNull { it.size >= 3 && it[0] == "e" && it[1] == parentId }?.get(2)?.let { listOf(it) }.orEmpty()
+        return resolveNoteUi(parentId, byPubkey) ?: run { requestEvent(parentId, hints); null }
     }
 
     /** [M8-repost] NostrEvent + 解決済み profile → NoteUi（content 埋め込みの元ノート用）。 */
@@ -1404,5 +1435,8 @@ class EventRepository(
 
         /** 本文中の nevent1.../note1...（nostr: 接頭辞は任意）。直前が英数字の語中ヒットは除外。 */
         val EVENT_REF_REGEX = Regex("(?<![a-z0-9])(nostr:)?(nevent1|note1)[a-z0-9]+")
+
+        /** 引用/返信ヒントで一時接続するリレーの上限（接続数の暴発防止）。 */
+        const val HINT_RELAY_CAP = 8
     }
 }
