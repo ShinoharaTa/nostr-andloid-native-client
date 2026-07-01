@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,7 +40,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.theme.DeckColors
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import kotlinx.coroutines.launch
 
 /**
@@ -136,11 +142,17 @@ fun NoteItem(
                 if (!note.author.lud16.isNullOrBlank()) {
                     ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
                 }
-                ActionButton(
-                    if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
-                    onClick = { scope.launch { repo?.toggleReaction(note.event) } },
-                )
+                // 自分が非♡の絵文字でリアクション済みなら、♡でなくその絵文字を表示（タップで取り消し）。
+                val myRx = note.mineReaction
+                if (myRx != null && myRx.display != "❤️") {
+                    MyReactionGlyph(myRx) { scope.launch { repo?.toggleReaction(note.event) } }
+                } else {
+                    ActionButton(
+                        if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
+                        onClick = { scope.launch { repo?.toggleReaction(note.event) } },
+                    )
+                }
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                 ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
             }
@@ -181,6 +193,27 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(vertical = 2.dp).size(21.dp),
     )
+}
+
+/** 自分が付けた非♡リアクションの表示（NIP-30 はカスタム画像、通常は絵文字文字）。タップで取り消し。 */
+@Composable
+private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
+    val url = reaction.imageUrl
+    Box(
+        Modifier.clickable(onClick = onClick).padding(vertical = 2.dp).size(21.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalPlatformContext.current)
+                    .data(ImageProxy.proxied(url, width = 64, quality = 80)).crossfade(true).build(),
+                contentDescription = reaction.display,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text(reaction.display, fontSize = 16.sp, maxLines = 1)
+        }
+    }
 }
 
 private fun relativeTime(createdAt: Long): String {

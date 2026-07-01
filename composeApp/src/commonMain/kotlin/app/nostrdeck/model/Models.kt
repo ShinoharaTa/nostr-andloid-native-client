@@ -125,6 +125,7 @@ data class NoteUi(
     val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
     val replyParent: NoteUi? = null,  // [M10] NIP-10 返信先（解決できた親ノート。返信の文脈表示用）
     val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
+    val mineReaction: ReactionUi? = null, // 自分が付けたリアクション（非♡ならその絵文字をボタンに表示）
     val mineReposted: Boolean = false, // [M8-counts] 自分がリポスト済み
     val isReply: Boolean = false,      // [M9-profile] kind:1 が #e を持つ返信か（プロフィールのタブ振り分け用）
     val customEmojis: Map<String, String> = emptyMap(), // [M10] NIP-30 本文カスタム絵文字 shortcode→画像URL

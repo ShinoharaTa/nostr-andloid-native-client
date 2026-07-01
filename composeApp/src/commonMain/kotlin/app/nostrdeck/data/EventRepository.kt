@@ -120,9 +120,18 @@ class EventRepository(
         else q.myRepostedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
     }
 
-    /** [M10] フィードに載せるメタは「自分が♡/リポスト済みか」だけ（ボタンのハイライト用）。 */
+    /** 自分が各ノートに付けたリアクション（note_id→ReactionUi）。非♡ならボタンにその絵文字を出す。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val myReactionMapFlow: Flow<Map<String, ReactionUi>> = myPubkeyFlow.flatMapLatest { pk ->
+        if (pk == null) flowOf(emptyMap())
+        else q.myReactionsForNotes(pk).asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.associate { it.note_id to normalizeReaction(it.content, parseTags(it.tags_json)) }
+        }
+    }
+
+    /** [M10] フィードに載せるメタ: 自分が♡/リポスト済みか + 自分のリアクション絵文字。 */
     private val noteMetaFlow: Flow<NoteMeta> =
-        combine(myReactedFlow, myRepostedFlow) { mr, mp -> NoteMeta(mr, mp) }
+        combine(myReactedFlow, myRepostedFlow, myReactionMapFlow) { mr, mp, rx -> NoteMeta(mr, mp, rx) }
 
     /** 自分の kind:3 由来のフォロー集合（p タグ）。FOLLOWING カラムの authors。 */
     private val follows = MutableStateFlow<List<String>>(emptyList())
@@ -640,9 +649,10 @@ class EventRepository(
         return es.first()[1]
     }
 
-    /** [M10] 自分の♡/リポスト済み状態だけを NoteUi に反映（ボタンのハイライト用）。 */
+    /** [M10] 自分の♡/リポスト/リアクション状態を NoteUi に反映（ボタンのハイライト・絵文字表示用）。 */
     private fun applyMeta(ui: NoteUi, meta: NoteMeta): NoteUi = ui.copy(
         mineReacted = ui.event.id in meta.myReacted,
+        mineReaction = meta.myReaction[ui.event.id],
         mineReposted = ui.event.id in meta.myReposted,
     )
 
@@ -1289,10 +1299,11 @@ class EventRepository(
 
     // ---- [M8] 集約ヘルパ ----
 
-    /** [M10] フィードに載せるメタ（自分が♡/リポスト済みか）。 */
+    /** [M10] フィードに載せるメタ（自分が♡/リポスト済みか + 自分のリアクション絵文字）。 */
     private data class NoteMeta(
         val myReacted: Set<String>,
         val myReposted: Set<String>,
+        val myReaction: Map<String, ReactionUi> = emptyMap(),
     )
 
     /** tags_json（[[..],[..]]）を List<List<String>> に復元。壊れていれば空。 */
