@@ -96,6 +96,8 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 else -> null
             }
             if (secondary != null) {
+                // [施策4] 名前↔プレビューに Xs の微段差（詰まりすぎを解消・群として読ませる）。
+                Spacer(Modifier.size(DeckSpace.Xs))
                 Text(secondary, color = DeckColors.Text2, fontSize = DeckType.Caption,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }

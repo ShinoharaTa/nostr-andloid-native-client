@@ -187,7 +187,8 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
                 else -> n.targetSnippet
             }
             if (!body.isNullOrBlank()) {
-                Spacer(Modifier.size(DeckSpace.Xs))
+                // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差（NoteItem と統一）。
+                Spacer(Modifier.size(DeckSpace.Sm))
                 // ノートと同じくリッチテキスト化（nostr: 参照を ↗… に短縮・URL/タグをリンク化）。
                 Text(
                     noteAnnotated(body), color = DeckColors.Text2, fontSize = DeckType.Caption,
