@@ -41,7 +41,7 @@
 
   /* --- Deck geometry --- */
   --column-w: 340px;        /* 固定カラム幅。はみ出しは横スクロール */
-  --column-gap: 12px;       /* カラム間ガター（線ではなく Bg の隙間で分離） */
+  --column-gap: 8px;        /* カラム間ガター（線ではなく Bg の隙間で分離） */
   --hinge-gutter: 22px;     /* フォルダブルのヒンジ回避ガター */
 
   /* --- Type family --- */

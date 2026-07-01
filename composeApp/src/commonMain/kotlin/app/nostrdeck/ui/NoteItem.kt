@@ -1,13 +1,13 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -101,7 +101,8 @@ fun NoteItem(
                 Spacer(Modifier.width(DeckSpace.Sm))
                 Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
             }
-            Spacer(Modifier.size(DeckSpace.Xs))
+            // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差を付け、テキスト羅列→UIブロック化。
+            Spacer(Modifier.size(DeckSpace.Sm))
             // 画像URLを除去した本文（画像は下にグリッド/カルーセルで表示する）。NIP-30 絵文字は画像化。
             CollapsibleText(note.text ?: note.event.content, emojis = note.customEmojis) // [M8-collapse]
 
@@ -122,9 +123,12 @@ fun NoteItem(
                 Spacer(Modifier.size(DeckSpace.Sm))
                 NoteImages(note.images)
             }
-            Spacer(Modifier.size(DeckSpace.Xs))
-            // [M10] アクションはアイコンのみ。T3: 実40dpタッチ領域を横幅に均等配置（誤爆防止）。
-            Row(Modifier.fillMaxWidth().padding(end = DeckSpace.Sm), horizontalArrangement = Arrangement.SpaceBetween) {
+            // [施策4] 本文/メディア↔アクション群は Md で明確に分離（別ブロック化）。
+            Spacer(Modifier.size(DeckSpace.Md))
+            // アクションはアイコンのみ・左揃え。返信/リポスト/♡/絵文字を左に密に、Zap だけ右端へ。
+            // 40dpタッチ箱の内側余白ぶん左へ寄せ、先頭アイコンの左端を本文テキストに光学的に揃える。
+            val iconInset = (DeckDimens.TouchTargetSm - DeckDimens.IconMd) / 2
+            Row(Modifier.fillMaxWidth().offset(x = -iconInset), verticalAlignment = Alignment.CenterVertically) {
                 ActionButton(Icons.AutoMirrored.Outlined.Reply, DeckColors.Text3, onClick = onReply)
                 Box {
                     ActionButton(
@@ -143,10 +147,6 @@ fun NoteItem(
                         )
                     }
                 }
-                // Zap先(lud16)が未設定なら ⚡ は出さない（Zap できない相手にボタンを見せない）。
-                if (!note.author.lud16.isNullOrBlank()) {
-                    ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
-                }
                 // 自分が非♡の絵文字でリアクション済みなら、♡でなくその絵文字を表示（タップで取り消し）。
                 val myRx = note.mineReaction
                 if (myRx != null && myRx.display != "❤️") {
@@ -160,6 +160,11 @@ fun NoteItem(
                 }
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                 ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
+                Spacer(Modifier.weight(1f))
+                // Zap は右端。lud16 未設定なら非表示（Zap できない相手にボタンを見せない）。
+                if (!note.author.lud16.isNullOrBlank()) {
+                    ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                }
             }
         }
     }
@@ -189,7 +194,7 @@ fun NoteItem(
   }
 }
 
-/** アイコンのみのアクションボタン。T3: アイコンは実寸、タッチ領域を 40dp の実ボックスで確保。 */
+/** アイコンのみのアクションボタン。タッチ領域は 40dp の実ボックス、グリフは気持ち小さめ(IconMd)。 */
 @Composable
 private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
     Box(
@@ -197,7 +202,7 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
             .let { if (onClick != null) it.clip(CircleShape).clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(DeckDimens.IconLg))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(DeckDimens.IconMd))
     }
 }
 
@@ -214,7 +219,7 @@ private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
                 model = ImageRequest.Builder(LocalPlatformContext.current)
                     .data(ImageProxy.proxied(url, width = 64, quality = 80)).crossfade(true).build(),
                 contentDescription = reaction.display,
-                modifier = Modifier.size(DeckDimens.IconLg),
+                modifier = Modifier.size(DeckDimens.IconMd),
             )
         } else {
             Text(reaction.display, fontSize = DeckType.Emoji, maxLines = 1)
