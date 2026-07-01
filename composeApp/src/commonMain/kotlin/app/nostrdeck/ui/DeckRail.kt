@@ -96,7 +96,7 @@ fun DeckRail(state: DeckState) {
         if (repo != null) {
             val conns by repo.relayConnFlow().collectAsState()
             var showRelays by remember { mutableStateOf(false) }
-            RelayRailIndicator(conns) { showRelays = true }
+            RelayRailIndicator(conns, vertical = true) { showRelays = true }
             if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
             Spacer(Modifier.size(8.dp))
         }

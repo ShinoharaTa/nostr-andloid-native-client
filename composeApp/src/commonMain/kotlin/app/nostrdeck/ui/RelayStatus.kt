@@ -64,20 +64,35 @@ private fun aggregateState(conns: List<RelayConn>): RelayConnState {
 }
 
 /**
- * 集約インジケータ「● n/m」。状態色の小さなドット + 控えめな数字を横並びで。
- * 塗りピルは主張が強すぎたので、地/枠なしのシンプルな形にする。タップで [onClick]。
+ * 集約インジケータ「● n/m」。状態色の小さなドット + 控えめなグレー数字。地/枠なしのシンプル表示。
+ *  - [vertical]=true : ドットの下に n/m（Deck の左レール向け・従来の縦積み）
+ *  - [vertical]=false: ドットの右に n/m（コンパクトの上部バー向け・横並び）
+ * タップで [onClick]（一覧ポップアップ）。
  */
 @Composable
-fun RelayRailIndicator(conns: List<RelayConn>, onClick: () -> Unit) {
+fun RelayRailIndicator(conns: List<RelayConn>, vertical: Boolean = false, onClick: () -> Unit) {
     val connected = conns.count { it.state == RelayConnState.CONNECTED }
-    Row(
-        Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RelayStatusDot(aggregateState(conns), size = 8)     // 状態色（緑/黄/グレー）のドット
-        Spacer(Modifier.width(5.dp))
-        Text("$connected/${conns.size}", color = DeckColors.Text3, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    val label = "$connected/${conns.size}"
+    if (vertical) {
+        Column(
+            Modifier.clip(RoundedCornerShape(11.dp)).clickable(onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            RelayStatusDot(aggregateState(conns), size = 9)
+            Spacer(Modifier.size(3.dp))
+            Text(label, color = DeckColors.Text3, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        }
+    } else {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RelayStatusDot(aggregateState(conns), size = 8)
+            Spacer(Modifier.width(5.dp))
+            Text(label, color = DeckColors.Text3, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
 
