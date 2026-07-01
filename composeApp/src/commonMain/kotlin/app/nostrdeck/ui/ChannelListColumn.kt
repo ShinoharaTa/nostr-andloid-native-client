@@ -33,6 +33,9 @@ import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.Channel
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * CHANNEL_LIST レンダラー：NIP-28 チャンネル一覧（スレッド一覧）。
@@ -70,21 +73,21 @@ fun ChannelListColumn(
 @Composable
 private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(13.dp, 11.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md, DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(DeckColors.Surface3)) {
+        Box(Modifier.size(42.dp).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
             AvatarSquare(ch.name, ch.pictureUrl)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(ch.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+                Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
-                    Spacer(Modifier.width(6.dp))
-                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = 10.5.sp)
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = DeckType.Label)
                 }
             }
             // 直近メッセージがあればそれを、無ければ概要(about)を副題に。両方空なら省略。
@@ -94,22 +97,22 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 else -> null
             }
             if (secondary != null) {
-                Text(secondary, color = DeckColors.Text2, fontSize = 12.sp,
+                Text(secondary, color = DeckColors.Text2, fontSize = DeckType.Caption,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (ch.unread > 0) {
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(DeckSpace.Sm))
             Box(
-                Modifier.clip(CircleShape).background(DeckColors.Accent).padding(horizontal = 6.dp, vertical = 1.dp),
+                Modifier.clip(CircleShape).background(DeckColors.Accent).padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = FontWeight.Bold) }
         }
         Icon(
             Icons.Outlined.PushPin, "ピン留め",
             tint = if (pinned) DeckColors.Zap else DeckColors.Text3,
-            modifier = Modifier.padding(start = 6.dp).size(28.dp).clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onPin).padding(6.dp),
+            modifier = Modifier.padding(start = DeckSpace.Xs).size(28.dp).clip(RoundedCornerShape(DeckRadius.Sm))
+                .clickable(onClick = onPin).padding(DeckSpace.Xs),
         )
     }
 }

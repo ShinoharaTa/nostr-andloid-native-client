@@ -58,6 +58,9 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import kotlinx.coroutines.launch
 
 /** プロフィールのタブ（投稿 / 投稿とリプライ / メディア）。 */
@@ -209,8 +212,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
 ) {
     if (visible.isEmpty()) {
         item {
-            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                Text("まだ投稿がありません", color = DeckColors.Text3, fontSize = 12.5.sp)
+            Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
+                Text("まだ投稿がありません", color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
         }
     } else {
@@ -227,17 +230,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
 @Composable
 private fun ProfileTopBar(title: String, onBack: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(DeckColors.Surface).padding(horizontal = 6.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().background(DeckColors.Surface).padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
+            Modifier.size(36.dp).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.width(4.dp))
-        Text(title, color = DeckColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Spacer(Modifier.width(DeckSpace.Xs))
+        Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -254,46 +257,46 @@ private fun ProfileHeaderCard(
         Box(Modifier.fillMaxWidth()) {
             Column {
                 ProfileBanner(profile?.banner)
-                Spacer(Modifier.height(40.dp))  // アバター下半分 + フォローボタンの帯
+                Spacer(Modifier.height(DeckSpace.Xl))  // アバター下半分 + フォローボタンの帯
             }
             // アバター: バナー下端に重ねる（リング付き）
             Box(
-                Modifier.align(Alignment.BottomStart).padding(start = 16.dp)
-                    .clip(CircleShape).background(DeckColors.Surface).padding(3.dp),
+                Modifier.align(Alignment.BottomStart).padding(start = DeckSpace.Lg)
+                    .clip(CircleShape).background(DeckColors.Surface).padding(DeckSpace.Xs),
             ) {
                 Avatar(profile?.name ?: pubkey, profile?.pictureUrl, size = 72.dp)
             }
             // フォローボタン: アバターと同じ下端、右寄せ
-            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 4.dp)) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = DeckSpace.Lg, bottom = DeckSpace.Xs)) {
                 FollowButton(following, onFollowToggle)
             }
         }
         // --- テキスト情報 ---
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = DeckSpace.Lg, end = DeckSpace.Lg, top = DeckSpace.Sm, bottom = DeckSpace.Md)) {
             Text(
                 profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
-                color = DeckColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = FontWeight.Bold,
             )
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(2.dp))
-                Nip05Handle(pubkey, it, fontSize = 13.sp)
+                Spacer(Modifier.height(DeckSpace.Xs))
+                Nip05Handle(pubkey, it, fontSize = DeckType.Sub)
             }
             npub?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it.take(20) + "…" + it.takeLast(6), color = DeckColors.Text3, fontSize = 11.sp)
+                Spacer(Modifier.height(DeckSpace.Xs))
+                Text(it.take(20) + "…" + it.takeLast(6), color = DeckColors.Text3, fontSize = DeckType.Label)
             }
             profile?.about?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(DeckSpace.Md))
                 // bio もリッチテキスト（URL/メンション/ハッシュタグをリンク化）。
-                Text(noteAnnotated(it), color = DeckColors.Text, fontSize = 13.sp, lineHeight = 19.sp)
+                Text(noteAnnotated(it), color = DeckColors.Text, fontSize = DeckType.Sub, lineHeight = 19.sp)
             }
             profile?.lud16?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(10.dp))
-                Text("⚡ $it", color = DeckColors.Zap, fontSize = 12.sp, maxLines = 1)
+                Spacer(Modifier.height(DeckSpace.Sm))
+                Text("⚡ $it", color = DeckColors.Zap, fontSize = DeckType.Caption, maxLines = 1)
             }
             profile?.website?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(noteAnnotated(it), color = DeckColors.Accent, fontSize = 12.sp, maxLines = 1)
+                Spacer(Modifier.height(DeckSpace.Xs))
+                Text(noteAnnotated(it), color = DeckColors.Accent, fontSize = DeckType.Caption, maxLines = 1)
             }
         }
     }
@@ -319,9 +322,9 @@ private fun ProfileBanner(url: String?) {
 @Composable
 private fun FollowButton(following: Boolean, onClick: () -> Unit) {
     if (following) {
-        OutlinedButton(onClick = onClick) { Text("フォロー中", fontSize = 12.5.sp) }
+        OutlinedButton(onClick = onClick) { Text("フォロー中", fontSize = DeckType.Caption) }
     } else {
-        Button(onClick = onClick) { Text("フォロー", fontSize = 12.5.sp) }
+        Button(onClick = onClick) { Text("フォロー", fontSize = DeckType.Caption) }
     }
 }
 
@@ -334,16 +337,16 @@ private fun ProfileTabs(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
         ProfileTab.entries.forEach { t ->
             val active = t == selected
             Column(
-                Modifier.weight(1f).clickable { onSelect(t) }.padding(vertical = 11.dp),
+                Modifier.weight(1f).clickable { onSelect(t) }.padding(vertical = DeckSpace.Md),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
                     t.label,
                     color = if (active) DeckColors.Text else DeckColors.Text3,
-                    fontSize = 12.5.sp,
+                    fontSize = DeckType.Caption,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 )
-                Spacer(Modifier.height(7.dp))
+                Spacer(Modifier.height(DeckSpace.Sm))
                 Box(
                     Modifier.width(26.dp).height(2.dp)
                         .background(if (active) DeckColors.Accent else DeckColors.Surface),

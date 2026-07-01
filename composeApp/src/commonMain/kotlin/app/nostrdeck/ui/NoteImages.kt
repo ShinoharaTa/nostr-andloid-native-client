@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -122,7 +124,7 @@ private fun Thumb(url: String, proxyWidth: Int, modifier: Modifier, onClick: () 
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(DeckRadius.Md))
             .background(DeckColors.Surface2)
             .clickable(onClick = onClick),
     )
@@ -162,12 +164,12 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
             if (urls.size > 1) {
                 Text(
                     "${pager.currentPage + 1} / ${urls.size}",
-                    color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+                    color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Lg),
                 )
             }
             Icon(
                 Icons.Filled.Close, contentDescription = "閉じる", tint = Color.White,
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(28.dp)
+                modifier = Modifier.align(Alignment.TopEnd).padding(DeckSpace.Lg).size(28.dp)
                     .clickable(onClick = onDismiss),
             )
         }

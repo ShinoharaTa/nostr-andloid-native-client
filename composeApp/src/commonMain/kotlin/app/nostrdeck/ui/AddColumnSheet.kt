@@ -37,6 +37,8 @@ import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.NotifKind
 import app.nostrdeck.model.build
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckType
 
 /**
  * カラム追加シート。白紙のフィルタ組みではなく**絞ったテンプレから選ぶ**。
@@ -49,11 +51,11 @@ fun AddColumnSheet(onDismiss: () -> Unit, onAdd: (ColumnSpec) -> Unit) {
     var selected by remember { mutableStateOf<ColumnTemplate?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Column(Modifier.fillMaxWidth().padding(bottom = DeckSpace.Xl)) {
             Text(
                 if (selected == null) "カラムを追加" else selected!!.label,
-                color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(20.dp, 8.dp),
+                color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(DeckSpace.Lg, DeckSpace.Sm),
             )
             HorizontalDivider(color = DeckColors.Border)
 
@@ -76,16 +78,16 @@ private fun TemplateList(onPick: (ColumnTemplate) -> Unit) {
     LazyColumn {
         items(ColumnTemplate.entries) { t ->
             Row(
-                Modifier.fillMaxWidth().clickable { onPick(t) }.padding(20.dp, 14.dp),
+                Modifier.fillMaxWidth().clickable { onPick(t) }.padding(DeckSpace.Lg, DeckSpace.Md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(columnIcon(t.toKindForIcon()), null, tint = DeckColors.Text2,
-                    modifier = Modifier.padding(end = 14.dp))
+                    modifier = Modifier.padding(end = DeckSpace.Md))
                 Column(Modifier.weight(1f)) {
-                    Text(t.label, color = DeckColors.Text, fontSize = 14.sp)
-                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = 11.5.sp) }
+                    Text(t.label, color = DeckColors.Text, fontSize = DeckType.Body)
+                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = DeckType.Label) }
                 }
-                if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = 18.sp)
+                if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = DeckType.Emoji)
             }
             HorizontalDivider(color = DeckColors.Border)
         }
@@ -97,7 +99,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
     var text by remember { mutableStateOf("") }
     val notif = remember { mutableStateMapOf<NotifKind, Boolean>().apply { NotifKind.entries.forEach { put(it, true) } } }
 
-    Column(Modifier.fillMaxWidth().padding(20.dp)) {
+    Column(Modifier.fillMaxWidth().padding(DeckSpace.Lg)) {
         when (t.config) {
             ColumnConfig.TEXT -> OutlinedTextField(
                 value = text, onValueChange = { text = it },
@@ -105,20 +107,20 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                 modifier = Modifier.fillMaxWidth(),
             )
             ColumnConfig.NOTIF_FILTER -> Column {
-                Text("表示する種別", color = DeckColors.Text2, fontSize = 12.5.sp)
+                Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
                 NotifKind.entries.forEach { k ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = notif[k] == true, onCheckedChange = { notif[k] = it })
-                        Text(k.label, color = DeckColors.Text, fontSize = 13.5.sp)
+                        Text(k.label, color = DeckColors.Text, fontSize = DeckType.Sub)
                     }
                 }
             }
             ColumnConfig.NONE -> Unit
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(DeckSpace.Lg))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onBack) { Text("戻る") }
-            Spacer(Modifier.height(0.dp))
+            Spacer(Modifier.height(DeckSpace.Xs))
             Button(
                 onClick = {
                     val kinds = NotifKind.entries.filter { notif[it] == true }.map { it.kind }

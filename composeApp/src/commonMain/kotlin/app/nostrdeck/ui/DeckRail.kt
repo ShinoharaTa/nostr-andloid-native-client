@@ -44,6 +44,10 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * 左 NavigationRail（展開時の常設）。
@@ -55,14 +59,14 @@ fun DeckRail(state: DeckState) {
     Column(
         Modifier.width(60.dp).fillMaxHeight().background(DeckColors.Bg)
             .border(0.dp, DeckColors.Border).verticalScroll(rememberScrollState())
-            .padding(vertical = 10.dp),
+            .padding(vertical = DeckSpace.Sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(DeckColors.Accent),
+            Modifier.size(34.dp).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Accent),
             contentAlignment = Alignment.Center,
-        ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = 17.sp) }
-        Spacer(Modifier.size(6.dp))
+        ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = DeckType.Title) }
+        Spacer(Modifier.size(DeckSpace.Xs))
 
         val repo = LocalRepository.current
 
@@ -80,7 +84,7 @@ fun DeckRail(state: DeckState) {
         }
 
         Divider26()
-        Text("PIN", color = DeckColors.Text3, fontSize = 8.5.sp, letterSpacing = 1.sp)
+        Text("PIN", color = DeckColors.Text3, fontSize = DeckType.Micro, letterSpacing = 1.sp)
 
         // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
         state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
@@ -91,17 +95,17 @@ fun DeckRail(state: DeckState) {
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3, modifier = Modifier.size(18.dp)) }
 
-        Spacer(Modifier.size(16.dp))
+        Spacer(Modifier.size(DeckSpace.Lg))
         // リレー接続ステータスの集約インジケータ（◑ 3/4）。タップで一覧ポップアップ。
         if (repo != null) {
             val conns by repo.relayConnFlow().collectAsState()
             var showRelays by remember { mutableStateOf(false) }
             RelayRailIndicator(conns, vertical = true) { showRelays = true }
             if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(DeckSpace.Sm))
         }
         NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(DeckSpace.Xs))
         Avatar("me", modifier = Modifier.size(34.dp))
     }
 }
@@ -109,14 +113,14 @@ fun DeckRail(state: DeckState) {
 @Composable
 private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Md))
             .background(if (active) DeckColors.AccentWeak else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val tint = if (active) DeckColors.Accent else DeckColors.Text2
         if (badge > 0) {
-            BadgedBox(badge = { Badge { Text("$badge", fontSize = 9.sp) } }) {
+            BadgedBox(badge = { Badge { Text("$badge", fontSize = DeckType.Micro) } }) {
                 Icon(icon, cd, tint = tint, modifier = Modifier.size(20.dp))
             }
         } else Icon(icon, cd, tint = tint, modifier = Modifier.size(20.dp))
@@ -126,24 +130,24 @@ private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int =
 @Composable
 private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).clickable(onClick = onClick),
+        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Md)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val content: @Composable () -> Unit = {
-            Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(DeckColors.AccentWeak),
+            Box(Modifier.size(28.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.AccentWeak),
                 contentAlignment = Alignment.Center) {
                 Icon(columnIcon(col.kind), col.title, tint = DeckColors.Accent, modifier = Modifier.size(16.dp))
             }
         }
         if (col.unread > 0) {
-            BadgedBox(badge = { Badge { Text("${col.unread}", fontSize = 9.sp) } }) { content() }
+            BadgedBox(badge = { Badge { Text("${col.unread}", fontSize = DeckType.Micro) } }) { content() }
         } else content()
     }
 }
 
 @Composable
 private fun Divider26() {
-    Spacer(Modifier.size(5.dp))
+    Spacer(Modifier.size(DeckSpace.Xs))
     Box(Modifier.width(26.dp).height(1.dp).background(DeckColors.Border))
-    Spacer(Modifier.size(5.dp))
+    Spacer(Modifier.size(DeckSpace.Xs))
 }

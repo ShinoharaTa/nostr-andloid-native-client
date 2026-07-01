@@ -43,6 +43,8 @@ import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -138,7 +140,7 @@ private fun NotificationsBody(
 ) {
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("通知はまだありません", color = DeckColors.Text3, fontSize = 13.sp)
+            Text("通知はまだありません", color = DeckColors.Text3, fontSize = DeckType.Sub)
         }
     } else {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
@@ -158,27 +160,27 @@ private fun NotificationsBody(
 @Composable
 fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(13.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md),
         verticalAlignment = Alignment.Top,
     ) {
         // 左の種別指標: リアクションは絵文字そのもの／返信・メンション・リポストはアイコン
         // （リポストはテーマに馴染むグリーン）。
         LeftIndicator(n)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         // アバターを少し下げて名前の文字位置に揃える。
-        Avatar(n.actor.name, n.actor.pictureUrl, Modifier.padding(top = 4.dp).clickable(onClick = onActorClick), size = 34.dp)
-        Spacer(Modifier.width(10.dp))
+        Avatar(n.actor.name, n.actor.pictureUrl, Modifier.padding(top = DeckSpace.Xs).clickable(onClick = onActorClick), size = 34.dp)
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             // 「○○がリアクション/リポスト」の文言は出さない（左アイコンで種別が分かる）。
             // 名前は残り幅いっぱい（長ければ…で省略）、時刻は右端に固定。
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    n.actor.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+                    n.actor.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).clickable(onClick = onActorClick),
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(relativeTime(n.createdAt), color = DeckColors.Text3, fontSize = 11.sp)
+                Spacer(Modifier.width(DeckSpace.Sm))
+                Text(relativeTime(n.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
             }
             // 返信/メンションは本文、リアクション/リポストは対象（自分の）ノートの抜粋。
             val body = when (n.kind) {
@@ -186,10 +188,10 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
                 else -> n.targetSnippet
             }
             if (!body.isNullOrBlank()) {
-                Spacer(Modifier.size(3.dp))
+                Spacer(Modifier.size(DeckSpace.Xs))
                 // ノートと同じくリッチテキスト化（nostr: 参照を ↗… に短縮・URL/タグをリンク化）。
                 Text(
-                    noteAnnotated(body), color = DeckColors.Text2, fontSize = 12.5.sp,
+                    noteAnnotated(body), color = DeckColors.Text2, fontSize = DeckType.Caption,
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -205,7 +207,7 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
 @Composable
 private fun LeftIndicator(n: NotificationUi) {
     val glyph = 15.dp  // 文字高さに合わせる
-    val top = Modifier.padding(top = 4.dp)  // アバターと同じだけ下げて名前の文字位置に揃える
+    val top = Modifier.padding(top = DeckSpace.Xs)  // アバターと同じだけ下げて名前の文字位置に揃える
     when {
         // NIP-30 カスタム絵文字: 固定サイズの画像。
         n.kind == NotificationKind.REACTION && n.reactionImageUrl != null ->
@@ -218,7 +220,7 @@ private fun LeftIndicator(n: NotificationUi) {
             )
         // 通常の unicode 絵文字: 高さを固定すると descender が切れるので Text を自然サイズで描く。
         n.kind == NotificationKind.REACTION ->
-            Text(n.reaction ?: "❤️", fontSize = 14.sp, maxLines = 1, modifier = top)
+            Text(n.reaction ?: "❤️", fontSize = DeckType.Body, maxLines = 1, modifier = top)
         // 返信/メンション/リポストはアイコン。
         else ->
             Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = top.size(glyph))

@@ -47,6 +47,9 @@ import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.UsedEmoji
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -83,14 +86,14 @@ fun ReactionPickerSheet(
     ) {
         // シートは可能な限り上部まで広く使う（絵文字グリッドが weight で残り高さを占有）。
         Column(
-            Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 14.dp).navigationBarsPadding(),
+            Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = DeckSpace.Md).navigationBarsPadding(),
         ) {
             // リアクション対象ノート（アイコン＋本文2行）を先頭に表示して文脈を明示。
             if (targetNote != null) {
                 TargetNoteHeader(targetNote)
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(DeckSpace.Sm))
                 HorizontalDivider(color = DeckColors.Border)
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(DeckSpace.Sm))
             }
             OutlinedTextField(
                 value = query,
@@ -98,10 +101,10 @@ fun ReactionPickerSheet(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Outlined.Search, null, tint = DeckColors.Text3) },
-                placeholder = { Text("絵文字を検索（例: わらい / fire / 🔥）", color = DeckColors.Text3, fontSize = 13.sp) },
+                placeholder = { Text("絵文字を検索（例: わらい / fire / 🔥）", color = DeckColors.Text3, fontSize = DeckType.Sub) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(DeckSpace.Sm))
 
             Column(
                 Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
@@ -147,7 +150,7 @@ fun ReactionPickerSheet(
                         }
                     }
                 }
-                Spacer(Modifier.size(16.dp))
+                Spacer(Modifier.size(DeckSpace.Lg))
             }
         }
     }
@@ -162,16 +165,16 @@ private fun TargetNoteHeader(note: NoteUi) {
     val body = note.text ?: note.event.content
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Avatar(seed = note.event.pubkey, pictureUrl = author.pictureUrl, size = 32.dp)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.fillMaxWidth()) {
             Text(
-                name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             if (body.isNotBlank()) {
-                Spacer(Modifier.size(2.dp))
+                Spacer(Modifier.size(DeckSpace.Xs))
                 Text(
-                    noteAnnotated(body), color = DeckColors.Text2, fontSize = 13.sp,
+                    noteAnnotated(body), color = DeckColors.Text2, fontSize = DeckType.Sub,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -181,15 +184,15 @@ private fun TargetNoteHeader(note: NoteUi) {
 
 @Composable
 private fun SectionLabel(text: String) {
-    Spacer(Modifier.size(10.dp))
-    Text(text, color = DeckColors.Text3, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.size(4.dp))
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Text(text, color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.size(DeckSpace.Xs))
 }
 
 @Composable
 private fun EmptyHint(text: String) {
-    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = DeckColors.Text3, fontSize = 12.5.sp)
+    Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
+        Text(text, color = DeckColors.Text3, fontSize = DeckType.Caption)
     }
 }
 
@@ -206,7 +209,7 @@ private fun EmojiFlow(content: @Composable () -> Unit) {
 @Composable
 private fun EmojiCell(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(40.dp).clip(RoundedCornerShape(DeckRadius.Sm))
             .background(DeckColors.Surface2).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -214,7 +217,7 @@ private fun EmojiCell(onClick: () -> Unit, content: @Composable () -> Unit) {
 
 @Composable
 private fun UnicodeEmojiButton(char: String, onClick: () -> Unit) {
-    EmojiCell(onClick) { Text(char, fontSize = 22.sp) }
+    EmojiCell(onClick) { Text(char, fontSize = DeckType.Display) }
 }
 
 @Composable
@@ -226,7 +229,7 @@ private fun CustomEmojiButton(emoji: CustomEmoji, onClick: () -> Unit) {
 private fun RecentEmojiButton(emoji: UsedEmoji, onClick: () -> Unit) {
     EmojiCell(onClick) {
         if (emoji.imageUrl != null) EmojiImage(emoji.imageUrl, emoji.content)
-        else Text(emoji.content, fontSize = 22.sp)
+        else Text(emoji.content, fontSize = DeckType.Display)
     }
 }
 

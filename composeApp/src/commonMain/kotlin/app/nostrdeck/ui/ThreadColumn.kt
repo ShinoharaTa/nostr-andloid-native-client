@@ -30,6 +30,9 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * THREAD レンダラー：NIP-10 返信ツリー。
@@ -81,8 +84,8 @@ private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit, onQuote: () -> Un
     ) {
         if (entry.replyToName != null) {
             Text(
-                "返信先 @${entry.replyToName}", color = DeckColors.Text3, fontSize = 11.sp,
-                modifier = Modifier.padding(start = 13.dp, top = 8.dp),
+                "返信先 @${entry.replyToName}", color = DeckColors.Text3, fontSize = DeckType.Label,
+                modifier = Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm),
             )
         }
         NoteItem(entry.note, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick)
@@ -94,16 +97,16 @@ private fun ReplyBox(enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
             .let { if (enabled) it.clickable(onClick = onClick) else it }
-            .padding(11.dp),
+            .padding(DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "返信を書く…", color = DeckColors.Text3, fontSize = 12.5.sp,
-            modifier = Modifier.weight(1f).clip(RoundedCornerShape(999.dp))
-                .background(DeckColors.Surface2).padding(horizontal = 14.dp, vertical = 9.dp),
+            "返信を書く…", color = DeckColors.Text3, fontSize = DeckType.Caption,
+            modifier = Modifier.weight(1f).clip(RoundedCornerShape(DeckRadius.Full))
+                .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Accent,
-            modifier = Modifier.padding(6.dp))
+            modifier = Modifier.padding(DeckSpace.Xs))
     }
 }

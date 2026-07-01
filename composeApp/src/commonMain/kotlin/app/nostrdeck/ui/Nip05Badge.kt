@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
 
 /** NIP-05 検証の状態。CHECKING=確認中、VERIFIED=一致(OK)、INVALID=不一致/取得失敗(異常)。 */
 private enum class Nip05Status { CHECKING, VERIFIED, INVALID }
@@ -48,7 +49,7 @@ fun Nip05Handle(
         when (status) {
             Nip05Status.CHECKING -> {}
             Nip05Status.VERIFIED -> {
-                Spacer(Modifier.width(3.dp))
+                Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(
                     Icons.Filled.Verified,
                     contentDescription = "NIP-05 検証OK",
@@ -57,7 +58,7 @@ fun Nip05Handle(
                 )
             }
             Nip05Status.INVALID -> {
-                Spacer(Modifier.width(3.dp))
+                Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(
                     Icons.Outlined.ErrorOutline,
                     contentDescription = "NIP-05 検証エラー",

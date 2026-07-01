@@ -29,6 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * 全カラム共通のヘッダ（designs/index.html の .col-head）。
@@ -49,25 +53,25 @@ fun ColumnHeader(
 ) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
             Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack),
+                Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(19.dp)) }
+            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
         } else {
             Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
+                Modifier.size(26.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
                 contentAlignment = Alignment.Center,
             ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(15.dp)) }
         }
-        Spacer(Modifier.width(9.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
-            Text(title, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
+            Text(title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
         if (onPin != null) {
@@ -85,7 +89,7 @@ fun ColumnHeader(
 @Composable
 private fun HeaderIcon(icon: ImageVector, cd: String, tint: Color, onClick: (() -> Unit)?) {
     Box(
-        Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(16.dp)) }
@@ -94,13 +98,13 @@ private fun HeaderIcon(icon: ImageVector, cd: String, tint: Color, onClick: (() 
 /** オフライン状態バナー（控えめ・操作はブロックしない）。 */
 @Composable
 fun OfflineBanner(pendingCount: Int) {
-    Box(Modifier.fillMaxWidth().padding(13.dp, 8.dp)) {
+    Box(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Sm)) {
         Box(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                .background(DeckColors.Zap.copy(alpha = 0.1f)).padding(11.dp, 7.dp)
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Sm))
+                .background(DeckColors.Zap.copy(alpha = 0.1f)).padding(DeckSpace.Md, DeckSpace.Sm)
         ) {
             Text("⚠ オフライン — キャッシュ表示中・$pendingCount 件の投稿を送信待ち",
-                color = DeckColors.Zap, fontSize = 11.5.sp)
+                color = DeckColors.Zap, fontSize = DeckType.Label)
         }
     }
 }

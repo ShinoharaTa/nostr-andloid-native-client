@@ -28,6 +28,9 @@ import androidx.compose.ui.window.Dialog
 import app.nostrdeck.nostr.RelayConn
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 // リレー接続状態の信号色（接続=緑 / 接続中=黄 / 切断=グレー）。状態を一目で判別するための例外的な配色。
 private val RelayGreen = Color(0xFF3FB950)
@@ -75,23 +78,23 @@ fun RelayRailIndicator(conns: List<RelayConn>, vertical: Boolean = false, onClic
     val label = "$connected/${conns.size}"
     if (vertical) {
         Column(
-            Modifier.clip(RoundedCornerShape(11.dp)).clickable(onClick = onClick)
-                .padding(horizontal = 6.dp, vertical = 5.dp),
+            Modifier.clip(RoundedCornerShape(DeckRadius.Md)).clickable(onClick = onClick)
+                .padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Xs),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             RelayStatusDot(aggregateState(conns), size = 9)
-            Spacer(Modifier.size(3.dp))
-            Text(label, color = DeckColors.Text3, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.size(DeckSpace.Xs))
+            Text(label, color = DeckColors.Text3, fontSize = DeckType.Micro, fontWeight = FontWeight.SemiBold)
         }
     } else {
         Row(
-            Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
+            Modifier.clip(RoundedCornerShape(DeckRadius.Full)).clickable(onClick = onClick)
+                .padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RelayStatusDot(aggregateState(conns), size = 8)
-            Spacer(Modifier.width(5.dp))
-            Text(label, color = DeckColors.Text3, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(DeckSpace.Xs))
+            Text(label, color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -101,17 +104,17 @@ fun RelayRailIndicator(conns: List<RelayConn>, vertical: Boolean = false, onClic
 fun RelayStatusDialog(conns: List<RelayConn>, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.widthIn(max = 340.dp).clip(RoundedCornerShape(16.dp))
-                .background(DeckColors.Surface).padding(vertical = 14.dp),
+            Modifier.widthIn(max = 340.dp).clip(RoundedCornerShape(DeckRadius.Lg))
+                .background(DeckColors.Surface).padding(vertical = DeckSpace.Md),
         ) {
             Text(
-                "リレー状態", color = DeckColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                "リレー状態", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Xs),
             )
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(DeckSpace.Xs))
             if (conns.isEmpty()) {
-                Text("接続中のリレーはありません", color = DeckColors.Text3, fontSize = 12.5.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                Text("接続中のリレーはありません", color = DeckColors.Text3, fontSize = DeckType.Caption,
+                    modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm))
             } else {
                 conns.forEach { c -> RelayStatusRow(c) }
             }
@@ -122,18 +125,18 @@ fun RelayStatusDialog(conns: List<RelayConn>, onDismiss: () -> Unit) {
 @Composable
 private fun RelayStatusRow(c: RelayConn) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RelayStatusDot(c.state, size = 9)
-        Spacer(Modifier.width(11.dp))
+        Spacer(Modifier.width(DeckSpace.Md))
         Text(
             c.url.removePrefix("wss://").removePrefix("ws://"),
-            color = DeckColors.Text2, fontSize = 12.5.sp,
+            color = DeckColors.Text2, fontSize = DeckType.Caption,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.width(10.dp))
-        Text(statusLabel(c.state), color = relayStateColor(c.state), fontSize = 11.5.sp)
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Text(statusLabel(c.state), color = relayStateColor(c.state), fontSize = DeckType.Label)
     }
 }
 

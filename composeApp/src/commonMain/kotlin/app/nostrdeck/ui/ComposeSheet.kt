@@ -67,6 +67,9 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -221,32 +224,32 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
             val cardMaxHeight = maxHeight - 24.dp   // 上下の余白ぶんを確保
             Column(
                 Modifier
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Md)
                     .widthIn(max = 460.dp)          // 大画面でも広がりすぎないよう最大幅を制限
                     .fillMaxWidth()                 // 制限内で幅いっぱい（狭い端末では画面幅に追従）
                     .heightIn(max = cardMaxHeight)
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(DeckRadius.Lg))
                     .background(DeckColors.Surface),
             ) {
                 // ヘッダ: 閉じる + タイトル（送信は右下へ）。
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                    Modifier.fillMaxWidth().padding(start = DeckSpace.Sm, end = DeckSpace.Md, top = DeckSpace.Xs, bottom = DeckSpace.Xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         Icons.Outlined.Close, contentDescription = "閉じる",
                         tint = DeckColors.Text2,
                         modifier = Modifier.clip(CircleShape).clickable(enabled = !sending) { onDismiss() }
-                            .padding(10.dp).size(22.dp),
+                            .padding(DeckSpace.Sm).size(22.dp),
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(DeckSpace.Xs))
                     Text(
                         when {
                             replyTo != null -> "返信"
                             quoting != null -> "引用リポスト"
                             else -> "新規投稿"
                         },
-                        color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
                     )
                 }
                 HorizontalDivider(color = DeckColors.Border)
@@ -255,18 +258,18 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                 Column(
                     Modifier.fillMaxWidth().weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 12.dp),
+                        .padding(horizontal = DeckSpace.Lg).padding(top = DeckSpace.Md, bottom = DeckSpace.Md),
                 ) {
                     AccountHeader(pubkey = myPubkey, profile = myProfile)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(DeckSpace.Md))
 
                     BodyField(text, onChange = { text = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth())
 
                     // 入力中の候補（本文直下）。
                     if (mentionCandidates.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("メンション候補", color = DeckColors.Text3, fontSize = 11.sp)
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(DeckSpace.Sm))
+                        Text("メンション候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                        Spacer(Modifier.height(DeckSpace.Xs))
                         Column {
                             mentionCandidates.forEach { p ->
                                 MentionRow(p) { text = completeMention(text, Nip19.hexToNpub(p.pubkey)) }
@@ -274,17 +277,17 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         }
                     } else {
                         if (tagSuggestions.isNotEmpty()) {
-                            Spacer(Modifier.height(10.dp))
-                            Text("候補", color = DeckColors.Text3, fontSize = 11.sp)
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(DeckSpace.Sm))
+                            Text("候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tagSuggestions.forEach { tag -> TagChip(tag) { text = completeHashtag(text, tag) } }
                             }
                         }
                         if (recent.isNotEmpty()) {
-                            Spacer(Modifier.height(10.dp))
-                            Text("最近のタグ", color = DeckColors.Text3, fontSize = 11.sp)
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(DeckSpace.Sm))
+                            Text("最近のタグ", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 recent.forEach { tag -> TagChip(tag) { text = appendHashtag(text, tag) } }
                             }
@@ -293,12 +296,12 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
 
                     // 添付画像カルーセル + 解像度（画像があるときだけ表示）。
                     if (images.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(DeckSpace.Md))
                         ImageCarousel(images, onRemove = { images.removeAt(it) })
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(DeckSpace.Sm))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("解像度", color = DeckColors.Text3, fontSize = 11.sp)
-                            Spacer(Modifier.width(8.dp))
+                            Text("解像度", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Spacer(Modifier.width(DeckSpace.Sm))
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
                     }
@@ -310,7 +313,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     ContextCard(
                         parent = parent,
                         label = if (replyTo != null) "返信先" else "引用元",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                     )
                 }
 
@@ -318,23 +321,23 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                 sendError?.let { msg ->
                     HorizontalDivider(color = DeckColors.Border)
                     Text(
-                        msg, color = DeckColors.Text, fontSize = 12.sp,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        msg, color = DeckColors.Text, fontSize = DeckType.Caption,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
                     )
                 }
                 HorizontalDivider(color = DeckColors.Border)
                 // 下部バー: 送信中は「進捗 + キャンセル」、通常は「画像添付 + 送信」。
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (sending) {
                         CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp, color = DeckColors.Text2)
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(DeckSpace.Sm))
                         val done by uploadProgress.collectAsState()
                         Text(
                             if (images.isNotEmpty()) "画像 $done/${images.size} アップロード中…" else "投稿中…",
-                            color = DeckColors.Text2, fontSize = 12.sp,
+                            color = DeckColors.Text2, fontSize = DeckType.Caption,
                         )
                         Spacer(Modifier.weight(1f))
                         // 投稿中の強制キャンセル。
@@ -345,8 +348,8 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         Icon(
                             Icons.Outlined.Image, contentDescription = "画像を添付",
                             tint = DeckColors.Text,
-                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                .clickable { picker.launch() }.padding(8.dp).size(22.dp),
+                            modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm))
+                                .clickable { picker.launch() }.padding(DeckSpace.Sm).size(22.dp),
                         )
                         Spacer(Modifier.weight(1f))
                         Button(
@@ -355,7 +358,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                                 containerColor = DeckColors.Text, contentColor = DeckColors.Bg,
                                 disabledContainerColor = DeckColors.Surface3, disabledContentColor = DeckColors.Text3,
                             ),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
                         ) {
                             Text(
                                 when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
@@ -377,11 +380,11 @@ private fun AccountHeader(pubkey: String?, profile: Profile?) {
         ?: "あなた"
     Row(verticalAlignment = Alignment.CenterVertically) {
         Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 38.dp)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!profile?.handle.isNullOrBlank()) {
-                Text(profile!!.handle, color = DeckColors.Text3, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -403,17 +406,17 @@ private fun BodyField(
 ) {
     Box(
         modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(DeckRadius.Md))
             .background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Md))
+            .padding(DeckSpace.Md),
     ) {
         if (text.isEmpty()) {
-            Text("いまどうしてる？", color = DeckColors.Text3, fontSize = 15.sp)
+            Text("いまどうしてる？", color = DeckColors.Text3, fontSize = DeckType.Title)
         }
         BasicTextField(
             value = text, onValueChange = onChange,
-            textStyle = TextStyle(color = DeckColors.Text, fontSize = 15.sp, lineHeight = 21.sp),
+            textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
             cursorBrush = SolidColor(DeckColors.Text),
             modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
                 .focusRequester(focusRequester),
@@ -432,7 +435,7 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
         items(images.size) { i ->
             val att = images[i]
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)).background(DeckColors.Surface3)) {
+                Box(Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3)) {
                     AsyncImage(
                         model = ImageRequest.Builder(ctx).data(att.src.bytes).build(),
                         contentDescription = "添付画像",
@@ -441,21 +444,21 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                     )
                     Icon(
                         Icons.Outlined.Close, contentDescription = "削除", tint = Color.White,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
+                        modifier = Modifier.align(Alignment.TopEnd).padding(DeckSpace.Xs)
                             .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                            .clickable { onRemove(i) }.padding(3.dp).size(15.dp),
+                            .clickable { onRemove(i) }.padding(DeckSpace.Xs).size(15.dp),
                     )
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(DeckSpace.Xs))
                 val processed = att.processed
                 Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
                     when {
-                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
+                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                         processed != null && processed.bytes.size < att.src.bytes.size -> Text(
                             "${humanSize(att.src.bytes.size)}→${humanSize(processed.bytes.size)}",
-                            color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
+                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                     }
                 }
             }
@@ -496,19 +499,19 @@ private fun humanSize(bytes: Int): String = when {
 @Composable
 private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolution) -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(8.dp)),
+        Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2)
+            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Sm)),
     ) {
         ImageResolution.entries.forEach { r ->
             val active = r == selected
             Text(
                 r.label,
                 color = if (active) DeckColors.Bg else DeckColors.Text2,
-                fontSize = 12.5.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = DeckType.Caption, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier
                     .clickable { onSelect(r) }
                     .background(if (active) DeckColors.Text else Color.Transparent)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
             )
         }
     }
@@ -524,25 +527,25 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
 
     Column(
         modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(DeckRadius.Md))
             .background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Md))
+            .padding(DeckSpace.Md),
     ) {
-        Text(label, color = DeckColors.Text3, fontSize = 11.sp)
-        Spacer(Modifier.height(8.dp))
+        Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+        Spacer(Modifier.height(DeckSpace.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(seed = parent.pubkey, pictureUrl = profile?.pictureUrl, size = 28.dp)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(DeckSpace.Sm))
             Text(
-                name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         if (parent.content.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(DeckSpace.Sm))
             Text(
-                noteAnnotated(parent.content), color = DeckColors.Text2, fontSize = 13.sp,
+                noteAnnotated(parent.content), color = DeckColors.Text2, fontSize = DeckType.Sub,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -556,17 +559,17 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
         ?: runCatching { Nip19.hexToNpub(profile.pubkey).take(12) + "…" }.getOrDefault(profile.pubkey.take(12))
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(DeckRadius.Sm))
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(vertical = DeckSpace.Xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(seed = profile.pubkey, pictureUrl = profile.pictureUrl, size = 28.dp)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (profile.handle.isNotBlank()) {
-                Text(profile.handle, color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -576,12 +579,12 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
 private fun TagChip(tag: String, onClick: () -> Unit) {
     Text(
         "#$tag",
-        color = DeckColors.Text2, fontSize = 12.5.sp,
+        color = DeckColors.Text2, fontSize = DeckType.Caption,
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(DeckRadius.Full))
             .background(DeckColors.Surface2)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
     )
 }
 

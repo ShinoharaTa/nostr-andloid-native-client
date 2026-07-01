@@ -44,6 +44,23 @@
   --column-gap: 1px;        /* カラム間の区切り線 */
   --hinge-gutter: 22px;     /* フォルダブルのヒンジ回避ガター */
 
-  /* --- Type --- */
+  /* --- Type family --- */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
+
+  /* --- Type scale (Option C: hybrid / 7段, Compose DeckType と 1対1) --- */
+  --type-display: 20px;  /* ダイアログ見出し */
+  --type-title:   15px;  /* 画面/カラム名 */
+  --type-body:    14px;  /* 本文 */
+  --type-sub:     13px;  /* 著者名/小見出し */
+  --type-caption: 12px;  /* 補足 */
+  --type-label:   11px;  /* 時刻/ハンドル/ラベル */
+  --type-micro:   10px;  /* バッジ/最小メタ */
+  --type-emoji:   18px;  /* リアクション絵文字グリフ */
+
+  /* --- Touch / icon (Compose DeckDimens と 1対1) --- */
+  --touch:     48px;     /* 原則8の推奨 */
+  --touch-sm:  40px;     /* Deck 密度優先の実用最小(T3) */
+  --icon-sm:   16px;
+  --icon-md:   18px;
+  --icon-lg:   20px;
 }

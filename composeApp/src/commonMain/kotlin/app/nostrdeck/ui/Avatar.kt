@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckDimens
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
@@ -62,12 +64,12 @@ fun AvatarSquare(seed: String, pictureUrl: String? = null, modifier: Modifier = 
                 .data(ImageProxy.proxied(pictureUrl, width = 128, quality = 80, animated = true))
                 .crossfade(true).build(),
             contentDescription = seed,
-            modifier = modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+            modifier = modifier.fillMaxSize().clip(RoundedCornerShape(DeckRadius.Md)),
             contentScale = ContentScale.Crop,
         )
     } else {
         Box(
-            modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(monoShade(seed)),
+            modifier.fillMaxSize().clip(RoundedCornerShape(DeckRadius.Md)).background(monoShade(seed)),
             contentAlignment = Alignment.Center,
         ) { Initial(seed) }
     }
@@ -76,7 +78,7 @@ fun AvatarSquare(seed: String, pictureUrl: String? = null, modifier: Modifier = 
 @Composable
 private fun Initial(seed: String) {
     val ch = seed.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-    Text(ch, color = DeckColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    Text(ch, color = DeckColors.Text, fontWeight = FontWeight.SemiBold, fontSize = DeckType.Body)
 }
 
 /** seed → 無彩色のグレー（明度のみ変化、色相なし）。 */

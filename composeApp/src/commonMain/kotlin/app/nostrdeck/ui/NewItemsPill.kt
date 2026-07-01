@@ -26,6 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * 「新着 N 件 ↑」の未読カウント。
@@ -52,17 +55,17 @@ fun rememberNewItemsCount(keys: List<String>, listState: LazyListState): Int {
 fun BoxScope.NewItemsPill(count: Int, onClick: () -> Unit) {
     if (count <= 0) return
     Row(
-        Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
-            .clip(RoundedCornerShape(999.dp))
+        Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Sm)
+            .clip(RoundedCornerShape(DeckRadius.Full))
             .background(DeckColors.Text)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = 5.dp).size(15.dp))
+        Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = DeckSpace.Xs).size(15.dp))
         Text(
-            "$count 件の新着", color = DeckColors.Bg, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+            "$count 件の新着", color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = FontWeight.SemiBold,
         )
     }
 }

@@ -44,6 +44,8 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckDimens
 import kotlinx.coroutines.launch
 
@@ -87,10 +89,10 @@ private fun ExpandedDeck(state: DeckState) {
             contentAlignment = Alignment.TopCenter,
         ) {
             Box(
-                Modifier.padding(top = 14.dp).size(40.dp).clip(CircleShape)
+                Modifier.padding(top = DeckSpace.Md).size(40.dp).clip(CircleShape)
                     .border(1.5.dp, DeckColors.BorderStrong, CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("＋", color = DeckColors.Text3, fontSize = 20.sp) }
+            ) { Text("＋", color = DeckColors.Text3, fontSize = DeckType.Display) }
         }
     }
 }
@@ -111,7 +113,7 @@ private fun CompactPager(state: DeckState) {
         // 上部バー: カラムタブ（横スクロール）＋ 右端にリレー接続ステータス（折り畳み時はレールが
         // 出ないため、ここに常設して一目で状態が分かるようにする）。
         Row(
-            Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.fillMaxWidth().padding(start = DeckSpace.Sm, end = DeckSpace.Sm, top = DeckSpace.Sm, bottom = DeckSpace.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
@@ -121,27 +123,27 @@ private fun CompactPager(state: DeckState) {
                 state.columns.forEachIndexed { i, c ->
                     val active = pager.currentPage == i
                     Text(
-                        c.title, fontSize = 12.5.sp,
+                        c.title, fontSize = DeckType.Caption,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (active) DeckColors.Accent else DeckColors.Text2,
                         modifier = Modifier.clip(CircleShape)
                             // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）
                             .clickable { scope.launch { pager.animateScrollToPage(i) } }
                             .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                     )
                 }
                 // カラム追加
                 Text(
-                    "＋", color = DeckColors.Text2, fontSize = 13.sp,
+                    "＋", color = DeckColors.Text2, fontSize = DeckType.Sub,
                     modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
-                        .background(DeckColors.Surface2).padding(horizontal = 12.dp, vertical = 6.dp),
+                        .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                 )
             }
             // リレー接続ステータス（緑/黄/グレー ● + N/N）。タップで一覧ダイアログ。
             val repo = LocalRepository.current
             if (repo != null) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(DeckSpace.Xs))
                 val conns by repo.relayConnFlow().collectAsState()
                 var showRelays by remember { mutableStateOf(false) }
                 RelayRailIndicator(conns) { showRelays = true }

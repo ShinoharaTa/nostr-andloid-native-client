@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -76,7 +79,7 @@ fun CollapsibleText(
     Column(modifier) {
         Text(
             annotated,
-            color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp,
+            color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = 20.sp,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
             inlineContent = inline,
@@ -85,20 +88,20 @@ fun CollapsibleText(
             },
         )
         if (isOverflowing || expanded) {
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(DeckSpace.Xs))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(DeckRadius.Full))
                     .background(DeckColors.Surface2)
                     .clickable { expanded = !expanded }
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
             ) {
                 Text(
                     if (expanded) "閉じる" else "もっと見る",
-                    color = DeckColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    color = DeckColors.Accent, fontSize = DeckType.Caption, fontWeight = FontWeight.Medium,
                 )
-                Spacer(Modifier.width(3.dp))
+                Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(
                     if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                     contentDescription = null, tint = DeckColors.Accent, modifier = Modifier.size(16.dp),

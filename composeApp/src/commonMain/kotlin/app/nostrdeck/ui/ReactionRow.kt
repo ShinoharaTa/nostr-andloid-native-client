@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -41,10 +44,10 @@ fun ReactionRow(reactions: List<ReactionUi>, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ReactionChip(reaction: ReactionUi) {
-    Surface(color = DeckColors.Surface2, shape = RoundedCornerShape(10.dp)) {
+    Surface(color = DeckColors.Surface2, shape = RoundedCornerShape(DeckRadius.Sm)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
         ) {
             if (reaction.imageUrl != null) {
                 AsyncImage(
@@ -55,10 +58,10 @@ private fun ReactionChip(reaction: ReactionUi) {
                     modifier = Modifier.size(16.dp),
                 )
             } else {
-                Text(reaction.display, color = DeckColors.Text2, fontSize = 12.sp)
+                Text(reaction.display, color = DeckColors.Text2, fontSize = DeckType.Caption)
             }
-            Spacer(Modifier.width(4.dp))
-            Text(reaction.count.toString(), color = DeckColors.Text2, fontSize = 11.5.sp)
+            Spacer(Modifier.width(DeckSpace.Xs))
+            Text(reaction.count.toString(), color = DeckColors.Text2, fontSize = DeckType.Label)
         }
     }
 }

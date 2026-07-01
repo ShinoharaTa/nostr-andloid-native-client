@@ -27,6 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.theme.DeckType
 
 /**
  * 画面上部に浮く「接続中…」インジケータ。
@@ -45,20 +48,20 @@ fun BoxScope.ConnectionIndicator() {
         visible = waiting,
         enter = fadeIn() + slideInVertically { -it },
         exit = fadeOut() + slideOutVertically { -it },
-        modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+        modifier = Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Sm),
     ) {
         Row(
-            Modifier.clip(RoundedCornerShape(50))
+            Modifier.clip(RoundedCornerShape(DeckRadius.Full))
                 .background(DeckColors.Surface3)
-                .border(1.dp, DeckColors.Border, RoundedCornerShape(50))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
+                .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Full))
+                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircularProgressIndicator(
                 modifier = Modifier.size(13.dp), strokeWidth = 2.dp, color = DeckColors.Text2,
             )
-            Spacer(Modifier.width(8.dp))
-            Text("接続中…", color = DeckColors.Text2, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(DeckSpace.Sm))
+            Text("接続中…", color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = FontWeight.Medium)
         }
     }
 }

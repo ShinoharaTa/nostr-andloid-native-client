@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
 
 /**
  * アプリの骨格。**宛先ごとにレイアウトを持つ**：
@@ -115,7 +116,7 @@ private fun ContentWithCompose(state: DeckState, isCompact: Boolean, modifier: M
         if (state.navDest == NavDest.HOME && !state.hasDetail) {
             FloatingActionButton(
                 onClick = { state.showCompose = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Lg),
             ) {
                 Icon(Icons.Outlined.Edit, "投稿")
             }

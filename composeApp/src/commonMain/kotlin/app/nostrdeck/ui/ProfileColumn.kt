@@ -30,6 +30,8 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckType
 
 /**
  * [M9-profile] プロフィールカラム：上部にプロフィールカード（アバター/名前/nip05/npub/フォロー）、
@@ -84,27 +86,27 @@ private fun ProfileHeaderCard(
     onFollowToggle: () -> Unit,
 ) {
     val npub = remember(pubkey) { runCatching { Nip19.hexToNpub(pubkey) }.getOrNull() }
-    Column(Modifier.fillMaxWidth().background(DeckColors.Surface).padding(16.dp)) {
+    Column(Modifier.fillMaxWidth().background(DeckColors.Surface).padding(DeckSpace.Lg)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(profile?.name ?: pubkey, profile?.pictureUrl, Modifier.size(60.dp))
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(DeckSpace.Md))
             Column(Modifier.weight(1f)) {
                 Text(
                     profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
-                    color = DeckColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                    color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
                 )
                 profile?.handle?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.size(2.dp))
-                    Nip05Handle(pubkey, it, fontSize = 12.5.sp)
+                    Spacer(Modifier.size(DeckSpace.Xs))
+                    Nip05Handle(pubkey, it, fontSize = DeckType.Caption)
                 }
             }
             FollowButton(isFollowing, onFollowToggle)
         }
         npub?.let {
-            Spacer(Modifier.size(10.dp))
+            Spacer(Modifier.size(DeckSpace.Sm))
             Text(
                 it.take(20) + "…" + it.takeLast(6),
-                color = DeckColors.Text3, fontSize = 11.sp,
+                color = DeckColors.Text3, fontSize = DeckType.Label,
             )
         }
     }
@@ -114,11 +116,11 @@ private fun ProfileHeaderCard(
 private fun FollowButton(isFollowing: Boolean, onClick: () -> Unit) {
     if (isFollowing) {
         OutlinedButton(onClick = onClick) {
-            Text("フォロー中", fontSize = 12.5.sp)
+            Text("フォロー中", fontSize = DeckType.Caption)
         }
     } else {
         Button(onClick = onClick) {
-            Text("フォロー", fontSize = 12.5.sp)
+            Text("フォロー", fontSize = DeckType.Caption)
         }
     }
 }
