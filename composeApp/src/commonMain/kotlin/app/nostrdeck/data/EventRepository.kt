@@ -145,10 +145,13 @@ class EventRepository(
     private var emojiListAt = 0L
 
     fun start() {
+        // 末尾スラッシュ違い（例: nos.lol と nos.lol/）で二重登録された既存行を一度だけ統合する。
+        dedupeRelayUrls()
         // ブートストラップ・リレーへ接続（DB に 'default' として記録。既存があれば触らない）。
         bootstrapUrls.forEach { url ->
-            q.insertRelayIfAbsent(url, 1, 1, "default")
-            ensureRelay(url)
+            val u = normalizeRelayUrl(url)
+            q.insertRelayIfAbsent(u, 1, 1, "default")
+            ensureRelay(u)
         }
         // 永続化済みリレーのうち read(Inbox) を有効にしたものだけ購読接続する。
         // write 専用(Outbox)リレーは購読せず、配信時に一時接続して EVENT を送る（NIP-65 outbox）。
@@ -173,14 +176,45 @@ class EventRepository(
     }
 
     /**
+     * リレー URL を正規化する。末尾スラッシュの有無は同一リレーとして扱う
+     * （例: wss://nos.lol と wss://nos.lol/ を統一 → 二重接続と N/M 水増しを防ぐ）。
+     */
+    private fun normalizeRelayUrl(url: String): String = url.trim().trimEnd('/')
+
+    /**
+     * 末尾スラッシュ違いで二重登録された既存 DB 行を統合する（起動時に一度だけ）。
+     * read/write は OR で束ね、正規化 URL の 1 行にまとめる。
+     */
+    private fun dedupeRelayUrls() {
+        val rows = q.allRelays().executeAsList()
+        val hasDup = rows.any { normalizeRelayUrl(it.url) != it.url }
+        if (!hasDup) return
+        val merged = LinkedHashMap<String, app.nostrdeck.db.Relay>()
+        for (r in rows) {
+            val norm = normalizeRelayUrl(r.url)
+            val prev = merged[norm]
+            merged[norm] = if (prev == null) r.copy(url = norm)
+            else prev.copy(
+                read = if (prev.read != 0L || r.read != 0L) 1 else 0,
+                write = if (prev.write != 0L || r.write != 0L) 1 else 0,
+            )
+        }
+        q.transaction {
+            rows.forEach { q.deleteRelay(it.url) }
+            merged.values.forEach { q.upsertRelay(it.url, it.read, it.write, it.source) }
+        }
+    }
+
+    /**
      * リレーへ接続（未接続なら）。接続済みの購読を張り直して取りこぼしを防ぐ。
      * relays/activeSubs の読み書きは relayDispatcher（単一スレッド相当）に直列化する。
      */
     private fun ensureRelay(url: String) {
+        val key = normalizeRelayUrl(url)
         scope.launch(relayDispatcher) {
-            if (relays.containsKey(url)) return@launch
-            val client = RelayClient(url, scope)
-            relays[url] = client
+            if (relays.containsKey(key)) return@launch
+            val client = RelayClient(key, scope)
+            relays[key] = client
             client.start()
             scope.launch { client.messages.collect(::onMessage) }
             // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
@@ -233,7 +267,7 @@ class EventRepository(
 
     /** リレーを手動追加（read/write 既定 true）。 */
     fun addRelay(url: String) {
-        val u = url.trim()
+        val u = normalizeRelayUrl(url)
         if (u.isBlank()) return
         q.upsertRelay(u, 1, 1, "manual")
         ensureRelay(u)
@@ -241,10 +275,11 @@ class EventRepository(
 
     /** リレーを設定から外す（次回起動で接続対象から除外。現セッションの接続は維持）。 */
     fun removeRelay(url: String) {
-        q.deleteRelay(url)
+        val u = normalizeRelayUrl(url)
+        q.deleteRelay(u)
         // 購読接続中なら閉じる（write 専用は元から接続していないので無害）。
         scope.launch(relayDispatcher) {
-            relays.remove(url)?.let { it.stop(); refreshRelayConns() }
+            relays.remove(u)?.let { it.stop(); refreshRelayConns() }
         }
     }
 
@@ -255,12 +290,13 @@ class EventRepository(
      * write は配信先の選別に使うだけで、ここでは接続を張らない（NIP-65 outbox）。
      */
     fun setRelayReadWrite(url: String, read: Boolean, write: Boolean) {
-        q.setRelayReadWrite(if (read) 1 else 0, if (write) 1 else 0, url)
+        val u = normalizeRelayUrl(url)
+        q.setRelayReadWrite(if (read) 1 else 0, if (write) 1 else 0, u)
         scope.launch(relayDispatcher) {
             if (read) {
-                if (!relays.containsKey(url)) ensureRelay(url)
+                if (!relays.containsKey(u)) ensureRelay(u)
             } else {
-                relays.remove(url)?.let { it.stop(); refreshRelayConns() }
+                relays.remove(u)?.let { it.stop(); refreshRelayConns() }
             }
         }
     }
@@ -959,7 +995,7 @@ class EventRepository(
         if (hints.isNotEmpty()) {
             scope.launch(relayDispatcher) {
                 for (raw in hints) {
-                    val url = raw.trim().trimEnd('/')
+                    val url = normalizeRelayUrl(raw)
                     if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
                     if (relays.containsKey(url)) continue                 // 既接続なら不要
                     if (hintRelays.size >= HINT_RELAY_CAP) break          // 接続数の暴発を防ぐ
@@ -1106,7 +1142,7 @@ class EventRepository(
         relayListAt = e.createdAt
         val entries = e.tags.filter { it.size >= 2 && it[0] == "r" }.map { t ->
             val marker = t.getOrNull(2)
-            RelayPref(t[1], read = marker != "write", write = marker != "read", source = "nip65")
+            RelayPref(normalizeRelayUrl(t[1]), read = marker != "write", write = marker != "read", source = "nip65")
         }
         entries.forEach {
             q.upsertRelay(it.url, if (it.read) 1 else 0, if (it.write) 1 else 0, "nip65")
