@@ -614,9 +614,12 @@ class EventRepository(
         }
     }
 
-    /** 全 kind:7 を対象ノート(#e)別に集約（絵文字→件数）。チャンネルの Slack 風リアクション表示に使う。 */
-    private val reactionsByTargetFlow: Flow<Map<String, List<ReactionUi>>> =
-        q.reactionsForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
+    /**
+     * このチャンネルの kind:42 メッセージへの kind:7 リアクションを対象別に集約（絵文字→件数）。
+     * 対象を当該チャンネルのメッセージに限定（SQL 側）＝全 kind:7 の走査を避ける。
+     */
+    private fun channelReactionsFlow(channelId: String): Flow<Map<String, List<ReactionUi>>> =
+        q.reactionsForChannel(channelId).asFlow().mapToList(Dispatchers.Default).map { rows ->
             rows.groupBy { it.note_id }.mapValues { (_, rs) ->
                 rs.groupBy {
                     val r = normalizeReaction(it.content, parseTags(it.tags_json))
@@ -632,7 +635,7 @@ class EventRepository(
         channelFeedCache.getOrPut(channelId) {
             combine(
                 q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
-                profilesFlow, myPubkeyFlow, reactionsByTargetFlow,
+                profilesFlow, myPubkeyFlow, channelReactionsFlow(channelId),
             ) { rows, profiles, me, reactions ->
                 val byPk = profiles.associateBy { it.pubkey }
                 rows.mapIndexed { i, row ->

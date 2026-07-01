@@ -220,6 +220,18 @@ JOIN event_tag ON event.id = event_tag.event_id
 WHERE event.kind = 42 AND event_tag.tag = 'e' AND event_tag.value = ?
 ORDER BY event.created_at ASC LIMIT ?;
 
+-- 特定チャンネルのメッセージ(kind:42)を対象にした kind:7 リアクションだけを取得。
+-- 対象を「このチャンネルの kind:42 の id」に限定して、全 kind:7 の走査を避ける。
+reactionsForChannel:
+SELECT rt.value AS note_id, r.content, r.tags_json
+FROM event r
+JOIN event_tag rt ON r.id = rt.event_id
+WHERE r.kind = 7 AND rt.tag = 'e' AND rt.value IN (
+    SELECT e.id FROM event e
+    JOIN event_tag et ON e.id = et.event_id
+    WHERE e.kind = 42 AND et.tag = 'e' AND et.value = :channelId
+);
+
 clearChannels:
 DELETE FROM channel;
 
