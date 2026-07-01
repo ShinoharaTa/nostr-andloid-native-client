@@ -139,7 +139,8 @@ object SampleData {
     }
 
     fun roomColumnFor(channel: Channel) = ColumnSpec(
-        id = "room_${channel.id}", title = channel.name, subtitle = "👤 ${channel.members} · kind:42",
+        id = "room_${channel.id}", title = channel.name,
+        subtitle = channel.about.ifBlank { "NIP-28 · kind:42" },
         kind = ColumnKind.CHANNEL_ROOM, renderer = ColumnRenderer.ROOM,
         filter = ReqFilter(kinds = listOf(42), channelId = channel.id),
         pinned = false, order = 100, unread = channel.unread,

@@ -16,15 +16,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +44,38 @@ import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
+import kotlinx.coroutines.launch
+
+/**
+ * 実データ配線済みのチャンネルルーム。[channelId] の kind:42 を購読・表示し、送信も行う。
+ * Repository が無い場合は空表示（送信不可）にフォールバックする。
+ */
+@Composable
+fun LiveChannelRoom(
+    spec: ColumnSpec,
+    channelId: String,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
+) {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin, onClose, onBack)
+        return
+    }
+    DisposableEffect(spec.id) {
+        repo.subscribeChannel(spec.id, channelId)
+        onDispose { repo.unsubscribeColumn(spec.id) }
+    }
+    val messages = remember(channelId) { repo.channelMessagesFeed(channelId) }.collectAsState().value
+    val scope = rememberCoroutineScope()
+    ChannelRoomColumn(
+        spec, messages, modifier, listState, onPin = onPin, onClose = onClose, onBack = onBack,
+        onSend = { text -> scope.launch { repo.publishChannelMessage(channelId, text) } },
+    )
+}
 
 /**
  * ROOM レンダラー：NIP-28 チャンネルルーム（kind:42）。
@@ -46,6 +90,7 @@ fun ChannelRoomColumn(
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    onSend: ((String) -> Unit)? = null,
 ) {
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -62,7 +107,11 @@ fun ChannelRoomColumn(
         ) {
             items(messages, key = { it.event.id }) { MessageBubble(it) }
         }
-        Composer()
+        // 新着（末尾）が届いたら最下部へ寄せる（チャットは最新が下）。
+        LaunchedEffect(messages.size) {
+            if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        }
+        if (onSend != null) Composer(onSend) else ComposerDisabled()
     }
 }
 
@@ -102,8 +151,9 @@ private fun Bubble(m: ChannelMessage) {
     val shape = if (m.isMine) RoundedCornerShape(12.dp, 4.dp, 12.dp, 12.dp)
     else RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp)
     val bgColor = if (m.isMine) DeckColors.Accent else DeckColors.Surface2
+    // 本文の nostr: 参照は ↗… に短縮、URL/#タグはリンク強調（生の nevent が長々と出るのを防ぐ）。
     Text(
-        m.event.content,
+        noteAnnotated(m.event.content),
         color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
         fontSize = 13.sp,
         modifier = Modifier.background(bgColor, shape).padding(horizontal = 11.dp, vertical = 7.dp),
@@ -123,7 +173,50 @@ private fun relativeTime(createdAt: Long): String {
 }
 
 @Composable
-private fun Composer() {
+private fun Composer(onSend: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val canSend = text.isNotBlank()
+    val send = {
+        if (text.isNotBlank()) { onSend(text.trim()); text = "" }
+    }
+    Row(
+        Modifier.fillMaxWidth().background(DeckColors.Surface).padding(11.dp, 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.weight(1f).clip(RoundedCornerShape(999.dp)).background(DeckColors.Surface2)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (text.isEmpty()) {
+                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = 12.5.sp)
+            }
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                textStyle = TextStyle(color = DeckColors.Text, fontSize = 12.5.sp),
+                cursorBrush = SolidColor(DeckColors.Accent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.size(34.dp).clip(CircleShape)
+                .background(if (canSend) DeckColors.Accent else DeckColors.Surface2)
+                .clickable(enabled = canSend, onClick = send),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Outlined.Send, "送信",
+                tint = if (canSend) DeckColors.Bg else DeckColors.Text3, modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/** 送信できない文脈（サンプル/未ログイン等）の見た目だけの入力欄。 */
+@Composable
+private fun ComposerDisabled() {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface).padding(11.dp, 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -135,8 +228,8 @@ private fun Composer() {
         )
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(34.dp).clip(CircleShape).background(DeckColors.Accent),
+            Modifier.size(34.dp).clip(CircleShape).background(DeckColors.Surface2),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Bg, modifier = Modifier.size(16.dp)) }
+        ) { Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Text3, modifier = Modifier.size(16.dp)) }
     }
 }

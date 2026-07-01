@@ -21,6 +21,7 @@ import io.ktor.util.encodeBase64
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
@@ -544,6 +545,106 @@ class EventRepository(
             }
         }.flowOn(Dispatchers.Default)
 
+    // ---- NIP-28 パブリックチャット（kind:40/41 一覧 + kind:42 メッセージ） ----
+
+    /** チャンネルごとのリレー（thread.nchan.vip の content.relays 由来）。購読/配信のヒント。 */
+    private val channelRelays = mutableMapOf<String, List<String>>()
+
+    /** チャンネル一覧（最終活動が新しい順）。DB キャッシュを流す（HTTP 取得は [refreshChannels]）。 */
+    fun channelsFlow(): Flow<List<app.nostrdeck.model.Channel>> =
+        q.channelsByActivity().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.map { app.nostrdeck.model.Channel(it.id, it.name, it.about, it.picture_url) }
+        }
+
+    /**
+     * チャンネル一覧を HTTP エンドポイント（運用中の thread.nchan.vip）から取得して DB へ upsert。
+     * content(JSON) から name/about/picture/relays を展開し、relays は購読/配信ヒントに控える。
+     */
+    suspend fun refreshChannels() = withContext(Dispatchers.Default) {
+        runCatching {
+            val body = uploadHttp.get(CHANNELS_ENDPOINT).bodyAsText()
+            val data = json.parseToJsonElement(body).jsonObject["data"]?.jsonArray ?: return@runCatching
+            val parsed = data.mapNotNull { el ->
+                val o = el.jsonObject
+                val id = o["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val meta = o["content"]?.jsonPrimitive?.contentOrNull
+                    ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
+                val name = meta?.get("name")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+                    ?: o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                val about = meta?.get("about")?.jsonPrimitive?.contentOrNull ?: ""
+                val picture = meta?.get("picture")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+                val createdAt = o["created_at"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                val lastAt = o["latest_update"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: createdAt
+                val relays = meta?.get("relays")?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
+                if (relays.isNotEmpty()) channelRelays[id] = relays
+                ChannelRow(id, name, about, picture, createdAt, lastAt)
+            }
+            q.transaction {
+                parsed.forEach { q.upsertChannel(it.id, it.name, it.about, it.picture, it.createdAt, it.lastAt) }
+            }
+        }
+        Unit
+    }
+
+    private data class ChannelRow(
+        val id: String, val name: String, val about: String,
+        val picture: String?, val createdAt: Long, val lastAt: Long,
+    )
+
+    /** チャンネルルーム表示時に購読開始（kind:42 #e=channelId）。チャンネルのリレーへも接続する。 */
+    fun subscribeChannel(columnId: String, channelId: String) {
+        if (!openColumns.add(columnId)) return
+        connectChannelRelays(channelId)
+        subscribeAll(columnId, Filter(kinds = listOf(42), eTags = listOf(channelId), limit = 200))
+    }
+
+    /** チャンネルの content.relays へ一時接続して REQ/EVENT が届くようにする（上限つき）。 */
+    private fun connectChannelRelays(channelId: String) {
+        val urls = channelRelays[channelId] ?: return
+        scope.launch(relayDispatcher) {
+            for (raw in urls) {
+                val url = normalizeRelayUrl(raw)
+                if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                if (relays.containsKey(url)) continue
+                if (hintRelays.size >= HINT_RELAY_CAP) break
+                if (hintRelays.add(url)) ensureRelay(url)
+            }
+        }
+    }
+
+    /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ）で流す。 */
+    private val channelFeedCache = mutableMapOf<String, StateFlow<List<ChannelMessage>>>()
+    fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
+        channelFeedCache.getOrPut(channelId) {
+            combine(
+                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
+                profilesFlow, myPubkeyFlow,
+            ) { rows, profiles, me ->
+                val byPk = profiles.associateBy { it.pubkey }
+                rows.mapIndexed { i, row ->
+                    val prev = rows.getOrNull(i - 1)
+                    val prof = byPk[row.pubkey]
+                    ChannelMessage(
+                        event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
+                        author = Profile(
+                            row.pubkey, prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10),
+                            prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16,
+                        ),
+                        isMine = row.pubkey == me,
+                        continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                    )
+                }
+            }.flowOn(Dispatchers.Default).stateIn(scope, feedSharing, emptyList())
+        }
+
+    /** 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。 */
+    suspend fun publishChannelMessage(channelId: String, text: String) {
+        if (text.isBlank()) return
+        val hint = channelRelays[channelId]?.firstOrNull().orEmpty()
+        val tags = listOf(listOf("e", channelId, hint, "root")) + hashtagsIn(text).map { listOf("t", it) }
+        publishSigned(UnsignedEvent(kind = 42, content = text, tags = tags))
+    }
+
     // ---- [M10-notif] 通知（自分=#p 宛のリプライ/メンション/リアクション/リポスト） ----
     private val notifJobs = mutableMapOf<String, Job>()
 
@@ -797,6 +898,7 @@ class EventRepository(
         authors = authors.ifEmpty { null },
         kinds = kinds.ifEmpty { listOf(1) },
         hashtags = hashtags.ifEmpty { null },
+        eTags = channelId?.let { listOf(it) },  // NIP-28: kind:42 を #e でチャンネルに絞る
         search = search,
         limit = limit,
     )
@@ -1086,6 +1188,14 @@ class EventRepository(
                     indexTags(orig)
                     requestProfile(orig.pubkey)
                 }
+            }
+            42 -> {
+                // NIP-28 チャンネルメッセージ。保存して #e を索引し、著者 profile を要求。
+                // ルート #e（=チャンネルid）で一覧の最終活動時刻を前進させる。
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+                rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
@@ -1499,5 +1609,8 @@ class EventRepository(
 
         /** 引用/返信ヒントで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 8
+
+        /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
+        const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
     }
 }

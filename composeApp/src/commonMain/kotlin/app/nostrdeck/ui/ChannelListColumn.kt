@@ -81,11 +81,22 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ch.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                Spacer(Modifier.width(6.dp))
-                Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = 10.5.sp)
+                // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
+                if (ch.members > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = 10.5.sp)
+                }
             }
-            Text("${ch.lastMessageBy}: ${ch.lastMessage}", color = DeckColors.Text2, fontSize = 12.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // 直近メッセージがあればそれを、無ければ概要(about)を副題に。両方空なら省略。
+            val secondary = when {
+                ch.lastMessage.isNotBlank() -> "${ch.lastMessageBy}: ${ch.lastMessage}"
+                ch.about.isNotBlank() -> ch.about
+                else -> null
+            }
+            if (secondary != null) {
+                Text(secondary, color = DeckColors.Text2, fontSize = 12.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
         if (ch.unread > 0) {
             Spacer(Modifier.width(8.dp))
