@@ -12,18 +12,23 @@ import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.KeystoreKeyVault
 import app.nostrdeck.signer.SignerProvider
 import android.os.Build
+import app.nostrdeck.ui.ImageProxy
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
+import coil3.intercept.Interceptor
 import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
+import coil3.request.ErrorResult
+import coil3.request.ImageResult
 import coil3.request.crossfade
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlin.coroutines.cancellation.CancellationException
 import okio.Path.Companion.toPath
 
 /** M1: 既定リレー（公開リレー）。設定で変更可能にするのは M5/M7。 */
@@ -53,6 +58,8 @@ class MainActivity : ComponentActivity() {
         SingletonImageLoader.setSafe { ctx ->
             ImageLoader.Builder(ctx)
                 .components {
+                    // 圧縮プロキシが特定ドメイン/TLD を拒否した場合は元 URL で取り直す。
+                    add(ProxyFallbackInterceptor)
                     add(KtorNetworkFetcherFactory())
                     // アニメ GIF / WebP を動かす。API28+ は ImageDecoder ベース、
                     // それ未満(26/27)は giflib ベースの GifDecoder にフォールバック。
@@ -98,5 +105,33 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         appScope.cancel()
         super.onDestroy()
+    }
+}
+
+/**
+ * 圧縮プロキシ(wsrv.nl)経由の取得が失敗したら、元画像 URL で取り直すインターセプタ。
+ * wsrv.nl は一部ドメイン/TLD（例: .cc）をポリシーで 400 拒否するため、その場合でも
+ * 画像を表示できるようにする（プロキシは通常時のキャッシュ/圧縮のため引き続き使う）。
+ *
+ * 失敗は「ErrorResult が返る」場合と「fetcher が例外を投げる」場合の両方があり得るので
+ * 双方を拾う。キャンセル例外は握りつぶさず再送出する。
+ */
+private object ProxyFallbackInterceptor : Interceptor {
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+        return try {
+            val result = chain.proceed()
+            if (result is ErrorResult) retryWithOrigin(chain) ?: result else result
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            retryWithOrigin(chain) ?: throw t
+        }
+    }
+
+    /** リクエストがプロキシ URL なら元 URL で取り直す。プロキシ URL でなければ null。 */
+    private suspend fun retryWithOrigin(chain: Interceptor.Chain): ImageResult? {
+        val origin = ImageProxy.originOf(chain.request.data) ?: return null
+        val retry = chain.request.newBuilder().data(origin).build()
+        return chain.withRequest(retry).proceed()
     }
 }

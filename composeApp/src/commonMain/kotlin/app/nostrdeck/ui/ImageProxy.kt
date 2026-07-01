@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import io.ktor.http.decodeURLQueryComponent
 import io.ktor.http.encodeURLParameter
 
 /**
@@ -23,5 +24,17 @@ object ImageProxy {
         // we = 拡大しない（元が小さければそのまま）
         val frames = if (animated) "&n=-1" else ""
         return "$HOST?url=$enc&w=$width&output=webp&q=$quality&we$frames"
+    }
+
+    /**
+     * [proxied] が生成した URL から元画像 URL を復元する（プロキシ URL でなければ null）。
+     * プロキシ（wsrv.nl）が特定ドメイン/TLD をポリシーで拒否した場合の**元 URL 直取得**
+     * フォールバックに使う（例: .cc ドメインは wsrv.nl が 400 で拒否する）。
+     */
+    fun originOf(data: Any?): String? {
+        val s = data as? String ?: return null
+        if (!s.startsWith("$HOST?url=")) return null
+        val enc = s.substringAfter("?url=").substringBefore("&")
+        return enc.decodeURLQueryComponent().ifBlank { null }
     }
 }
