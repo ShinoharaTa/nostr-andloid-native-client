@@ -625,7 +625,8 @@ class EventRepository(
                     val prev = rows.getOrNull(i - 1)
                     val prof = byPk[row.pubkey]
                     ChannelMessage(
-                        event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
+                        // tags を保持（リプライ元 #e の解決に使う）。
+                        event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, parseTags(row.tags_json), row.sig),
                         author = Profile(
                             row.pubkey, prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10),
                             prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16,
@@ -637,11 +638,21 @@ class EventRepository(
             }.flowOn(Dispatchers.Default).stateIn(scope, feedSharing, emptyList())
         }
 
-    /** 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。 */
-    suspend fun publishChannelMessage(channelId: String, text: String) {
+    /**
+     * 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。
+     * [replyTo] があれば NIP-10 の返信（reply マーカー付き #e ＋ 相手 #p）も添える。
+     */
+    suspend fun publishChannelMessage(channelId: String, text: String, replyTo: NostrEvent? = null) {
         if (text.isBlank()) return
         val hint = channelRelays[channelId]?.firstOrNull().orEmpty()
-        val tags = listOf(listOf("e", channelId, hint, "root")) + hashtagsIn(text).map { listOf("t", it) }
+        val tags = buildList {
+            add(listOf("e", channelId, hint, "root"))
+            if (replyTo != null) {
+                add(listOf("e", replyTo.id, hint, "reply"))
+                add(listOf("p", replyTo.pubkey, hint))
+            }
+            addAll(hashtagsIn(text).map { listOf("t", it) })
+        }
         publishSigned(UnsignedEvent(kind = 42, content = text, tags = tags))
     }
 

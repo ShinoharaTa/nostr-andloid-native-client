@@ -14,12 +14,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.AddReaction
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,11 +45,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.theme.DeckColors
 import kotlinx.coroutines.launch
 
@@ -73,7 +82,8 @@ fun LiveChannelRoom(
     val scope = rememberCoroutineScope()
     ChannelRoomColumn(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, onBack = onBack,
-        onSend = { text -> scope.launch { repo.publishChannelMessage(channelId, text) } },
+        onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
+        onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url) } },
     )
 }
 
@@ -90,8 +100,14 @@ fun ChannelRoomColumn(
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
-    onSend: ((String) -> Unit)? = null,
+    onSend: ((String, ChannelMessage?) -> Unit)? = null,
+    onReact: ((NostrEvent, String, String?) -> Unit)? = null,
 ) {
+    // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
+    var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
+    var pickerFor by remember { mutableStateOf<ChannelMessage?>(null) }
+    val byId = remember(messages) { messages.associateBy { it.event.id } }
+
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -105,18 +121,49 @@ fun ChannelRoomColumn(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            items(messages, key = { it.event.id }) { MessageBubble(it) }
+            items(messages, key = { it.event.id }) { m ->
+                MessageBubble(
+                    m,
+                    parent = replyParentId(m)?.let { byId[it] },
+                    onReply = if (onSend != null) ({ replyingTo = m }) else null,
+                    onReact = if (onReact != null) ({ pickerFor = m }) else null,
+                )
+            }
         }
         // 新着（末尾）が届いたら最下部へ寄せる（チャットは最新が下）。
         LaunchedEffect(messages.size) {
             if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
         }
-        if (onSend != null) Composer(onSend) else ComposerDisabled()
+        if (onSend != null) {
+            Composer(
+                replyingTo = replyingTo,
+                onCancelReply = { replyingTo = null },
+                onSend = { text -> onSend(text, replyingTo); replyingTo = null },
+            )
+        } else ComposerDisabled()
+    }
+
+    // リアクション（長押し→リアクション）: 既存の絵文字ピッカーを再利用し kind:7 を送る。
+    val target = pickerFor
+    if (target != null && onReact != null) {
+        ReactionPickerSheet(
+            onPick = { content, url -> onReact(target.event, content, url); pickerFor = null },
+            onDismiss = { pickerFor = null },
+        )
     }
 }
 
+/** NIP-10: reply マーカー付き #e（返信元メッセージ id）。無ければ null。 */
+private fun replyParentId(m: ChannelMessage): String? =
+    m.event.tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }?.get(1)
+
 @Composable
-private fun MessageBubble(m: ChannelMessage) {
+private fun MessageBubble(
+    m: ChannelMessage,
+    parent: ChannelMessage?,
+    onReply: (() -> Unit)?,
+    onReact: (() -> Unit)?,
+) {
     Row(
         Modifier.fillMaxWidth().padding(top = if (m.continuation) 1.dp else 8.dp),
         horizontalArrangement = if (m.isMine) Arrangement.End else Arrangement.Start,
@@ -131,9 +178,28 @@ private fun MessageBubble(m: ChannelMessage) {
                 }
                 Spacer(Modifier.size(2.dp))
             }
-            Bubble(m)
+            // 返信なら、返信元を一行引用で示す（誰への返信か分かるように）。
+            if (parent != null) ReplyQuote(parent, m.isMine)
+            Bubble(m, onReply = onReply, onReact = onReact)
         }
         if (m.isMine) AvatarSlot(m)
+    }
+}
+
+/** 返信元メッセージの一行プレビュー（↩︎ 名前: 本文）。 */
+@Composable
+private fun ReplyQuote(parent: ChannelMessage, mine: Boolean) {
+    Row(
+        Modifier.padding(bottom = 2.dp).clip(RoundedCornerShape(6.dp))
+            .background(DeckColors.Surface3).padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = DeckColors.Text3, modifier = Modifier.size(11.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "${parent.author.name}: ${parent.event.content}",
+            color = DeckColors.Text3, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -145,19 +211,43 @@ private fun AvatarSlot(m: ChannelMessage) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: ChannelMessage) {
+private fun Bubble(m: ChannelMessage, onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
     // グラデーション禁止。自分=明色べた塗り＋暗色文字、相手=暗色サーフェス＋明色文字。
     val shape = if (m.isMine) RoundedCornerShape(12.dp, 4.dp, 12.dp, 12.dp)
     else RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp)
     val bgColor = if (m.isMine) DeckColors.Accent else DeckColors.Surface2
-    // 本文の nostr: 参照は ↗… に短縮、URL/#タグはリンク強調（生の nevent が長々と出るのを防ぐ）。
-    Text(
-        noteAnnotated(m.event.content),
-        color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
-        fontSize = 13.sp,
-        modifier = Modifier.background(bgColor, shape).padding(horizontal = 11.dp, vertical = 7.dp),
-    )
+    val hasActions = onReply != null || onReact != null
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        // 本文の nostr: 参照は ↗… に短縮、URL/#タグはリンク強調（生の nevent が長々と出るのを防ぐ）。
+        Text(
+            noteAnnotated(m.event.content),
+            color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
+            fontSize = 13.sp,
+            modifier = Modifier.clip(shape).background(bgColor)
+                .combinedClickable(enabled = hasActions, onClick = {}, onLongClick = { menu = true })
+                .padding(horizontal = 11.dp, vertical = 7.dp),
+        )
+        // 長押しメニュー: リアクション / リプライ。
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (onReact != null) {
+                DropdownMenuItem(
+                    text = { Text("リアクション") },
+                    leadingIcon = { Icon(Icons.Outlined.AddReaction, null, modifier = Modifier.size(18.dp)) },
+                    onClick = { menu = false; onReact() },
+                )
+            }
+            if (onReply != null) {
+                DropdownMenuItem(
+                    text = { Text("リプライ") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Reply, null, modifier = Modifier.size(18.dp)) },
+                    onClick = { menu = false; onReply() },
+                )
+            }
+        }
+    }
 }
 
 private fun relativeTime(createdAt: Long): String {
@@ -173,14 +263,38 @@ private fun relativeTime(createdAt: Long): String {
 }
 
 @Composable
-private fun Composer(onSend: (String) -> Unit) {
+private fun Composer(
+    replyingTo: ChannelMessage?,
+    onCancelReply: () -> Unit,
+    onSend: (String) -> Unit,
+) {
     var text by remember { mutableStateOf("") }
     val canSend = text.isNotBlank()
     val send = {
         if (text.isNotBlank()) { onSend(text.trim()); text = "" }
     }
+    Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
+    // 返信中バナー（誰に返信しているか＋取り消し）。
+    if (replyingTo != null) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = DeckColors.Accent2, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "${replyingTo.author.name} に返信: ${replyingTo.event.content}",
+                color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                Icons.Outlined.Close, "返信をやめる", tint = DeckColors.Text3,
+                modifier = Modifier.size(26.dp).clip(CircleShape).clickable(onClick = onCancelReply).padding(5.dp),
+            )
+        }
+    }
     Row(
-        Modifier.fillMaxWidth().background(DeckColors.Surface).padding(11.dp, 9.dp),
+        Modifier.fillMaxWidth().padding(11.dp, 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -211,6 +325,7 @@ private fun Composer(onSend: (String) -> Unit) {
                 tint = if (canSend) DeckColors.Bg else DeckColors.Text3, modifier = Modifier.size(16.dp),
             )
         }
+    }
     }
 }
 
