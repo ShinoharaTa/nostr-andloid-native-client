@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,8 +26,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -105,29 +108,45 @@ private fun CompactPager(state: DeckState) {
     }
 
     Column(Modifier.fillMaxSize()) {
+        // 上部バー: カラムタブ（横スクロール）＋ 右端にリレー接続ステータス（折り畳み時はレールが
+        // 出ないため、ここに常設して一目で状態が分かるようにする）。
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp, 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            state.columns.forEachIndexed { i, c ->
-                val active = pager.currentPage == i
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                state.columns.forEachIndexed { i, c ->
+                    val active = pager.currentPage == i
+                    Text(
+                        c.title, fontSize = 12.5.sp,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (active) DeckColors.Accent else DeckColors.Text2,
+                        modifier = Modifier.clip(CircleShape)
+                            // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）
+                            .clickable { scope.launch { pager.animateScrollToPage(i) } }
+                            .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+                // カラム追加
                 Text(
-                    c.title, fontSize = 12.5.sp,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (active) DeckColors.Accent else DeckColors.Text2,
-                    modifier = Modifier.clip(CircleShape)
-                        // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）
-                        .clickable { scope.launch { pager.animateScrollToPage(i) } }
-                        .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    "＋", color = DeckColors.Text2, fontSize = 13.sp,
+                    modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
+                        .background(DeckColors.Surface2).padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             }
-            // カラム追加
-            Text(
-                "＋", color = DeckColors.Text2, fontSize = 13.sp,
-                modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
-                    .background(DeckColors.Surface2).padding(horizontal = 12.dp, vertical = 6.dp),
-            )
+            // リレー接続ステータス（緑/黄/グレー ● + N/N）。タップで一覧ダイアログ。
+            val repo = LocalRepository.current
+            if (repo != null) {
+                Spacer(Modifier.width(6.dp))
+                val conns by repo.relayConnFlow().collectAsState()
+                var showRelays by remember { mutableStateOf(false) }
+                RelayRailIndicator(conns) { showRelays = true }
+                if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
+            }
         }
         HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
             val spec = state.columns[page]

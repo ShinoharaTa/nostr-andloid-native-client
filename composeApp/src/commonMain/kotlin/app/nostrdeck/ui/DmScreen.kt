@@ -61,6 +61,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                 )
             }
         },
+        onBack = { state.dmThread = null },
     )
 }
 

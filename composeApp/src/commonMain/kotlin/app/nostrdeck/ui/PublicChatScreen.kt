@@ -41,6 +41,7 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                 )
             }
         },
+        onBack = { state.publicChatRoom = null },
     )
 }
 

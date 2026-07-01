@@ -66,6 +66,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
             else SettingsContent(selectedId)
         },
         listWidth = 280,
+        onBack = { state.settingsSection = null },
     )
 }
 
