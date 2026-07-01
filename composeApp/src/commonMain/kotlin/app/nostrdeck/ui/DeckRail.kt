@@ -44,8 +44,6 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckDimens
-import app.nostrdeck.theme.DeckType
 
 /**
  * 左 NavigationRail（展開時の常設）。
@@ -63,7 +61,7 @@ fun DeckRail(state: DeckState) {
         Box(
             Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(DeckColors.Accent),
             contentAlignment = Alignment.Center,
-        ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = DeckType.Logo) }
+        ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = 17.sp) }
         Spacer(Modifier.size(6.dp))
 
         val repo = LocalRepository.current
@@ -82,7 +80,7 @@ fun DeckRail(state: DeckState) {
         }
 
         Divider26()
-        Text("PIN", color = DeckColors.Text3, fontSize = DeckType.LabelSm, letterSpacing = 1.sp)
+        Text("PIN", color = DeckColors.Text3, fontSize = 10.5.sp, letterSpacing = 1.sp)
 
         // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
         state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
@@ -111,14 +109,14 @@ fun DeckRail(state: DeckState) {
 @Composable
 private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
     Box(
-        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(13.dp))
+        Modifier.size(46.dp).clip(RoundedCornerShape(13.dp))
             .background(if (active) DeckColors.AccentWeak else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val tint = if (active) DeckColors.Accent else DeckColors.Text2
         if (badge > 0) {
-            BadgedBox(badge = { Badge { Text("$badge", fontSize = DeckType.Badge) } }) {
+            BadgedBox(badge = { Badge { Text("$badge", fontSize = 9.sp) } }) {
                 Icon(icon, cd, tint = tint, modifier = Modifier.size(20.dp))
             }
         } else Icon(icon, cd, tint = tint, modifier = Modifier.size(20.dp))
@@ -128,7 +126,7 @@ private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int =
 @Composable
 private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     Box(
-        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(13.dp)).clickable(onClick = onClick),
+        Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val content: @Composable () -> Unit = {
@@ -138,7 +136,7 @@ private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
             }
         }
         if (col.unread > 0) {
-            BadgedBox(badge = { Badge { Text("${col.unread}", fontSize = DeckType.Badge) } }) { content() }
+            BadgedBox(badge = { Badge { Text("${col.unread}", fontSize = 9.sp) } }) { content() }
         } else content()
     }
 }

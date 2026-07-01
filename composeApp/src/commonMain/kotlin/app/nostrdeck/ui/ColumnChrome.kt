@@ -29,8 +29,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckDimens
-import app.nostrdeck.theme.DeckType
 
 /**
  * 全カラム共通のヘッダ（designs/index.html の .col-head）。
@@ -56,9 +54,9 @@ fun ColumnHeader(
     ) {
         if (onBack != null) {
             Box(
-                Modifier.size(DeckDimens.TouchTargetXs).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp)) }
         } else {
             Box(
                 Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
@@ -67,9 +65,9 @@ fun ColumnHeader(
         }
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = DeckColors.Text, fontSize = DeckType.Subtitle, fontWeight = FontWeight.SemiBold,
+            Text(title, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.LabelSm, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
         if (onPin != null) {
@@ -87,10 +85,10 @@ fun ColumnHeader(
 @Composable
 private fun HeaderIcon(icon: ImageVector, cd: String, tint: Color, onClick: (() -> Unit)?) {
     Box(
-        Modifier.size(DeckDimens.TouchTargetXs).clip(RoundedCornerShape(10.dp))
+        Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.IconMd)) }
+    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(18.dp)) }
 }
 
 /** オフライン状態バナー（控えめ・操作はブロックしない）。 */
@@ -102,7 +100,7 @@ fun OfflineBanner(pendingCount: Int) {
                 .background(DeckColors.Zap.copy(alpha = 0.1f)).padding(11.dp, 7.dp)
         ) {
             Text("⚠ オフライン — キャッシュ表示中・$pendingCount 件の投稿を送信待ち",
-                color = DeckColors.Zap, fontSize = DeckType.Label)
+                color = DeckColors.Zap, fontSize = 11.5.sp)
         }
     }
 }

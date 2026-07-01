@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckType
 
 /** [M8-repost] 引用リポスト（NIP-18 q タグ）の埋め込みカード。著者名 + 切り詰めた本文を枠内に。モノクロ。 */
 @Composable
@@ -31,7 +30,7 @@ fun QuotedNoteCard(note: NoteUi, modifier: Modifier = Modifier) {
         Text(
             note.author.name,
             color = DeckColors.Text2,
-            fontSize = DeckType.Caption,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -45,7 +44,7 @@ fun QuotedNoteCard(note: NoteUi, modifier: Modifier = Modifier) {
         Text(
             annotated,
             color = DeckColors.Text2,
-            fontSize = DeckType.TextSm,
+            fontSize = 12.5.sp,
             lineHeight = 18.sp,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,

@@ -45,7 +45,6 @@ import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -87,18 +86,18 @@ fun NoteItem(
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
                     Text(
                         note.author.name, color = DeckColors.Text,
-                        fontSize = DeckType.Subtitle, fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false).then(authorTap),
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        note.author.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                        note.author.handle, color = DeckColors.Text3, fontSize = 11.5.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
+                Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = 11.5.sp)
             }
             Spacer(Modifier.size(3.dp))
             // 画像URLを除去した本文（画像は下にグリッド/カルーセルで表示する）。NIP-30 絵文字は画像化。
@@ -217,7 +216,7 @@ private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
                 modifier = Modifier.size(DeckDimens.ActionIcon),
             )
         } else {
-            Text(reaction.display, fontSize = DeckType.Emoji, maxLines = 1)
+            Text(reaction.display, fontSize = 18.sp, maxLines = 1)
         }
     }
 }

@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckType
 
 /**
  * 「新着 N 件 ↑」の未読カウント。
@@ -63,7 +62,7 @@ fun BoxScope.NewItemsPill(count: Int, onClick: () -> Unit) {
     ) {
         Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = 5.dp).size(15.dp))
         Text(
-            "$count 件の新着", color = DeckColors.Bg, fontSize = DeckType.TextSm, fontWeight = FontWeight.SemiBold,
+            "$count 件の新着", color = DeckColors.Bg, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
         )
     }
 }

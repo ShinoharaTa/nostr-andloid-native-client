@@ -43,7 +43,6 @@ import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
-import app.nostrdeck.theme.DeckType
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -139,7 +138,7 @@ private fun NotificationsBody(
 ) {
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("通知はまだありません", color = DeckColors.Text3, fontSize = DeckType.Text)
+            Text("通知はまだありません", color = DeckColors.Text3, fontSize = 13.sp)
         }
     } else {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
@@ -174,12 +173,12 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
             // 名前は残り幅いっぱい（長ければ…で省略）、時刻は右端に固定。
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    n.actor.name, color = DeckColors.Text, fontSize = DeckType.Subtitle, fontWeight = FontWeight.SemiBold,
+                    n.actor.name, color = DeckColors.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).clickable(onClick = onActorClick),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(relativeTime(n.createdAt), color = DeckColors.Text3, fontSize = DeckType.LabelSm)
+                Text(relativeTime(n.createdAt), color = DeckColors.Text3, fontSize = 11.sp)
             }
             // 返信/メンションは本文、リアクション/リポストは対象（自分の）ノートの抜粋。
             val body = when (n.kind) {
@@ -190,7 +189,7 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
                 Spacer(Modifier.size(3.dp))
                 // ノートと同じくリッチテキスト化（nostr: 参照を ↗… に短縮・URL/タグをリンク化）。
                 Text(
-                    noteAnnotated(body), color = DeckColors.Text2, fontSize = DeckType.TextSm,
+                    noteAnnotated(body), color = DeckColors.Text2, fontSize = 12.5.sp,
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -219,7 +218,7 @@ private fun LeftIndicator(n: NotificationUi) {
             )
         // 通常の unicode 絵文字: 高さを固定すると descender が切れるので Text を自然サイズで描く。
         n.kind == NotificationKind.REACTION ->
-            Text(n.reaction ?: "❤️", fontSize = DeckType.Body, maxLines = 1, modifier = top)
+            Text(n.reaction ?: "❤️", fontSize = 14.sp, maxLines = 1, modifier = top)
         // 返信/メンション/リポストはアイコン。
         else ->
             Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = top.size(glyph))
