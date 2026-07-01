@@ -347,7 +347,7 @@ private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean)
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 2.dp),
     ) {
-        Text(label, color = DeckColors.Text3, fontSize = 11.5.sp)
+        Text(label, color = DeckColors.Text3, fontSize = 10.sp)
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,

@@ -76,7 +76,7 @@ fun CollapsibleText(
     Column(modifier) {
         Text(
             annotated,
-            color = DeckColors.Text, fontSize = 14.sp, lineHeight = 20.5.sp,
+            color = DeckColors.Text, fontSize = 13.5.sp, lineHeight = 20.sp,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
             inlineContent = inline,

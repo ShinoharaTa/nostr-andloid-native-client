@@ -231,10 +231,10 @@ private fun ProfileTopBar(title: String, onBack: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onBack),
+            Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(22.dp))
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(4.dp))
         Text(title, color = DeckColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

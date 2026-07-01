@@ -237,7 +237,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         Icons.Outlined.Close, contentDescription = "閉じる",
                         tint = DeckColors.Text2,
                         modifier = Modifier.clip(CircleShape).clickable(enabled = !sending) { onDismiss() }
-                            .padding(13.dp).size(22.dp),
+                            .padding(10.dp).size(22.dp),
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
@@ -346,7 +346,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             Icons.Outlined.Image, contentDescription = "画像を添付",
                             tint = DeckColors.Text,
                             modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                .clickable { picker.launch() }.padding(11.dp).size(22.dp),
+                                .clickable { picker.launch() }.padding(8.dp).size(22.dp),
                         )
                         Spacer(Modifier.weight(1f))
                         Button(
@@ -450,12 +450,12 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                 val processed = att.processed
                 Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
                     when {
-                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1)
+                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
                         processed != null && processed.bytes.size < att.src.bytes.size -> Text(
                             "${humanSize(att.src.bytes.size)}→${humanSize(processed.bytes.size)}",
-                            color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = 11.sp, maxLines = 1)
+                        else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = 10.sp, maxLines = 1)
                     }
                 }
             }
