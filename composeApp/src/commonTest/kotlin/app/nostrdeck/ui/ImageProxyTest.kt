@@ -36,4 +36,21 @@ class ImageProxyTest {
         assertNull(ImageProxy.originOf(null))
         assertNull(ImageProxy.originOf(42))
     }
+
+    @Test
+    fun proxied_bypasses_proxy_after_host_marked_blocked() {
+        // 一意ホストで他テストと干渉させない（blockedHosts は object の共有状態）。
+        val src = "https://blockme.testonly.cc/a.webp"
+        assertTrue(ImageProxy.proxied(src).startsWith("https://wsrv.nl/?url="), "初回はプロキシ経由")
+
+        ImageProxy.markProxyBlocked(src)
+        // 学習後は同ホストを元URL直取得（= Coil キャッシュが効き再ロードしない）。
+        assertEquals(src, ImageProxy.proxied(src))
+        assertEquals(
+            "https://blockme.testonly.cc/other/b.png",
+            ImageProxy.proxied("https://blockme.testonly.cc/other/b.png"),
+        )
+        // 別ホストは引き続きプロキシ経由。
+        assertTrue(ImageProxy.proxied("https://ok.testonly.org/c.jpg").startsWith("https://wsrv.nl/?url="))
+    }
 }

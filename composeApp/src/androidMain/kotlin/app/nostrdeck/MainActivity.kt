@@ -131,6 +131,8 @@ private object ProxyFallbackInterceptor : Interceptor {
     /** リクエストがプロキシ URL なら元 URL で取り直す。プロキシ URL でなければ null。 */
     private suspend fun retryWithOrigin(chain: Interceptor.Chain): ImageResult? {
         val origin = ImageProxy.originOf(chain.request.data) ?: return null
+        // このホストは以後プロキシを避ける（次回から元 URL で取得＝キャッシュが効く）。
+        ImageProxy.markProxyBlocked(origin)
         val retry = chain.request.newBuilder().data(origin).build()
         return chain.withRequest(retry).proceed()
     }
