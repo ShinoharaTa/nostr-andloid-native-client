@@ -81,7 +81,8 @@ private fun ExpandedDeck(state: DeckState) {
                 spec, state, state.listStateFor(spec.id),
                 Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
             )
-            Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Bg))
+            // カラム境界は「線」ではなく Bg の隙間(ガター)で。暗い背景で明るいカラムを分離。
+            Box(Modifier.fillMaxHeight().width(DeckSpace.Md).background(DeckColors.Bg))
         }
         // 末尾のカラム追加（テンプレシートを開く）
         Box(
