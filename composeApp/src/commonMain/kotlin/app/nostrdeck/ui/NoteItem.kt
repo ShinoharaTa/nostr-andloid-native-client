@@ -2,6 +2,9 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import app.nostrdeck.theme.DeckDimens
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -117,9 +120,9 @@ fun NoteItem(
                 Spacer(Modifier.size(9.dp))
                 NoteImages(note.images)
             }
-            Spacer(Modifier.size(8.dp))
-            // [M10] アクションはアイコンのみ（数値なし）。すべてボタンとして機能する。
-            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Spacer(Modifier.size(4.dp))
+            // [M10] アクションはアイコンのみ（数値なし）。48dp タッチ領域を横幅に均等配置。
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 ActionButton(Icons.AutoMirrored.Outlined.Reply, DeckColors.Text3, onClick = onReply)
                 Box {
                     ActionButton(
@@ -187,12 +190,14 @@ fun NoteItem(
 /** アイコンのみのアクションボタン（数値ラベルなし）。一回り大きめでタップしやすく。 */
 @Composable
 private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
-    Icon(
-        icon, contentDescription = null, tint = tint,
-        modifier = Modifier
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(vertical = 2.dp).size(21.dp),
-    )
+    // アイコンは実寸のまま、タッチ領域を 48dp の実ボックスとして確保（Material 推奨）。
+    Box(
+        Modifier.size(DeckDimens.TouchTarget)
+            .let { if (onClick != null) it.clip(CircleShape).clickable(onClick = onClick) else it },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(DeckDimens.ActionIcon))
+    }
 }
 
 /** 自分が付けた非♡リアクションの表示（NIP-30 はカスタム画像、通常は絵文字文字）。タップで取り消し。 */
@@ -200,7 +205,7 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
 private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
     val url = reaction.imageUrl
     Box(
-        Modifier.clickable(onClick = onClick).padding(vertical = 2.dp).size(21.dp),
+        Modifier.size(DeckDimens.TouchTarget).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (url != null) {
@@ -208,10 +213,10 @@ private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
                 model = ImageRequest.Builder(LocalPlatformContext.current)
                     .data(ImageProxy.proxied(url, width = 64, quality = 80)).crossfade(true).build(),
                 contentDescription = reaction.display,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.size(DeckDimens.ActionIcon),
             )
         } else {
-            Text(reaction.display, fontSize = 16.sp, maxLines = 1)
+            Text(reaction.display, fontSize = 18.sp, maxLines = 1)
         }
     }
 }

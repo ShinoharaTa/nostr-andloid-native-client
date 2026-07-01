@@ -80,7 +80,7 @@ fun DeckRail(state: DeckState) {
         }
 
         Divider26()
-        Text("PIN", color = DeckColors.Text3, fontSize = 8.5.sp, letterSpacing = 1.sp)
+        Text("PIN", color = DeckColors.Text3, fontSize = 10.5.sp, letterSpacing = 1.sp)
 
         // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
         state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
@@ -109,7 +109,7 @@ fun DeckRail(state: DeckState) {
 @Composable
 private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+        Modifier.size(46.dp).clip(RoundedCornerShape(13.dp))
             .background(if (active) DeckColors.AccentWeak else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -126,7 +126,7 @@ private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int =
 @Composable
 private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).clickable(onClick = onClick),
+        Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val content: @Composable () -> Unit = {

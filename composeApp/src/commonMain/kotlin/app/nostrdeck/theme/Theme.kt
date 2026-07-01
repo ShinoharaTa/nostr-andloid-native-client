@@ -11,6 +11,14 @@ object DeckDimens {
     val ColumnWidth = 340.dp   // 固定カラム幅。はみ出しは横スクロール
     val HingeGutter = 22.dp    // フォルダブルのヒンジ回避ガター
     val AvatarSize  = 38.dp
+
+    // ---- タッチターゲット（Material 推奨 = 最小 48dp）----
+    /** アイコンボタン等の最小タッチ領域。実領域として確保（不可視拡張ではない）。 */
+    val TouchTarget   = 48.dp
+    /** 密度が要る箇所（チャット送信/添付操作など）の縮小版タッチ領域。 */
+    val TouchTargetSm = 44.dp
+    /** アクション行アイコンの実寸（タッチ領域の中に置く）。 */
+    val ActionIcon    = 22.dp
 }
 
 private val DarkScheme = darkColorScheme(

@@ -54,9 +54,9 @@ fun ColumnHeader(
     ) {
         if (onBack != null) {
             Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack),
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(19.dp)) }
+            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp)) }
         } else {
             Box(
                 Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
@@ -85,10 +85,10 @@ fun ColumnHeader(
 @Composable
 private fun HeaderIcon(icon: ImageVector, cd: String, tint: Color, onClick: (() -> Unit)?) {
     Box(
-        Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(16.dp)) }
+    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(18.dp)) }
 }
 
 /** オフライン状態バナー（控えめ・操作はブロックしない）。 */
