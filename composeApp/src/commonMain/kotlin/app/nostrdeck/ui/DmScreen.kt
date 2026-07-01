@@ -57,7 +57,9 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                         filter = ReqFilter(kinds = listOf(1059)),
                     ),
                     messages = SampleData.dmMessages(selected.pubkey),
-                    onClose = { state.dmThread = null },
+                    // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
+                    onClose = if (isCompact) null else ({ state.dmThread = null }),
+                    onBack = if (isCompact) ({ state.dmThread = null }) else null,
                 )
             }
         },

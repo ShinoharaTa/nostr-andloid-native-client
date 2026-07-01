@@ -18,7 +18,7 @@ import app.nostrdeck.theme.DeckColors
  * アダプティブな list-detail 2ペイン（PublicChat / DM / 設定で共用）。
  *  - Expanded: 左=一覧(固定幅) / 右=詳細 を横並び
  *  - Compact : [showDetail] が true なら詳細、false なら一覧（1ペイン）。
- *              詳細→一覧へ戻るのはシステムバック（AppScaffold で処理）。
+ *              詳細→一覧へ戻る導線は各詳細のヘッダー内に「←」を出す（自然なUX）。
  *
  * Home の Deck（横スクロール複数カラム）はこれとは別レイアウト。
  */
