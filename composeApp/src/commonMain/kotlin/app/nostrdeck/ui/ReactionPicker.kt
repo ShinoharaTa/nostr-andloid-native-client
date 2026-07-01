@@ -7,18 +7,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -34,11 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.UsedEmoji
 import app.nostrdeck.theme.DeckColors
 import coil3.compose.AsyncImage
@@ -60,6 +66,7 @@ import kotlinx.coroutines.flow.flowOf
 fun ReactionPickerSheet(
     onPick: (content: String, imageUrl: String?) -> Unit,
     onDismiss: () -> Unit,
+    targetNote: NoteUi? = null,
 ) {
     val repo = LocalRepository.current
     val recents by remember(repo) { repo?.recentEmojisFlow() ?: flowOf(emptyList()) }
@@ -74,9 +81,17 @@ fun ReactionPickerSheet(
         sheetState = sheetState,
         containerColor = DeckColors.Surface,
     ) {
+        // シートは可能な限り上部まで広く使う（絵文字グリッドが weight で残り高さを占有）。
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp).navigationBarsPadding(),
+            Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 14.dp).navigationBarsPadding(),
         ) {
+            // リアクション対象ノート（アイコン＋本文2行）を先頭に表示して文脈を明示。
+            if (targetNote != null) {
+                TargetNoteHeader(targetNote)
+                Spacer(Modifier.size(8.dp))
+                HorizontalDivider(color = DeckColors.Border)
+                Spacer(Modifier.size(8.dp))
+            }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -89,7 +104,7 @@ fun ReactionPickerSheet(
             Spacer(Modifier.size(8.dp))
 
             Column(
-                Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
             ) {
                 val q = query.trim()
                 if (q.isNotEmpty()) {
@@ -133,6 +148,32 @@ fun ReactionPickerSheet(
                     }
                 }
                 Spacer(Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+/** リアクション対象ノートの要約（アバター＋著者名＋本文2行）。 */
+@Composable
+private fun TargetNoteHeader(note: NoteUi) {
+    val author = note.author
+    val name = author.name.takeIf { it.isNotBlank() }
+        ?: runCatching { Nip19.hexToNpub(note.event.pubkey).take(12) + "…" }.getOrDefault(note.event.pubkey.take(12))
+    val body = note.text ?: note.event.content
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Avatar(seed = note.event.pubkey, pictureUrl = author.pictureUrl, size = 32.dp)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                name, color = DeckColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (body.isNotBlank()) {
+                Spacer(Modifier.size(2.dp))
+                Text(
+                    noteAnnotated(body), color = DeckColors.Text2, fontSize = 13.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

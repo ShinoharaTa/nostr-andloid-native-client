@@ -167,6 +167,7 @@ fun NoteItem(
       ReactionPickerSheet(
           onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl) } },
           onDismiss = { showReactionPicker = false },
+          targetNote = note,
       )
   }
 }

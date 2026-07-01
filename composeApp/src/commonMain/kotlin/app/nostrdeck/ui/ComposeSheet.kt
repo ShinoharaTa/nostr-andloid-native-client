@@ -176,18 +176,18 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
             dismissOnBackPress = !sending,
         ),
     ) {
-        // 画面中央に浮くカード。imePadding で（ドッキング型）キーボード分だけ中央領域を詰める。
-        // フローティングキーボードは下端に浮くだけなので、中央配置のこのカードには重ならない。
+        // 画面上部に固定して浮くカード。imePadding で（ドッキング型）キーボード分だけ領域を詰める。
+        // フローティングキーボードは下端に浮くだけなので、上寄せのこのカードには重ならない。
         BoxWithConstraints(
             Modifier.fillMaxSize().imePadding(),
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.TopCenter,
         ) {
-            val cardMaxHeight = maxHeight - 32.dp   // 上下の余白(16dp×2)を確保
+            val cardMaxHeight = maxHeight - 24.dp   // 上下の余白ぶんを確保
             Column(
                 Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-                    .widthIn(max = 560.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .widthIn(max = 460.dp)          // 大画面でも広がりすぎないよう最大幅を制限
+                    .fillMaxWidth()                 // 制限内で幅いっぱい（狭い端末では画面幅に追従）
                     .heightIn(max = cardMaxHeight)
                     .clip(RoundedCornerShape(20.dp))
                     .background(DeckColors.Surface),
@@ -222,10 +222,6 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         .padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 12.dp),
                 ) {
                     AccountHeader(pubkey = myPubkey, profile = myProfile)
-                    if (parent != null) {
-                        Spacer(Modifier.height(12.dp))
-                        ContextCard(parent = parent, label = if (replyTo != null) "返信先" else "引用元")
-                    }
                     Spacer(Modifier.height(12.dp))
 
                     BodyField(text, onChange = { text = it }, modifier = Modifier.fillMaxWidth())
@@ -270,6 +266,16 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
                     }
+                }
+
+                // 返信先/引用元は入力フォームの外、下部に固定して文脈を明示する。
+                if (parent != null) {
+                    HorizontalDivider(color = DeckColors.Border)
+                    ContextCard(
+                        parent = parent,
+                        label = if (replyTo != null) "返信先" else "引用元",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
                 }
 
                 HorizontalDivider(color = DeckColors.Border)
@@ -456,14 +462,14 @@ private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolu
 
 /** 返信先/引用元の文脈カード。著者名・アバター・本文プレビュー(最大3行)をモノクロで表示。 */
 @Composable
-private fun ContextCard(parent: NostrEvent, label: String) {
+private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = Modifier) {
     val repo = LocalRepository.current
     val profile = repo?.profileFlow(parent.pubkey)?.collectAsState(null)?.value
     val name = profile?.name?.takeIf { it.isNotBlank() }
         ?: runCatching { Nip19.hexToNpub(parent.pubkey).take(12) + "…" }.getOrDefault(parent.pubkey.take(12))
 
     Column(
-        Modifier.fillMaxWidth()
+        modifier.fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(DeckColors.Surface2)
             .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(12.dp))
@@ -483,7 +489,7 @@ private fun ContextCard(parent: NostrEvent, label: String) {
             Spacer(Modifier.height(8.dp))
             Text(
                 noteAnnotated(parent.content), color = DeckColors.Text2, fontSize = 13.sp,
-                maxLines = 3, overflow = TextOverflow.Ellipsis,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
     }
