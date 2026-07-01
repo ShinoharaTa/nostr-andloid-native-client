@@ -1,6 +1,6 @@
 package app.nostrdeck.ui
 
-import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +27,7 @@ fun QuotedNoteCard(note: NoteUi, modifier: Modifier = Modifier) {
     Column(
         modifier
             .fillMaxWidth()
-            .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Md))
+            .background(DeckColors.Surface2, RoundedCornerShape(DeckRadius.Md))
             .padding(DeckSpace.Sm),
     ) {
         Text(

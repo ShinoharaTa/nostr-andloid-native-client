@@ -58,7 +58,7 @@ import app.nostrdeck.theme.DeckType
 fun DeckRail(state: DeckState) {
     Column(
         Modifier.width(60.dp).fillMaxHeight().background(DeckColors.Bg)
-            .border(0.dp, DeckColors.Border).verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState())
             .padding(vertical = DeckSpace.Sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -90,7 +90,7 @@ fun DeckRail(state: DeckState) {
         state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
 
         Box(
-            Modifier.size(38.dp).clip(CircleShape).border(1.5.dp, DeckColors.BorderStrong, CircleShape)
+            Modifier.size(38.dp).clip(CircleShape).background(DeckColors.AccentWeak)
                 .clickable { state.showAddColumn = true },
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Text3, modifier = Modifier.size(18.dp)) }

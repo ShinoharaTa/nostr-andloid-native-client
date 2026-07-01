@@ -72,7 +72,6 @@ fun ProfileColumn(
                     note, Modifier.clickable { onNoteClick(note) },
                     onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                 )
-                HorizontalDivider(color = DeckColors.Border)
             }
         }
     }

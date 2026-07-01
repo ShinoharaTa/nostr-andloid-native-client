@@ -105,7 +105,6 @@ private fun DmList(
                         ) { Text("${c.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = FontWeight.Bold) }
                     }
                 }
-                HorizontalDivider(color = DeckColors.Border)
             }
         }
     }

@@ -408,7 +408,6 @@ private fun BodyField(
         modifier
             .clip(RoundedCornerShape(DeckRadius.Md))
             .background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Md))
             .padding(DeckSpace.Md),
     ) {
         if (text.isEmpty()) {
@@ -499,8 +498,7 @@ private fun humanSize(bytes: Int): String = when {
 @Composable
 private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolution) -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Sm)),
+        Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2),
     ) {
         ImageResolution.entries.forEach { r ->
             val active = r == selected
@@ -529,7 +527,6 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
         modifier.fillMaxWidth()
             .clip(RoundedCornerShape(DeckRadius.Md))
             .background(DeckColors.Surface2)
-            .border(BorderStroke(1.dp, DeckColors.Border), RoundedCornerShape(DeckRadius.Md))
             .padding(DeckSpace.Md),
     ) {
         Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)

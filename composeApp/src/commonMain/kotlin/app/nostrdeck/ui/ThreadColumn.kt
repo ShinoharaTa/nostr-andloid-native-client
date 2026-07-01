@@ -62,7 +62,6 @@ fun ThreadColumn(
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             items(entries, key = { it.note.event.id }) { entry ->
                 ThreadRow(entry, onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) }, onAuthorClick = onAuthorClick)
-                HorizontalDivider(color = DeckColors.Border)
             }
         }
         // 下部の返信ボックスは起点（フォーカス）ノート、無ければ先頭への返信。

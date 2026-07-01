@@ -150,7 +150,6 @@ private fun NotificationsBody(
                     onClick = { onNoticeClick(n) },
                     onActorClick = { onActorClick(n.actor.pubkey) },
                 )
-                HorizontalDivider(color = DeckColors.Border)
             }
         }
     }

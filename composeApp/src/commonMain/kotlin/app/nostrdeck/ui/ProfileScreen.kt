@@ -189,7 +189,7 @@ private fun ProfileExpanded(
             HorizontalDivider(color = DeckColors.Border)
             ProfileHeaderCard(pubkey, profile, following, onFollowToggle)
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Border))
+        Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Bg))
         // 右ペイン: タブ + 投稿リスト
         Column(Modifier.weight(1f).fillMaxHeight()) {
             ProfileTabs(tab, onTab)
@@ -222,7 +222,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
                 note, Modifier.clickable { onNoteClick(note) },
                 onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
             )
-            HorizontalDivider(color = DeckColors.Border)
         }
     }
 }

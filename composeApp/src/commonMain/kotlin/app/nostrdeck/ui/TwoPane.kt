@@ -36,7 +36,7 @@ fun TwoPane(
     } else {
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.width(listWidth.dp).fillMaxHeight()) { list() }
-            Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Border))
+            Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Bg))
             Box(Modifier.weight(1f).fillMaxHeight()) { detail() }
         }
     }

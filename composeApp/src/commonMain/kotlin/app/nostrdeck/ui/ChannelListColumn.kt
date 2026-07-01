@@ -64,7 +64,6 @@ fun ChannelListColumn(
             items(channels, key = { it.id }) { ch ->
                 ChannelRow(ch, ch.id in pinnedChannelIds,
                     onClick = { onChannelClick(ch) }, onPin = { onPinChannel(ch) })
-                HorizontalDivider(color = DeckColors.Border)
             }
         }
     }

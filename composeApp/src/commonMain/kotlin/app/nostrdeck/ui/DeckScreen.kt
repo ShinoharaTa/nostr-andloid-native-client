@@ -81,7 +81,7 @@ private fun ExpandedDeck(state: DeckState) {
                 spec, state, state.listStateFor(spec.id),
                 Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
             )
-            Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Border))
+            Box(Modifier.fillMaxHeight().width(1.dp).background(DeckColors.Bg))
         }
         // 末尾のカラム追加（テンプレシートを開く）
         Box(
@@ -90,7 +90,7 @@ private fun ExpandedDeck(state: DeckState) {
         ) {
             Box(
                 Modifier.padding(top = DeckSpace.Md).size(40.dp).clip(CircleShape)
-                    .border(1.5.dp, DeckColors.BorderStrong, CircleShape),
+                    .background(DeckColors.AccentWeak),
                 contentAlignment = Alignment.Center,
             ) { Text("＋", color = DeckColors.Text3, fontSize = DeckType.Display) }
         }

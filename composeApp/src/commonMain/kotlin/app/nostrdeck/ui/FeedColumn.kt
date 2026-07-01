@@ -63,7 +63,6 @@ fun FeedColumn(
                         note, Modifier.clickable { onNoteClick(note) },
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                     )
-                    HorizontalDivider(color = DeckColors.Border)
                 }
             }
             // 下を読んでいる間に積まれた新着だけピル表示。タップで最上部へ。
@@ -119,7 +118,6 @@ fun FollowingFeedColumn(
                             onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
                         )
                     }
-                    HorizontalDivider(color = DeckColors.Border)
                 }
             }
             NewItemsPill(rememberNewItemsCount(keys, listState)) {
