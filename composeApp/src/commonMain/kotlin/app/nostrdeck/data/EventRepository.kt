@@ -21,6 +21,7 @@ import io.ktor.util.encodeBase64
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
@@ -162,6 +163,8 @@ class EventRepository(
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
         DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong()) }
+        // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
+        scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
         scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
@@ -544,6 +547,140 @@ class EventRepository(
             }
         }.flowOn(Dispatchers.Default)
 
+    // ---- NIP-28 パブリックチャット（kind:40/41 一覧 + kind:42 メッセージ） ----
+
+    /** チャンネルごとのリレー（thread.nchan.vip の content.relays 由来）。購読/配信のヒント。 */
+    private val channelRelays = mutableMapOf<String, List<String>>()
+
+    /** チャンネル一覧（最終活動が新しい順）。DB キャッシュを流す（HTTP 取得は [refreshChannels]）。 */
+    fun channelsFlow(): Flow<List<app.nostrdeck.model.Channel>> =
+        q.channelsByActivity().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.map { app.nostrdeck.model.Channel(it.id, it.name, it.about, it.picture_url) }
+        }
+
+    /**
+     * チャンネル一覧を HTTP エンドポイント（運用中の thread.nchan.vip）から取得して DB へ upsert。
+     * content(JSON) から name/about/picture/relays を展開し、relays は購読/配信ヒントに控える。
+     */
+    suspend fun refreshChannels() = withContext(Dispatchers.Default) {
+        runCatching {
+            val body = uploadHttp.get(CHANNELS_ENDPOINT).bodyAsText()
+            val data = json.parseToJsonElement(body).jsonObject["data"]?.jsonArray ?: return@runCatching
+            val parsed = data.mapNotNull { el ->
+                val o = el.jsonObject
+                val id = o["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val meta = o["content"]?.jsonPrimitive?.contentOrNull
+                    ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
+                val name = meta?.get("name")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+                    ?: o["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                val about = meta?.get("about")?.jsonPrimitive?.contentOrNull ?: ""
+                val picture = meta?.get("picture")?.jsonPrimitive?.contentOrNull?.ifBlank { null }
+                val createdAt = o["created_at"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                val lastAt = o["latest_update"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: createdAt
+                val relays = meta?.get("relays")?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
+                if (relays.isNotEmpty()) channelRelays[id] = relays
+                ChannelRow(id, name, about, picture, createdAt, lastAt)
+            }
+            q.transaction {
+                parsed.forEach { q.upsertChannel(it.id, it.name, it.about, it.picture, it.createdAt, it.lastAt) }
+            }
+        }
+        Unit
+    }
+
+    private data class ChannelRow(
+        val id: String, val name: String, val about: String,
+        val picture: String?, val createdAt: Long, val lastAt: Long,
+    )
+
+    /** チャンネルルーム表示時に購読開始（kind:42 #e=channelId）。チャンネルのリレーへも接続する。 */
+    fun subscribeChannel(columnId: String, channelId: String) {
+        if (!openColumns.add(columnId)) return
+        connectChannelRelays(channelId)
+        subscribeAll(columnId, Filter(kinds = listOf(42), eTags = listOf(channelId), limit = 200))
+    }
+
+    /** チャンネルの content.relays へ一時接続して REQ/EVENT が届くようにする（上限つき）。 */
+    private fun connectChannelRelays(channelId: String) {
+        val urls = channelRelays[channelId] ?: return
+        scope.launch(relayDispatcher) {
+            for (raw in urls) {
+                val url = normalizeRelayUrl(raw)
+                if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                if (relays.containsKey(url)) continue
+                if (hintRelays.size >= HINT_RELAY_CAP) break
+                if (hintRelays.add(url)) ensureRelay(url)
+            }
+        }
+    }
+
+    /**
+     * このチャンネルの kind:42 メッセージへの kind:7 リアクションを対象別に集約（絵文字→件数）。
+     * 対象を当該チャンネルのメッセージに限定（SQL 側）＝全 kind:7 の走査を避ける。
+     */
+    private fun channelReactionsFlow(channelId: String): Flow<Map<String, List<ReactionUi>>> =
+        q.reactionsForChannel(channelId).asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.groupBy { it.note_id }.mapValues { (_, rs) ->
+                rs.groupBy {
+                    val r = normalizeReaction(it.content, parseTags(it.tags_json))
+                    r.display to r.imageUrl
+                }.map { (k, list) -> ReactionUi(k.first, k.first, list.size, k.second) }
+                    .sortedByDescending { it.count }
+            }
+        }
+
+    /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ・集約リアクション付き）で流す。 */
+    private val channelFeedCache = mutableMapOf<String, StateFlow<List<ChannelMessage>>>()
+    fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
+        channelFeedCache.getOrPut(channelId) {
+            combine(
+                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
+                profilesFlow, myPubkeyFlow, channelReactionsFlow(channelId),
+            ) { rows, profiles, me, reactions ->
+                val byPk = profiles.associateBy { it.pubkey }
+                rows.mapIndexed { i, row ->
+                    val prev = rows.getOrNull(i - 1)
+                    val prof = byPk[row.pubkey]
+                    ChannelMessage(
+                        // tags を保持（リプライ元 #e の解決に使う）。
+                        event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, parseTags(row.tags_json), row.sig),
+                        author = Profile(
+                            row.pubkey, prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10),
+                            prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16,
+                        ),
+                        isMine = row.pubkey == me,
+                        continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                        reactions = reactions[row.id].orEmpty(),
+                    )
+                }
+            }.flowOn(Dispatchers.Default).stateIn(scope, feedSharing, emptyList())
+        }
+
+    /** 表示中メッセージ群への kind:7 リアクションを購読（Slack 風集約表示のため）。id 群が変わるたび貼り直す。 */
+    fun subscribeChannelReactions(subId: String, messageIds: List<String>) {
+        if (messageIds.isEmpty()) return
+        openColumns.add(subId)
+        subscribeAll(subId, Filter(kinds = listOf(7), eTags = messageIds.take(300), limit = 500))
+    }
+
+    /**
+     * 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。
+     * [replyTo] があれば NIP-10 の返信（reply マーカー付き #e ＋ 相手 #p）も添える。
+     */
+    suspend fun publishChannelMessage(channelId: String, text: String, replyTo: NostrEvent? = null) {
+        if (text.isBlank()) return
+        val hint = channelRelays[channelId]?.firstOrNull().orEmpty()
+        val tags = buildList {
+            add(listOf("e", channelId, hint, "root"))
+            if (replyTo != null) {
+                add(listOf("e", replyTo.id, hint, "reply"))
+                add(listOf("p", replyTo.pubkey, hint))
+            }
+            addAll(hashtagsIn(text).map { listOf("t", it) })
+        }
+        publishSigned(UnsignedEvent(kind = 42, content = text, tags = tags))
+    }
+
     // ---- [M10-notif] 通知（自分=#p 宛のリプライ/メンション/リアクション/リポスト） ----
     private val notifJobs = mutableMapOf<String, Job>()
 
@@ -585,26 +722,30 @@ class EventRepository(
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
         val actor = profileFor(row.pubkey, byPubkey)
-        val snippet = target?.let { id ->
-            q.eventById(id).executeAsOneOrNull()?.let { (extractMedia(it.content).first ?: it.content).take(80) }
-        }
+        // 対象イベント本体（抜粋＋種別判定に使う）。
+        val targetEvent = target?.let { q.eventById(it).executeAsOneOrNull() }
+        val snippet = targetEvent?.let { (extractMedia(it.content).first ?: it.content).take(80) }
+        // 対象が kind:42（パブリックチャット）なら、そのルート #e＝チャンネル id をリンク先に。
+        val channelId = targetEvent
+            ?.takeIf { it.kind.toInt() == 42 }
+            ?.let { rootOf(parseTags(it.tags_json)) }
         return when (row.kind.toInt()) {
             7 -> {
                 // NIP-25/30: "+"/空→❤️、":shortcode:" は emoji タグから画像URLを解決。
                 val rx = normalizeReaction(row.content, tags)
                 NotificationUi(row.id, NotificationKind.REACTION, actor, row.created_at,
                     reaction = rx.display, reactionImageUrl = rx.imageUrl,
-                    targetNoteId = target, targetSnippet = snippet)
+                    targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId)
             }
             6, 16 -> NotificationUi(row.id, NotificationKind.REPOST, actor, row.created_at,
-                targetNoteId = target, targetSnippet = snippet)
+                targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId)
             else -> {
                 val isReply = tags.any { it.size >= 2 && it[0] == "e" }
                 NotificationUi(
                     row.id, if (isReply) NotificationKind.REPLY else NotificationKind.MENTION,
                     actor, row.created_at,
                     text = extractMedia(row.content).first ?: row.content,
-                    targetNoteId = target, targetSnippet = snippet,
+                    targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
                 )
             }
         }
@@ -797,6 +938,7 @@ class EventRepository(
         authors = authors.ifEmpty { null },
         kinds = kinds.ifEmpty { listOf(1) },
         hashtags = hashtags.ifEmpty { null },
+        eTags = channelId?.let { listOf(it) },  // NIP-28: kind:42 を #e でチャンネルに絞る
         search = search,
         limit = limit,
     )
@@ -978,6 +1120,14 @@ class EventRepository(
         authorRequests.trySend(pubkey)
     }
 
+    /** 本文中の `nostr:npub1…`（接頭辞任意）を hex に復号し、表示名解決のため kind:0 を要求する。 */
+    private fun requestMentionedProfiles(content: String) {
+        for (m in NPUB_MENTION_REGEX.findAll(content)) {
+            val bech = m.value.substringAfter("nostr:", m.value)
+            runCatching { Nip19.npubToHex(bech) }.getOrNull()?.let { requestProfile(it) }
+        }
+    }
+
     // ---- [M10] イベント id バッチ解決（返信先の親ノートなど未キャッシュ分を取得） ----
     private val eventRequests = Channel<String>(Channel.UNLIMITED)
 
@@ -1086,6 +1236,16 @@ class EventRepository(
                     indexTags(orig)
                     requestProfile(orig.pubkey)
                 }
+            }
+            42 -> {
+                // NIP-28 チャンネルメッセージ。保存して #e を索引し、著者 profile を要求。
+                // ルート #e（=チャンネルid）で一覧の最終活動時刻を前進させる。
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+                // 本文中の nostr:npub… メンションの表示名も引けるよう kind:0 を要求。
+                requestMentionedProfiles(e.content)
+                rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
@@ -1497,7 +1657,13 @@ class EventRepository(
         /** 本文中の nevent1.../note1...（nostr: 接頭辞は任意）。直前が英数字の語中ヒットは除外。 */
         val EVENT_REF_REGEX = Regex("(?<![a-z0-9])(nostr:)?(nevent1|note1)[a-z0-9]+")
 
+        /** 本文中の npub1…（nostr: 接頭辞は任意）。メンションの表示名解決に使う。 */
+        val NPUB_MENTION_REGEX = Regex("(?<![a-z0-9])(nostr:)?npub1[a-z0-9]+")
+
         /** 引用/返信ヒントで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 8
+
+        /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
+        const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
     }
 }

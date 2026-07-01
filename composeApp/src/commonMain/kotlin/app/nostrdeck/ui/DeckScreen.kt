@@ -251,16 +251,26 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 ThreadColumn(spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose)
             }
         }
-        ColumnRenderer.CHANNEL_LIST -> ChannelListColumn(
-            spec, SampleData.channels, pinnedChannelIds(state), modifier, listState,
-            onPin = onPin, onClose = onClose,
-            onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch), originId = spec.id) },
-            onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
-        )
-        ColumnRenderer.ROOM -> ChannelRoomColumn(
-            spec, SampleData.roomMessages(spec.filter.channelId.orEmpty()),
-            modifier, listState, onPin = onPin, onClose = onClose,
-        )
+        ColumnRenderer.CHANNEL_LIST -> {
+            val repo = LocalRepository.current
+            LaunchedEffect(repo) { repo?.refreshChannels() }
+            val channels = if (repo != null) remember { repo.channelsFlow() }.collectAsState(emptyList()).value
+            else SampleData.channels
+            ChannelListColumn(
+                spec, channels, pinnedChannelIds(state), modifier, listState,
+                onPin = onPin, onClose = onClose,
+                onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch), originId = spec.id) },
+                onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
+            )
+        }
+        ColumnRenderer.ROOM -> {
+            val channelId = spec.filter.channelId
+            if (channelId != null) {
+                LiveChannelRoom(spec, channelId, modifier, listState, onPin = onPin, onClose = onClose)
+            } else {
+                ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose)
+            }
+        }
     }
 }
 

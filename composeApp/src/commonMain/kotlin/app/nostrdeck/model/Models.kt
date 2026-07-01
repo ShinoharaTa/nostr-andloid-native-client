@@ -175,6 +175,8 @@ data class NotificationUi(
     val text: String? = null,
     val targetSnippet: String? = null,
     val targetNoteId: String? = null,
+    /** 対象が NIP-28 チャンネルメッセージ(kind:42)なら、そのチャンネル id（タップで開く先）。 */
+    val targetChannelId: String? = null,
 )
 
 /**
@@ -219,6 +221,7 @@ data class ChannelMessage(
     val author: Profile,
     val isMine: Boolean = false,
     val continuation: Boolean = false,  // 直前と同一著者なら頭をまとめる
+    val reactions: List<ReactionUi> = emptyList(),  // このメッセージへの集約リアクション（NIP-25）
 )
 
 /**
