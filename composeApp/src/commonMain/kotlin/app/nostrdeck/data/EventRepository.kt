@@ -1158,10 +1158,16 @@ class EventRepository(
         return when (row.kind.toInt()) {
             6, 16 -> {
                 val tags = parseTags(row.tags_json)
-                val origId = tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+                val eTag = tags.firstOrNull { it.size >= 2 && it[0] == "e" }
+                val origId = eTag?.getOrNull(1)
                 val original = origId?.let { resolveNoteUi(it, byPubkey) }
                     ?: parseEmbeddedEvent(row.content)?.let { noteUiFromEvent(it, byPubkey) }
-                    ?: return null
+                if (original == null) {
+                    // 元ノートが未取得ならリポストを捨てず、リレーヒント(e タグ3要素目)付きで取得を促す。
+                    // 届き次第フィードが再解決され、フォロー中の人のリポストが表示される。
+                    if (origId != null) requestEvent(origId, eTag?.getOrNull(2)?.let { listOf(it) }.orEmpty())
+                    return null
+                }
                 original.copy(repostedBy = profileFor(row.pubkey, byPubkey), repostAt = row.created_at)
             }
             else -> withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey)
