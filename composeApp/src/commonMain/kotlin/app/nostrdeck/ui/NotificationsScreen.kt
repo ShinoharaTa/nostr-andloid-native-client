@@ -73,9 +73,21 @@ fun NotificationsScreen(state: DeckState) {
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
             items, rememberLazyListState(),
-            onNoticeClick = { id -> state.openThreadDetail(id) },
+            onNoticeClick = { n -> openNotificationTarget(state, n) },
             onActorClick = { pk -> state.openProfile(pk) },
         )
+    }
+}
+
+/** 通知の対象を開く。対象が kind:42 ならパブリックチャットのそのチャンネルを、他はスレッドを開く。 */
+private fun openNotificationTarget(state: DeckState, n: NotificationUi) {
+    val channelId = n.targetChannelId
+    if (channelId != null) {
+        state.clearDetail()
+        state.navDest = app.nostrdeck.state.NavDest.CHANNELS
+        state.publicChatRoom = channelId
+    } else {
+        state.openThreadDetail(n.targetNoteId ?: n.id)
     }
 }
 
@@ -111,7 +123,7 @@ fun NotificationsColumn(
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
             items, listState,
-            onNoticeClick = { id -> state.openThreadDetail(id) },
+            onNoticeClick = { n -> openNotificationTarget(state, n) },
             onActorClick = { pk -> state.openProfile(pk) },
         )
     }
@@ -121,7 +133,7 @@ fun NotificationsColumn(
 private fun NotificationsBody(
     items: List<NotificationUi>,
     listState: LazyListState,
-    onNoticeClick: (String) -> Unit,
+    onNoticeClick: (NotificationUi) -> Unit,
     onActorClick: (String) -> Unit,
 ) {
     if (items.isEmpty()) {
@@ -133,7 +145,7 @@ private fun NotificationsBody(
             items(items, key = { it.id }) { n ->
                 NoticeRow(
                     n,
-                    onClick = { onNoticeClick(n.targetNoteId ?: n.id) },
+                    onClick = { onNoticeClick(n) },
                     onActorClick = { onActorClick(n.actor.pubkey) },
                 )
                 HorizontalDivider(color = DeckColors.Border)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -76,12 +77,21 @@ fun LiveChannelRoom(
     }
     DisposableEffect(spec.id) {
         repo.subscribeChannel(spec.id, channelId)
-        onDispose { repo.unsubscribeColumn(spec.id) }
+        onDispose {
+            repo.unsubscribeColumn(spec.id)
+            repo.unsubscribeColumn("${spec.id}_rx")
+        }
     }
     val messages = remember(channelId) { repo.channelMessagesFeed(channelId) }.collectAsState().value
+    // 表示中メッセージへのリアクション(kind:7)を購読（id 群が変わるたび貼り直す）。
+    val msgIds = remember(messages) { messages.map { it.event.id } }
+    LaunchedEffect(msgIds) { repo.subscribeChannelReactions("${spec.id}_rx", msgIds) }
+    // 本文中の npub メンションを @表示名 に解決するための名前マップ。
+    val names by remember { repo.profileNames() }.collectAsState(emptyMap())
     val scope = rememberCoroutineScope()
     ChannelRoomColumn(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, onBack = onBack,
+        names = names,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url) } },
     )
@@ -100,6 +110,7 @@ fun ChannelRoomColumn(
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
     onReact: ((NostrEvent, String, String?) -> Unit)? = null,
 ) {
@@ -125,6 +136,7 @@ fun ChannelRoomColumn(
                 MessageBubble(
                     m,
                     parent = replyParentId(m)?.let { byId[it] },
+                    names = names,
                     onReply = if (onSend != null) ({ replyingTo = m }) else null,
                     onReact = if (onReact != null) ({ pickerFor = m }) else null,
                 )
@@ -161,6 +173,7 @@ private fun replyParentId(m: ChannelMessage): String? =
 private fun MessageBubble(
     m: ChannelMessage,
     parent: ChannelMessage?,
+    names: Map<String, String>,
     onReply: (() -> Unit)?,
     onReact: (() -> Unit)?,
 ) {
@@ -169,10 +182,18 @@ private fun MessageBubble(
         horizontalArrangement = if (m.isMine) Arrangement.End else Arrangement.Start,
     ) {
         if (!m.isMine) AvatarSlot(m)
-        Column(horizontalAlignment = if (m.isMine) Alignment.End else Alignment.Start) {
+        // 吹き出し列は画面幅の 78% までに制限（表示名や本文が長くても崩れない）。
+        Column(
+            horizontalAlignment = if (m.isMine) Alignment.End else Alignment.Start,
+            modifier = Modifier.fillMaxWidth(0.78f).wrapContentWidth(if (m.isMine) Alignment.End else Alignment.Start),
+        ) {
             if (!m.continuation) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(m.author.name, color = DeckColors.Accent2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    // 長い表示名は省略（… ）。時刻は右に固定。
+                    Text(
+                        m.author.name, color = DeckColors.Accent2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false),
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text(relativeTime(m.event.createdAt), color = DeckColors.Text3, fontSize = 10.sp)
                 }
@@ -180,7 +201,11 @@ private fun MessageBubble(
             }
             // 返信なら、返信元を一行引用で示す（誰への返信か分かるように）。
             if (parent != null) ReplyQuote(parent, m.isMine)
-            Bubble(m, onReply = onReply, onReact = onReact)
+            Bubble(m, names = names, onReply = onReply, onReact = onReact)
+            // Slack 風の集約リアクション（絵文字 + 件数）。
+            if (m.reactions.isNotEmpty()) {
+                ReactionRow(m.reactions, modifier = Modifier.padding(top = 3.dp))
+            }
         }
         if (m.isMine) AvatarSlot(m)
     }
@@ -213,17 +238,18 @@ private fun AvatarSlot(m: ChannelMessage) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: ChannelMessage, onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
+private fun Bubble(m: ChannelMessage, names: Map<String, String>, onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
     // グラデーション禁止。自分=明色べた塗り＋暗色文字、相手=暗色サーフェス＋明色文字。
     val shape = if (m.isMine) RoundedCornerShape(12.dp, 4.dp, 12.dp, 12.dp)
     else RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp)
     val bgColor = if (m.isMine) DeckColors.Accent else DeckColors.Surface2
     val hasActions = onReply != null || onReact != null
     var menu by remember { mutableStateOf(false) }
+    // 本文の nostr:npub… は @表示名（解決できれば）に、その他 nostr: 参照は ↗… に短縮。
+    val annotated = remember(m.event.content, names) { noteAnnotated(m.event.content, { names[it] }) }
     Box {
-        // 本文の nostr: 参照は ↗… に短縮、URL/#タグはリンク強調（生の nevent が長々と出るのを防ぐ）。
         Text(
-            noteAnnotated(m.event.content),
+            annotated,
             color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
             fontSize = 13.sp,
             modifier = Modifier.clip(shape).background(bgColor)

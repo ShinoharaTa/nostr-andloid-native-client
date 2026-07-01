@@ -163,6 +163,8 @@ class EventRepository(
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
         DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong()) }
+        // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
+        scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
         scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
@@ -612,14 +614,26 @@ class EventRepository(
         }
     }
 
-    /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ）で流す。 */
+    /** 全 kind:7 を対象ノート(#e)別に集約（絵文字→件数）。チャンネルの Slack 風リアクション表示に使う。 */
+    private val reactionsByTargetFlow: Flow<Map<String, List<ReactionUi>>> =
+        q.reactionsForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.groupBy { it.note_id }.mapValues { (_, rs) ->
+                rs.groupBy {
+                    val r = normalizeReaction(it.content, parseTags(it.tags_json))
+                    r.display to r.imageUrl
+                }.map { (k, list) -> ReactionUi(k.first, k.first, list.size, k.second) }
+                    .sortedByDescending { it.count }
+            }
+        }
+
+    /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ・集約リアクション付き）で流す。 */
     private val channelFeedCache = mutableMapOf<String, StateFlow<List<ChannelMessage>>>()
     fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
         channelFeedCache.getOrPut(channelId) {
             combine(
                 q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
-                profilesFlow, myPubkeyFlow,
-            ) { rows, profiles, me ->
+                profilesFlow, myPubkeyFlow, reactionsByTargetFlow,
+            ) { rows, profiles, me, reactions ->
                 val byPk = profiles.associateBy { it.pubkey }
                 rows.mapIndexed { i, row ->
                     val prev = rows.getOrNull(i - 1)
@@ -633,10 +647,18 @@ class EventRepository(
                         ),
                         isMine = row.pubkey == me,
                         continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                        reactions = reactions[row.id].orEmpty(),
                     )
                 }
             }.flowOn(Dispatchers.Default).stateIn(scope, feedSharing, emptyList())
         }
+
+    /** 表示中メッセージ群への kind:7 リアクションを購読（Slack 風集約表示のため）。id 群が変わるたび貼り直す。 */
+    fun subscribeChannelReactions(subId: String, messageIds: List<String>) {
+        if (messageIds.isEmpty()) return
+        openColumns.add(subId)
+        subscribeAll(subId, Filter(kinds = listOf(7), eTags = messageIds.take(300), limit = 500))
+    }
 
     /**
      * 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。
@@ -697,26 +719,30 @@ class EventRepository(
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
         val actor = profileFor(row.pubkey, byPubkey)
-        val snippet = target?.let { id ->
-            q.eventById(id).executeAsOneOrNull()?.let { (extractMedia(it.content).first ?: it.content).take(80) }
-        }
+        // 対象イベント本体（抜粋＋種別判定に使う）。
+        val targetEvent = target?.let { q.eventById(it).executeAsOneOrNull() }
+        val snippet = targetEvent?.let { (extractMedia(it.content).first ?: it.content).take(80) }
+        // 対象が kind:42（パブリックチャット）なら、そのルート #e＝チャンネル id をリンク先に。
+        val channelId = targetEvent
+            ?.takeIf { it.kind.toInt() == 42 }
+            ?.let { rootOf(parseTags(it.tags_json)) }
         return when (row.kind.toInt()) {
             7 -> {
                 // NIP-25/30: "+"/空→❤️、":shortcode:" は emoji タグから画像URLを解決。
                 val rx = normalizeReaction(row.content, tags)
                 NotificationUi(row.id, NotificationKind.REACTION, actor, row.created_at,
                     reaction = rx.display, reactionImageUrl = rx.imageUrl,
-                    targetNoteId = target, targetSnippet = snippet)
+                    targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId)
             }
             6, 16 -> NotificationUi(row.id, NotificationKind.REPOST, actor, row.created_at,
-                targetNoteId = target, targetSnippet = snippet)
+                targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId)
             else -> {
                 val isReply = tags.any { it.size >= 2 && it[0] == "e" }
                 NotificationUi(
                     row.id, if (isReply) NotificationKind.REPLY else NotificationKind.MENTION,
                     actor, row.created_at,
                     text = extractMedia(row.content).first ?: row.content,
-                    targetNoteId = target, targetSnippet = snippet,
+                    targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
                 )
             }
         }
@@ -1091,6 +1117,14 @@ class EventRepository(
         authorRequests.trySend(pubkey)
     }
 
+    /** 本文中の `nostr:npub1…`（接頭辞任意）を hex に復号し、表示名解決のため kind:0 を要求する。 */
+    private fun requestMentionedProfiles(content: String) {
+        for (m in NPUB_MENTION_REGEX.findAll(content)) {
+            val bech = m.value.substringAfter("nostr:", m.value)
+            runCatching { Nip19.npubToHex(bech) }.getOrNull()?.let { requestProfile(it) }
+        }
+    }
+
     // ---- [M10] イベント id バッチ解決（返信先の親ノートなど未キャッシュ分を取得） ----
     private val eventRequests = Channel<String>(Channel.UNLIMITED)
 
@@ -1206,6 +1240,8 @@ class EventRepository(
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
                 indexTags(e)
                 requestProfile(e.pubkey)
+                // 本文中の nostr:npub… メンションの表示名も引けるよう kind:0 を要求。
+                requestMentionedProfiles(e.content)
                 rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
             0 -> upsertProfile(e)
@@ -1617,6 +1653,9 @@ class EventRepository(
 
         /** 本文中の nevent1.../note1...（nostr: 接頭辞は任意）。直前が英数字の語中ヒットは除外。 */
         val EVENT_REF_REGEX = Regex("(?<![a-z0-9])(nostr:)?(nevent1|note1)[a-z0-9]+")
+
+        /** 本文中の npub1…（nostr: 接頭辞は任意）。メンションの表示名解決に使う。 */
+        val NPUB_MENTION_REGEX = Regex("(?<![a-z0-9])(nostr:)?npub1[a-z0-9]+")
 
         /** 引用/返信ヒントで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 8
