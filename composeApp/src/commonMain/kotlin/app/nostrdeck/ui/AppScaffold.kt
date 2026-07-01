@@ -129,9 +129,34 @@ private fun Destination(state: DeckState, isCompact: Boolean) {
         NavDest.HOME -> DeckArea(state, isCompact = isCompact)
         NavDest.CHANNELS -> PublicChatScreen(state, isCompact)
         NavDest.DM -> DmScreen(state, isCompact)
-        NavDest.NOTIFICATIONS -> NotificationsScreen(state)
+        // 単一フィード（通知/検索）は Deck 展開時に全幅へ広がると読みにくいので、
+        // スレッド詳細と同様に中央寄せ・最大幅を制限する（Compact では全幅）。
+        NavDest.NOTIFICATIONS -> SingleColumnPane(isCompact) { NotificationsScreen(state) }
         NavDest.SETTINGS -> SettingsScreen(state, isCompact)
-        NavDest.SEARCH -> SearchScreen()
+        NavDest.SEARCH -> SingleColumnPane(isCompact) { SearchScreen() }
+    }
+}
+
+/**
+ * 単一カラムの宛先を Expanded で中央寄せ・最大幅 [maxWidthDp] に収める（両脇は Deck 背景）。
+ * スレッド詳細の [ConstrainedOverlay] と幅を揃える。オーバーレイではないのでスクリムは出さない。
+ * Compact では従来どおり全幅。
+ */
+@Composable
+private fun SingleColumnPane(
+    isCompact: Boolean,
+    maxWidthDp: Int = 520,
+    content: @Composable () -> Unit,
+) {
+    if (isCompact) {
+        content()
+        return
+    }
+    Box(
+        Modifier.fillMaxSize().background(DeckColors.Bg),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(Modifier.widthIn(max = maxWidthDp.dp).fillMaxHeight()) { content() }
     }
 }
 
