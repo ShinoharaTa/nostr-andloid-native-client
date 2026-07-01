@@ -37,11 +37,12 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                 ChannelRoomColumn(
                     spec = SampleData.roomColumnFor(selected),
                     messages = SampleData.roomMessages(selected.id),
-                    onClose = { state.publicChatRoom = null },  // Compact: 一覧へ戻る / Expanded: 選択解除
+                    // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
+                    onClose = if (isCompact) null else ({ state.publicChatRoom = null }),
+                    onBack = if (isCompact) ({ state.publicChatRoom = null }) else null,
                 )
             }
         },
-        onBack = { state.publicChatRoom = null },
     )
 }
 

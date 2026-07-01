@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -34,6 +38,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -63,10 +68,10 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
         list = { SettingsMenu(selectedId) { state.settingsSection = it } },
         detail = {
             if (selectedId == null) DetailPlaceholder("メニューを選択")
-            else SettingsContent(selectedId)
+            // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
+            else SettingsContent(selectedId, onBack = if (isCompact) ({ state.settingsSection = null }) else null)
         },
         listWidth = 280,
-        onBack = { state.settingsSection = null },
     )
 }
 
@@ -96,10 +101,21 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun SettingsContent(sectionId: String) {
+private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
     val title = SampleData.settingsSections.firstOrNull { it.first == sectionId }?.second ?: ""
     Column(Modifier.fillMaxSize().background(DeckColors.Bg).padding(20.dp)) {
-        Text(title, color = DeckColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        // タイトル横に ← を置いて一覧へ戻る（Compact のみ。自然な単一ヘッダー）。
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "戻る", tint = DeckColors.Text,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack)
+                        .padding(6.dp).size(22.dp),
+                )
+                Spacer(Modifier.size(8.dp))
+            }
+            Text(title, color = DeckColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        }
         Spacer(Modifier.size(14.dp))
         when (sectionId) {
             "signer" -> SignerSettings()

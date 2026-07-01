@@ -45,13 +45,14 @@ fun ChannelRoomColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             iconTint = DeckColors.Zap, iconBg = DeckColors.Zap.copy(alpha = 0.14f),
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(
