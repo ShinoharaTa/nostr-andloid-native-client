@@ -92,6 +92,9 @@ fun AppScaffold(state: DeckState) {
                 quoting = state.quoting,
             )
         }
+
+        // 上部中央の「接続中…」インジケータ（全リレー未接続の待機中だけ表示）。
+        ConnectionIndicator()
     }
 }
 

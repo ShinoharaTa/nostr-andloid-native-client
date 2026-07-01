@@ -185,6 +185,14 @@ class EventRepository(
     /** 各リレーの接続状態（url 昇順）。レール集約インジケータ/カラムヘッダが購読する。 */
     fun relayConnFlow(): StateFlow<List<RelayConn>> = _relayConns.asStateFlow()
 
+    /**
+     * アプリがフォアグラウンド復帰したときに呼ぶ。バックオフ待機中のリレーを即再接続させる。
+     * （バックグラウンドで OS がソケットを切ると最大30秒のバックオフに入るため、復帰時に短縮する）
+     */
+    fun onForeground() {
+        scope.launch(relayDispatcher) { relays.values.forEach { it.wake() } }
+    }
+
     /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
     private fun refreshRelayConns() {
         // ヒント経由の一時接続はステータスに出さない（設定リレーのみ表示）。

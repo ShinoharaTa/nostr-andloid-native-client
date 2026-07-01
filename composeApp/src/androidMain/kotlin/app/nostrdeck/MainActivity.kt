@@ -1,5 +1,7 @@
 package app.nostrdeck
 
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,6 +36,14 @@ class MainActivity : ComponentActivity() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var repository: EventRepository
+
+    // フォアグラウンド中にネットワークが復帰したら、バックオフ待機中のリレーを即再接続させる。
+    private val connectivityManager by lazy { getSystemService(ConnectivityManager::class.java) }
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (::repository.isInitialized) repository.onForeground()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -70,6 +80,19 @@ class MainActivity : ComponentActivity() {
         repository = EventRepository(db, appScope, DEFAULT_RELAYS).apply { start() }
 
         setContent { App(repository) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // フォアグラウンド復帰: バックグラウンドで切れたリレーを即再接続させる（バックオフ短縮）。
+        if (::repository.isInitialized) repository.onForeground()
+        // 復帰中はネットワーク復帰も監視して即再接続（フォアグラウンド中のみ登録）。
+        runCatching { connectivityManager.registerDefaultNetworkCallback(netCallback) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        runCatching { connectivityManager.unregisterNetworkCallback(netCallback) }
     }
 
     override fun onDestroy() {

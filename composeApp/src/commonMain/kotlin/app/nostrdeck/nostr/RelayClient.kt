@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** リレー接続状態（UI のステータス表示用・モノクロ ●/◑/○）。 */
 enum class RelayConnState { CONNECTING, CONNECTED, DISCONNECTED }
@@ -41,6 +42,8 @@ class RelayClient(
     private val outgoing = Channel<String>(Channel.BUFFERED)
     private val activeReqs = mutableMapOf<String, String>()  // subId → REQ json
     private var job: Job? = null
+    // バックオフ待機中に即再接続させるためのシグナル（フォアグラウンド復帰時に wake()）。
+    private val wakeSignal = Channel<Unit>(Channel.CONFLATED)
 
     private val _state = MutableStateFlow(RelayConnState.CONNECTING)
     /** 接続状態（UI 監視用）。接続中/接続済/切断。 */
@@ -65,8 +68,9 @@ class RelayClient(
                 }
                 _state.value = RelayConnState.DISCONNECTED
                 if (!isActive) break
-                delay(backoff + (0..500).random())
-                backoff = (backoff * 2).coerceAtMost(30_000)
+                // バックオフ待機。ただし wake() が来たら即座に再接続を試みる（フォアグラウンド復帰）。
+                val woken = withTimeoutOrNull(backoff + (0..500).random().toLong()) { wakeSignal.receive() } != null
+                backoff = if (woken) 1000L else (backoff * 2).coerceAtMost(30_000)
             }
         }
     }
@@ -106,6 +110,11 @@ class RelayClient(
     /** イベント送信（publish）。 */
     fun publish(eventJson: String) {
         outgoing.trySend(eventJson)
+    }
+
+    /** バックオフ待機中なら即再接続を促す（フォアグラウンド復帰時に呼ぶ）。接続中なら無害。 */
+    fun wake() {
+        wakeSignal.trySend(Unit)
     }
 
     fun stop() {
