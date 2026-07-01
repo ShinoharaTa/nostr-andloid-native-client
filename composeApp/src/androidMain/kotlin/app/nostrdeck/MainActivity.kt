@@ -20,6 +20,7 @@ import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.intercept.Interceptor
 import coil3.memory.MemoryCache
+import coil3.network.HttpException
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
@@ -115,25 +116,42 @@ class MainActivity : ComponentActivity() {
  *
  * 失敗は「ErrorResult が返る」場合と「fetcher が例外を投げる」場合の両方があり得るので
  * 双方を拾う。キャンセル例外は握りつぶさず再送出する。
+ *
+ * 学習（以後そのホストはプロキシを回避）は恒久的なポリシー拒否(400/403)のときだけ行う。
+ * 一時的失敗(429/5xx/タイムアウト等)は今回だけ元 URL で取り直し、プロキシは使い続ける
+ * （= 一時的な失敗で圧縮を無駄に諦めない）。
  */
 private object ProxyFallbackInterceptor : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-        return try {
-            val result = chain.proceed()
-            if (result is ErrorResult) retryWithOrigin(chain) ?: result else result
+        val result = try {
+            chain.proceed()
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
-            retryWithOrigin(chain) ?: throw t
+            return retryWithOrigin(chain, t) ?: throw t
         }
+        if (result is ErrorResult) return retryWithOrigin(chain, result.throwable) ?: result
+        return result
     }
 
     /** リクエストがプロキシ URL なら元 URL で取り直す。プロキシ URL でなければ null。 */
-    private suspend fun retryWithOrigin(chain: Interceptor.Chain): ImageResult? {
+    private suspend fun retryWithOrigin(chain: Interceptor.Chain, cause: Throwable?): ImageResult? {
         val origin = ImageProxy.originOf(chain.request.data) ?: return null
-        // このホストは以後プロキシを避ける（次回から元 URL で取得＝キャッシュが効く）。
-        ImageProxy.markProxyBlocked(origin)
+        // ポリシー拒否(400/403)のホストだけ学習して以後プロキシを回避する。
+        if (isPolicyBlock(cause)) ImageProxy.markProxyBlocked(origin)
         val retry = chain.request.newBuilder().data(origin).build()
         return chain.withRequest(retry).proceed()
+    }
+
+    /** 失敗原因が「プロキシによる恒久的な拒否」(HTTP 400/403)かどうか。 */
+    private fun isPolicyBlock(cause: Throwable?): Boolean {
+        var e: Throwable? = cause
+        var depth = 0
+        while (e != null && depth < 8) {
+            if (e is HttpException) return e.response.code == 400 || e.response.code == 403
+            e = e.cause
+            depth++
+        }
+        return false
     }
 }
