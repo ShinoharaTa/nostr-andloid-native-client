@@ -1,7 +1,6 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,26 +64,20 @@ private fun aggregateState(conns: List<RelayConn>): RelayConnState {
 }
 
 /**
- * 集約インジケータ。状態色（緑=全接続 / 黄=一部 / グレー=全切断）で塗った、
- * 両端が半円のピルに "n/m" を入れる。縦積み(●の上に数字)より横並びで自然に見える。
- * タップで [onClick]（一覧ポップアップ）。
+ * 集約インジケータ「● n/m」。状態色の小さなドット + 控えめな数字を横並びで。
+ * 塗りピルは主張が強すぎたので、地/枠なしのシンプルな形にする。タップで [onClick]。
  */
 @Composable
 fun RelayRailIndicator(conns: List<RelayConn>, onClick: () -> Unit) {
     val connected = conns.count { it.state == RelayConnState.CONNECTED }
-    val color = relayStateColor(aggregateState(conns))
-    Box(
-        Modifier.clip(RoundedCornerShape(50))              // 両端が半円のピル
-            .background(color.copy(alpha = 0.16f))         // 状態色の淡い地
-            .border(1.dp, color, RoundedCornerShape(50))   // 状態色の枠
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center,
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "$connected/${conns.size}",
-            color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-        )
+        RelayStatusDot(aggregateState(conns), size = 8)     // 状態色（緑/黄/グレー）のドット
+        Spacer(Modifier.width(5.dp))
+        Text("$connected/${conns.size}", color = DeckColors.Text3, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
