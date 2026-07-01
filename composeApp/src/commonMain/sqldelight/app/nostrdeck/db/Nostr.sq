@@ -283,6 +283,12 @@ SELECT e.id FROM event e
 JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e' AND et.value = ? LIMIT 1;
 
+-- 自分が各ノートに付けたリアクションの内容（絵文字表示用）。note_id→content/tags。
+myReactionsForNotes:
+SELECT et.value AS note_id, e.content, e.tags_json FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
+
 -- [M9-thread] スレッド構成イベント: 指定 id 群そのもの + それらを e タグで参照する kind:1。
 threadEvents:
 SELECT DISTINCT event.* FROM event
