@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
@@ -50,12 +49,13 @@ import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
 
 /**
- * 左 NavigationRail（展開時の常設）。
- * 上=ブランド/グローバルナビ/ピン留めカラム目次（スクロール）、
- * 下=接続ステータス/設定/自分（常に下部固定）。
+ * 左 NavigationRail（展開時の常設）。3 ブロック構成:
+ *  1. 上部固定 : ブランド + グローバルナビ
+ *  2. 中央     : ピン留めカラムの目次（**ここだけがスクロール対象**）
+ *  3. 下部固定 : 接続ステータス / 設定 / 自分
  *
  * すべての項目を [RailSlot]（[DeckDimens.RailItem] の同一タップ領域＋中央寄せ）に通し、
- * グリフは [DeckDimens.RailIcon] に統一。セクション境界は 1px の [RailDivider] で分ける。
+ * グリフは [DeckDimens.RailIcon] に統一。ブロック境界は 1px の [RailDivider] で分ける。
  */
 @Composable
 fun DeckRail(state: DeckState) {
@@ -64,10 +64,9 @@ fun DeckRail(state: DeckState) {
         Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // ── 上部（スクロール）: ブランド + ナビ + PIN 目次 ──
+        // ── 上部固定: ブランド + ナビ ──
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(vertical = DeckSpace.Sm),
+            Modifier.fillMaxWidth().padding(top = DeckSpace.Sm),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
@@ -91,24 +90,29 @@ fun DeckRail(state: DeckState) {
             NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM) {
                 state.clearDetail(); state.navDest = NavDest.DM
             }
-
-            // PIN セクション（1px 区切り + ラベル）
-            RailDivider()
-            Text("PIN", color = DeckColors.Text3, fontSize = DeckType.Micro, letterSpacing = 1.sp)
-
-            // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
-            state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
-
-            // カラム追加（常設アクション）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
-            RailSlot(active = true, onClick = { state.showAddColumn = true }) {
-                Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
-            }
         }
 
-        // ── 下部（固定）: 接続ステータス + 設定 + 自分 ──
         RailDivider()
+
+        // ── 中央: ピン留めカラムの目次（ここだけスクロール） ──
         Column(
-            Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        ) {
+            state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
+        }
+
+        // カラム追加（常設アクション・固定）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
+        RailSlot(active = true, onClick = { state.showAddColumn = true }) {
+            Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
+        }
+
+        RailDivider()
+
+        // ── 下部固定: 接続ステータス + 設定 + 自分 ──
+        Column(
+            Modifier.fillMaxWidth().padding(bottom = DeckSpace.Sm),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
@@ -160,7 +164,7 @@ private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     }
 }
 
-/** セクション区切りの 1px ライン（レール幅内にインセットして引く）。 */
+/** ブロック境界の 1px ライン（レール幅内にインセットして引く）。 */
 @Composable
 private fun RailDivider() {
     Box(
