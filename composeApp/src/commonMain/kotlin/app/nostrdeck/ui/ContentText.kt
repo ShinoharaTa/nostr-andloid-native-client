@@ -3,6 +3,7 @@ package app.nostrdeck.ui
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
@@ -14,20 +15,43 @@ import app.nostrdeck.theme.DeckWeight
 
 /**
  * ノート本文を装飾付き [AnnotatedString] に変換する。
- *  - http(s) URL        : タップでブラウザを開くリンク（LinkAnnotation.Url）
- *  - nostr: メンション   : npub/nprofile は `@…`、note/nevent は `↗…` に短縮して強調表示
- *  - #ハッシュタグ        : 強調表示
+ *  - http(s) URL         : タップでブラウザを開くリンク（LinkAnnotation.Url）
+ *  - nostr: メンション    : npub/nprofile は `@…`、note/nevent は `↗…` に短縮して強調表示
+ *  - #ハッシュタグ         : 強調表示
  * 生の `nostr:npub1<60文字>` や長い URL がそのまま出るのを防ぎ、読みやすくする。
  *
- * TODO: メンションは NIP-19 復号で `@表示名` に解決、タップでプロフィール/スレッドを開く。
- *       ハッシュタグはタップで該当カラムを開く。
+ * [nav] を渡すと @メンション→プロフィール / #タグ→ハッシュタグカラム / note・nevent→スレッド を
+ * タップで開けるクリック可能リンクにする（null なら強調表示のみ＝プレビュー用途）。
  */
 fun noteAnnotated(
     text: String,
     resolveName: ((String) -> String?)? = null,
     emojis: Map<String, String> = emptyMap(),
+    nav: NoteNav? = null,
 ): AnnotatedString = buildAnnotatedString {
     val accent = SpanStyle(color = DeckColors.Accent, fontWeight = DeckWeight.Link)
+    val linkStyles = TextLinkStyles(style = accent)
+
+    // クリック可能リンク（クリックハンドラ付き）。nav 無し/解決失敗時は強調表示にフォールバック。
+    fun clickable(onClick: () -> Unit, label: String) {
+        withLink(LinkAnnotation.Clickable("nav", linkStyles, LinkInteractionListener { onClick() })) { append(label) }
+    }
+    // bech32 エンティティ（npub/nprofile/note/nevent/naddr）を1つ追記する。
+    fun appendEntity(bech: String) {
+        val label = mentionLabel(bech, resolveName)
+        val isProfile = bech.startsWith("npub1") || bech.startsWith("nprofile1")
+        val isEvent = bech.startsWith("note1") || bech.startsWith("nevent1")
+        if (nav != null && isProfile) {
+            val hex = Nip19.mentionBechToHex(bech)
+            if (hex != null) { clickable({ nav.onMention(hex) }, label); return }
+        }
+        if (nav != null && isEvent) {
+            val id = Nip19.eventBechToHex(bech)
+            if (id != null) { clickable({ nav.onEvent(id) }, label); return }
+        }
+        withStyle(accent) { append(label) }
+    }
+
     var i = 0
     val n = text.length
     while (i < n) {
@@ -35,20 +59,18 @@ fun noteAnnotated(
             text.startsWith("http://", i) || text.startsWith("https://", i) -> {
                 val end = urlEnd(text, i)
                 val url = text.substring(i, end)
-                withLink(LinkAnnotation.Url(url, TextLinkStyles(style = accent))) { append(url) }
+                withLink(LinkAnnotation.Url(url, linkStyles)) { append(url) }
                 i = end
             }
             text.startsWith("nostr:", i) && i + 6 < n && isBech(text[i + 6]) -> {
                 val end = bechEnd(text, i + 6)
-                val bech = text.substring(i + 6, end)
-                withStyle(accent) { append(mentionLabel(bech, resolveName)) }
+                appendEntity(text.substring(i + 6, end))
                 i = end
             }
             // 素の bech32 エンティティ（nostr: 接頭辞なし）。語中ヒットを避けるため直前が英数字なら対象外。
             bareEntityAt(text, i) -> {
                 val end = bechEnd(text, i)
-                val bech = text.substring(i, end)
-                withStyle(accent) { append(mentionLabel(bech, resolveName)) }
+                appendEntity(text.substring(i, end))
                 i = end
             }
             // NIP-30: :shortcode: が emoji タグにあればインライン画像で描く。
@@ -61,7 +83,9 @@ fun noteAnnotated(
             text[i] == '#' && i + 1 < n && isTagChar(text[i + 1]) -> {
                 var j = i + 1
                 while (j < n && isTagChar(text[j])) j++
-                withStyle(accent) { append(text.substring(i, j)) }
+                val tag = text.substring(i + 1, j)
+                if (nav != null) clickable({ nav.onHashtag(tag) }, "#$tag")
+                else withStyle(accent) { append("#$tag") }
                 i = j
             }
             else -> {

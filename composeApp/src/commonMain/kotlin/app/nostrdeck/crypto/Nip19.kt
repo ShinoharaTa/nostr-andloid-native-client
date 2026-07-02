@@ -101,6 +101,23 @@ object Nip19 {
         }
     }.getOrNull()
 
+    /**
+     * npub / nprofile(TLV) の bech32 → 64文字 hex 公開鍵。メンションのタップ遷移用。
+     * 解析できなければ null。
+     */
+    fun mentionBechToHex(bech: String): String? = runCatching {
+        when {
+            bech.startsWith("npub1") -> npubToHex(bech)
+            bech.startsWith("nprofile1") -> {
+                val (hrp, five) = Bech32.decode(bech)
+                if (hrp != "nprofile") return@runCatching null
+                val bytes = Bech32.convertBits(five, 5, 8, false).let { d -> ByteArray(d.size) { d[it].toByte() } }
+                readTlvSpecial(bytes)?.takeIf { it.size == 32 }?.toHex()
+            }
+            else -> null
+        }
+    }.getOrNull()
+
     /** TLV(NIP-19) を走査して type=0(special) の value を返す。 */
     private fun readTlvSpecial(tlv: ByteArray): ByteArray? {
         var i = 0

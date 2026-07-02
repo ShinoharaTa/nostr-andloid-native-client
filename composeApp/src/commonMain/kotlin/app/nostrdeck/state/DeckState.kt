@@ -5,8 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.NostrEvent
+import app.nostrdeck.model.build
 
 /** 左レール/下タブのグローバル宛先（アプリ機能）。コンテンツはカラム側。 */
 enum class NavDest { HOME, SEARCH, NOTIFICATIONS, DM, CHANNELS, SETTINGS }
@@ -80,6 +83,16 @@ class DeckState(
     fun openProfile(pubkey: String) {
         if ((detailStack.lastOrNull() as? DetailRoute.ProfileView)?.pubkey == pubkey) return
         detailStack.add(DetailRoute.ProfileView(pubkey))
+    }
+
+    /** 本文の #タグをタップ → ハッシュタグカラムを一時追加して開く（既にあればジャンプ）。 */
+    fun openHashtag(tag: String) {
+        val clean = tag.removePrefix("#").lowercase()
+        if (clean.isBlank()) return
+        val existing = columns.firstOrNull { it.kind == ColumnKind.HASHTAG && it.filter.hashtags.firstOrNull() == clean }
+        if (existing != null) { clearDetail(); jumpTo(existing.id); return }
+        clearDetail()
+        openTransient(ColumnTemplate.HASHTAG.build(clean))
     }
 
     /** スレッドを全幅で開く（プロフィール内のノートタップ等）。 */

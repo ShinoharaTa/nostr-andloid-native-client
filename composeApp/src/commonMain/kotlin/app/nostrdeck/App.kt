@@ -11,8 +11,10 @@ import app.nostrdeck.data.SampleData
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
+import app.nostrdeck.ui.LocalNoteNav
 import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
+import app.nostrdeck.ui.NoteNav
 
 /**
  * アプリのルート（Android/iOS 共通の入口）。
@@ -32,9 +34,18 @@ fun App(repository: EventRepository? = null) {
         // 本文メンション(@npub…)解決用の pubkey→name マップを供給（実データ時のみ）。
         val names by (repository?.profileNames()?.collectAsState(emptyMap<String, String>())
             ?: remember { mutableStateOf(emptyMap<String, String>()) })
+        // 本文リンクのタップ遷移: @→プロフィール / #→ハッシュタグカラム / note・nevent→スレッド。
+        val noteNav = remember(state) {
+            NoteNav(
+                onMention = { hex -> state.openProfile(hex) },
+                onHashtag = { tag -> state.openHashtag(tag) },
+                onEvent = { id -> state.openThreadDetail(id) },
+            )
+        }
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,
+            LocalNoteNav provides noteNav,
         ) {
             AppScaffold(state)
         }

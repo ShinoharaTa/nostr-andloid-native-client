@@ -57,8 +57,10 @@ fun CollapsibleText(
     var isOverflowing by remember { mutableStateOf(false) }
 
     // URL/nostr:/#タグ をリンク化・短縮した装飾本文。@npub… は表示名に解決、:emoji: は画像化。
+    // nav があれば @→プロフィール/#→カラム/note→スレッド をタップで開ける。
     val names = LocalProfileNames.current
-    val annotated = remember(text, names, emojis) { noteAnnotated(text, { names[it] }, emojis) }
+    val nav = LocalNoteNav.current
+    val annotated = remember(text, names, emojis, nav) { noteAnnotated(text, { names[it] }, emojis, nav) }
     // NIP-30 カスタム絵文字のインライン描画（shortcode→画像）。
     val ctx = LocalPlatformContext.current
     val inline = remember(emojis) {
