@@ -74,22 +74,25 @@ private fun aggregateState(conns: List<RelayConn>): RelayConnState {
  * タップで [onClick]（一覧ポップアップ）。
  */
 @Composable
-fun RelayRailIndicator(conns: List<RelayConn>, vertical: Boolean = false, onClick: () -> Unit) {
+fun RelayRailIndicator(conns: List<RelayConn>, vertical: Boolean = false, onClick: (() -> Unit)? = null) {
     val connected = conns.count { it.state == RelayConnState.CONNECTED }
     val label = "$connected/${conns.size}"
+    // onClick が null のときは外側（RailSlot 等）がタップを担うので自前の clickable は付けない。
     if (vertical) {
         Column(
-            Modifier.clip(RoundedCornerShape(DeckRadius.Md)).clickable(onClick = onClick)
+            Modifier.clip(RoundedCornerShape(DeckRadius.Md))
+                .let { if (onClick != null) it.clickable(onClick = onClick) else it }
                 .padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Xs),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             RelayStatusDot(aggregateState(conns), size = 9)
             Spacer(Modifier.size(DeckSpace.Xs))
-            Text(label, color = DeckColors.Text3, fontSize = DeckType.Micro, fontWeight = FontWeight.SemiBold)
+            Text(label, color = DeckColors.Text3, fontSize = DeckType.Micro, fontWeight = DeckWeight.Strong)
         }
     } else {
         Row(
-            Modifier.clip(RoundedCornerShape(DeckRadius.Full)).clickable(onClick = onClick)
+            Modifier.clip(RoundedCornerShape(DeckRadius.Full))
+                .let { if (onClick != null) it.clickable(onClick = onClick) else it }
                 .padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
