@@ -151,11 +151,14 @@ class EventRepository(
     fun start() {
         // 末尾スラッシュ違い（例: nos.lol と nos.lol/）で二重登録された既存行を一度だけ統合する。
         dedupeRelayUrls()
-        // ブートストラップ・リレーへ接続（DB に 'default' として記録。既存があれば触らない）。
-        bootstrapUrls.forEach { url ->
-            val u = normalizeRelayUrl(url)
-            q.insertRelayIfAbsent(u, 1, 1, "default")
-            ensureRelay(u)
+        // ブートストラップ・リレーは**初回（リレー表が空）のみ** seed する。
+        // 以前は毎回 insert+接続していたため、設定で削除した default リレーが再起動で復活していた。
+        if (q.allRelays().executeAsList().isEmpty()) {
+            bootstrapUrls.forEach { url ->
+                val u = normalizeRelayUrl(url)
+                q.insertRelayIfAbsent(u, 1, 1, "default")
+                ensureRelay(u)
+            }
         }
         // 永続化済みリレーのうち read(Inbox) を有効にしたものだけ購読接続する。
         // write 専用(Outbox)リレーは購読せず、配信時に一時接続して EVENT を送る（NIP-65 outbox）。
@@ -175,6 +178,10 @@ class EventRepository(
         revealMutedFlow.value = q.settingsByPrefix(REVEAL_MUTED_PREFIX).executeAsList()
             .filter { it.value_ == "1" }
             .map { it.key.removePrefix(REVEAL_MUTED_PREFIX) }.toSet()
+        // カラム別「自分への反応を隠す」設定を KV から復元。
+        hideSelfNoticesFlow.value = q.settingsByPrefix(HIDE_SELF_NOTICES_PREFIX).executeAsList()
+            .filter { it.value_ == "1" }
+            .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
         scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
@@ -1300,6 +1307,15 @@ class EventRepository(
         revealMutedFlow.value = if (reveal) revealMutedFlow.value + columnId else revealMutedFlow.value - columnId
     }
 
+    // フォロー中カラムで「自分への反応（kind:7/フォロー外リポスト）」を隠すカラム集合。KV 永続。
+    private val hideSelfNoticesFlow = MutableStateFlow<Set<String>>(emptySet())
+    fun hideSelfNoticesColumns(): StateFlow<Set<String>> = hideSelfNoticesFlow
+
+    fun setColumnHideSelfNotices(columnId: String, hide: Boolean) {
+        q.putSetting(HIDE_SELF_NOTICES_PREFIX + columnId, if (hide) "1" else "0")
+        hideSelfNoticesFlow.value = if (hide) hideSelfNoticesFlow.value + columnId else hideSelfNoticesFlow.value - columnId
+    }
+
     /**
      * 自分の kind:10000 を購読する（設定 > ミュートの表示中）。
      * 接続中の全リレーへ REQ を張り、最新の1件を [updateMuteList] で解析する。
@@ -1797,5 +1813,8 @@ class EventRepository(
 
         /** カラム別「ミュートを表示」設定の KV キー接頭辞（app_setting）。 */
         const val REVEAL_MUTED_PREFIX = "col_reveal_muted:"
+
+        /** フォロー中カラム別「自分への反応を隠す」設定の KV キー接頭辞。 */
+        const val HIDE_SELF_NOTICES_PREFIX = "col_hide_self_notices:"
     }
 }

@@ -173,8 +173,12 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
     val revealed = rememberColumnRevealMuted(spec.id)
     // ミュートを適用する描画種別（フィード/スレッド/通知）だけ目アイコンを出す。
     val filtersMuted = spec.renderer == ColumnRenderer.FEED || spec.renderer == ColumnRenderer.THREAD
+    // フォロー中カラムだけ「自分への反応」トグルを出す。
+    val isFollowing = spec.kind == ColumnKind.FOLLOWING
+    val hideSelfNotices = isFollowing && repoForMenu != null &&
+        (spec.id in repoForMenu.hideSelfNoticesColumns().collectAsState().value)
 
-    // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除 / ミュート表示切替）。
+    // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除 / ミュート表示 / 自分への反応）。
     val index = state.columns.indexOfFirst { it.id == spec.id }
     val menu = ColumnMenuActions(
         canMoveLeft = index > 0,
@@ -185,6 +189,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         onDelete = { state.removeColumn(spec.id) },
         mutedRevealed = if (filtersMuted && repoForMenu != null) revealed else null,
         onToggleMuted = if (filtersMuted && repoForMenu != null) ({ repoForMenu.setColumnRevealMuted(spec.id, !revealed) }) else null,
+        selfNoticesHidden = if (isFollowing && repoForMenu != null) hideSelfNotices else null,
+        onToggleSelfNotices = if (isFollowing && repoForMenu != null) ({ repoForMenu.setColumnHideSelfNotices(spec.id, !hideSelfNotices) }) else null,
     )
 
     when (spec.renderer) {
@@ -222,7 +228,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 isFollowingFeed -> {
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
                     val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
-                    val entries = if (revealed) all else all.filterNot {
+                    val entries = all.filterNot {
+                        // 自分への反応（Notice）を隠す設定なら除外。
+                        if (hideSelfNotices && it is FeedEntry.Notice) return@filterNot true
+                        if (revealed) return@filterNot false
                         when (it) {
                             is FeedEntry.Post -> matcher.muted(it.note)
                             is FeedEntry.Notice -> matcher.muted(it.notif)

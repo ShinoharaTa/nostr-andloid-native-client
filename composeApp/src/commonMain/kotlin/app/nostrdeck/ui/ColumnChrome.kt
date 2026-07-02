@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
@@ -61,6 +62,9 @@ data class ColumnMenuActions(
     /** コンテンツフィルター: ミュートを表示中か（目アイコン）。null なら項目非表示。 */
     val mutedRevealed: Boolean? = null,
     val onToggleMuted: (() -> Unit)? = null,
+    /** フォロー中カラム: 自分への反応(kind:7/リポスト)を隠すか。null なら項目非表示。 */
+    val selfNoticesHidden: Boolean? = null,
+    val onToggleSelfNotices: (() -> Unit)? = null,
 )
 
 /**
@@ -164,6 +168,18 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
                         )
                     },
                     onClick = { open = false; menu.onToggleMuted.invoke() },
+                )
+            }
+            // フォロー中カラム: 自分への反応（kind:7/リポスト）の表示切替（通知カラムと役割が被るため）。
+            if (menu.selfNoticesHidden != null && menu.onToggleSelfNotices != null) {
+                val hidden = menu.selfNoticesHidden
+                DropdownMenuItem(
+                    text = { Text(if (hidden) "自分への反応を表示" else "自分への反応を隠す") },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Notifications, null, tint = if (hidden) DeckColors.Text3 else DeckColors.Text,
+                            modifier = Modifier.size(DeckDimens.IconMd))
+                    },
+                    onClick = { open = false; menu.onToggleSelfNotices.invoke() },
                 )
             }
             DropdownMenuItem(
