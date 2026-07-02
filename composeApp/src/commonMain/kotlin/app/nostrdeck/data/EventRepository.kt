@@ -1100,8 +1100,19 @@ class EventRepository(
      * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
      * 署名済みイベントを返す（ハッシュタグ記録の createdAt 等に使う）。
      */
+    /**
+     * NIP-89: 公開コンテンツイベントに `["client","Nostrism"]` を付与する（既にあれば触らない）。
+     * 対象は投稿/返信/引用(1)・リポスト(6/16)・リアクション(7)・パブリックチャット(42) のみ。
+     * プロフィール(0)/フォロー(3)/削除(5)/各種リスト(10000/10002/10030)/DM 等には付けない。
+     */
+    private fun withClientTag(unsigned: UnsignedEvent): UnsignedEvent {
+        if (unsigned.kind !in CLIENT_TAG_KINDS) return unsigned
+        if (unsigned.tags.any { it.firstOrNull() == "client" }) return unsigned
+        return unsigned.copy(tags = unsigned.tags + listOf(listOf("client", CLIENT_NAME)))
+    }
+
     private suspend fun publishSigned(unsigned: UnsignedEvent): NostrEvent {
-        val signed = SignerProvider.current().sign(unsigned)
+        val signed = SignerProvider.current().sign(withClientTag(unsigned))
         val payload = RelayProtocol.event(signed)
         // kind:7 は ingest と同じ正規化("+"/空→❤️)でローカル保存し、集約表示と整合させる。
         val storedContent =
@@ -1837,6 +1848,11 @@ class EventRepository(
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
+
+        /** NIP-89 client タグに載せるアプリ名。 */
+        const val CLIENT_NAME = "Nostrism"
+        /** client タグを付与する公開コンテンツ kind（投稿/リポスト/リアクション/パブリックチャット）。 */
+        val CLIENT_TAG_KINDS = setOf(1, 6, 16, 7, 42)
 
         /** カラム別「ミュートを表示」設定の KV キー接頭辞（app_setting）。 */
         const val REVEAL_MUTED_PREFIX = "col_reveal_muted:"
