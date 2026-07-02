@@ -25,6 +25,10 @@ interface Signer {
 
     /** NIP-44 復号。 */
     suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String
+
+    /** NIP-04 復号（NIP-51 非公開リスト等のレガシー互換・読み出し専用）。対応実装のみ override。 */
+    suspend fun nip04Decrypt(peerPubkeyHex: String, ciphertext: String): String =
+        throw NotImplementedError("NIP-04 に未対応の署名方式です")
 }
 
 enum class SignerMethod {
@@ -35,7 +39,7 @@ enum class SignerMethod {
     NIP07,    // window.nostr（WebView / CMP Web・Desktop でのみ）
 }
 
-enum class SignerCap { SIGN, NIP44 }
+enum class SignerCap { SIGN, NIP44, NIP04 }
 
 /** 署名者が NIP-44 をサポートするか。 */
 fun Signer.canEncrypt(): Boolean = SignerCap.NIP44 in capabilities

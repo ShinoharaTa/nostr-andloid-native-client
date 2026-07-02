@@ -26,6 +26,8 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.MuteEntry
+import app.nostrdeck.model.MuteList
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
@@ -1264,8 +1266,68 @@ class EventRepository(
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
             10002 -> updateRelayList(e)
+            10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
+        }
+    }
+
+    // ---- NIP-51 ミュートリスト（kind:10000）----
+
+    private var muteListAt = 0L
+    private val muteFlow = MutableStateFlow<MuteList?>(null)
+
+    /** 解析済みミュートリスト（公開 + 復号済み非公開）。未取得は null。 */
+    fun muteListFlow(): StateFlow<MuteList?> = muteFlow
+
+    /**
+     * 自分の kind:10000 を購読する（設定 > ミュートの表示中）。
+     * 接続中の全リレーへ REQ を張り、最新の1件を [updateMuteList] で解析する。
+     */
+    fun subscribeMuteList(columnId: String = "mute_list") {
+        if (!openColumns.add(columnId)) return
+        // 購読ジョブの管理は notifJobs を流用（unsubscribeColumn で cancel される）。
+        notifJobs[columnId] = scope.launch {
+            myPubkeyFlow.collect { me ->
+                if (me != null) {
+                    subscribeAll(columnId, Filter(kinds = listOf(10000), authors = listOf(me), limit = 1))
+                }
+            }
+        }
+    }
+
+    /**
+     * kind:10000 を解析して [muteFlow] へ。公開タグ（p/word/t/e）に加え、
+     * 非公開分は content を復号して統合する:
+     *  - "?iv=" を含む → NIP-04（レガシー）。自分自身との ECDH で復号。
+     *  - 含まない     → NIP-44。未実装のため nip44Locked=true で通知（M12 で対応）。
+     * 解析後、ミュート対象ユーザーの kind:0 をバッチ REQ（接続中の全リレー）で解決する。
+     */
+    private fun updateMuteList(e: NostrEvent) {
+        if (e.pubkey != myPubkey) return
+        if (e.createdAt <= muteListAt) return
+        muteListAt = e.createdAt
+        scope.launch {
+            var nip44Locked = false
+            val priv: List<List<String>> = when {
+                e.content.isBlank() -> emptyList()
+                "?iv=" in e.content -> runCatching {
+                    parseTags(SignerProvider.current().nip04Decrypt(e.pubkey, e.content))
+                }.getOrElse { nip44Locked = true; emptyList() }   // 復号失敗も「開けない」扱い
+                else -> { nip44Locked = true; emptyList() }
+            }
+            fun pick(tags: List<List<String>>, key: String, isPrivate: Boolean) =
+                tags.filter { it.size >= 2 && it[0] == key }.map { MuteEntry(it[1], isPrivate) }
+            val users = pick(e.tags, "p", false) + pick(priv, "p", true)
+            muteFlow.value = MuteList(
+                users = users,
+                words = pick(e.tags, "word", false) + pick(priv, "word", true),
+                hashtags = pick(e.tags, "t", false) + pick(priv, "t", true),
+                threads = pick(e.tags, "e", false) + pick(priv, "e", true),
+                nip44Locked = nip44Locked,
+                updatedAt = e.createdAt,
+            )
+            users.forEach { requestProfile(it.value) }
         }
     }
 

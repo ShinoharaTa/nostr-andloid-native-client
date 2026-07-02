@@ -176,6 +176,7 @@ object SampleData {
         "account" to "アカウント",
         "signer" to "ログイン方法",
         "relays" to "リレー",
+        "mute" to "ミュート",
         "media" to "メディアサーバー",
         "data" to "データ・キャッシュ",
         "appearance" to "表示",

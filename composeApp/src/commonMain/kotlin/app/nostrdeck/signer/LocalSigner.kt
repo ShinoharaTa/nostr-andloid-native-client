@@ -1,6 +1,7 @@
 package app.nostrdeck.signer
 
 import app.nostrdeck.crypto.Nip01
+import app.nostrdeck.crypto.Nip04
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.crypto.hexToBytes
 import app.nostrdeck.crypto.secureRandomBytes
@@ -18,7 +19,7 @@ import fr.acinq.secp256k1.Secp256k1
 class LocalSigner(private val vault: KeyVault) : Signer {
 
     override val method = SignerMethod.LOCAL
-    override val capabilities = setOf(SignerCap.SIGN)   // TODO: NIP-44 実装後に追加
+    override val capabilities = setOf(SignerCap.SIGN, SignerCap.NIP04)   // TODO: NIP-44 実装後に追加
 
     private val secp = Secp256k1.get()
 
@@ -41,6 +42,9 @@ class LocalSigner(private val vault: KeyVault) : Signer {
 
     override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String =
         throw NotImplementedError("NIP-44 は未実装（TODO）")
+
+    override suspend fun nip04Decrypt(peerPubkeyHex: String, ciphertext: String): String =
+        Nip04.decrypt(vault.privateKey(), peerPubkeyHex, ciphertext)
 
     /** 秘密鍵 → BIP340 x-only 公開鍵（32byte）。 */
     private fun xOnlyPubkey(priv: ByteArray): ByteArray {

@@ -114,6 +114,7 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
         when (sectionId) {
             "signer" -> SignerSettings()
             "relays" -> RelaySettings()
+            "mute" -> MuteSettings()
             "media" -> MediaSettings()
             "data" -> DataSettings()
             else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Sub)
