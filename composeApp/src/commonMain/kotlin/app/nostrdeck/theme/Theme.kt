@@ -45,6 +45,11 @@ object DeckType {
     val Label   = 11.sp   // 時刻/ハンドル/ラベル
     val Micro   = 10.sp   // バッジ/最小メタ
     val Emoji   = 18.sp   // リアクション絵文字グリフ（本文スケール外）
+
+    // 「タイトル+説明」2段テキストの行高。合計40dp・スペーサーなしで
+    // ヘッダ/リスト行（DM/チャンネル/テンプレ/アカウント行）共通の段差を作る。
+    val LineTitle = 22.sp
+    val LineDesc  = 18.sp
 }
 
 /**

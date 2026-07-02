@@ -381,9 +381,11 @@ private fun AccountHeader(pubkey: String?, profile: Profile?) {
         Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 38.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Name,
+                lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!profile?.handle.isNullOrBlank()) {
-                Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                    lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -564,9 +566,11 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
         Avatar(seed = profile.pubkey, pictureUrl = profile.pictureUrl, size = 28.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (profile.handle.isNotBlank()) {
-                Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                    lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

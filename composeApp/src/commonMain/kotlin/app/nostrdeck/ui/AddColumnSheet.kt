@@ -84,8 +84,8 @@ private fun TemplateList(onPick: (ColumnTemplate) -> Unit) {
                 Icon(columnIcon(t.toKindForIcon()), null, tint = DeckColors.Text2,
                     modifier = Modifier.padding(end = DeckSpace.Md))
                 Column(Modifier.weight(1f)) {
-                    Text(t.label, color = DeckColors.Text, fontSize = DeckType.Body)
-                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = DeckType.Label) }
+                    Text(t.label, color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = DeckType.LineTitle)
+                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = DeckType.Label, lineHeight = DeckType.LineDesc) }
                 }
                 if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = DeckType.Emoji)
             }

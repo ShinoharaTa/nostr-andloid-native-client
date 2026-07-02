@@ -66,12 +66,12 @@ fun ColumnHeader(
             }
         }
         Spacer(Modifier.width(DeckSpace.Sm))
-        // タイトル+説明のテキストブロックは行高で合計40dp（22+18）に固定し、隙間を詰める。
+        // タイトル+説明のテキストブロックは行高で合計40dp（LineTitle+LineDesc）に固定。
         Column(Modifier.weight(1f)) {
             Text(title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
-                lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
         if (onPin != null) {

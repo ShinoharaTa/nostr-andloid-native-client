@@ -87,6 +87,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                    lineHeight = DeckType.LineTitle,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
@@ -101,9 +102,9 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 else -> null
             }
             if (secondary != null) {
-                // [施策4] 名前↔プレビューに Xs の微段差（詰まりすぎを解消・群として読ませる）。
-                Spacer(Modifier.size(DeckSpace.Xs))
+                // タイトル+説明の段差は行高（LineTitle/LineDesc）で統一（ColumnHeader と同一）。
                 Text(secondary, color = DeckColors.Text2, fontSize = DeckType.Caption,
+                    lineHeight = DeckType.LineDesc,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

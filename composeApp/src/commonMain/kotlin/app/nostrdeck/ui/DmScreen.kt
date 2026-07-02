@@ -93,9 +93,9 @@ private fun DmList(
                     Spacer(Modifier.width(DeckSpace.Sm))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(c.lastMessage, color = DeckColors.Text2, fontSize = DeckType.Caption,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (c.unread > 0) {
                         Spacer(Modifier.width(DeckSpace.Sm))

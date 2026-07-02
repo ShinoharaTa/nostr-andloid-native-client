@@ -68,6 +68,8 @@
   --type-label:   11px;  /* 時刻/ハンドル/ラベル */
   --type-micro:   10px;  /* バッジ/最小メタ */
   --type-emoji:   18px;  /* リアクション絵文字グリフ */
+  --line-title:   22px;  /* 2段テキスト(タイトル+説明)のタイトル行高 */
+  --line-desc:    18px;  /* 同・説明行高（合計40px, スペーサーなし） */
 
   /* --- Touch / icon (Compose DeckDimens と 1対1) --- */
   --touch:     48px;     /* 原則8の推奨 */
