@@ -116,6 +116,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
             "relays" -> RelaySettings()
             "mute" -> MuteSettings()
             "bookmarks" -> BookmarkSettings(state)
+            "dmrelays" -> DmRelaySettings()
             "media" -> MediaSettings()
             "data" -> DataSettings()
             "appearance" -> AppearanceSettings()
@@ -234,6 +235,69 @@ private fun BookmarkSettings(state: DeckState) {
                 onAuthorClick = { pk -> state.openProfile(pk) },
             )
             HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
+/**
+ * [M13] DMリレー（NIP-17 kind:10050）。ここに宣言したリレーへ相手から DM(gift wrap)が届く。
+ * 未設定の場合は初回 DM 送信時に現在の受信リレーから自動で作成される。
+ */
+@Composable
+private fun DmRelaySettings() {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("DMリレー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val relays by repo.myDmRelaysFlow().collectAsState(emptyList())
+    val subscribed by repo.relaysFlow().collectAsState(emptyList())
+    var input by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    Text("DMの受信リレー（NIP-17 / kind:10050）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "ここに宣言したリレーへ相手からのDMが届きます。プライバシー保護のため少数の専用リレーを推奨。" +
+            "未設定なら初回送信時に受信リレーから自動作成します。",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        DeckTextField(value = input, onValueChange = { input = it }, placeholder = "wss://…", modifier = Modifier.weight(1f))
+        Spacer(Modifier.size(DeckSpace.Sm))
+        DeckButton("追加", enabled = input.isNotBlank(), onClick = {
+            val next = (relays + input.trim()).distinct()
+            scope.launch { repo.publishDmRelays(next) }
+            input = ""
+        })
+    }
+    Spacer(Modifier.size(DeckSpace.Md))
+    HorizontalDivider(color = DeckColors.Border)
+
+    if (relays.isEmpty()) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        Text("未設定です。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        val reads = subscribed.filter { it.read != 0L }.map { it.url }.take(4)
+        if (reads.isNotEmpty()) {
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckButton("現在の受信リレーから作成", onClick = { scope.launch { repo.publishDmRelays(reads) } })
+        }
+    } else {
+        LazyColumn(Modifier.fillMaxWidth()) {
+            items(relays, key = { it }) { url ->
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(url, color = DeckColors.Text, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+                    DeckTextButton("削除", color = DeckColors.Warn, onClick = {
+                        scope.launch { repo.publishDmRelays(relays - url) }
+                    })
+                }
+                HorizontalDivider(color = DeckColors.Border)
+            }
         }
     }
 }

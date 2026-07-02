@@ -2,6 +2,7 @@ package app.nostrdeck.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
+import app.nostrdeck.crypto.Bech32
 import app.nostrdeck.crypto.EventCrypto
 import app.nostrdeck.crypto.Nip01
 import app.nostrdeck.crypto.Nip17
@@ -208,7 +209,9 @@ class EventRepository(
             // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
-            // NIP-17 DM: 自分宛の gift wrap(kind:1059)を購読して復号する。
+            // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
+            // 10050 が届いたら updateDmRelayList が dm_inbox をその DM リレーへ張り直す。
+            subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
         }
     }
@@ -425,6 +428,7 @@ class EventRepository(
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
@@ -755,7 +759,8 @@ class EventRepository(
         notifJobs[columnId] = scope.launch {
             myPubkeyFlow.collect { me ->
                 if (me != null) {
-                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 7), pTags = listOf(me), limit = 200))
+                    // 返信/メンション(1)・リポスト(6/16)・リアクション(7)・Zap受領(9735) を自分宛(#p)で購読。
+                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 7, 9735), pTags = listOf(me), limit = 200))
                 }
             }
         }
@@ -786,7 +791,11 @@ class EventRepository(
         val tags = parseTags(row.tags_json)
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
-        val actor = profileFor(row.pubkey, byPubkey)
+        // 9735(Zap 受領) の「相手」は receipt 発行者(LNURLサーバ)ではなく Zap 送信者(P タグ/描述)。
+        val actorPubkey = if (row.kind.toInt() == 9735)
+            (tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1) ?: zapSenderFrom(tags) ?: row.pubkey)
+        else row.pubkey
+        val actor = profileFor(actorPubkey, byPubkey)
         // 対象イベント本体（抜粋＋種別判定に使う）。
         val targetEvent = target?.let { q.eventById(it).executeAsOneOrNull() }
         val snippet = targetEvent?.let { (extractMedia(it.content).first ?: it.content).take(80) }
@@ -795,6 +804,11 @@ class EventRepository(
             ?.takeIf { it.kind.toInt() == 42 }
             ?.let { rootOf(parseTags(it.tags_json)) }
         return when (row.kind.toInt()) {
+            9735 -> NotificationUi(
+                row.id, NotificationKind.ZAP, actor, row.created_at,
+                zapSats = zapAmountSats(tags), targetNoteId = target, targetSnippet = snippet,
+                targetChannelId = channelId,
+            )
             7 -> {
                 // NIP-25/30: "+"/空→❤️、":shortcode:" は emoji タグから画像URLを解決。
                 val rx = normalizeReaction(row.content, tags)
@@ -1163,6 +1177,15 @@ class EventRepository(
         }
     }
 
+    /** 指定リレー**のみ**へ配信する（NIP-17 DM: 受信者/自分の kind:10050 リレーへ届けるため）。 */
+    private suspend fun publishToRelays(payload: String, urls: Collection<String>) = withContext(relayDispatcher) {
+        urls.map { normalizeRelayUrl(it) }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.toSet()
+            .forEach { url ->
+                val c = relays[url]
+                if (c != null) c.publish(payload) else scope.launch { publishTransient(url, payload) }
+            }
+    }
+
     /** 未接続の write 専用リレーへ一時接続で1イベントを配信する（購読なし・送信後に閉じる）。 */
     private suspend fun publishTransient(url: String, payload: String) {
         val c = RelayClient(url, scope)
@@ -1219,6 +1242,24 @@ class EventRepository(
 
     private fun requestProfile(pubkey: String) {
         authorRequests.trySend(pubkey)
+    }
+
+    /**
+     * kind:0 を**インデクサ系リレー**からも確実に取得する（DM相手のアイコン/名前が接続中リレーに
+     * 無い場合の取りこぼし対策）。一時接続で kind:0/10002 を要求し、通常の profile 解決と統合する。
+     */
+    private fun requestProfileFromIndexers(pubkeys: List<String>) {
+        val targets = pubkeys.filter { it.isNotBlank() }.distinct()
+        if (targets.isEmpty()) return
+        scope.launch(relayDispatcher) {
+            INDEXER_RELAYS.forEach { url ->
+                val u = normalizeRelayUrl(url)
+                if (!relays.containsKey(u) && hintRelays.size < HINT_RELAY_CAP && hintRelays.add(u)) ensureRelay(u)
+            }
+        }
+        // kind:0（プロフィール）と kind:10002（NIP-65 リレーリスト）をインデクサ集合へ要求。
+        subscribeTargeted("idx_profiles_${targets.first().take(6)}", INDEXER_RELAYS.toSet(),
+            Filter(kinds = listOf(0, 10002), authors = targets, limit = targets.size * 2))
     }
 
     /** 本文中の `nostr:npub1…`（接頭辞任意）を hex に復号し、表示名解決のため kind:0 を要求する。 */
@@ -1355,6 +1396,8 @@ class EventRepository(
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
             1059 -> ingestGiftWrap(e)     // NIP-17 DM（gift wrap を復号して kind:14 保存）
+            9735 -> ingestZapReceipt(e)   // NIP-57 Zap 受領（#e 集計・受信通知に使う）
+            10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
         }
@@ -1999,28 +2042,88 @@ class EventRepository(
      * [eventId] を渡すとノートへの Zap（e タグ付き）、null ならプロフィール Zap。失敗は null。
      */
     suspend fun requestZapInvoice(
-        recipientPubkey: String, lud16: String, amountSats: Long, comment: String, eventId: String?,
+        recipientPubkey: String, lud16: String, amountSats: Long, comment: String,
+        eventId: String?, targetKind: Int? = null,
     ): String? = runCatching {
         val pay = fetchLnurlPay(lud16) ?: return null
         val msat = amountSats * 1000
+        val lnurl = lnurlEncode(lud16)
         val sep = if ('?' in pay.callback) '&' else '?'
         val sb = StringBuilder(pay.callback).append(sep).append("amount=").append(msat)
         if (pay.allowsNostr && !pay.nostrPubkey.isNullOrBlank()) {
+            // NIP-57 zap request(kind:9734)。e タグ付きなら「投稿への Zap」、無ければプロフィール Zap。
             val relays = q.allRelays().executeAsList().filter { it.read != 0L }.map { it.url }.take(6)
             val tags = buildList {
                 add(listOf("relays") + relays)
                 add(listOf("amount", msat.toString()))
+                if (lnurl != null) add(listOf("lnurl", lnurl))
                 add(listOf("p", recipientPubkey))
                 if (eventId != null) add(listOf("e", eventId))
+                if (eventId != null && targetKind != null) add(listOf("k", targetKind.toString()))
             }
             val zapReq = SignerProvider.current().sign(UnsignedEvent(kind = 9734, content = comment, tags = tags))
             sb.append("&nostr=").append(RelayProtocol.eventJson(zapReq).encodeURLParameter())
+            if (lnurl != null) sb.append("&lnurl=").append(lnurl)
         } else if (comment.isNotBlank() && pay.commentAllowed > 0) {
             sb.append("&comment=").append(comment.take(pay.commentAllowed).encodeURLParameter())
         }
         val resp = json.parseToJsonElement(uploadHttp.get(sb.toString()).bodyAsText()).jsonObject
         resp["pr"]?.jsonPrimitive?.contentOrNull
     }.getOrNull()
+
+    /** lud16 を LNURL(bech32, hrp=lnurl) に符号化する（NIP-57 zap request の `lnurl` タグ/パラメータ用）。 */
+    private fun lnurlEncode(lud16: String): String? = runCatching {
+        val at = lud16.indexOf('@'); if (at <= 0) return null
+        val url = "https://${lud16.substring(at + 1)}/.well-known/lnurlp/${lud16.substring(0, at)}"
+        Bech32.encode("lnurl", Bech32.convertBits(url.encodeToByteArray(), 8, 5, true))
+    }.getOrNull()
+
+    // ---- [M13] NIP-57 Zap 受領(kind:9735) 集計（投稿ごとの合計 sats を表示する） ----
+
+    private fun ingestZapReceipt(e: NostrEvent) {
+        q.insertEvent(e.id, e.pubkey, 9735, e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+        indexTags(e)  // e/p タグを索引化（#e 集計・受信 Zap 通知に使う）
+    }
+
+    /**
+     * 投稿ごとの Zap 合計 sats。kind:9735 の `description`(=zap request JSON)の amount タグ(msats)を
+     * 合算する。amount が無ければ 0 として無視（bolt11 解析は行わない簡易実装）。
+     */
+    private val zapTotals: StateFlow<Map<String, Long>> by lazy {
+        q.zapReceiptsForTargets().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            val totals = HashMap<String, Long>()
+            rows.forEach { row ->
+                val sats = zapAmountSats(parseTags(row.tags_json))
+                if (sats > 0) totals[row.note_id] = (totals[row.note_id] ?: 0) + sats
+            }
+            totals as Map<String, Long>
+        }.flowOn(Dispatchers.Default).stateIn(scope, feedSharing, emptyMap())
+    }
+    fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
+
+    /** 9735 のタグ群から zap 額(sats)を取り出す。description の zap request の amount(msats) を優先。 */
+    private fun zapAmountSats(tags: List<List<String>>): Long {
+        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1) ?: return 0
+        val msat = runCatching {
+            json.parseToJsonElement(desc).jsonObject["tags"]?.jsonArray
+                ?.map { t -> t.jsonArray.map { it.jsonPrimitive.content } }
+                ?.firstOrNull { it.size >= 2 && it[0] == "amount" }?.get(1)?.toLongOrNull()
+        }.getOrNull() ?: 0
+        return msat / 1000
+    }
+
+    /** 9735 の description(zap request) から Zap 送信者 pubkey を取り出す（P タグが無い時のフォールバック）。 */
+    private fun zapSenderFrom(tags: List<List<String>>): String? {
+        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1) ?: return null
+        return runCatching { json.parseToJsonElement(desc).jsonObject["pubkey"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+    }
+
+    /** 表示中ノート群の Zap 受領(kind:9735)を購読する（#e 集計のため）。 */
+    fun subscribeZaps(subId: String, noteIds: List<String>) {
+        if (noteIds.isEmpty()) return
+        openColumns.add(subId)
+        subscribeAll(subId, Filter(kinds = listOf(9735), eTags = noteIds.take(300), limit = 500))
+    }
 
     // ---- [M12] NIP-17 プライベートDM（gift wrap kind:1059 → seal kind:13 → rumor kind:14） ----
 
@@ -2032,6 +2135,8 @@ class EventRepository(
         scope.launch {
             val rumor = Nip17.unwrap(SignerProvider.current(), e) ?: return@launch
             requestProfile(rumor.sender); rumor.recipient?.let { requestProfile(it) }
+            // DM相手のアイコン/名前は接続中リレーに無いことが多いのでインデクサからも確実に取る。
+            requestProfileFromIndexers(listOfNotNull(rumor.sender, rumor.recipient))
             storeDm(rumor.id, rumor.sender, rumor.recipient, rumor.content, rumor.createdAt)
         }
     }
@@ -2042,7 +2147,11 @@ class EventRepository(
         indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
     }
 
-    /** DM を送る（NIP-17）。受信者宛＋自分宛の2通を gift wrap して配信し、ローカルへ即保存。 */
+    /**
+     * DM を送る（NIP-17）。受信者宛＋自分宛の2通を gift wrap する。
+     * NIP-17 仕様に従い、gift wrap は**受信者の kind:10050 リレー**へ（自分宛は自分の 10050 へ）配信。
+     * 相手/自分の 10050 が未取得なら接続中の read リレーへフォールバックする。
+     */
     suspend fun sendDm(peerPubkey: String, text: String) {
         if (text.isBlank()) return
         val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
@@ -2061,8 +2170,76 @@ class EventRepository(
         val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
         storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
         processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
-        publishTo(RelayProtocol.event(toPeer))
-        publishTo(RelayProtocol.event(toSelf))
+        // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
+        val fallback = connectedReadRelays()
+        val peerRelays = fetchDmRelaysFor(peerPubkey).ifEmpty { fallback }
+        val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
+        publishToRelays(RelayProtocol.event(toPeer), peerRelays)
+        publishToRelays(RelayProtocol.event(toSelf), myRelays)
+    }
+
+    // ---- NIP-17 DM リレーリスト（kind:10050） ----
+
+    private val dmRelaysByAuthor = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    private val dmRelaysAtByAuthor = mutableMapOf<String, Long>()
+
+    private fun updateDmRelayList(e: NostrEvent) {
+        if ((dmRelaysAtByAuthor[e.pubkey] ?: 0L) >= e.createdAt) return
+        dmRelaysAtByAuthor[e.pubkey] = e.createdAt
+        val urls = e.tags.filter { it.size >= 2 && it[0] == "relay" }.map { normalizeRelayUrl(it[1]) }
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        dmRelaysByAuthor.value = dmRelaysByAuthor.value + (e.pubkey to urls)
+        // 自分の DM リレーが判明したら、そこへ接続して受信購読を張り直す。
+        if (e.pubkey == myPubkey && urls.isNotEmpty()) {
+            subscribeTargeted("dm_inbox", urls.toSet(), Filter(kinds = listOf(1059), pTags = listOf(e.pubkey)))
+        }
+    }
+
+    private fun connectedReadRelays(): List<String> =
+        q.allRelays().executeAsList().filter { it.read != 0L }.map { it.url }
+
+    /** 相手の DM リレー(kind:10050)を取得。既知なら即返し、未知ならインデクサ等へ問い合わせて短時間待つ。 */
+    private suspend fun fetchDmRelaysFor(pubkey: String): List<String> {
+        dmRelaysByAuthor.value[pubkey]?.let { if (it.isNotEmpty()) return it }
+        subscribeTargeted("dmrl_${pubkey.take(6)}", INDEXER_RELAYS.toSet(),
+            Filter(kinds = listOf(10050), authors = listOf(pubkey), limit = 1))
+        subscribeAll("dmrl2_${pubkey.take(6)}", Filter(kinds = listOf(10050), authors = listOf(pubkey), limit = 1))
+        withTimeoutOrNull(2500) {
+            while (dmRelaysByAuthor.value[pubkey].isNullOrEmpty()) delay(150)
+        }
+        return dmRelaysByAuthor.value[pubkey].orEmpty()
+    }
+
+    /** 自分の DM リレー。未設定なら初回 DM 時に read リレーからシードして kind:10050 を発行する。 */
+    private suspend fun myDmRelaysOrSeed(): List<String> {
+        val me = myPubkey ?: return emptyList()
+        dmRelaysByAuthor.value[me]?.let { if (it.isNotEmpty()) return it }
+        val reads = connectedReadRelays().take(4)
+        if (reads.isNotEmpty()) publishDmRelays(reads)   // 初回のみ自動シード
+        return reads
+    }
+
+    /** 自分の DM リレー一覧（設定 UI 用）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun myDmRelaysFlow(): Flow<List<String>> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(emptyList()) else dmRelaysByAuthor.map { it[me].orEmpty() }
+    }.distinctUntilChanged()
+
+    /** DM リレー(kind:10050)を発行して自分の一覧を更新する。 */
+    suspend fun publishDmRelays(urls: List<String>) {
+        val clean = urls.map { normalizeRelayUrl(it) }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        val tags = clean.map { listOf("relay", it) }
+        val signed = publishSigned(UnsignedEvent(kind = 10050, content = "", tags = tags))
+        myPubkey?.let {
+            dmRelaysAtByAuthor[it] = signed.createdAt
+            dmRelaysByAuthor.value = dmRelaysByAuthor.value + (it to clean)
+        }
+    }
+
+    /** 指定ユーザーの kind:0 を通常＋インデクサから取得（DM 画面表示時など、確実に欲しい場面用）。 */
+    fun fetchProfilesNow(pubkeys: List<String>) {
+        pubkeys.filter { it.isNotBlank() }.forEach { requestProfile(it) }
+        requestProfileFromIndexers(pubkeys)
     }
 
     /** DM 会話一覧（相手ごとに最新1件）。 */
@@ -2205,8 +2382,20 @@ class EventRepository(
         /** 本文中の npub1…（nostr: 接頭辞は任意）。メンションの表示名解決に使う。 */
         val NPUB_MENTION_REGEX = Regex("(?<![a-z0-9])(nostr:)?npub1[a-z0-9]+")
 
-        /** 引用/返信ヒントで一時接続するリレーの上限（接続数の暴発防止）。 */
-        const val HINT_RELAY_CAP = 8
+        /** 引用/返信ヒント + インデクサで一時接続するリレーの上限（接続数の暴発防止）。 */
+        const val HINT_RELAY_CAP = 16
+
+        /**
+         * kind:0/10002 を確実に引くためのインデクサ系リレー。DM相手のアイコン/名前が
+         * 接続中リレーに無い場合の取りこぼし対策として一時接続して問い合わせる。
+         */
+        val INDEXER_RELAYS = listOf(
+            "wss://purplepag.es",
+            "wss://relay.nostr.band",
+            "wss://relay.damus.io",
+            "wss://nos.lol",
+            "wss://relay.primal.net",
+        )
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"

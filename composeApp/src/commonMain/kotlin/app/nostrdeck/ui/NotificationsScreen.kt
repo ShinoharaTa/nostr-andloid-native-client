@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -191,6 +192,7 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
             // 返信/メンションは本文、リアクション/リポストは対象（自分の）ノートの抜粋。
             val body = when (n.kind) {
                 NotificationKind.REPLY, NotificationKind.MENTION -> n.text
+                NotificationKind.ZAP -> "⚡ ${n.zapSats ?: 0} sats" + (n.targetSnippet?.let { " · $it" } ?: "")
                 else -> n.targetSnippet
             }
             if (!body.isNullOrBlank()) {
@@ -239,12 +241,14 @@ private fun kindIcon(k: NotificationKind): ImageVector = when (k) {
     NotificationKind.MENTION -> Icons.Outlined.AlternateEmail
     NotificationKind.REACTION -> Icons.Outlined.Favorite
     NotificationKind.REPOST -> Icons.Outlined.Repeat
+    NotificationKind.ZAP -> Icons.Outlined.Bolt
 }
 
 private fun kindTint(k: NotificationKind): Color = when (k) {
     NotificationKind.REPLY, NotificationKind.MENTION -> DeckColors.Accent
     NotificationKind.REACTION -> DeckColors.Like
     NotificationKind.REPOST -> DeckColors.Boost  // テーマに馴染む控えめなグリーン
+    NotificationKind.ZAP -> DeckColors.Zap
 }
 
 private fun relativeTime(createdAt: Long): String {

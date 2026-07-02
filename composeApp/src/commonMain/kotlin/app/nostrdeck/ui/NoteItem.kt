@@ -77,6 +77,8 @@ fun NoteItem(
   val me by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
   val bookmarks by (repo?.bookmarkIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
+  val zapTotals by (repo?.zapTotalsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, Long>()) })
+  val zapSats = zapTotals[note.event.id] ?: 0L
   var repostMenu by remember { mutableStateOf(false) }
   var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
@@ -178,9 +180,13 @@ fun NoteItem(
                 }
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                 ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
-                // Zap は絵文字の隣。lud16 未設定なら非表示（Zap できない相手にボタンを見せない）。
-                if (!note.author.lud16.isNullOrBlank()) {
-                    ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                // Zap は絵文字の隣。lud16 があれば送信可、Zap 受領があれば合計 sats を表示。
+                if (!note.author.lud16.isNullOrBlank() || zapSats > 0) {
+                    ZapAction(
+                        sats = zapSats,
+                        tint = if (zapSats > 0) DeckColors.Zap else DeckColors.Text3,
+                        onClick = if (!note.author.lud16.isNullOrBlank()) ({ showZap = true }) else null,
+                    )
                 }
                 Spacer(Modifier.weight(1f))
                 // 3点リーダー（追加操作）は右端。ミュート/各種コピー。
@@ -277,6 +283,33 @@ fun NoteItem(
           targetNote = note,
       )
   }
+}
+
+/** ⚡Zap ボタン。受領 sats があればアイコンの右に金額（k 表記）を出す。Zap 不可なら表示のみ。 */
+@Composable
+private fun ZapAction(sats: Long, tint: Color, onClick: (() -> Unit)?) {
+    Row(
+        Modifier.clip(CircleShape).let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = if (sats > 0) DeckSpace.Xs else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(DeckDimens.TouchTargetSm), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Bolt, contentDescription = "Zap", tint = tint, modifier = Modifier.size(DeckDimens.IconMd))
+        }
+        if (sats > 0) {
+            Text(
+                formatSats(sats), color = tint, fontSize = DeckType.Label,
+                modifier = Modifier.offset(x = -DeckSpace.Xs),
+            )
+        }
+    }
+}
+
+/** sats を短く整形（1234→1.2k / 1000000→1.0M）。 */
+private fun formatSats(sats: Long): String = when {
+    sats >= 1_000_000 -> "${(sats / 100_000) / 10.0}M"
+    sats >= 1_000 -> "${(sats / 100) / 10.0}k"
+    else -> "$sats"
 }
 
 /** アイコンのみのアクションボタン。タッチ領域は 40dp の実ボックス、グリフは気持ち小さめ(IconMd)。 */

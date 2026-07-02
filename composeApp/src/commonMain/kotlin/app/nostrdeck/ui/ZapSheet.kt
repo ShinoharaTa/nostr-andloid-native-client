@@ -119,7 +119,8 @@ fun ZapSheet(note: NoteUi, onDismiss: () -> Unit) {
                         scope.launch {
                             val invoice = repo?.requestZapInvoice(
                                 recipientPubkey = note.event.pubkey, lud16 = lud16,
-                                amountSats = effectiveAmount, comment = comment, eventId = note.event.id,
+                                amountSats = effectiveAmount, comment = comment,
+                                eventId = note.event.id, targetKind = note.event.kind,
                             )
                             busy = false
                             if (invoice.isNullOrBlank()) {

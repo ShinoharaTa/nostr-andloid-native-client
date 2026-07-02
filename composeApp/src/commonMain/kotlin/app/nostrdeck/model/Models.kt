@@ -155,7 +155,7 @@ data class CustomEmoji(val shortcode: String, val url: String)
 data class UsedEmoji(val content: String, val imageUrl: String?)
 
 /** [M10-notif] 通知の種別。 */
-enum class NotificationKind { REPLY, MENTION, REACTION, REPOST }
+enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP }
 
 /**
  * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。
@@ -177,6 +177,8 @@ data class NotificationUi(
     val targetNoteId: String? = null,
     /** 対象が NIP-28 チャンネルメッセージ(kind:42)なら、そのチャンネル id（タップで開く先）。 */
     val targetChannelId: String? = null,
+    /** ZAP 通知の金額(sats)。 */
+    val zapSats: Long? = null,
 )
 
 /**

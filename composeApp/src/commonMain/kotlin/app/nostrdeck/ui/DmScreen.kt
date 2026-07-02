@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +66,10 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
             DmConversation(pk, names[pk]?.takeIf { it.isNotBlank() } ?: pk.take(10), "", "")
         }
 
+    // DM 相手のアイコン/名前は接続中リレーに無いことが多いので、開いたら複数リレーから取得する。
+    LaunchedEffect(selected?.pubkey) {
+        selected?.pubkey?.let { repo?.fetchProfilesNow(listOf(it)) }
+    }
     var showNew by remember { mutableStateOf(false) }
     TwoPane(
         isCompact = isCompact,

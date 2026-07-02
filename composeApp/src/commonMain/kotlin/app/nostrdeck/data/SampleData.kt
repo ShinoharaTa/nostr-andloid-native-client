@@ -178,6 +178,7 @@ object SampleData {
         "relays" to "リレー",
         "mute" to "ミュート",
         "bookmarks" to "ブックマーク",
+        "dmrelays" to "DMリレー",
         "media" to "メディアサーバー",
         "data" to "データ・キャッシュ",
         "appearance" to "表示",

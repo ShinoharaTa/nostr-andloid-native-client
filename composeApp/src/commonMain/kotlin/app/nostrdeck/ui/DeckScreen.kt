@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -237,6 +238,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                             is FeedEntry.Notice -> matcher.muted(it.notif)
                         }
                     }
+                    SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
@@ -256,6 +258,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
                     val allPinned = remember(spec.id) { repo!!.pinnedNotesFor(profilePubkey) }.collectAsState(emptyList()).value
                     val pinnedNotes = if (revealed) allPinned else allPinned.filterNot { matcher.muted(it) }
+                    SubscribeZaps(repo, spec.id, (notes + pinnedNotes).map { it.event.id })
                     ProfileColumn(
                         spec, profilePubkey, profile, following, notes, pinnedNotes, modifier, listState,
                         menu = menu,
@@ -269,6 +272,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val raw = if (live) remember(spec.id, spec.filter) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     else SampleData.feedFor(spec)
                     val notes = if (revealed) raw else raw.filterNot { matcher.muted(it) }
+                    if (live) SubscribeZaps(repo, spec.id, notes.map { it.event.id })
                     FeedColumn(
                         spec, notes, modifier, listState,
                         menu = menu,
@@ -320,6 +324,18 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
             }
         }
+    }
+}
+
+/**
+ * 表示中ノート群の Zap 受領(kind:9735)を購読する（合計 sats 表示のため）。
+ * 先頭ノートと件数が変わった時のみ張り直して REQ の暴発を防ぐ。
+ */
+@Composable
+private fun SubscribeZaps(repo: EventRepository?, colId: String, noteIds: List<String>) {
+    if (repo == null || noteIds.isEmpty()) return
+    LaunchedEffect(colId, noteIds.firstOrNull(), noteIds.size) {
+        repo.subscribeZaps("${colId}_zaps", noteIds)
     }
 }
 

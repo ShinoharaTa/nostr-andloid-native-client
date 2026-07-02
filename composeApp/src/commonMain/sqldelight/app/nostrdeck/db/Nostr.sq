@@ -293,13 +293,19 @@ SELECT * FROM event WHERE kind = 14 AND (
   pubkey = :me OR id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :me)
 ) ORDER BY created_at DESC;
 
+-- [M13] NIP-57 Zap 受領(kind:9735) を対象ノート(#e)単位で。額は Kotlin 側で description から算出。
+zapReceiptsForTargets:
+SELECT et.value AS note_id, e.tags_json
+FROM event e JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 9735 AND et.tag = 'e';
+
 -- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
 -- リアクション(kind7) を新しい順に。自分自身の操作は除外。
 notificationsFor:
 SELECT DISTINCT event.* FROM event
 JOIN event_tag ON event.id = event_tag.event_id
 WHERE event_tag.tag = 'p' AND event_tag.value = :me
-  AND event.kind IN (1, 6, 16, 7)
+  AND event.kind IN (1, 6, 16, 7, 9735)
   AND event.pubkey != :me
 ORDER BY event.created_at DESC
 LIMIT 200;
