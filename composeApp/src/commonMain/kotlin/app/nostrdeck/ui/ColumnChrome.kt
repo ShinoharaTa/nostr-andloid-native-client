@@ -57,10 +57,7 @@ fun ColumnHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
-            Box(
-                Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+            HeaderBackButton(onClick = onBack)
         } else {
             Box(
                 Modifier.size(26.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
@@ -75,24 +72,37 @@ fun ColumnHeader(
         }
         // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
         if (onPin != null) {
-            HeaderIcon(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
+            HeaderIconButton(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
                 tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
         }
         if (pinned && onPin != null) {
-            HeaderIcon(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
+            HeaderIconButton(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
         } else if (onClose != null) {
-            HeaderIcon(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
+            HeaderIconButton(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
         }
     }
 }
 
+/**
+ * ヘッダー共通の「←戻る」。**全画面この1実装に統一**（画面ごとの独自実装は禁止）。
+ * 2ペイン/単体画面のどちらのヘッダーでもそのまま置ける（40dp 実タップ領域 + IconLg）。
+ */
 @Composable
-private fun HeaderIcon(icon: ImageVector, cd: String, tint: Color, onClick: (() -> Unit)?) {
+fun HeaderBackButton(onClick: () -> Unit, tint: Color = DeckColors.Text) {
+    Box(
+        Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = tint, modifier = Modifier.size(DeckDimens.IconLg)) }
+}
+
+/** ヘッダー共通のアイコンアクション（閉じる/ピン/並べ替え等）。40dp 実タップ領域 + IconSm。 */
+@Composable
+fun HeaderIconButton(icon: ImageVector, cd: String, tint: Color, onClick: (() -> Unit)?) {
     Box(
         Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(16.dp)) }
+    ) { Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.IconSm)) }
 }
 
 /** オフライン状態バナー（控えめ・操作はブロックしない）。 */

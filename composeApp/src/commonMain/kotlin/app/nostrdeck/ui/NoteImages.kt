@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import coil3.compose.AsyncImage
@@ -167,11 +169,13 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                     color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Lg),
                 )
             }
-            Icon(
-                Icons.Filled.Close, contentDescription = "閉じる", tint = Color.White,
-                modifier = Modifier.align(Alignment.TopEnd).padding(DeckSpace.Lg).size(28.dp)
-                    .clickable(onClick = onDismiss),
-            )
+            // Lightbox 閉じる（オーバーレイ操作・40dp 実タップ領域）。
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md)
+                    .size(DeckDimens.TouchTargetSm).clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.4f)).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.Close, "閉じる", tint = Color.White, modifier = Modifier.size(DeckDimens.IconLg)) }
         }
     }
 }

@@ -66,6 +66,7 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -236,11 +237,9 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     Modifier.fillMaxWidth().padding(start = DeckSpace.Sm, end = DeckSpace.Md, top = DeckSpace.Xs, bottom = DeckSpace.Xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Outlined.Close, contentDescription = "閉じる",
-                        tint = DeckColors.Text2,
-                        modifier = Modifier.clip(CircleShape).clickable(enabled = !sending) { onDismiss() }
-                            .padding(DeckSpace.Sm).size(22.dp),
+                    HeaderIconButton(
+                        Icons.Outlined.Close, "閉じる", tint = DeckColors.Text2,
+                        onClick = if (sending) null else ({ onDismiss() }),
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))
                     Text(
@@ -345,12 +344,12 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             Text("キャンセル", color = DeckColors.Text2, fontWeight = DeckWeight.Link)
                         }
                     } else {
-                        Icon(
-                            Icons.Outlined.Image, contentDescription = "画像を添付",
-                            tint = DeckColors.Text,
-                            modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm))
-                                .clickable { picker.launch() }.padding(DeckSpace.Sm).size(22.dp),
-                        )
+                        // 画像添付（ツールバー操作・40dp 実タップ領域）。
+                        Box(
+                            Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
+                                .clickable { picker.launch() },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Outlined.Image, "画像を添付", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         Spacer(Modifier.weight(1f))
                         Button(
                             onClick = doSend, enabled = canSend,
@@ -441,12 +440,13 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    Icon(
-                        Icons.Outlined.Close, contentDescription = "削除", tint = Color.White,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(DeckSpace.Xs)
+                    // 添付削除（インライン補助操作・32dp 実タップ領域）。
+                    Box(
+                        Modifier.align(Alignment.TopEnd).size(DeckDimens.TouchTargetXs)
                             .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                            .clickable { onRemove(i) }.padding(DeckSpace.Xs).size(15.dp),
-                    )
+                            .clickable { onRemove(i) },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Outlined.Close, "削除", tint = Color.White, modifier = Modifier.size(DeckDimens.IconSm)) }
                 }
                 Spacer(Modifier.height(DeckSpace.Xs))
                 val processed = att.processed

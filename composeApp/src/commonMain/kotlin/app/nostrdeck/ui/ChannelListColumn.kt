@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.Channel
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -110,11 +111,15 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 contentAlignment = Alignment.Center,
             ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = FontWeight.Bold) }
         }
-        Icon(
-            Icons.Outlined.PushPin, "ピン留め",
-            tint = if (pinned) DeckColors.Zap else DeckColors.Text3,
-            modifier = Modifier.padding(start = DeckSpace.Xs).size(28.dp).clip(RoundedCornerShape(DeckRadius.Sm))
-                .clickable(onClick = onPin).padding(DeckSpace.Xs),
-        )
+        // 行内ピン（インライン補助操作・32dp 実タップ領域）。
+        Box(
+            Modifier.padding(start = DeckSpace.Xs).size(DeckDimens.TouchTargetXs)
+                .clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onPin),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.PushPin, "ピン留め",
+                tint = if (pinned) DeckColors.Zap else DeckColors.Text3,
+                modifier = Modifier.size(DeckDimens.IconSm))
+        }
     }
 }

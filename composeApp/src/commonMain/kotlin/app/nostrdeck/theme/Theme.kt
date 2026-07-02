@@ -15,8 +15,10 @@ object DeckDimens {
     val AvatarSize  = 38.dp
 
     // タッチ領域: 原則8は48dp。Deck 密度優先で実用最小は 40dp(T3採用・実領域で確保)。
+    // Xs=32dp はインラインの補助操作（返信キャンセル/添付削除/行内ピン等）の下限。
     val TouchTarget   = 48.dp
     val TouchTargetSm = 40.dp
+    val TouchTargetXs = 32.dp
 
     // アイコン実寸（タッチ領域の中に置くグリフ）。
     val IconSm = 16.dp

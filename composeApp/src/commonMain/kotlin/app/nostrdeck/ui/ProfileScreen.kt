@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -232,12 +231,7 @@ private fun ProfileTopBar(title: String, onBack: () -> Unit) {
         Modifier.fillMaxWidth().background(DeckColors.Surface).padding(horizontal = DeckSpace.Xs, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp))
-        }
+        HeaderBackButton(onClick = onBack)
         Spacer(Modifier.width(DeckSpace.Xs))
         Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Name, maxLines = 1)
     }

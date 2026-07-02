@@ -72,6 +72,7 @@
   /* --- Touch / icon (Compose DeckDimens と 1対1) --- */
   --touch:     48px;     /* 原則8の推奨 */
   --touch-sm:  40px;     /* Deck 密度優先の実用最小(T3) */
+  --touch-xs:  32px;     /* インライン補助操作（キャンセル/削除/行内ピン）の下限 */
   --icon-sm:   16px;
   --icon-md:   18px;
   --icon-lg:   20px;

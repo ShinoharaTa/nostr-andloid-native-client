@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -110,11 +109,7 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
         // タイトル横に ← を置いて一覧へ戻る（Compact のみ。自然な単一ヘッダー）。
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) {
-                Icon(
-                    Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "戻る", tint = DeckColors.Text,
-                    modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onBack)
-                        .padding(DeckSpace.Xs).size(22.dp),
-                )
+                HeaderBackButton(onClick = onBack)
                 Spacer(Modifier.size(DeckSpace.Sm))
             }
             Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)

@@ -317,10 +317,11 @@ private fun Composer(
                 color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Icon(
-                Icons.Outlined.Close, "返信をやめる", tint = DeckColors.Text3,
-                modifier = Modifier.size(26.dp).clip(CircleShape).clickable(onClick = onCancelReply).padding(DeckSpace.Xs),
-            )
+            // 返信キャンセル（インライン補助操作・32dp 実タップ領域）。
+            Box(
+                Modifier.size(DeckDimens.TouchTargetXs).clip(CircleShape).clickable(onClick = onCancelReply),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Close, "返信をやめる", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
         }
     }
     Row(
