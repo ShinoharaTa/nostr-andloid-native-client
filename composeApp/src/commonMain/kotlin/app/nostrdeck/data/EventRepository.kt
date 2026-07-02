@@ -927,6 +927,20 @@ class EventRepository(
         follows.value = list
     }
 
+    /**
+     * フィルターに一致するキャッシュ済みノートを破棄する（カラムのフィルター編集時）。
+     * UI は DB Flow を読むため一旦空になり、貼り直した REQ の受信で埋め直される（=リロード）。
+     */
+    fun purgeFeedCache(filter: ReqFilter) {
+        val ids = when {
+            filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+            filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
+            !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
+            else -> q.recentNotes(200L)
+        }.executeAsList().map { it.id }
+        q.transaction { ids.forEach { id -> q.deleteEventById(id); q.deleteTagsForEvent(id) } }
+    }
+
     private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
         filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
         filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)

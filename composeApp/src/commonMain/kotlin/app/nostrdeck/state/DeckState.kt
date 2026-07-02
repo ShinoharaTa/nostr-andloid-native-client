@@ -168,6 +168,7 @@ class DeckState(
      */
     fun updateColumn(columnId: String, newSpec: ColumnSpec) {
         replace(columnId) { old -> newSpec.copy(id = old.id, pinned = old.pinned, order = old.order) }
+        listStates.remove(columnId)  // 内容が変わるのでスクロール位置は先頭から
         if (columns.firstOrNull { it.id == columnId }?.pinned == true) persistPinned()
     }
 

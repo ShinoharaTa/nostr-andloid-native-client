@@ -45,6 +45,7 @@ fun EditColumnDialog(state: DeckState) {
         return
     }
 
+    val repo = LocalRepository.current
     var text by remember(id) { mutableStateOf(spec.editText()) }
     val kinds = remember(id) {
         mutableStateMapOf<NotifKind, Boolean>().apply {
@@ -94,7 +95,15 @@ fun EditColumnDialog(state: DeckState) {
             DeckTextButton("保存", color = if (canSave) DeckColors.Text else DeckColors.Text3, onClick = {
                 if (canSave) {
                     val selected = NotifKind.entries.filter { kinds[it] == true }.map { it.kind }
-                    state.updateColumn(id, template.build(input = text, notifKinds = selected))
+                    val newSpec = template.build(input = text, notifKinds = selected)
+                    // 変更したカラムはキャッシュを破棄してリロード:
+                    // 旧フィルターの残骸と、新フィルターに一致する古いキャッシュの両方を消し、
+                    // updateColumn による再購読（filter キー）で新鮮なデータを取り直す。
+                    if (template.config == ColumnConfig.TEXT) {
+                        repo?.purgeFeedCache(spec.filter)
+                        repo?.purgeFeedCache(newSpec.filter)
+                    }
+                    state.updateColumn(id, newSpec)
                     state.editingColumnId = null
                 }
             })
