@@ -22,6 +22,12 @@ object DeckDimens {
     val IconSm = 16.dp
     val IconMd = 18.dp
     val IconLg = 20.dp
+
+    // 左レール（Deck 展開時の常設ナビ）。項目は全て RailSlot(=RailItem) の同一寸法で統一。
+    val RailWidth = 72.dp   // レール幅
+    val RailItem  = 48.dp   // 各項目のタップ領域（=推奨48dp）
+    val RailIcon  = 24.dp   // レールのグリフ実寸
+    val RailMark  = 40.dp   // ロゴ/アバター等の識別マーク（グリフより少し大きい）
 }
 
 /**

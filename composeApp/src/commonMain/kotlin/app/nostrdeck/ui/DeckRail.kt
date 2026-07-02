@@ -5,8 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -48,78 +48,87 @@ import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
-import app.nostrdeck.theme.DeckWeight
 
 /**
  * 左 NavigationRail（展開時の常設）。
- * 上=グローバルナビ宛先、下=ピン留めカラムの目次（タップでジャンプ）。
- * （Compact では下部 BottomBar に降りる＝アダプティブ）
+ * 上=ブランド/グローバルナビ/ピン留めカラム目次（スクロール）、
+ * 下=接続ステータス/設定/自分（常に下部固定）。
  *
- * すべての項目を [RailSlot]（40dp の同一タップ領域＋中央寄せ）に通し、グリフは 20dp(IconLg) に統一。
- * 縦リズムは `spacedBy(Xs)`、セクション境界のみ Sm の余白で分ける（線ではなく面/隙間・施策1準拠）。
+ * すべての項目を [RailSlot]（[DeckDimens.RailItem] の同一タップ領域＋中央寄せ）に通し、
+ * グリフは [DeckDimens.RailIcon] に統一。セクション境界は 1px の [RailDivider] で分ける。
  */
 @Composable
 fun DeckRail(state: DeckState) {
+    val repo = LocalRepository.current
     Column(
-        Modifier.width(60.dp).fillMaxHeight().background(DeckColors.Bg)
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = DeckSpace.Sm),
+        Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
     ) {
-        // ブランドマーク（非操作）。スロット内に中央配置して footprint を他項目と揃える。
-        RailSlot {
-            Box(
-                Modifier.size(RailMarkSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Accent),
-                contentAlignment = Alignment.Center,
-            ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = DeckType.Title) }
+        // ── 上部（スクロール）: ブランド + ナビ + PIN 目次 ──
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(vertical = DeckSpace.Sm),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        ) {
+            // ブランドマーク（非操作）。スロット内に中央配置して footprint を他項目と揃える。
+            RailSlot {
+                Box(
+                    Modifier.size(DeckDimens.RailMark).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Accent),
+                    contentAlignment = Alignment.Center,
+                ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = DeckType.Title) }
+            }
+
+            NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
+            NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
+            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS) {
+                state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
+            }
+            // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
+            NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
+                state.clearDetail(); state.navDest = NavDest.CHANNELS
+            }
+            NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM) {
+                state.clearDetail(); state.navDest = NavDest.DM
+            }
+
+            // PIN セクション（1px 区切り + ラベル）
+            RailDivider()
+            Text("PIN", color = DeckColors.Text3, fontSize = DeckType.Micro, letterSpacing = 1.sp)
+
+            // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
+            state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
+
+            // カラム追加（常設アクション）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
+            RailSlot(active = true, onClick = { state.showAddColumn = true }) {
+                Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
+            }
         }
 
-        val repo = LocalRepository.current
-
-        NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
-        NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-        NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS) {
-            state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
+        // ── 下部（固定）: 接続ステータス + 設定 + 自分 ──
+        RailDivider()
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        ) {
+            if (repo != null) {
+                val conns by repo.relayConnFlow().collectAsState()
+                var showRelays by remember { mutableStateOf(false) }
+                RailSlot(onClick = { showRelays = true }) { RelayRailIndicator(conns, vertical = true, onClick = null) }
+                if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
+            }
+            NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
+            RailSlot { Avatar("me", modifier = Modifier.size(DeckDimens.RailMark)) }
         }
-        // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
-        NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
-            state.clearDetail(); state.navDest = NavDest.CHANNELS
-        }
-        NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM) {
-            state.clearDetail(); state.navDest = NavDest.DM
-        }
-
-        // セクション区切り: 線ではなく余白 + ラベルで（ナビ / ピン）。
-        RailSectionGap()
-        Text("PIN", color = DeckColors.Text3, fontSize = DeckType.Micro, letterSpacing = 1.sp)
-
-        // ピン留めカラム = 目次。タップで該当カラムへジャンプ。
-        state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
-
-        // カラム追加（常設アクション）。持続的な AccentWeak 下地で CTA と分かるが、サイズは他と同一。
-        RailSlot(active = true, onClick = { state.showAddColumn = true }) {
-            Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.IconLg))
-        }
-
-        // セクション区切り: コンテンツ導線 / ユーティリティ（リレー・設定・自分）。
-        RailSectionGap()
-        if (repo != null) {
-            val conns by repo.relayConnFlow().collectAsState()
-            var showRelays by remember { mutableStateOf(false) }
-            RailSlot(onClick = { showRelays = true }) { RelayRailIndicator(conns, vertical = true, onClick = null) }
-            if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
-        }
-        NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
-        RailSlot { Avatar("me", modifier = Modifier.size(RailMarkSize)) }
     }
 }
 
-/** レール項目の共通スロット。40dp の同一タップ領域＋中央寄せで、サイズ/タップ領域を全項目で統一。 */
+/** レール項目の共通スロット。同一タップ領域＋中央寄せで、サイズ/タップ領域を全項目で統一。 */
 @Composable
 private fun RailSlot(active: Boolean = false, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(DeckDimens.TouchTargetSm)
+        Modifier.size(DeckDimens.RailItem)
             .clip(RoundedCornerShape(DeckRadius.Md))
             .background(if (active) DeckColors.AccentWeak else Color.Transparent)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
@@ -127,18 +136,15 @@ private fun RailSlot(active: Boolean = false, onClick: (() -> Unit)? = null, con
     ) { content() }
 }
 
-/** ブランドマーク/アバターのスロット内サイズ（グリフ20より少し大きい識別マーク）。 */
-private val RailMarkSize = 34.dp
-
 @Composable
 private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
     RailSlot(active = active, onClick = onClick) {
         val tint = if (active) DeckColors.Accent else DeckColors.Text2
         if (badge > 0) {
             BadgedBox(badge = { Badge { Text("$badge", fontSize = DeckType.Micro) } }) {
-                Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.IconLg))
+                Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.RailIcon))
             }
-        } else Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.IconLg))
+        } else Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.RailIcon))
     }
 }
 
@@ -146,7 +152,7 @@ private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int =
 private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     RailSlot(onClick = onClick) {
         val content: @Composable () -> Unit = {
-            Icon(columnIcon(col.kind), col.title, tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg))
+            Icon(columnIcon(col.kind), col.title, tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.RailIcon))
         }
         if (col.unread > 0) {
             BadgedBox(badge = { Badge { Text("${col.unread}", fontSize = DeckType.Micro) } }) { content() }
@@ -154,8 +160,11 @@ private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
     }
 }
 
-/** セクション間の区切り（線ではなく余白）。spacedBy(Xs) に上乗せして「一段広い隙間」を作る。 */
+/** セクション区切りの 1px ライン（レール幅内にインセットして引く）。 */
 @Composable
-private fun RailSectionGap() {
-    Spacer(Modifier.height(DeckSpace.Sm))
+private fun RailDivider() {
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs)
+            .height(1.dp).background(DeckColors.Border),
+    )
 }

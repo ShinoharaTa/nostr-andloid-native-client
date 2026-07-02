@@ -44,6 +44,12 @@
   --column-gap: 8px;        /* カラム間ガター（線ではなく Bg の隙間で分離） */
   --hinge-gutter: 22px;     /* フォルダブルのヒンジ回避ガター */
 
+  /* --- 左レール（Compose DeckDimens.Rail* と 1対1）--- */
+  --rail-w:    72px;        /* レール幅 */
+  --rail-item: 48px;        /* 各項目のタップ領域 */
+  --rail-icon: 24px;        /* レールのグリフ実寸 */
+  --rail-mark: 40px;        /* ロゴ/アバターの識別マーク */
+
   /* --- Type family --- */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
 
