@@ -63,16 +63,18 @@ fun ColumnHeader(
         } else {
             Box(Modifier.size(DeckDimens.TouchTargetSm), contentAlignment = Alignment.Center) {
                 Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
+                    Modifier.size(28.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
                     contentAlignment = Alignment.Center,
-                ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(DeckDimens.IconSm)) }
+                ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(DeckDimens.IconLg)) }
             }
         }
         Spacer(Modifier.width(DeckSpace.Sm))
+        // タイトル+説明のテキストブロックは行高で合計40dp（22+18）に固定し、隙間を詰める。
         Column(Modifier.weight(1f)) {
             Text(title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
         if (onPin != null) {
