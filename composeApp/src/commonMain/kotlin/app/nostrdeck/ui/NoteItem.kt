@@ -185,7 +185,7 @@ fun NoteItem(
                         // 自分の投稿にはミュートを出さない。
                         if (note.event.pubkey != me) {
                             DropdownMenuItem(
-                                text = { Text("このユーザーをミュート　※非公開") },
+                                text = { Text("このユーザーをミュート") },
                                 onClick = { moreMenu = false; scope.launch { repo?.muteUserPrivate(note.event.pubkey) } },
                             )
                         }
