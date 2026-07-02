@@ -19,3 +19,7 @@ actual fun currentUnixTime(): Long = NSDate().timeIntervalSince1970.toLong()
 /** TODO: Xcode 導入後に CommonCrypto(CCCrypt) で実装する。 */
 actual fun aesCbcDecrypt(key: ByteArray, iv: ByteArray, ciphertext: ByteArray): ByteArray =
     throw NotImplementedError("iOS の AES-CBC は未実装")
+
+/** TODO: Xcode 導入後に CommonCrypto(CCHmac) で実装する。 */
+actual fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray =
+    throw NotImplementedError("iOS の HMAC-SHA256 は未実装")

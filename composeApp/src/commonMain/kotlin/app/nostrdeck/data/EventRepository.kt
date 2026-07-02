@@ -26,6 +26,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.MuteEntry
 import app.nostrdeck.model.MuteList
 import app.nostrdeck.model.FeedEntry
@@ -1276,6 +1277,9 @@ class EventRepository(
 
     private var muteListAt = 0L
     private val muteFlow = MutableStateFlow<MuteList?>(null)
+    // 再発行（編集）時に失わないよう、p/word/t/e 以外の未知タグを公開/非公開それぞれ保持する。
+    private var muteOtherPublic: List<List<String>> = emptyList()
+    private var muteOtherPrivate: List<List<String>> = emptyList()
 
     /** 解析済みミュートリスト（公開 + 復号済み非公開）。未取得は null。 */
     fun muteListFlow(): StateFlow<MuteList?> = muteFlow
@@ -1300,7 +1304,8 @@ class EventRepository(
      * kind:10000 を解析して [muteFlow] へ。公開タグ（p/word/t/e）に加え、
      * 非公開分は content を復号して統合する:
      *  - "?iv=" を含む → NIP-04（レガシー）。自分自身との ECDH で復号。
-     *  - 含まない     → NIP-44。未実装のため nip44Locked=true で通知（M12 で対応）。
+     *  - 含まない     → NIP-44。自分自身の会話鍵で復号。
+     * 復号に失敗した場合のみ nip44Locked=true（編集は不可＝上書きで失うのを防ぐ）。
      * 解析後、ミュート対象ユーザーの kind:0 をバッチ REQ（接続中の全リレー）で解決する。
      */
     private fun updateMuteList(e: NostrEvent) {
@@ -1308,28 +1313,60 @@ class EventRepository(
         if (e.createdAt <= muteListAt) return
         muteListAt = e.createdAt
         scope.launch {
-            var nip44Locked = false
+            var locked = false
             val priv: List<List<String>> = when {
                 e.content.isBlank() -> emptyList()
-                "?iv=" in e.content -> runCatching {
-                    parseTags(SignerProvider.current().nip04Decrypt(e.pubkey, e.content))
-                }.getOrElse { nip44Locked = true; emptyList() }   // 復号失敗も「開けない」扱い
-                else -> { nip44Locked = true; emptyList() }
+                else -> runCatching {
+                    val signer = SignerProvider.current()
+                    val json = if ("?iv=" in e.content) signer.nip04Decrypt(e.pubkey, e.content)
+                    else signer.nip44Decrypt(e.pubkey, e.content)
+                    parseTags(json)
+                }.getOrElse { locked = true; emptyList() }
             }
-            fun pick(tags: List<List<String>>, key: String, isPrivate: Boolean) =
-                tags.filter { it.size >= 2 && it[0] == key }.map { MuteEntry(it[1], isPrivate) }
-            val users = pick(e.tags, "p", false) + pick(priv, "p", true)
-            muteFlow.value = MuteList(
-                users = users,
-                words = pick(e.tags, "word", false) + pick(priv, "word", true),
-                hashtags = pick(e.tags, "t", false) + pick(priv, "t", true),
-                threads = pick(e.tags, "e", false) + pick(priv, "e", true),
-                nip44Locked = nip44Locked,
-                updatedAt = e.createdAt,
-            )
-            users.forEach { requestProfile(it.value) }
+            // 公開/非公開を (category,value) でマージして1件に統合する。
+            val merged = LinkedHashMap<Pair<MuteCategory, String>, MuteEntry>()
+            fun ingestTags(tags: List<List<String>>, private: Boolean, other: MutableList<List<String>>) {
+                tags.forEach { t ->
+                    val cat = if (t.size >= 2) MuteCategory.fromTag(t[0]) else null
+                    if (cat == null) { other.add(t); return@forEach }
+                    val key = cat to t[1]
+                    val cur = merged[key]
+                    merged[key] = MuteEntry(
+                        category = cat, value = t[1],
+                        isPublic = (cur?.isPublic ?: false) || !private,
+                        isPrivate = (cur?.isPrivate ?: false) || private,
+                    )
+                }
+            }
+            val otherPub = mutableListOf<List<String>>()
+            val otherPriv = mutableListOf<List<String>>()
+            ingestTags(e.tags, private = false, other = otherPub)
+            ingestTags(priv, private = true, other = otherPriv)
+            muteOtherPublic = otherPub
+            muteOtherPrivate = otherPriv
+            muteFlow.value = MuteList(entries = merged.values.toList(), nip44Locked = locked, updatedAt = e.createdAt)
+            merged.values.filter { it.category == MuteCategory.USER }.forEach { requestProfile(it.value) }
         }
     }
+
+    /**
+     * ミュートリストを再発行する（NIP-51 編集）。[entries] のうち公開分は tags、非公開分は
+     * NIP-44 で暗号化して content に載せる。両フラグ false の項目は含めない（＝解除）。
+     * 未知タグ（[muteOtherPublic]/[muteOtherPrivate]）は失わないよう引き継ぐ。
+     * replaceable なので最新の created_at で上書きされる。
+     */
+    suspend fun publishMuteList(entries: List<MuteEntry>): Boolean = runCatching {
+        val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+        val publicTags = entries.filter { it.isPublic }.map { listOf(it.category.tag, it.value) } + muteOtherPublic
+        val privateTags = entries.filter { it.isPrivate }.map { listOf(it.category.tag, it.value) } + muteOtherPrivate
+        val content = if (privateTags.isEmpty()) ""
+        else SignerProvider.current().nip44Encrypt(me, tagsToJson(privateTags))
+        val signed = publishSigned(UnsignedEvent(kind = 10000, content = content, tags = publicTags))
+        // 楽観反映（購読エコーの取りこぼしに備える）。
+        muteListAt = signed.createdAt
+        muteFlow.value = MuteList(entries = entries.filter { it.isPublic || it.isPrivate }, updatedAt = signed.createdAt)
+        true
+    }.getOrElse { false }
 
     /**
      * 自分の kind:10030（NIP-51 絵文字リスト）。直接の `emoji` タグを取り込み、

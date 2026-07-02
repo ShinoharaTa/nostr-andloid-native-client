@@ -2,6 +2,7 @@ package app.nostrdeck.signer
 
 import app.nostrdeck.crypto.Nip01
 import app.nostrdeck.crypto.Nip04
+import app.nostrdeck.crypto.Nip44
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.crypto.hexToBytes
 import app.nostrdeck.crypto.secureRandomBytes
@@ -14,12 +15,12 @@ import fr.acinq.secp256k1.Secp256k1
  * 端末に保管した nsec で署名するローカル署名者。
  * secp256k1-kmp で BIP340 Schnorr 署名（NIP-01）を行う。
  *
- * NIP-44 はまだ実装していない（ECDH + HKDF + ChaCha20 + HMAC が必要 → TODO）。
+ * NIP-44 v2（ECDH + HKDF + ChaCha20 + HMAC）に対応。
  */
 class LocalSigner(private val vault: KeyVault) : Signer {
 
     override val method = SignerMethod.LOCAL
-    override val capabilities = setOf(SignerCap.SIGN, SignerCap.NIP04)   // TODO: NIP-44 実装後に追加
+    override val capabilities = setOf(SignerCap.SIGN, SignerCap.NIP04, SignerCap.NIP44)
 
     private val secp = Secp256k1.get()
 
@@ -38,10 +39,10 @@ class LocalSigner(private val vault: KeyVault) : Signer {
     }
 
     override suspend fun nip44Encrypt(peerPubkeyHex: String, plaintext: String): String =
-        throw NotImplementedError("NIP-44 は未実装（TODO: ECDH+HKDF+ChaCha20+HMAC）")
+        Nip44.encrypt(Nip44.conversationKey(vault.privateKey(), peerPubkeyHex), plaintext)
 
     override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String =
-        throw NotImplementedError("NIP-44 は未実装（TODO）")
+        Nip44.decrypt(Nip44.conversationKey(vault.privateKey(), peerPubkeyHex), ciphertext)
 
     override suspend fun nip04Decrypt(peerPubkeyHex: String, ciphertext: String): String =
         Nip04.decrypt(vault.privateKey(), peerPubkeyHex, ciphertext)
