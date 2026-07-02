@@ -16,8 +16,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
+import app.nostrdeck.crypto.Nip19
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -42,24 +53,46 @@ import app.nostrdeck.theme.DeckWeight
  */
 @Composable
 fun DmScreen(state: DeckState, isCompact: Boolean) {
-    val convos = SampleData.dmConversations
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    val names = LocalProfileNames.current
+    // 実データ（NIP-17）: repo があれば復号済み DM、無ければ SampleData。
+    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState(emptyList()).value
+    else SampleData.dmConversations
+    // 既存会話に無い相手（新規メッセージ）でもスレッドを開けるよう、無ければ即席の会話を作る。
     val selected = convos.firstOrNull { it.pubkey == state.dmThread }
+        ?: state.dmThread?.let { pk ->
+            DmConversation(pk, names[pk]?.takeIf { it.isNotBlank() } ?: pk.take(10), "", "")
+        }
 
+    var showNew by remember { mutableStateOf(false) }
     TwoPane(
         isCompact = isCompact,
         showDetail = state.dmThread != null,
-        list = { DmList(convos, selectedPubkey = state.dmThread) { state.dmThread = it.pubkey } },
+        list = {
+            DmList(
+                convos, selectedPubkey = state.dmThread,
+                onNew = { showNew = true },
+                onSelect = { state.dmThread = it.pubkey },
+            )
+        },
         detail = {
             if (selected == null) {
                 DetailPlaceholder("会話を選択")
             } else {
+                val messages = if (repo != null)
+                    remember(selected.pubkey) { repo.dmMessagesFlow(selected.pubkey) }.collectAsState(emptyList()).value
+                else SampleData.dmMessages(selected.pubkey)
                 ChannelRoomColumn(
                     spec = ColumnSpec(
                         id = "dm_${selected.pubkey}", title = selected.name, subtitle = selected.handle,
                         kind = ColumnKind.DM, renderer = ColumnRenderer.ROOM,
                         filter = ReqFilter(kinds = listOf(1059)),
                     ),
-                    messages = SampleData.dmMessages(selected.pubkey),
+                    messages = messages,
+                    names = names,
+                    // 実データ時のみ送信可能（NIP-17 gift wrap を発行）。
+                    onSend = if (repo != null) ({ text, _ -> scope.launch { repo.sendDm(selected.pubkey, text) } }) else null,
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
                     onClose = if (isCompact) null else ({ state.dmThread = null }),
                     onBack = if (isCompact) ({ state.dmThread = null }) else null,
@@ -67,17 +100,47 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
             }
         },
     )
+
+    // 新規 DM: npub / hex を入力して会話を開く（送信は開いたスレッドの入力欄から）。
+    if (showNew) {
+        var input by remember { mutableStateOf("") }
+        val hex = remember(input) {
+            val t = input.trim()
+            when {
+                t.startsWith("npub1") -> runCatching { Nip19.npubToHex(t) }.getOrNull()
+                t.length == 64 && t.all { it.isDigit() || it in 'a'..'f' } -> t
+                else -> null
+            }
+        }
+        DeckInputDialog(
+            title = "新しいメッセージ",
+            placeholder = "npub または hex",
+            value = input, onValueChange = { input = it },
+            confirmLabel = "開く", confirmEnabled = hex != null,
+            onConfirm = { hex?.let { state.dmThread = it }; showNew = false },
+            onDismiss = { showNew = false },
+        )
+    }
 }
 
 @Composable
 private fun DmList(
     convos: List<DmConversation>,
     selectedPubkey: String?,
+    onNew: () -> Unit,
     onSelect: (DmConversation) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
-            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+        Row(
+            Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
+                modifier = Modifier.weight(1f))
+            Box(
+                Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onNew),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Add, "新しいメッセージ", tint = DeckColors.Text) }
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {

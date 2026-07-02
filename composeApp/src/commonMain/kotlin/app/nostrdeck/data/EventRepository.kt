@@ -3,7 +3,10 @@ package app.nostrdeck.data
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.nostrdeck.crypto.EventCrypto
+import app.nostrdeck.crypto.Nip01
+import app.nostrdeck.crypto.Nip17
 import app.nostrdeck.crypto.currentUnixTime
+import kotlin.random.Random
 import app.nostrdeck.db.Event
 import app.nostrdeck.db.NostrDb
 import app.nostrdeck.crypto.Nip19
@@ -27,6 +30,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.MuteEntry
@@ -204,6 +208,8 @@ class EventRepository(
             // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            // NIP-17 DM: 自分宛の gift wrap(kind:1059)を購読して復号する。
+            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
         }
     }
 
@@ -419,6 +425,7 @@ class EventRepository(
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
@@ -1347,6 +1354,7 @@ class EventRepository(
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
+            1059 -> ingestGiftWrap(e)     // NIP-17 DM（gift wrap を復号して kind:14 保存）
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
         }
@@ -2013,6 +2021,94 @@ class EventRepository(
         val resp = json.parseToJsonElement(uploadHttp.get(sb.toString()).bodyAsText()).jsonObject
         resp["pr"]?.jsonPrimitive?.contentOrNull
     }.getOrNull()
+
+    // ---- [M12] NIP-17 プライベートDM（gift wrap kind:1059 → seal kind:13 → rumor kind:14） ----
+
+    private val processedWraps = mutableSetOf<String>()
+
+    /** 受信 gift wrap(1059) を復号し、DM本体(kind:14)としてローカル保存。重複/失敗は無視。 */
+    private fun ingestGiftWrap(e: NostrEvent) {
+        if (!processedWraps.add(e.id)) return
+        scope.launch {
+            val rumor = Nip17.unwrap(SignerProvider.current(), e) ?: return@launch
+            requestProfile(rumor.sender); rumor.recipient?.let { requestProfile(it) }
+            storeDm(rumor.id, rumor.sender, rumor.recipient, rumor.content, rumor.createdAt)
+        }
+    }
+
+    private fun storeDm(id: String, sender: String, recipient: String?, content: String, createdAt: Long) {
+        val tags = recipient?.let { listOf(listOf("p", it)) } ?: emptyList()
+        q.insertEvent(id, sender, 14, createdAt, content, tagsToJson(tags), "")
+        indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
+    }
+
+    /** DM を送る（NIP-17）。受信者宛＋自分宛の2通を gift wrap して配信し、ローカルへ即保存。 */
+    suspend fun sendDm(peerPubkey: String, text: String) {
+        if (text.isBlank()) return
+        val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+        val signer = SignerProvider.current()
+        val now = currentUnixTime()
+        val rumorTags = listOf(listOf("p", peerPubkey))
+        val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
+        val rumorJson = buildJsonObject {
+            put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
+            putJsonArray("tags") { rumorTags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
+            put("content", text)
+        }.toString()
+        // メタデータ曖昧化のため seal/wrap の created_at を直近2日内でランダム化（NIP-17）。
+        fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
+        val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
+        val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
+        storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
+        processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
+        publishTo(RelayProtocol.event(toPeer))
+        publishTo(RelayProtocol.event(toSelf))
+    }
+
+    /** DM 会話一覧（相手ごとに最新1件）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun dmConversationsFlow(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(emptyList())
+        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+            val byPk = profiles.associateBy { it.pubkey }
+            val seen = LinkedHashSet<String>()
+            rows.mapNotNull { row ->
+                val other = if (row.pubkey == me)
+                    parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+                else row.pubkey
+                if (other == null || !seen.add(other)) return@mapNotNull null
+                val p = byPk[other]
+                DmConversation(
+                    pubkey = other,
+                    name = p?.name?.takeIf { it.isNotBlank() } ?: other.take(10),
+                    handle = p?.handle.orEmpty(),
+                    lastMessage = row.content,
+                )
+            }
+        }.flowOn(Dispatchers.Default)
+    }
+
+    /** 指定相手との DM メッセージ（時系列昇順・連投まとめ）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun dmMessagesFlow(peer: String): Flow<List<ChannelMessage>> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(emptyList())
+        else combine(q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+            val byPk = profiles.associateBy { it.pubkey }
+            rows.mapIndexed { i, row ->
+                val prev = rows.getOrNull(i - 1)
+                val prof = byPk[row.pubkey]
+                ChannelMessage(
+                    event = NostrEvent(row.id, row.pubkey, 14, row.created_at, row.content, parseTags(row.tags_json), row.sig),
+                    author = Profile(
+                        row.pubkey, prof?.name?.takeIf { it.isNotBlank() } ?: row.pubkey.take(10),
+                        prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16,
+                    ),
+                    isMine = row.pubkey == me,
+                    continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                )
+            }
+        }.flowOn(Dispatchers.Default)
+    }
 
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。

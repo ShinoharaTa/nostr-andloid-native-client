@@ -279,6 +279,20 @@ SELECT * FROM event WHERE id = ? LIMIT 1;
 eventsByIds:
 SELECT * FROM event WHERE id IN ?;
 
+-- [M12] NIP-17 DM: 復号済み kind:14 を保存し、会話ごと/全体で取り出す。
+-- 自分と :peer の間の会話（自分発 or 相手発で相手/自分宛）を古い順に。
+dmMessagesWith:
+SELECT * FROM event WHERE kind = 14 AND (
+  (pubkey = :me AND id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :peer))
+  OR (pubkey = :peer AND id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :me))
+) ORDER BY created_at ASC;
+
+-- 自分が関与する全 DM（会話一覧の構築用。相手判定は Kotlin 側）。新しい順。
+dmAllForMe:
+SELECT * FROM event WHERE kind = 14 AND (
+  pubkey = :me OR id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :me)
+) ORDER BY created_at DESC;
+
 -- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
 -- リアクション(kind7) を新しい順に。自分自身の操作は除外。
 notificationsFor:

@@ -161,3 +161,32 @@ fun DeckConfirmDialog(
         },
     )
 }
+
+/** 1行入力のダイアログ（新規 DM の宛先入力など）。 */
+@Composable
+fun DeckInputDialog(
+    title: String,
+    placeholder: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmEnabled: Boolean = true,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DeckColors.Surface,
+        shape = RoundedCornerShape(DeckRadius.Lg),
+        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        text = {
+            DeckTextField(value = value, onValueChange = onValueChange, placeholder = placeholder,
+                modifier = Modifier.fillMaxWidth())
+        },
+        confirmButton = {
+            DeckTextButton(confirmLabel, onClick = { if (confirmEnabled) onConfirm() },
+                color = if (confirmEnabled) DeckColors.Text else DeckColors.Text3)
+        },
+        dismissButton = { DeckTextButton("キャンセル", onClick = onDismiss, color = DeckColors.Text3) },
+    )
+}
