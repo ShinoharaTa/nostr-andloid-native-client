@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +46,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -88,7 +88,7 @@ fun NoteItem(
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
                     Text(
                         note.author.name, color = DeckColors.Text,
-                        fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
+                        fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false).then(authorTap),
                     )

@@ -6,11 +6,11 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * ノート本文を装飾付き [AnnotatedString] に変換する。
@@ -27,7 +27,7 @@ fun noteAnnotated(
     resolveName: ((String) -> String?)? = null,
     emojis: Map<String, String> = emptyMap(),
 ): AnnotatedString = buildAnnotatedString {
-    val accent = SpanStyle(color = DeckColors.Accent, fontWeight = FontWeight.Medium)
+    val accent = SpanStyle(color = DeckColors.Accent, fontWeight = DeckWeight.Link)
     var i = 0
     val n = text.length
     while (i < n) {

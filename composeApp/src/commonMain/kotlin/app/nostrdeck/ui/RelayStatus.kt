@@ -31,6 +31,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 // リレー接続状態の信号色（接続=緑 / 接続中=黄 / 切断=グレー）。状態を一目で判別するための例外的な配色。
 private val RelayGreen = Color(0xFF3FB950)
@@ -108,7 +109,7 @@ fun RelayStatusDialog(conns: List<RelayConn>, onDismiss: () -> Unit) {
                 .background(DeckColors.Surface).padding(vertical = DeckSpace.Md),
         ) {
             Text(
-                "リレー状態", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold,
+                "リレー状態", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong,
                 modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Xs),
             )
             Spacer(Modifier.size(DeckSpace.Xs))

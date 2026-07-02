@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -36,6 +37,17 @@ object DeckType {
     val Label   = 11.sp   // 時刻/ハンドル/ラベル
     val Micro   = 10.sp   // バッジ/最小メタ
     val Emoji   = 18.sp   // リアクション絵文字グリフ（本文スケール外）
+}
+
+/**
+ * 文字ロール別のウェイト（施策2: ウェイトの明暗コントラストで階層を作る）。
+ * 名前/見出しは太く・メタ/本文は Normal に統一し、色(Text/Text3)と合わせて主役↔脇役を分ける。
+ */
+object DeckWeight {
+    val Name   = FontWeight.Bold      // 人物名/エンティティ名（主役・最も強い）
+    val Strong = FontWeight.SemiBold  // 画面/セクション見出し・アクティブタブ（UIの中見出し）
+    val Link   = FontWeight.Medium    // リンク/アクティブ要素
+    val Body   = FontWeight.Normal    // 本文・メタ（時刻/ハンドル/npub/ID）
 }
 
 /** 角丸トークン。tokens.css --r-*（8/12/18/full）と 1対1。実装はこれへ完全スナップ。 */

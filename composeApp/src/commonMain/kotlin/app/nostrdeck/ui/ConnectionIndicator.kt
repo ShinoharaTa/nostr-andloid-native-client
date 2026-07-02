@@ -22,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.nostr.RelayConnState
@@ -30,6 +29,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * 画面上部に浮く「接続中…」インジケータ。
@@ -61,7 +61,7 @@ fun BoxScope.ConnectionIndicator() {
                 modifier = Modifier.size(13.dp), strokeWidth = 2.dp, color = DeckColors.Text2,
             )
             Spacer(Modifier.width(DeckSpace.Sm))
-            Text("接続中…", color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = FontWeight.Medium)
+            Text("接続中…", color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Link)
         }
     }
 }

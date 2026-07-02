@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +44,7 @@ import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -174,7 +174,7 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
             // 名前は残り幅いっぱい（長ければ…で省略）、時刻は右端に固定。
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    n.actor.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
+                    n.actor.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).clickable(onClick = onActorClick),
                 )

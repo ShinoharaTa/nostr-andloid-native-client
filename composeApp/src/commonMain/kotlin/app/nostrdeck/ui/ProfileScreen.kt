@@ -42,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
@@ -61,6 +60,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import kotlinx.coroutines.launch
 
 /** プロフィールのタブ（投稿 / 投稿とリプライ / メディア）。 */
@@ -239,7 +239,7 @@ private fun ProfileTopBar(title: String, onBack: () -> Unit) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(DeckSpace.Xs))
-        Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Name, maxLines = 1)
     }
 }
 
@@ -274,7 +274,7 @@ private fun ProfileHeaderCard(
         Column(Modifier.fillMaxWidth().padding(start = DeckSpace.Lg, end = DeckSpace.Lg, top = DeckSpace.Sm, bottom = DeckSpace.Md)) {
             Text(
                 profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
-                color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = FontWeight.Bold,
+                color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Name,
             )
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(DeckSpace.Xs))
@@ -343,7 +343,7 @@ private fun ProfileTabs(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
                     t.label,
                     color = if (active) DeckColors.Text else DeckColors.Text3,
                     fontSize = DeckType.Caption,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
                 )
                 Spacer(Modifier.height(DeckSpace.Sm))
                 Box(

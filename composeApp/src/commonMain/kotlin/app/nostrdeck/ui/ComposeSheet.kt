@@ -57,7 +57,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +69,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -249,7 +249,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             quoting != null -> "引用リポスト"
                             else -> "新規投稿"
                         },
-                        color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
+                        color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
                     )
                 }
                 HorizontalDivider(color = DeckColors.Border)
@@ -342,7 +342,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         Spacer(Modifier.weight(1f))
                         // 投稿中の強制キャンセル。
                         TextButton(onClick = { sendJob?.cancel() }) {
-                            Text("キャンセル", color = DeckColors.Text2, fontWeight = FontWeight.Medium)
+                            Text("キャンセル", color = DeckColors.Text2, fontWeight = DeckWeight.Link)
                         }
                     } else {
                         Icon(
@@ -362,7 +362,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         ) {
                             Text(
                                 when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = DeckWeight.Strong,
                             )
                         }
                     }
@@ -382,7 +382,7 @@ private fun AccountHeader(pubkey: String?, profile: Profile?) {
         Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 38.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!profile?.handle.isNullOrBlank()) {
                 Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -505,7 +505,7 @@ private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolu
             Text(
                 r.label,
                 color = if (active) DeckColors.Bg else DeckColors.Text2,
-                fontSize = DeckType.Caption, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = DeckType.Caption, fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
                 modifier = Modifier
                     .clickable { onSelect(r) }
                     .background(if (active) DeckColors.Text else Color.Transparent)
@@ -535,7 +535,7 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
             Avatar(seed = parent.pubkey, pictureUrl = profile?.pictureUrl, size = 28.dp)
             Spacer(Modifier.width(DeckSpace.Sm))
             Text(
-                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.Medium,
+                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -564,7 +564,7 @@ private fun MentionRow(profile: Profile, onClick: () -> Unit) {
         Avatar(seed = profile.pubkey, pictureUrl = profile.pictureUrl, size = 28.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column {
-            Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (profile.handle.isNotBlank()) {
                 Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }

@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ColumnConfig
@@ -39,6 +38,7 @@ import app.nostrdeck.model.build
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * カラム追加シート。白紙のフィルタ組みではなく**絞ったテンプレから選ぶ**。
@@ -54,7 +54,7 @@ fun AddColumnSheet(onDismiss: () -> Unit, onAdd: (ColumnSpec) -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = DeckSpace.Xl)) {
             Text(
                 if (selected == null) "カラムを追加" else selected!!.label,
-                color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
+                color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
                 modifier = Modifier.padding(DeckSpace.Lg, DeckSpace.Sm),
             )
             HorizontalDivider(color = DeckColors.Border)

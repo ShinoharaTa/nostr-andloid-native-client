@@ -34,6 +34,7 @@ import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * DM（NIP-17 想定）の独立画面。list-detail 2ペイン。
@@ -76,7 +77,7 @@ private fun DmList(
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
-            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold)
+            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {
@@ -91,7 +92,7 @@ private fun DmList(
                     Avatar(c.name, modifier = Modifier.size(40.dp))
                     Spacer(Modifier.width(DeckSpace.Sm))
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
+                        Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(c.lastMessage, color = DeckColors.Text2, fontSize = DeckType.Caption,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
@@ -32,6 +31,7 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * [M9-profile] プロフィールカラム：上部にプロフィールカード（アバター/名前/nip05/npub/フォロー）、
@@ -92,7 +92,7 @@ private fun ProfileHeaderCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
-                    color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold,
+                    color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Name,
                 )
                 profile?.handle?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.size(DeckSpace.Xs))

@@ -22,13 +22,13 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * 「新着 N 件 ↑」の未読カウント。
@@ -65,7 +65,7 @@ fun BoxScope.NewItemsPill(count: Int, onClick: () -> Unit) {
     ) {
         Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = DeckSpace.Xs).size(15.dp))
         Text(
-            "$count 件の新着", color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = FontWeight.SemiBold,
+            "$count 件の新着", color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = DeckWeight.Strong,
         )
     }
 }

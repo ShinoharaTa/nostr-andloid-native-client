@@ -26,7 +26,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -35,6 +34,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -99,7 +99,7 @@ fun CollapsibleText(
             ) {
                 Text(
                     if (expanded) "閉じる" else "もっと見る",
-                    color = DeckColors.Accent, fontSize = DeckType.Caption, fontWeight = FontWeight.Medium,
+                    color = DeckColors.Accent, fontSize = DeckType.Caption, fontWeight = DeckWeight.Link,
                 )
                 Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(

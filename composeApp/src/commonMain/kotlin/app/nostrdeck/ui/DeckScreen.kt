@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.data.SampleData
@@ -46,6 +45,7 @@ import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import app.nostrdeck.theme.DeckDimens
 import kotlinx.coroutines.launch
 
@@ -125,7 +125,7 @@ private fun CompactPager(state: DeckState) {
                     val active = pager.currentPage == i
                     Text(
                         c.title, fontSize = DeckType.Caption,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
                         color = if (active) DeckColors.Accent else DeckColors.Text2,
                         modifier = Modifier.clip(CircleShape)
                             // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）

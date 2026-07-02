@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +49,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -168,7 +168,7 @@ private fun TargetNoteHeader(note: NoteUi) {
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.fillMaxWidth()) {
             Text(
-                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
+                name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             if (body.isNotBlank()) {
@@ -185,7 +185,7 @@ private fun TargetNoteHeader(note: NoteUi) {
 @Composable
 private fun SectionLabel(text: String) {
     Spacer(Modifier.size(DeckSpace.Sm))
-    Text(text, color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.SemiBold)
+    Text(text, color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Xs))
 }
 

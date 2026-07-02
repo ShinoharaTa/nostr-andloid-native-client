@@ -47,6 +47,12 @@
   /* --- Type family --- */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
 
+  /* --- Type weight roles（施策2: Compose DeckWeight と 1対1）--- */
+  --w-name:   700;  /* 人物名/エンティティ名（主役） */
+  --w-strong: 600;  /* 画面/セクション見出し・アクティブタブ */
+  --w-link:   500;  /* リンク/アクティブ要素 */
+  --w-body:   400;  /* 本文・メタ（時刻/ハンドル/npub/ID） */
+
   /* --- Type scale (Option C: hybrid / 7段, Compose DeckType と 1対1) --- */
   --type-display: 20px;  /* ダイアログ見出し */
   --type-title:   15px;  /* 画面/カラム名 */

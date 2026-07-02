@@ -39,7 +39,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -55,6 +54,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * 設定（Android 大画面踏襲）。list-detail 2ペイン：左=メニュー / 右=内容。
@@ -82,7 +82,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
-            Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = FontWeight.SemiBold)
+            Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {
@@ -92,7 +92,7 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
                     label,
                     color = if (active) DeckColors.Accent else DeckColors.Text,
                     fontSize = DeckType.Sub,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
                     modifier = Modifier.fillMaxWidth()
                         .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
                         .clickable { onSelect(id) }.padding(DeckSpace.Lg, DeckSpace.Md),
@@ -117,7 +117,7 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
                 )
                 Spacer(Modifier.size(DeckSpace.Sm))
             }
-            Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = FontWeight.SemiBold)
+            Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
         }
         Spacer(Modifier.size(DeckSpace.Md))
         when (sectionId) {
@@ -389,7 +389,7 @@ private fun LocalSignerLogin() {
         }
     }
 
-    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = FontWeight.SemiBold)
+    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)

@@ -45,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +57,7 @@ import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 import kotlinx.coroutines.launch
 
 /**
@@ -195,7 +195,7 @@ private fun MessageBubble(
                 Row(verticalAlignment = Alignment.Bottom) {
                     // 長い表示名は省略（… ）。時刻は右に固定。
                     Text(
-                        m.author.name, color = DeckColors.Accent2, fontSize = DeckType.Caption, fontWeight = FontWeight.SemiBold,
+                        m.author.name, color = DeckColors.Accent2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Name,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false),
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))

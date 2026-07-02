@@ -36,6 +36,7 @@ import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
+import app.nostrdeck.theme.DeckWeight
 
 /**
  * CHANNEL_LIST レンダラー：NIP-28 チャンネル一覧（スレッド一覧）。
@@ -81,7 +82,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.SemiBold,
+                Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
