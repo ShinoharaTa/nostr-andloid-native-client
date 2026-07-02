@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -122,9 +123,10 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。
     LaunchedEffect(Unit) { runCatching { bodyFocus.requestFocus() } }
 
-    // ログイン中アカウント（ヘッダ表示）。
-    val myPubkey = repo?.loggedInPubkey()?.collectAsState(null)?.value
-    val myProfile = repo?.myProfileFlow()?.collectAsState(null)?.value
+    // ログイン中アカウント（ヘッダ表示）。DB キャッシュの Flow。
+    // remember しないと再コンポーズごとに新しい Flow を購読し直し、表示ラグ/ちらつきが出る。
+    val myPubkey = repo?.let { remember(it) { it.loggedInPubkey() } }?.collectAsState(null)?.value
+    val myProfile = repo?.let { remember(it) { it.myProfileFlow() } }?.collectAsState(null)?.value
 
     // 文脈対象（返信先 or 引用元）。
     val parent = replyTo ?: quoting
@@ -205,18 +207,33 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
         }
     }
 
+    // 閉じる操作の入り口を一本化: 入力内容があれば破棄確認を挟む（オーバーレイ/✗/戻る共通）。
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val attemptClose: () -> Unit = {
+        if (!sending) {
+            if (text.isNotBlank() || images.isNotEmpty()) confirmDiscard = true else onDismiss()
+        }
+    }
+
     Dialog(
-        onDismissRequest = { if (!sending) onDismiss() },
+        onDismissRequest = attemptClose,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,        // 幅は自前で制御（大画面では中央に最大560dp）
-            dismissOnClickOutside = !sending,
+            dismissOnClickOutside = !sending,       // オーバーレイタップで閉じる（→ attemptClose）
             dismissOnBackPress = !sending,
         ),
     ) {
         // 画面上部に固定して浮くカード。imePadding で（ドッキング型）キーボード分だけ領域を詰める。
         // フローティングキーボードは下端に浮くだけなので、上寄せのこのカードには重ならない。
+        // コンテンツが Dialog ウィンドウ全面を占めるため dismissOnClickOutside は発火しない。
+        // オーバーレイ（カード外）のタップは自前で拾って attemptClose する。
         BoxWithConstraints(
-            Modifier.fillMaxSize().imePadding(),
+            Modifier.fillMaxSize().imePadding()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = attemptClose,
+                ),
             contentAlignment = Alignment.TopCenter,
         ) {
             val cardMaxHeight = maxHeight - 24.dp   // 上下の余白ぶんを確保
@@ -227,38 +244,31 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     .fillMaxWidth()                 // 制限内で幅いっぱい（狭い端末では画面幅に追従）
                     .heightIn(max = cardMaxHeight)
                     .clip(RoundedCornerShape(DeckRadius.Lg))
-                    .background(DeckColors.Surface),
+                    .background(DeckColors.Surface)
+                    // カード内のタップがオーバーレイの clickable に抜けないよう消費する。
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {},
             ) {
-                // ヘッダ: 閉じる + タイトル（送信は右下へ）。
+                // 上段: 投稿者アカウント + ✗（タイトル/境界線は置かない）。
                 Row(
-                    Modifier.fillMaxWidth().padding(start = DeckSpace.Sm, end = DeckSpace.Md, top = DeckSpace.Xs, bottom = DeckSpace.Xs),
+                    Modifier.fillMaxWidth().padding(start = DeckSpace.Lg, end = DeckSpace.Sm, top = DeckSpace.Sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    AccountHeader(pubkey = myPubkey, profile = myProfile, modifier = Modifier.weight(1f))
                     HeaderIconButton(
                         Icons.Outlined.Close, "閉じる", tint = DeckColors.Text2,
-                        onClick = if (sending) null else ({ onDismiss() }),
-                    )
-                    Spacer(Modifier.width(DeckSpace.Xs))
-                    Text(
-                        when {
-                            replyTo != null -> "返信"
-                            quoting != null -> "引用リポスト"
-                            else -> "新規投稿"
-                        },
-                        color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
+                        onClick = if (sending) null else attemptClose,
                     )
                 }
-                HorizontalDivider(color = DeckColors.Border)
 
                 // 中段: 内容が増えても収まるようスクロール領域（カード高は画面内に収める）。
                 Column(
                     Modifier.fillMaxWidth().weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DeckSpace.Lg).padding(top = DeckSpace.Md, bottom = DeckSpace.Md),
+                        .padding(horizontal = DeckSpace.Lg).padding(top = DeckSpace.Xs, bottom = DeckSpace.Md),
                 ) {
-                    AccountHeader(pubkey = myPubkey, profile = myProfile)
-                    Spacer(Modifier.height(DeckSpace.Md))
-
                     BodyField(text, onChange = { text = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth())
 
                     // 入力中の候補（本文直下）。
@@ -303,9 +313,8 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     }
                 }
 
-                // 返信先/引用元は入力フォームの外、下部に固定して文脈を明示する。
+                // 返信先/引用元は入力フォームの外、下部に固定して文脈を明示する（境界は余白で）。
                 if (parent != null) {
-                    HorizontalDivider(color = DeckColors.Border)
                     ContextCard(
                         parent = parent,
                         label = if (replyTo != null) "返信先" else "引用元",
@@ -315,13 +324,11 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
 
                 // 失敗表示（判定するまで再送信ボタンは押せる状態に戻すが、エラーを明示）。
                 sendError?.let { msg ->
-                    HorizontalDivider(color = DeckColors.Border)
                     Text(
                         msg, color = DeckColors.Text, fontSize = DeckType.Caption,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
                     )
                 }
-                HorizontalDivider(color = DeckColors.Border)
                 // 下部バー: 送信中は「進捗 + キャンセル」、通常は「画像添付 + 送信」。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
@@ -355,31 +362,39 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
             }
         }
     }
-}
 
-/** ログイン中アカウントのアイコン + 名前。プロフィール未取得でも npub から仮名を出す。 */
-@Composable
-private fun AccountHeader(pubkey: String?, profile: Profile?) {
-    val name = profile?.name?.takeIf { it.isNotBlank() }
-        ?: pubkey?.let { runCatching { Nip19.hexToNpub(it).take(12) + "…" }.getOrNull() }
-        ?: "あなた"
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 38.dp)
-        Spacer(Modifier.width(DeckSpace.Sm))
-        Column {
-            Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Name,
-                lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!profile?.handle.isNullOrBlank()) {
-                Text(profile!!.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
-                    lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
+    // 入力内容がある状態で閉じようとしたら破棄確認（オーバーレイ/✗/戻る共通）。
+    if (confirmDiscard) {
+        DeckConfirmDialog(
+            title = "入力内容を破棄しますか？",
+            text = "作成中の本文と添付画像は保存されません。",
+            confirmLabel = "破棄する", destructive = true,
+            onConfirm = { confirmDiscard = false; onDismiss() },
+            onDismiss = { confirmDiscard = false },
+        )
     }
 }
 
 /**
- * 本文入力欄。約5行から始まり、最大10行（[BODY_MAX_HEIGHT]）まで伸び、以降は枠内でスクロール。
- * カラムと馴染むよう Surface2 + Border の枠で囲む。
+ * ログイン中アカウントのアイコン + 名前（1行・NIP-05 は出さない）。
+ * アバターは名前の行高(LineTitle=22)に合わせた小型。プロフィール未取得でも npub から仮名を出す。
+ */
+@Composable
+private fun AccountHeader(pubkey: String?, profile: Profile?, modifier: Modifier = Modifier) {
+    val name = profile?.name?.takeIf { it.isNotBlank() }
+        ?: pubkey?.let { runCatching { Nip19.hexToNpub(it).take(12) + "…" }.getOrNull() }
+        ?: "あなた"
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 22.dp)
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Text(name, color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Name,
+            lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * 本文入力欄。**枠なし**（カード面そのものに書く見た目）。約5行から始まり、
+ * 最大10行（[BODY_MAX_HEIGHT]）まで伸び、以降は内部スクロール。
  */
 private val BODY_MIN_HEIGHT = 108.dp  // 約5行（lineHeight 21.sp × 5 + 余白）
 private val BODY_MAX_HEIGHT = 210.dp  // 約10行
@@ -391,12 +406,7 @@ private fun BodyField(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(DeckRadius.Md))
-            .background(DeckColors.Surface2)
-            .padding(DeckSpace.Md),
-    ) {
+    Box(modifier.padding(vertical = DeckSpace.Sm)) {
         if (text.isEmpty()) {
             Text("いまどうしてる？", color = DeckColors.Text3, fontSize = DeckType.Title)
         }

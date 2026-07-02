@@ -19,8 +19,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -139,7 +139,7 @@ private fun MediaSettings() {
     Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "投稿に画像を添付すると、有効なサーバを上から順に試してアップロードします。",
+        "投稿に画像を添付すると、選択中のサーバへアップロードします。",
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
@@ -156,26 +156,29 @@ private fun MediaSettings() {
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
-    val switchColors = SwitchDefaults.colors(
-        checkedThumbColor = DeckColors.Bg,
-        checkedTrackColor = DeckColors.Accent,
-        uncheckedThumbColor = DeckColors.Text3,
-        uncheckedTrackColor = DeckColors.Surface2,
-        uncheckedBorderColor = DeckColors.Border,
-    )
-
+    // アップロード先は1つだけ選ぶ（ラジオ）。選択したサーバのみ有効化し、他は無効に落とす。
+    // 旧データで複数 enabled の場合は「最初の有効サーバ」を選択中として表示
+    // （アップロードは有効サーバを上から試す＝先頭が実際の送信先なので表示と実態が一致）。
+    val selectedUrl = servers.firstOrNull { it.enabled != 0L }?.url
     LazyColumn(Modifier.fillMaxWidth()) {
         items(servers, key = { it.url }) { s ->
-            Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(s.url, color = DeckColors.Text, fontSize = DeckType.Sub)
-                    Text(if (s.enabled != 0L) "有効" else "無効", color = DeckColors.Text3, fontSize = DeckType.Label)
-                }
-                Switch(
-                    checked = s.enabled != 0L,
-                    onCheckedChange = { repo.setMediaServerEnabled(s.url, it) },
-                    colors = switchColors,
+            val selected = s.url == selectedUrl
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { servers.forEach { o -> repo.setMediaServerEnabled(o.url, o.url == s.url) } }
+                    .padding(vertical = DeckSpace.Sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = selected,
+                    onClick = { servers.forEach { o -> repo.setMediaServerEnabled(o.url, o.url == s.url) } },
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = DeckColors.Accent,
+                        unselectedColor = DeckColors.Text3,
+                    ),
                 )
+                Text(s.url, color = DeckColors.Text, fontSize = DeckType.Sub,
+                    modifier = Modifier.weight(1f))
                 DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = s.url })
             }
             HorizontalDivider(color = DeckColors.Border)
