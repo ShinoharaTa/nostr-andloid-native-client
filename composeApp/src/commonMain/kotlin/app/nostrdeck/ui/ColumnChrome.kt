@@ -20,6 +20,8 @@ import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -56,6 +58,9 @@ data class ColumnMenuActions(
     /** フィルター再設定（設定を持たないカラムは null → 項目非表示）。 */
     val onEdit: (() -> Unit)?,
     val onDelete: () -> Unit,
+    /** コンテンツフィルター: ミュートを表示中か（目アイコン）。null なら項目非表示。 */
+    val mutedRevealed: Boolean? = null,
+    val onToggleMuted: (() -> Unit)? = null,
 )
 
 /**
@@ -145,6 +150,20 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
                     text = { Text("フィルターを編集") },
                     leadingIcon = { Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(DeckDimens.IconMd)) },
                     onClick = { open = false; edit() },
+                )
+            }
+            // コンテンツフィルター: ミュート中の投稿を一括で表示/非表示（目アイコン）。
+            if (menu.mutedRevealed != null && menu.onToggleMuted != null) {
+                val revealed = menu.mutedRevealed
+                DropdownMenuItem(
+                    text = { Text(if (revealed) "ミュートを隠す" else "ミュートを表示") },
+                    leadingIcon = {
+                        Icon(
+                            if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            null, modifier = Modifier.size(DeckDimens.IconMd),
+                        )
+                    },
+                    onClick = { open = false; menu.onToggleMuted.invoke() },
                 )
             }
             DropdownMenuItem(

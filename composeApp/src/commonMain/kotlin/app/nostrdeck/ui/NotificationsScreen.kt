@@ -65,7 +65,10 @@ fun NotificationsScreen(state: DeckState) {
         repo.subscribeNotifications("notifications")
         onDispose { repo.unsubscribeColumn("notifications") }
     }
-    val items = remember { repo.notificationsFeed() }.collectAsState().value
+    val all = remember { repo.notificationsFeed() }.collectAsState().value
+    // 通知タブ（全幅）は常にミュートを適用（カラムのような目トグルは無し）。
+    val mute = rememberMuteMatcher()
+    val items = all.filterNot { mute.muted(it) }
 
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ColumnHeader(
@@ -106,6 +109,8 @@ fun NotificationsColumn(
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
+    mute: app.nostrdeck.model.MuteMatcher? = null,
+    revealMuted: Boolean = false,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
@@ -116,7 +121,8 @@ fun NotificationsColumn(
         repo.subscribeNotifications(spec.id)
         onDispose { repo.unsubscribeColumn(spec.id) }
     }
-    val items = remember(spec.id) { repo.notificationsFeed() }.collectAsState().value
+    val all = remember(spec.id) { repo.notificationsFeed() }.collectAsState().value
+    val items = if (revealMuted || mute == null) all else all.filterNot { mute.muted(it) }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,

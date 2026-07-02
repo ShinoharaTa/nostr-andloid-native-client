@@ -169,6 +169,12 @@ class EventRepository(
         // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
         scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
+        // ミュートリスト(kind:10000)を常時購読（フィルタは全カラムで常に有効）。
+        subscribeMuteList("mute_global")
+        // カラム別「ミュートを表示」設定を KV から復元。
+        revealMutedFlow.value = q.settingsByPrefix(REVEAL_MUTED_PREFIX).executeAsList()
+            .filter { it.value_ == "1" }
+            .map { it.key.removePrefix(REVEAL_MUTED_PREFIX) }.toSet()
         scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
@@ -1284,6 +1290,16 @@ class EventRepository(
     /** 解析済みミュートリスト（公開 + 復号済み非公開）。未取得は null。 */
     fun muteListFlow(): StateFlow<MuteList?> = muteFlow
 
+    // カラム別「ミュートを表示（フィルタ解除）」の集合。KV(app_setting)に永続。
+    private val revealMutedFlow = MutableStateFlow<Set<String>>(emptySet())
+    fun revealMutedColumns(): StateFlow<Set<String>> = revealMutedFlow
+
+    /** カラムでミュートを表示するか（目アイコン）を切り替え、KV に保存する。 */
+    fun setColumnRevealMuted(columnId: String, reveal: Boolean) {
+        q.putSetting(REVEAL_MUTED_PREFIX + columnId, if (reveal) "1" else "0")
+        revealMutedFlow.value = if (reveal) revealMutedFlow.value + columnId else revealMutedFlow.value - columnId
+    }
+
     /**
      * 自分の kind:10000 を購読する（設定 > ミュートの表示中）。
      * 接続中の全リレーへ REQ を張り、最新の1件を [updateMuteList] で解析する。
@@ -1778,5 +1794,8 @@ class EventRepository(
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
+
+        /** カラム別「ミュートを表示」設定の KV キー接頭辞（app_setting）。 */
+        const val REVEAL_MUTED_PREFIX = "col_reveal_muted:"
     }
 }

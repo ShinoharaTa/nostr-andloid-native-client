@@ -42,6 +42,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.editTemplate
+import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
@@ -166,7 +167,14 @@ private fun CompactPager(state: DeckState) {
 /** spec.renderer に応じてカラム実体を描き分けるディスパッチャ。 */
 @Composable
 private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyListState, modifier: Modifier) {
-    // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除）。
+    val repoForMenu = LocalRepository.current
+    // ミュート判定と、このカラムの「ミュート表示」状態（目アイコン）。
+    val matcher = rememberMuteMatcher()
+    val revealed = rememberColumnRevealMuted(spec.id)
+    // ミュートを適用する描画種別（フィード/スレッド/通知）だけ目アイコンを出す。
+    val filtersMuted = spec.renderer == ColumnRenderer.FEED || spec.renderer == ColumnRenderer.THREAD
+
+    // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除 / ミュート表示切替）。
     val index = state.columns.indexOfFirst { it.id == spec.id }
     val menu = ColumnMenuActions(
         canMoveLeft = index > 0,
@@ -175,6 +183,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         onMoveRight = { state.moveColumn(spec.id, +1) },
         onEdit = if (spec.editTemplate() != null) ({ state.editingColumnId = spec.id }) else null,
         onDelete = { state.removeColumn(spec.id) },
+        mutedRevealed = if (filtersMuted && repoForMenu != null) revealed else null,
+        onToggleMuted = if (filtersMuted && repoForMenu != null) ({ repoForMenu.setColumnRevealMuted(spec.id, !revealed) }) else null,
     )
 
     when (spec.renderer) {
@@ -211,7 +221,13 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             when {
                 isFollowingFeed -> {
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
-                    val entries = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
+                    val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
+                    val entries = if (revealed) all else all.filterNot {
+                        when (it) {
+                            is FeedEntry.Post -> matcher.muted(it.note)
+                            is FeedEntry.Notice -> matcher.muted(it.notif)
+                        }
+                    }
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
@@ -219,12 +235,14 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     )
                 }
                 isNotifications -> {
-                    // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。
-                    NotificationsColumn(state, spec, modifier, listState, menu = menu)
+                    // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。ミュートを適用。
+                    NotificationsColumn(state, spec, modifier, listState, menu = menu,
+                        mute = matcher, revealMuted = revealed)
                 }
                 isProfile && profilePubkey != null -> {
                     val scope = rememberCoroutineScope()
-                    val notes = remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState().value
+                    val allNotes = remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState().value
+                    val notes = if (revealed) allNotes else allNotes.filterNot { matcher.muted(it) }
                     val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
                     val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
                     ProfileColumn(
@@ -237,8 +255,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     )
                 }
                 else -> {
-                    val notes = if (live) remember(spec.id, spec.filter) { repo!!.columnFeed(spec.filter) }.collectAsState().value
+                    val raw = if (live) remember(spec.id, spec.filter) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     else SampleData.feedFor(spec)
+                    val notes = if (revealed) raw else raw.filterNot { matcher.muted(it) }
                     FeedColumn(
                         spec, notes, modifier, listState,
                         menu = menu,
@@ -255,8 +274,11 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     repo.subscribeThread(spec.id, focusId)
                     onDispose { repo.unsubscribeColumn(spec.id) }
                 }
-                val entries = remember(spec.id) { repo.threadFeed(focusId) }
+                val allEntries = remember(spec.id) { repo.threadFeed(focusId) }
                     .collectAsState(emptyList()).value
+                // スレッドは起点ノートは残し、ミュート著者の返信のみ隠す。
+                val entries = if (revealed) allEntries
+                else allEntries.filterNot { it.note.event.id != focusId && matcher.muted(it.note) }
                 ThreadColumn(
                     spec, entries, modifier, listState, menu = menu,
                     onReply = { note -> state.replyTo = note.event; state.showCompose = true },

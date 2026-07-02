@@ -371,6 +371,10 @@ CREATE TABLE app_setting (
 getSetting:
 SELECT value FROM app_setting WHERE key = ?;
 
+-- key の前方一致で取り出す（例: 'col_reveal_muted:' 接頭辞でカラム別設定を一括ロード）。
+settingsByPrefix:
+SELECT key, value FROM app_setting WHERE key LIKE ? || '%';
+
 putSetting:
 INSERT OR REPLACE INTO app_setting(key, value) VALUES (?, ?);
 
