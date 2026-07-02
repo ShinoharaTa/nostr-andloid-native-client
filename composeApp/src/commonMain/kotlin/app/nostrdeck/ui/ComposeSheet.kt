@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,7 +55,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -97,7 +100,10 @@ import kotlinx.coroutines.sync.withPermit
 fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: NostrEvent? = null) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
+    // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
+    var field by remember { mutableStateOf(TextFieldValue("")) }
+    val text = field.text
+    var showEmojiPicker by remember { mutableStateOf(false) }
 
     // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
     val images = remember { mutableStateListOf<ComposeAttachment>() }
@@ -131,12 +137,15 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     // 文脈対象（返信先 or 引用元）。
     val parent = replyTo ?: quoting
 
+    // 補完はカーソル直前のトークンに対して行う（任意位置での入力に追従）。
+    val before = text.substring(0, field.selection.start.coerceIn(0, text.length))
+
     // 過去に使ったハッシュタグ（最近順）。最近5件 + 前方一致レコメンドに使う。
     val used = repo?.usedHashtagsFlow()?.collectAsState(emptyList())?.value ?: emptyList()
     val activeTagPrefix: String? = run {
-        val idx = text.lastIndexOf('#')
+        val idx = before.lastIndexOf('#')
         if (idx < 0) return@run null
-        val frag = text.substring(idx + 1)
+        val frag = before.substring(idx + 1)
         if (frag.all { it.isLetterOrDigit() || it == '_' }) frag.lowercase() else null
     }
     val tagSuggestions = if (activeTagPrefix != null) {
@@ -150,17 +159,30 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
         used.take(5)
     }
 
-    // 入力中のメンション（末尾の "@…" 断片）。
+    // 入力中のメンション（カーソル直前の "@…" 断片）。
     val activeMention: String? = run {
-        val idx = text.lastIndexOf('@')
+        val idx = before.lastIndexOf('@')
         if (idx < 0) return@run null
-        if (idx > 0 && !text[idx - 1].isWhitespace()) return@run null
-        val frag = text.substring(idx + 1)
+        if (idx > 0 && !before[idx - 1].isWhitespace()) return@run null
+        val frag = before.substring(idx + 1)
         if (frag.isNotEmpty() && frag.all { it.isLetterOrDigit() || it == '_' || it == '.' }) frag else null
     }
     val mentionCandidates: List<Profile> = remember(activeMention) {
         if (activeMention != null) repo?.searchProfiles(activeMention).orEmpty() else emptyList()
     }
+
+    // 入力中のカスタム絵文字（カーソル直前の ":shortcode" 断片）。`:n` で n から始まる候補を出す。
+    val customEmojis = repo?.customEmojisFlow()?.collectAsState(emptyList())?.value ?: emptyList()
+    val activeEmoji: String? = run {
+        val idx = before.lastIndexOf(':')
+        if (idx < 0) return@run null
+        if (idx > 0 && !before[idx - 1].isWhitespace()) return@run null   // http:// 等を誤検出しない
+        val frag = before.substring(idx + 1)
+        if (frag.isNotEmpty() && frag.all { it.isLetterOrDigit() || it == '_' || it == '+' || it == '-' }) frag else null
+    }
+    val emojiCandidates = if (activeEmoji != null) {
+        customEmojis.filter { it.shortcode.startsWith(activeEmoji, ignoreCase = true) }.take(12)
+    } else emptyList()
 
     val canSend = !sending && (text.isNotBlank() || images.isNotEmpty() || quoting != null)
     val doSend: () -> Unit = {
@@ -269,16 +291,23 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = DeckSpace.Lg).padding(top = DeckSpace.Xs, bottom = DeckSpace.Md),
                 ) {
-                    BodyField(text, onChange = { text = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth())
+                    BodyField(field, onChange = { field = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth())
 
-                    // 入力中の候補（本文直下）。
-                    if (mentionCandidates.isNotEmpty()) {
+                    // 入力中の候補（本文直下）。絵文字 > メンション > ハッシュタグ の優先で1種のみ出す。
+                    if (emojiCandidates.isNotEmpty()) {
+                        Spacer(Modifier.height(DeckSpace.Sm))
+                        Text("絵文字候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                        Spacer(Modifier.height(DeckSpace.Xs))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            emojiCandidates.forEach { e -> EmojiSuggestChip(e) { field = insertEmojiShortcode(field, e.shortcode) } }
+                        }
+                    } else if (mentionCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Sm))
                         Text("メンション候補", color = DeckColors.Text3, fontSize = DeckType.Label)
                         Spacer(Modifier.height(DeckSpace.Xs))
                         Column {
                             mentionCandidates.forEach { p ->
-                                MentionRow(p) { text = completeMention(text, Nip19.hexToNpub(p.pubkey)) }
+                                MentionRow(p) { field = completeMention(field, Nip19.hexToNpub(p.pubkey)) }
                             }
                         }
                     } else {
@@ -287,7 +316,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             Text("候補", color = DeckColors.Text3, fontSize = DeckType.Label)
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                tagSuggestions.forEach { tag -> TagChip(tag) { text = completeHashtag(text, tag) } }
+                                tagSuggestions.forEach { tag -> TagChip(tag) { field = completeHashtag(field, tag) } }
                             }
                         }
                         if (recent.isNotEmpty()) {
@@ -295,7 +324,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             Text("最近のタグ", color = DeckColors.Text3, fontSize = DeckType.Label)
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                recent.forEach { tag -> TagChip(tag) { text = appendHashtag(text, tag) } }
+                                recent.forEach { tag -> TagChip(tag) { field = appendHashtag(field, tag) } }
                             }
                         }
                     }
@@ -352,6 +381,12 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                                 .clickable { picker.launch() },
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Outlined.Image, "画像を添付", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+                        // 絵文字ピッカー（Unicode + 自分のカスタム絵文字）。カーソル位置に挿入。
+                        Box(
+                            Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
+                                .clickable { showEmojiPicker = true },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         Spacer(Modifier.weight(1f))
                         DeckButton(
                             when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
@@ -361,6 +396,15 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                 }
             }
         }
+    }
+
+    // 絵文字ピッカー（リアクションと同じ UI）。選択したものをカーソル位置へ挿入する。
+    // Unicode はその文字を、カスタムは ":shortcode:"（投稿時に NIP-30 emoji タグ化）を挿入。
+    if (showEmojiPicker) {
+        ReactionPickerSheet(
+            onPick = { content, _ -> field = insertAtCursor(field, if (content.endsWith(":")) "$content " else content) },
+            onDismiss = { showEmojiPicker = false },
+        )
     }
 
     // 入力内容がある状態で閉じようとしたら破棄確認（オーバーレイ/✗/戻る共通）。
@@ -401,22 +445,41 @@ private val BODY_MAX_HEIGHT = 210.dp  // 約10行
 
 @Composable
 private fun BodyField(
-    text: String,
-    onChange: (String) -> Unit,
+    value: TextFieldValue,
+    onChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.padding(vertical = DeckSpace.Sm)) {
-        if (text.isEmpty()) {
+        if (value.text.isEmpty()) {
             Text("いまどうしてる？", color = DeckColors.Text3, fontSize = DeckType.Title)
         }
         BasicTextField(
-            value = text, onValueChange = onChange,
+            value = value, onValueChange = onChange,
             textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
             cursorBrush = SolidColor(DeckColors.Text),
             modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
                 .focusRequester(focusRequester),
         )
+    }
+}
+
+/** 絵文字候補チップ（カスタム絵文字の画像 + :shortcode:）。タップで本文へ挿入。 */
+@Composable
+private fun EmojiSuggestChip(emoji: app.nostrdeck.model.CustomEmoji, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
+            .clickable(onClick = onClick).padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalPlatformContext.current)
+                .data(ImageProxy.proxied(emoji.url, width = 64, quality = 80, animated = true)).build(),
+            contentDescription = emoji.shortcode,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(DeckSpace.Xs))
+        Text(":${emoji.shortcode}:", color = DeckColors.Text2, fontSize = DeckType.Caption, maxLines = 1)
     }
 }
 
@@ -585,22 +648,40 @@ private fun TagChip(tag: String, onClick: () -> Unit) {
     )
 }
 
-/** 末尾に "#tag " を足す（直前が空白でなければ区切りスペースを入れる）。重複時はそのまま。 */
-private fun appendHashtag(text: String, tag: String): String {
-    if (Regex("(^|\\s)#" + Regex.escape(tag) + "(\\s|$)").containsMatchIn(text)) return text
-    val sep = if (text.isEmpty() || text.endsWith(" ") || text.endsWith("\n")) "" else " "
-    return "$text$sep#$tag "
+/** カーソル位置に文字列を挿入し、カーソルを挿入後の末尾へ移す。 */
+private fun insertAtCursor(field: TextFieldValue, s: String): TextFieldValue {
+    val cur = field.selection.start.coerceIn(0, field.text.length)
+    val newText = field.text.substring(0, cur) + s + field.text.substring(cur)
+    return field.copy(text = newText, selection = TextRange(cur + s.length))
 }
 
-/** 入力中の末尾 "#…" を選んだタグで置き換える。 */
-private fun completeHashtag(text: String, tag: String): String {
-    val idx = text.lastIndexOf('#')
-    return if (idx < 0) appendHashtag(text, tag) else text.substring(0, idx) + "#$tag "
+/** カーソル直前のトリガ文字 [trigger] 以降のトークンを [replacement] で置換する。 */
+private fun replaceTokenBeforeCursor(field: TextFieldValue, trigger: Char, replacement: String): TextFieldValue {
+    val cur = field.selection.start.coerceIn(0, field.text.length)
+    val before = field.text.substring(0, cur)
+    val idx = before.lastIndexOf(trigger)
+    if (idx < 0) return insertAtCursor(field, replacement)
+    val newText = field.text.substring(0, idx) + replacement + field.text.substring(cur)
+    return field.copy(text = newText, selection = TextRange(idx + replacement.length))
 }
 
-/** 入力中の末尾 "@…" を "nostr:<npub> " で置き換える（メンション補完）。 */
-private fun completeMention(text: String, npub: String): String {
-    val idx = text.lastIndexOf('@')
-    val head = if (idx < 0) text else text.substring(0, idx)
-    return head + "nostr:" + npub + " "
+/** カーソル位置に "#tag " を足す（直前が空白でなければ区切りスペースを入れる）。重複時はそのまま。 */
+private fun appendHashtag(field: TextFieldValue, tag: String): TextFieldValue {
+    if (Regex("(^|\\s)#" + Regex.escape(tag) + "(\\s|$)").containsMatchIn(field.text)) return field
+    val cur = field.selection.start.coerceIn(0, field.text.length)
+    val prev = field.text.getOrNull(cur - 1)
+    val sep = if (prev == null || prev == ' ' || prev == '\n') "" else " "
+    return insertAtCursor(field, "$sep#$tag ")
 }
+
+/** 入力中の "#…" を選んだタグで置き換える（カーソル直前）。 */
+private fun completeHashtag(field: TextFieldValue, tag: String): TextFieldValue =
+    replaceTokenBeforeCursor(field, '#', "#$tag ")
+
+/** 入力中の "@…" を "nostr:<npub> " で置き換える（メンション補完・カーソル直前）。 */
+private fun completeMention(field: TextFieldValue, npub: String): TextFieldValue =
+    replaceTokenBeforeCursor(field, '@', "nostr:$npub ")
+
+/** 入力中の ":…" を ":shortcode: " で置き換える（カスタム絵文字補完・カーソル直前）。 */
+private fun insertEmojiShortcode(field: TextFieldValue, shortcode: String): TextFieldValue =
+    replaceTokenBeforeCursor(field, ':', ":$shortcode: ")

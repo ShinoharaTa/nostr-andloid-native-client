@@ -1017,8 +1017,8 @@ class EventRepository(
      * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
      */
     suspend fun publishNote(content: String) {
-        // NIP-24/NIP-12: 本文中の #ハッシュタグ を 't' タグ（小文字・# なし）として付与。
-        val tags = hashtagsIn(content).map { listOf("t", it) }
+        // NIP-24/NIP-12: 本文中の #ハッシュタグ を 't' タグ / NIP-30: :shortcode: を emoji タグに。
+        val tags = hashtagsIn(content).map { listOf("t", it) } + emojiTagsIn(content)
         val signed = publishSigned(UnsignedEvent(kind = 1, content = content, tags = tags))
         recordHashtags(content, signed.createdAt)
     }
@@ -1095,7 +1095,7 @@ class EventRepository(
         val note = runCatching { Nip19.hexToNote(target.id) }.getOrNull()
         val body = if (note != null) (if (text.isBlank()) "nostr:$note" else "$text\nnostr:$note") else text
         val tags = listOf(listOf("q", target.id), listOf("p", target.pubkey)) +
-            hashtagsIn(text).map { listOf("t", it) }
+            hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(body)
         val signed = publishSigned(UnsignedEvent(kind = 1, content = body, tags = tags))
         recordHashtags(text, signed.createdAt)
     }
@@ -1103,7 +1103,7 @@ class EventRepository(
     /** [M8] NIP-10 返信（kind:1）。e(reply マーカー) + p を付け、本文の #タグも 't' 化する。 */
     suspend fun publishReply(target: NostrEvent, text: String) {
         val tags = listOf(listOf("e", target.id, "", "reply"), listOf("p", target.pubkey)) +
-            hashtagsIn(text).map { listOf("t", it) }
+            hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(text)
         val signed = publishSigned(UnsignedEvent(kind = 1, content = text, tags = tags))
         recordHashtags(text, signed.createdAt)
     }
@@ -1191,6 +1191,17 @@ class EventRepository(
             } else i++
         }
         return out.toList()
+    }
+
+    /**
+     * 本文中の `:shortcode:` を自分の既知カスタム絵文字と照合し、NIP-30 `["emoji", code, url]` を返す。
+     * 未知の shortcode は無視（画像 URL が無いとタグにできないため）。投稿/返信/引用に付与する。
+     */
+    private fun emojiTagsIn(content: String): List<List<String>> {
+        val codes = Regex(""":([A-Za-z0-9_+-]+):""").findAll(content).map { it.groupValues[1] }.toSet()
+        if (codes.isEmpty()) return emptyList()
+        val known = q.allCustomEmojis().executeAsList().associate { it.shortcode to it.image_url }
+        return codes.mapNotNull { code -> known[code]?.let { url -> listOf("emoji", code, url) } }
     }
 
     // ---- kind:0 バッチ解決 ----
