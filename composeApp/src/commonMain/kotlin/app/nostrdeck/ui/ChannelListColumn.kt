@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,8 +75,9 @@ fun ChannelListColumn(
 @Composable
 private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin: () -> Unit) {
     Row(
-        // 2段行の高さを切り詰め: 縦は Sm、アバターは AvatarSize(38) に統一。
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md, DeckSpace.Sm),
+        // 行高は固定（AvatarSize + 上下Sm = 54dp）。説明の有無に関わらず全項目同じ高さ。
+        Modifier.fillMaxWidth().height(DeckDimens.AvatarSize + DeckSpace.Sm * 2)
+            .clickable(onClick = onClick).padding(horizontal = DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(DeckDimens.AvatarSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
