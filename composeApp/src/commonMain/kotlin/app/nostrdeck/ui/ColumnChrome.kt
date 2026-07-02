@@ -53,16 +53,20 @@ fun ColumnHeader(
 ) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
-            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Md),
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 先頭は常に 40dp の固定スロット（←戻る / 装飾バッジのどちらでも）。
+        // タイトル開始位置とヘッダー高さが画面間でブレないようにする。
         if (onBack != null) {
             HeaderBackButton(onClick = onBack)
         } else {
-            Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
-                contentAlignment = Alignment.Center,
-            ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(15.dp)) }
+            Box(Modifier.size(DeckDimens.TouchTargetSm), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(DeckDimens.IconSm)) }
+            }
         }
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {

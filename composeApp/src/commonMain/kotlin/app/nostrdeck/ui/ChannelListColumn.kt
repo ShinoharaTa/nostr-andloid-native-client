@@ -74,10 +74,11 @@ fun ChannelListColumn(
 @Composable
 private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md, DeckSpace.Md),
+        // 2段行の高さを切り詰め: 縦は Sm、アバターは AvatarSize(38) に統一。
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md, DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
+        Box(Modifier.size(DeckDimens.AvatarSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
             AvatarSquare(ch.name, ch.pictureUrl)
         }
         Spacer(Modifier.width(DeckSpace.Sm))
