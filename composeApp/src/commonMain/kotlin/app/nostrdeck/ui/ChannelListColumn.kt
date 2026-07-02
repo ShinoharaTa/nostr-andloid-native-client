@@ -53,6 +53,7 @@ fun ChannelListColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onChannelClick: (Channel) -> Unit = {},
     onPinChannel: (Channel) -> Unit = {},
 ) {
@@ -60,7 +61,7 @@ fun ChannelListColumn(
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {

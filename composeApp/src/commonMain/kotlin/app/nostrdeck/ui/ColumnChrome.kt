@@ -13,12 +13,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +45,23 @@ import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 
 /**
+ * デッキカラムの ⋯ メニューに載せる操作。ヘッダーの末尾は ⋯ 1つに集約する
+ * （📌/grip/✕ は出さない）。
+ */
+data class ColumnMenuActions(
+    val canMoveLeft: Boolean,
+    val canMoveRight: Boolean,
+    val onMoveLeft: () -> Unit,
+    val onMoveRight: () -> Unit,
+    /** フィルター再設定（設定を持たないカラムは null → 項目非表示）。 */
+    val onEdit: (() -> Unit)?,
+    val onDelete: () -> Unit,
+)
+
+/**
  * 全カラム共通のヘッダ（designs/index.html の .col-head）。
- * pinned で末尾アクションを切替：固定=grip(並べ替え) / 一時=📌固定+✕閉じる。
+ * [menu] 非null（=デッキカラム）なら末尾は ⋯ メニューのみ。
+ * null の場合は従来どおり onPin/onClose を個別表示（2ペイン詳細の ✕ 等）。
  */
 @Composable
 fun ColumnHeader(
@@ -50,6 +75,8 @@ fun ColumnHeader(
     onClose: (() -> Unit)? = null,
     /** 非null なら先頭アイコン位置に「←」戻る矢印を出す（単体画面の確実な戻り導線）。 */
     onBack: (() -> Unit)? = null,
+    /** デッキカラムの ⋯ メニュー（移動 ◀▶ / フィルター編集 / 削除）。 */
+    menu: ColumnMenuActions? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
@@ -73,17 +100,71 @@ fun ColumnHeader(
             Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
                 lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
-        if (onPin != null) {
-            HeaderIconButton(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
-                tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
-        }
-        if (pinned && onPin != null) {
-            HeaderIconButton(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
-        } else if (onClose != null) {
-            HeaderIconButton(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
+        if (menu != null) {
+            // デッキカラム: ⋯ に集約（移動 ◀▶ / フィルター編集 / 削除）。
+            ColumnMenuButton(menu)
+        } else {
+            // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
+            if (onPin != null) {
+                HeaderIconButton(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
+                    tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
+            }
+            if (pinned && onPin != null) {
+                HeaderIconButton(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
+            } else if (onClose != null) {
+                HeaderIconButton(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
+            }
         }
     }
+}
+
+/** ⋯ ボタンとそのドロップダウン（移動 ｜◀｜▶｜ / フィルターを編集 / カラムを削除）。 */
+@Composable
+private fun ColumnMenuButton(menu: ColumnMenuActions) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        HeaderIconButton(Icons.Outlined.MoreHoriz, "カラムメニュー", DeckColors.Text3, onClick = { open = true })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // 移動: 1行に ◀▶ を並べる（端では該当方向を無効化）。
+            Row(
+                Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("移動", color = DeckColors.Text, fontSize = DeckType.Sub)
+                Spacer(Modifier.width(DeckSpace.Lg))
+                MoveArrow(Icons.Outlined.ChevronLeft, "左へ移動", enabled = menu.canMoveLeft) {
+                    menu.onMoveLeft()
+                }
+                Spacer(Modifier.width(DeckSpace.Sm))
+                MoveArrow(Icons.Outlined.ChevronRight, "右へ移動", enabled = menu.canMoveRight) {
+                    menu.onMoveRight()
+                }
+            }
+            menu.onEdit?.let { edit ->
+                DropdownMenuItem(
+                    text = { Text("フィルターを編集") },
+                    leadingIcon = { Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+                    onClick = { open = false; edit() },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("カラムを削除", color = DeckColors.Warn) },
+                leadingIcon = { Icon(Icons.Outlined.Close, null, tint = DeckColors.Warn, modifier = Modifier.size(DeckDimens.IconMd)) },
+                onClick = { open = false; menu.onDelete() },
+            )
+        }
+    }
+}
+
+/** メニュー内の ◀/▶（32dp 実タップ領域・Surface2 の面・無効時は沈める）。 */
+@Composable
+private fun MoveArrow(icon: ImageVector, cd: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(DeckDimens.TouchTargetXs).clip(RoundedCornerShape(DeckRadius.Sm))
+            .background(if (enabled) DeckColors.Surface2 else DeckColors.Surface)
+            .let { if (enabled) it.clickable(onClick = onClick) else it },
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, cd, tint = if (enabled) DeckColors.Text else DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconLg)) }
 }
 
 /**

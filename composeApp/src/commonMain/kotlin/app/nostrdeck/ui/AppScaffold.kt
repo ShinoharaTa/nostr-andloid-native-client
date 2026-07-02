@@ -79,6 +79,9 @@ fun AppScaffold(state: DeckState) {
             }
         }
 
+        // ⋯メニュー →「フィルターを編集」のダイアログ（対象 id が入ったら表示）。
+        EditColumnDialog(state)
+
         if (state.showAddColumn) {
             AddColumnSheet(
                 onDismiss = { state.showAddColumn = false },

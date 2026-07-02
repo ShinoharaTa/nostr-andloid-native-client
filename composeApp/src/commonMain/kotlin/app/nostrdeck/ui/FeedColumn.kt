@@ -35,6 +35,7 @@ fun FeedColumn(
     offline: Boolean = false,
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onNoteClick: (NoteUi) -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
@@ -52,7 +53,7 @@ fun FeedColumn(
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -85,6 +86,7 @@ fun FollowingFeedColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onNoteClick: (NoteUi) -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
@@ -100,7 +102,7 @@ fun FollowingFeedColumn(
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {

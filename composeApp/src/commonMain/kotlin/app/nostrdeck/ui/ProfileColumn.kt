@@ -46,6 +46,7 @@ fun ProfileColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onFollowToggle: () -> Unit = {},
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
@@ -57,7 +58,7 @@ fun ProfileColumn(
             title = profile?.name?.takeIf { it.isNotBlank() } ?: spec.title,
             subtitle = "プロフィール",
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {

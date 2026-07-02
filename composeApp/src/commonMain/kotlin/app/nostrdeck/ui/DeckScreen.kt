@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +41,7 @@ import app.nostrdeck.data.SampleData
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.editTemplate
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
@@ -77,12 +79,15 @@ private fun ExpandedDeck(state: DeckState) {
 
     Row(Modifier.fillMaxSize().horizontalScroll(scroll)) {
         state.columns.forEach { spec ->
-            RenderColumn(
-                spec, state, state.listStateFor(spec.id),
-                Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
-            )
-            // カラム境界は「線」ではなく Bg の隙間(ガター)で。暗い背景で明るいカラムを分離。
-            Box(Modifier.fillMaxHeight().width(DeckSpace.Sm).background(DeckColors.Bg))
+            // key で id に紐付け：◀▶ 移動時に remember 状態（メニュー開閉等）が隣へ移らないように。
+            key(spec.id) {
+                RenderColumn(
+                    spec, state, state.listStateFor(spec.id),
+                    Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
+                )
+                // カラム境界は「線」ではなく Bg の隙間(ガター)で。暗い背景で明るいカラムを分離。
+                Box(Modifier.fillMaxHeight().width(DeckSpace.Sm).background(DeckColors.Bg))
+            }
         }
         // 末尾のカラム追加（テンプレシートを開く）
         Box(
@@ -161,8 +166,16 @@ private fun CompactPager(state: DeckState) {
 /** spec.renderer に応じてカラム実体を描き分けるディスパッチャ。 */
 @Composable
 private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyListState, modifier: Modifier) {
-    val onPin = { if (spec.pinned) state.unpin(spec.id) else state.pin(spec.id) }
-    val onClose = { state.close(spec.id) }
+    // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除）。
+    val index = state.columns.indexOfFirst { it.id == spec.id }
+    val menu = ColumnMenuActions(
+        canMoveLeft = index > 0,
+        canMoveRight = index >= 0 && index < state.columns.lastIndex,
+        onMoveLeft = { state.moveColumn(spec.id, -1) },
+        onMoveRight = { state.moveColumn(spec.id, +1) },
+        onEdit = if (spec.editTemplate() != null) ({ state.editingColumnId = spec.id }) else null,
+        onDelete = { state.removeColumn(spec.id) },
+    )
 
     when (spec.renderer) {
         ColumnRenderer.FEED -> {
@@ -176,7 +189,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             val profilePubkey = spec.filter.authors.firstOrNull()
             if (live) {
-                DisposableEffect(spec.id) {
+                DisposableEffect(spec.id, spec.filter) {
                     if (isFollowingFeed) {
                         repo!!.subscribeFollowing(spec.id)
                         repo.subscribeNotifications("home_notif")  // 自分宛リアクション/リポストを混ぜ込むため
@@ -200,14 +213,14 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
                     val entries = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
                     FollowingFeedColumn(
-                        spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
+                        spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onNoticeClick = { id -> state.openThreadDetail(id) },
                     )
                 }
                 isNotifications -> {
                     // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。
-                    NotificationsColumn(state, spec, modifier, listState, onPin = onPin, onClose = onClose)
+                    NotificationsColumn(state, spec, modifier, listState, menu = menu)
                 }
                 isProfile && profilePubkey != null -> {
                     val scope = rememberCoroutineScope()
@@ -216,7 +229,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
                     ProfileColumn(
                         spec, profilePubkey, profile, following, notes, modifier, listState,
-                        onPin = onPin, onClose = onClose,
+                        menu = menu,
                         onFollowToggle = {
                             scope.launch { if (following) repo!!.unfollow(profilePubkey) else repo!!.follow(profilePubkey) }
                         },
@@ -224,11 +237,11 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     )
                 }
                 else -> {
-                    val notes = if (live) remember(spec.id) { repo!!.columnFeed(spec.filter) }.collectAsState().value
+                    val notes = if (live) remember(spec.id, spec.filter) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     else SampleData.feedFor(spec)
                     FeedColumn(
                         spec, notes, modifier, listState,
-                        onPin = onPin, onClose = onClose,
+                        menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                     )
                 }
@@ -245,13 +258,13 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 val entries = remember(spec.id) { repo.threadFeed(focusId) }
                     .collectAsState(emptyList()).value
                 ThreadColumn(
-                    spec, entries, modifier, listState, onPin = onPin, onClose = onClose,
+                    spec, entries, modifier, listState, menu = menu,
                     onReply = { note -> state.replyTo = note.event; state.showCompose = true },
                     onQuote = { note -> state.quoting = note.event; state.showCompose = true },
                     onAuthorClick = { pk -> state.openProfile(pk) },
                 )
             } else {
-                ThreadColumn(spec, SampleData.thread(), modifier, listState, onPin = onPin, onClose = onClose)
+                ThreadColumn(spec, SampleData.thread(), modifier, listState, menu = menu)
             }
         }
         ColumnRenderer.CHANNEL_LIST -> {
@@ -261,7 +274,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             else SampleData.channels
             ChannelListColumn(
                 spec, channels, pinnedChannelIds(state), modifier, listState,
-                onPin = onPin, onClose = onClose,
+                menu = menu,
                 onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch), originId = spec.id) },
                 onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
             )
@@ -269,9 +282,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         ColumnRenderer.ROOM -> {
             val channelId = spec.filter.channelId
             if (channelId != null) {
-                LiveChannelRoom(spec, channelId, modifier, listState, onPin = onPin, onClose = onClose)
+                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu)
             } else {
-                ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose)
+                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
             }
         }
     }

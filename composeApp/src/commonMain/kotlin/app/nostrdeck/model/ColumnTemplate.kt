@@ -64,5 +64,26 @@ fun ColumnTemplate.build(input: String = "", notifKinds: List<Int> = NotifKind.e
 private fun spec(id: String, title: String, subtitle: String, kind: ColumnKind, filter: ReqFilter) =
     ColumnSpec(id, title, subtitle, kind, ColumnRenderer.FEED, filter, pinned = true)
 
+/**
+ * 既存カラムの「フィルター再設定」に使うテンプレ（設定を持たないカラムは null）。
+ * FOLLOWING/DM/スレッド/チャンネル系は設定項目が無いので編集対象外。
+ */
+fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
+    kind == ColumnKind.HASHTAG -> ColumnTemplate.HASHTAG
+    kind == ColumnKind.PROFILE -> ColumnTemplate.PROFILE
+    kind == ColumnKind.NOTIFICATIONS -> ColumnTemplate.NOTIFICATIONS
+    kind == ColumnKind.GLOBAL && filter.search != null -> ColumnTemplate.SEARCH
+    kind == ColumnKind.GLOBAL -> ColumnTemplate.GLOBAL
+    else -> null
+}
+
+/** 現在のテキスト設定値（TEXT 設定テンプレのプリフィル用）。 */
+fun ColumnSpec.editText(): String = when (kind) {
+    ColumnKind.HASHTAG -> filter.hashtags.firstOrNull().orEmpty()
+    ColumnKind.PROFILE -> filter.authors.firstOrNull().orEmpty()
+    ColumnKind.GLOBAL -> filter.search ?: filter.relays.firstOrNull().orEmpty()
+    else -> ""
+}
+
 private fun npubShort(s: String): String =
     if (s.length > 14) s.take(10) + "…" else s.ifBlank { "profile" }

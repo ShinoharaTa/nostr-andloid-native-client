@@ -46,6 +46,7 @@ fun ThreadColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
@@ -56,7 +57,7 @@ fun ThreadColumn(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             iconTint = DeckColors.Repost, iconBg = DeckColors.Repost.copy(alpha = 0.14f),
-            onPin = onPin, onClose = onClose, onBack = onBack,
+            onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {

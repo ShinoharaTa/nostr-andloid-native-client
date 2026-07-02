@@ -105,6 +105,7 @@ fun NotificationsColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
@@ -120,7 +121,7 @@ fun NotificationsColumn(
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
-            onPin = onPin, onClose = onClose,
+            onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(

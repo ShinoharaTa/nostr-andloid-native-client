@@ -138,12 +138,37 @@ class DeckState(
         columns.removeAll { it.id == columnId && !it.pinned }
     }
 
+    /** カラムを削除（⋯メニューの「削除」。ピン留めでも取り除き、永続化にも反映）。 */
+    fun removeColumn(columnId: String) {
+        val wasPinned = columns.firstOrNull { it.id == columnId }?.pinned == true
+        columns.removeAll { it.id == columnId }
+        if (wasPinned) persistPinned()
+    }
+
     /** ドラッグ並べ替え（from→to）。 */
     fun move(from: Int, to: Int) {
         if (from in columns.indices && to in columns.indices) {
             columns.add(to, columns.removeAt(from))
             persistPinned()
         }
+    }
+
+    /** ⋯メニューの ◀▶ 並べ替え。[delta] = -1(左) / +1(右)。 */
+    fun moveColumn(columnId: String, delta: Int) {
+        val from = columns.indexOfFirst { it.id == columnId }
+        if (from >= 0) move(from, from + delta)
+    }
+
+    /** フィルター再設定の対象カラム id（非null なら編集ダイアログを表示）。 */
+    var editingColumnId by mutableStateOf<String?>(null)
+
+    /**
+     * カラムの内容（タイトル/フィルタ等）を差し替える（フィルター再設定）。
+     * id/pinned/order は維持し、購読は spec.filter をキーにした側で貼り直される。
+     */
+    fun updateColumn(columnId: String, newSpec: ColumnSpec) {
+        replace(columnId) { old -> newSpec.copy(id = old.id, pinned = old.pinned, order = old.order) }
+        if (columns.firstOrNull { it.id == columnId }?.pinned == true) persistPinned()
     }
 
     /** 戻る操作で閉じられる一時カラムがあるか（システムバック有効判定）。 */

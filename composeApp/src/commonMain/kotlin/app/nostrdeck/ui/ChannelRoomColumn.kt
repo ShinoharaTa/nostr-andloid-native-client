@@ -72,11 +72,12 @@ fun LiveChannelRoom(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
-        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin, onClose, onBack)
+        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack)
         return
     }
     DisposableEffect(spec.id) {
@@ -94,7 +95,7 @@ fun LiveChannelRoom(
     val names by remember { repo.profileNames() }.collectAsState(emptyMap())
     val scope = rememberCoroutineScope()
     ChannelRoomColumn(
-        spec, messages, modifier, listState, onPin = onPin, onClose = onClose, onBack = onBack,
+        spec, messages, modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         names = names,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url) } },
@@ -113,6 +114,7 @@ fun ChannelRoomColumn(
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
     names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
@@ -128,7 +130,7 @@ fun ChannelRoomColumn(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             iconTint = DeckColors.Zap, iconBg = DeckColors.Zap.copy(alpha = 0.14f),
-            onPin = onPin, onClose = onClose, onBack = onBack,
+            onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(
