@@ -23,7 +23,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -95,13 +94,11 @@ fun ReactionPickerSheet(
                 HorizontalDivider(color = DeckColors.Border)
                 Spacer(Modifier.size(DeckSpace.Sm))
             }
-            OutlinedTextField(
+            DeckTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = DeckColors.Text3) },
-                placeholder = { Text("絵文字を検索（例: わらい / fire / 🔥）", color = DeckColors.Text3, fontSize = DeckType.Sub) },
+                placeholder = "絵文字を検索（例: わらい / fire / 🔥）",
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
             Spacer(Modifier.size(DeckSpace.Sm))

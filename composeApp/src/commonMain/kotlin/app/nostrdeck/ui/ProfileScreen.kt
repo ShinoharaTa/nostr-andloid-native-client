@@ -24,10 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -315,9 +313,9 @@ private fun ProfileBanner(url: String?) {
 @Composable
 private fun FollowButton(following: Boolean, onClick: () -> Unit) {
     if (following) {
-        OutlinedButton(onClick = onClick) { Text("フォロー中", fontSize = DeckType.Caption) }
+        DeckGhostButton("フォロー中", onClick = onClick)
     } else {
-        Button(onClick = onClick) { Text("フォロー", fontSize = DeckType.Caption) }
+        DeckButton("フォロー", onClick = onClick)
     }
 }
 

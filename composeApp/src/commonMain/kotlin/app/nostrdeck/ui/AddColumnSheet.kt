@@ -6,19 +6,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -101,16 +100,23 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
 
     Column(Modifier.fillMaxWidth().padding(DeckSpace.Lg)) {
         when (t.config) {
-            ColumnConfig.TEXT -> OutlinedTextField(
+            ColumnConfig.TEXT -> DeckTextField(
                 value = text, onValueChange = { text = it },
-                label = { Text(t.hint ?: "") }, singleLine = true,
+                placeholder = t.hint ?: "",
                 modifier = Modifier.fillMaxWidth(),
             )
             ColumnConfig.NOTIF_FILTER -> Column {
                 Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
                 NotifKind.entries.forEach { k ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = notif[k] == true, onCheckedChange = { notif[k] = it })
+                        Checkbox(
+                            checked = notif[k] == true, onCheckedChange = { notif[k] = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = DeckColors.Accent,
+                                uncheckedColor = DeckColors.Text3,
+                                checkmarkColor = DeckColors.Bg,
+                            ),
+                        )
                         Text(k.label, color = DeckColors.Text, fontSize = DeckType.Sub)
                     }
                 }
@@ -118,16 +124,17 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
             ColumnConfig.NONE -> Unit
         }
         Spacer(Modifier.height(DeckSpace.Lg))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onBack) { Text("戻る") }
-            Spacer(Modifier.height(DeckSpace.Xs))
-            Button(
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            DeckGhostButton("戻る", onClick = onBack)
+            Spacer(Modifier.width(DeckSpace.Sm))
+            DeckButton(
+                "追加",
                 onClick = {
                     val kinds = NotifKind.entries.filter { notif[it] == true }.map { it.kind }
                     onAdd(t.build(input = text, notifKinds = kinds))
                 },
                 enabled = t.config != ColumnConfig.TEXT || text.isNotBlank(),
-            ) { Text("追加") }
+            )
         }
     }
 }

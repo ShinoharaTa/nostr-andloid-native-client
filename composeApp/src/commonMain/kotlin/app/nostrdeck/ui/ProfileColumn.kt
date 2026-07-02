@@ -14,9 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -114,12 +112,8 @@ private fun ProfileHeaderCard(
 @Composable
 private fun FollowButton(isFollowing: Boolean, onClick: () -> Unit) {
     if (isFollowing) {
-        OutlinedButton(onClick = onClick) {
-            Text("フォロー中", fontSize = DeckType.Caption)
-        }
+        DeckGhostButton("フォロー中", onClick = onClick)
     } else {
-        Button(onClick = onClick) {
-            Text("フォロー", fontSize = DeckType.Caption)
-        }
+        DeckButton("フォロー", onClick = onClick)
     }
 }

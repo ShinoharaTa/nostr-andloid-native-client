@@ -15,17 +15,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -138,6 +134,7 @@ private fun MediaSettings() {
     }
     val servers by repo.mediaServersFlow().collectAsState(emptyList())
     var input by remember { mutableStateOf("") }
+    var confirmRemove by remember { mutableStateOf<String?>(null) }
 
     Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
@@ -148,12 +145,12 @@ private fun MediaSettings() {
     Spacer(Modifier.size(DeckSpace.Md))
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = input, onValueChange = { input = it }, singleLine = true,
-            label = { Text("https://…") }, modifier = Modifier.weight(1f),
+        DeckTextField(
+            value = input, onValueChange = { input = it },
+            placeholder = "https://…", modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        Button(onClick = { repo.addMediaServer(input); input = "" }) { Text("追加") }
+        DeckButton("追加", onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
@@ -179,13 +176,21 @@ private fun MediaSettings() {
                     onCheckedChange = { repo.setMediaServerEnabled(s.url, it) },
                     colors = switchColors,
                 )
-                Text(
-                    "削除", color = DeckColors.Accent, fontSize = DeckType.Caption,
-                    modifier = Modifier.clickable { repo.removeMediaServer(s.url) }.padding(DeckSpace.Sm),
-                )
+                DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = s.url })
             }
             HorizontalDivider(color = DeckColors.Border)
         }
+    }
+
+    // 削除は破壊的操作なので確認を挟む。
+    confirmRemove?.let { url ->
+        DeckConfirmDialog(
+            title = "メディアサーバーを削除しますか？",
+            text = url,
+            confirmLabel = "削除する", destructive = true,
+            onConfirm = { repo.removeMediaServer(url); confirmRemove = null },
+            onDismiss = { confirmRemove = null },
+        )
     }
 }
 
@@ -206,30 +211,20 @@ private fun DataSettings() {
         color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = 19.sp,
     )
     Spacer(Modifier.size(DeckSpace.Lg))
-    Button(onClick = { confirm = true }, enabled = repo != null) {
-        Text("キャッシュを強制消去")
-    }
+    DeckButton("キャッシュを強制消去", onClick = { confirm = true }, enabled = repo != null)
     if (done) {
         Spacer(Modifier.size(DeckSpace.Sm))
         Text("キャッシュを消去し、再取得を開始しました。", color = DeckColors.Accent, fontSize = DeckType.Caption)
     }
 
     if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("キャッシュを消去しますか？") },
-            text = {
-                Text(
-                    "保存済みのイベント・プロフィール・チャンネル・送信待ちをすべて削除し、" +
-                        "リレーから取り直します。鍵やリレー設定は消えません。この操作は元に戻せません。",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { repo?.purgeCache(); confirm = false; done = true }) {
-                    Text("消去する")
-                }
-            },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("キャンセル") } },
+        DeckConfirmDialog(
+            title = "キャッシュを消去しますか？",
+            text = "保存済みのイベント・プロフィール・チャンネル・送信待ちをすべて削除し、" +
+                "リレーから取り直します。鍵やリレー設定は消えません。この操作は元に戻せません。",
+            confirmLabel = "消去する", destructive = true,
+            onConfirm = { repo?.purgeCache(); confirm = false; done = true },
+            onDismiss = { confirm = false },
         )
     }
 }
@@ -276,6 +271,8 @@ private fun RelaySettings() {
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
     var publishing by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf<String?>(null) }
+    var confirmSave by remember { mutableStateOf(false) }
 
     Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
@@ -287,29 +284,23 @@ private fun RelaySettings() {
     Spacer(Modifier.size(DeckSpace.Md))
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
+        DeckTextField(
             value = input,
             onValueChange = { input = it },
-            singleLine = true,
-            label = { Text("wss://…") },
+            placeholder = "wss://…",
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        Button(onClick = { repo.addRelay(input); input = "" }) { Text("追加") }
+        DeckButton("追加", onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
-    Button(
+    // 保存 = kind:10002 をネットワークへ公開する外向き操作なので確認を挟む。
+    DeckButton(
+        if (publishing) "保存中…" else "保存",
         enabled = !publishing,
-        onClick = {
-            publishing = true
-            scope.launch {
-                val ok = repo.publishRelayList()
-                publishing = false
-                toast(if (ok) "リレーリストを公開しました" else "公開に失敗しました（鍵を確認してください）")
-            }
-        },
-    ) { Text(if (publishing) "保存中…" else "保存") }
+        onClick = { confirmSave = true },
+    )
 
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
@@ -328,13 +319,39 @@ private fun RelaySettings() {
                 }
                 RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
                 RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
-                Text(
-                    "削除", color = DeckColors.Accent, fontSize = DeckType.Caption,
-                    modifier = Modifier.clickable { repo.removeRelay(r.url) }.padding(DeckSpace.Sm),
-                )
+                DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
             }
             HorizontalDivider(color = DeckColors.Border)
         }
+    }
+
+    // 削除は破壊的操作なので確認を挟む。
+    confirmRemove?.let { url ->
+        DeckConfirmDialog(
+            title = "リレーを削除しますか？",
+            text = "$url\n一覧から削除されます。次回「保存」で公開する kind:10002 にも反映されます。",
+            confirmLabel = "削除する", destructive = true,
+            onConfirm = { repo.removeRelay(url); confirmRemove = null },
+            onDismiss = { confirmRemove = null },
+        )
+    }
+    if (confirmSave) {
+        DeckConfirmDialog(
+            title = "リレーリストを公開しますか？",
+            text = "現在の Read/Write 設定を kind:10002 として署名し、" +
+                "Write リレーと接続中リレーへ配信します。ネットワークに公開される操作です。",
+            confirmLabel = "公開する",
+            onConfirm = {
+                confirmSave = false
+                publishing = true
+                scope.launch {
+                    val ok = repo.publishRelayList()
+                    publishing = false
+                    toast(if (ok) "リレーリストを公開しました" else "公開に失敗しました（鍵を確認してください）")
+                }
+            },
+            onDismiss = { confirmSave = false },
+        )
     }
 }
 
@@ -390,24 +407,23 @@ private fun LocalSignerLogin() {
     Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
 
     Spacer(Modifier.size(DeckSpace.Md))
-    OutlinedTextField(
+    DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
-        singleLine = true,
-        label = { Text("nsec を貼り付けて取り込み") },
+        placeholder = "nsec を貼り付けて取り込み",
         // 秘密鍵なのでパスワード扱い：マスク表示 + パスワードキーボード + 自動入力対応。
         // 中身を目視確認できるよう表示/非表示トグルを付ける（自動入力の取り違え検知用）。
         visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        trailingIcon = {
+        inputModifier = Modifier.secretAutofill { nsecInput = it; error = null },
+        trailing = {
             Text(
                 if (reveal) "隠す" else "表示",
                 color = DeckColors.Accent, fontSize = DeckType.Caption,
-                modifier = Modifier.clickable { reveal = !reveal }.padding(DeckSpace.Sm),
+                modifier = Modifier.clickable { reveal = !reveal }.padding(DeckSpace.Xs),
             )
         },
-        modifier = Modifier.fillMaxWidth()
-            .secretAutofill { nsecInput = it; error = null },
+        modifier = Modifier.fillMaxWidth(),
     )
     error?.let {
         Spacer(Modifier.size(DeckSpace.Xs))
@@ -416,7 +432,7 @@ private fun LocalSignerLogin() {
 
     Spacer(Modifier.size(DeckSpace.Sm))
     Row(Modifier.fillMaxWidth()) {
-        Button(onClick = {
+        DeckButton("取り込み", onClick = {
             // 改行・空白は除去（折り返しコピーや自動入力の混入対策）。先に検証し、
             // 正しい nsec のときだけ確認ダイアログを出す（破壊的操作の手前で止める）。
             val s = nsecInput.filterNot { it.isWhitespace() }
@@ -431,13 +447,9 @@ private fun LocalSignerLogin() {
             } catch (e: Throwable) {
                 error = "nsec の取り込みに失敗: ${e.message}"
             }
-        }) {
-            Text("取り込み")
-        }
+        })
         Spacer(Modifier.size(DeckSpace.Md))
-        Button(onClick = { confirmGenerate = true }) {
-            Text("新規生成")
-        }
+        DeckGhostButton("新規生成", onClick = { confirmGenerate = true })
     }
 
     // --- 鍵切り替えの確認（破壊的操作のガード） ---
@@ -476,17 +488,13 @@ private fun LocalSignerLogin() {
  */
 @Composable
 private fun KeySwitchConfirm(title: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Text(
-                "現在のアカウントのフォロー・リレーリスト(NIP-65)・タイムライン履歴・" +
-                    "プロフィールのキャッシュはすべて破棄され、新しい鍵で読み直します。" +
-                    "この操作は元に戻せません。",
-            )
-        },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("切り替える") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    DeckConfirmDialog(
+        title = title,
+        text = "現在のアカウントのフォロー・リレーリスト(NIP-65)・タイムライン履歴・" +
+            "プロフィールのキャッシュはすべて破棄され、新しい鍵で読み直します。" +
+            "この操作は元に戻せません。",
+        confirmLabel = "切り替える", destructive = true,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
     )
 }

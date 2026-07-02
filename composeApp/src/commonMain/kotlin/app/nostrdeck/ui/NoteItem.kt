@@ -18,12 +18,10 @@ import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Repeat
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -172,15 +170,13 @@ fun NoteItem(
 
   // [M10] Zap: lud16 を提示（自動 Zap=NIP-57 は今後）。ボタンとしては機能する。
   if (showZap) {
-      val lud = note.author.lud16
-      AlertDialog(
-          onDismissRequest = { showZap = false },
-          title = { Text("⚡ Zap") },
-          text = {
-              // ⚡ は lud16 がある時だけ表示しているので、ここでは常に設定済み。
-              Text("${note.author.name} の Lightning アドレス:\n$lud\n\n自動 Zap（NIP-57）は今後対応します。")
-          },
-          confirmButton = { TextButton(onClick = { showZap = false }) { Text("閉じる") } },
+      // ⚡ は lud16 がある時だけ表示しているので、ここでは常に設定済み。
+      DeckConfirmDialog(
+          title = "⚡ Zap",
+          text = "${note.author.name} の Lightning アドレス:\n${note.author.lud16}\n\n自動 Zap（NIP-57）は今後対応します。",
+          confirmLabel = "閉じる", dismissLabel = null,
+          onConfirm = { showZap = false },
+          onDismiss = { showZap = false },
       )
   }
 

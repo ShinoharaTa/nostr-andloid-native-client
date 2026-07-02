@@ -31,13 +31,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -340,9 +337,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                         )
                         Spacer(Modifier.weight(1f))
                         // 投稿中の強制キャンセル。
-                        TextButton(onClick = { sendJob?.cancel() }) {
-                            Text("キャンセル", color = DeckColors.Text2, fontWeight = DeckWeight.Link)
-                        }
+                        DeckTextButton("キャンセル", color = DeckColors.Text2, onClick = { sendJob?.cancel() })
                     } else {
                         // 画像添付（ツールバー操作・40dp 実タップ領域）。
                         Box(
@@ -351,19 +346,10 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Outlined.Image, "画像を添付", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         Spacer(Modifier.weight(1f))
-                        Button(
+                        DeckButton(
+                            when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
                             onClick = doSend, enabled = canSend,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = DeckColors.Text, contentColor = DeckColors.Bg,
-                                disabledContainerColor = DeckColors.Surface3, disabledContentColor = DeckColors.Text3,
-                            ),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
-                        ) {
-                            Text(
-                                when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
-                                fontWeight = DeckWeight.Strong,
-                            )
-                        }
+                        )
                     }
                 }
             }
