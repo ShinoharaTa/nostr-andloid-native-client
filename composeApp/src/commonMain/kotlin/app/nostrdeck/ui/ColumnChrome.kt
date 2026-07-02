@@ -56,16 +56,13 @@ fun ColumnHeader(
             .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 先頭は常に 40dp の固定スロット（←戻る / 装飾バッジのどちらでも）。
-        // タイトル開始位置とヘッダー高さが画面間でブレないようにする。
+        // 先頭は常に 40dp の固定スロット（←戻る / タイトルアイコンのどちらでも）。
+        // 戻ると同じ「素の 20dp グリフ」で描き、チップ下地を廃止して視覚差をなくす。
         if (onBack != null) {
             HeaderBackButton(onClick = onBack)
         } else {
             Box(Modifier.size(DeckDimens.TouchTargetSm), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.size(28.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(iconBg),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(DeckDimens.IconLg)) }
+                Icon(leadingIcon, null, tint = iconTint, modifier = Modifier.size(DeckDimens.IconLg))
             }
         }
         Spacer(Modifier.width(DeckSpace.Sm))
