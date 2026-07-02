@@ -65,8 +65,6 @@ fun MuteSettings() {
         onDispose { repo.unsubscribeColumn("mute_list") }
     }
     val mute = repo.muteListFlow().collectAsState().value
-    var timedOut by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(6_000); timedOut = true }
 
     // 下書き状態。サーバ由来の mute を、編集中・保存中でないときだけ取り込む（編集を潰さない）。
     var draft by remember { mutableStateOf<List<MuteEntry>?>(null) }
@@ -112,11 +110,13 @@ fun MuteSettings() {
 
         val entries = draft
         when {
-            entries == null && !timedOut ->
+            // 読み込み中は「無い」と誤表示せず、届くまでスピナーで待機し続ける。
+            // （リレーは「存在しない」を返さないため、遅延と未作成を確実には区別できない）
+            entries == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), strokeWidth = 2.dp, color = DeckColors.Text2)
+                Spacer(Modifier.width(DeckSpace.Sm))
                 Text("リレーから取得中…", color = DeckColors.Text3, fontSize = DeckType.Sub)
-            entries == null ->
-                Text("ミュートリストが見つかりませんでした（kind:10000 が未作成の可能性）",
-                    color = DeckColors.Text3, fontSize = DeckType.Sub)
+            }
             entries.none { it.isPublic || it.isPrivate } && !edited ->
                 Text("ミュートしている項目はありません", color = DeckColors.Text3, fontSize = DeckType.Sub)
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
