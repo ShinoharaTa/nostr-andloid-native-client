@@ -1439,6 +1439,27 @@ class EventRepository(
     }.getOrElse { false }
 
     /**
+     * 指定ユーザーを**非公開**でミュートする（NIP-51 の private "p"）。
+     * 現在のミュートリストに `p:pubkey` を isPrivate=true でマージして再発行する。
+     * 既に公開ミュート済みならその公開フラグは維持したまま非公開も立てる。
+     * 復号できない非公開項目がある（[MuteList.nip44Locked]）と再発行で失う恐れがあるため中止する。
+     * 戻り値: 発行できたか（既にミュート済み/ロック中/失敗は false）。
+     */
+    suspend fun muteUserPrivate(pubkey: String): Boolean {
+        val current = muteFlow.value
+        if (current?.nip44Locked == true) return false          // 編集不可（NIP-44 ロック中）
+        val entries = current?.entries ?: emptyList()
+        val existing = entries.find { it.category == MuteCategory.USER && it.value == pubkey }
+        if (existing?.isPrivate == true) return false            // 既に非公開ミュート済み
+        val merged = if (existing != null) {
+            entries.map { if (it === existing) it.copy(isPrivate = true) else it }
+        } else {
+            entries + MuteEntry(MuteCategory.USER, pubkey, isPublic = false, isPrivate = true)
+        }
+        return publishMuteList(merged)
+    }
+
+    /**
      * 自分の kind:10030（NIP-51 絵文字リスト）。直接の `emoji` タグを取り込み、
      * `a`(=30030:pubkey:dtag) 参照のセット作者へ購読を張って kind:30030 を取りに行く。古い版は無視。
      */

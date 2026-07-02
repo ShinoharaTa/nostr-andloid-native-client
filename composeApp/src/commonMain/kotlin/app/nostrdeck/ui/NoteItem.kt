@@ -17,12 +17,14 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,9 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ReactionUi
@@ -67,7 +72,10 @@ fun NoteItem(
 ) {
   val repo = LocalRepository.current
   val scope = rememberCoroutineScope()
+  val clipboard = LocalClipboardManager.current
+  val me by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
   var repostMenu by remember { mutableStateOf(false) }
+  var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
   var showReactionPicker by remember { mutableStateOf(false) }
   // ファボ/リアクションの取り消しは kind:5（削除イベント）の発行を伴うため、確認を挟む。
@@ -165,10 +173,41 @@ fun NoteItem(
                 }
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                 ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
-                Spacer(Modifier.weight(1f))
-                // Zap は右端。lud16 未設定なら非表示（Zap できない相手にボタンを見せない）。
+                // Zap は絵文字の隣。lud16 未設定なら非表示（Zap できない相手にボタンを見せない）。
                 if (!note.author.lud16.isNullOrBlank()) {
                     ActionButton(Icons.Outlined.Bolt, DeckColors.Text3, onClick = { showZap = true })
+                }
+                Spacer(Modifier.weight(1f))
+                // 3点リーダー（追加操作）は右端。ミュート/各種コピー。
+                Box {
+                    ActionButton(Icons.Outlined.MoreHoriz, DeckColors.Text3, onClick = { moreMenu = true })
+                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                        // 自分の投稿にはミュートを出さない。
+                        if (note.event.pubkey != me) {
+                            DropdownMenuItem(
+                                text = { Text("このユーザーをミュート　※非公開") },
+                                onClick = { moreMenu = false; scope.launch { repo?.muteUserPrivate(note.event.pubkey) } },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("テキストをコピー") },
+                            onClick = {
+                                moreMenu = false
+                                clipboard.setText(AnnotatedString(note.text ?: note.event.content))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("投稿IDをコピー") },
+                            onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note.event.id)) },
+                        )
+                        val note1 = remember(note.event.id) { runCatching { Nip19.hexToNote(note.event.id) }.getOrNull() }
+                        if (note1 != null) {
+                            DropdownMenuItem(
+                                text = { Text("${note1.take(12)}… をコピー") },
+                                onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note1)) },
+                            )
+                        }
+                    }
                 }
             }
         }
