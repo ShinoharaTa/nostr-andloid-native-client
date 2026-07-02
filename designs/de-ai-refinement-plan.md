@@ -1,5 +1,10 @@
 # "AIツールっぽさ" 脱却 — 実行計画
 
+> **結果（2026-07 完了・main 統合済み）**: 施策1（1pxボーダー撤廃→面と隙間・カラム間8dpガター）/
+> 施策2（DeckWeight ロール: Name=Bold・メタ=暗Normal）/ 施策4（近接: 内Xs < ヘッダ↔本文Sm < ブロック間Md）
+> を実施。**施策3（アイコンのウェイトアップ）はユーザー判断で見送り**（Outlined 維持）。
+> 区切り線は「一部残す」判断: ヘッダ直下・設定/シート内の表的リストは 1px 線を許容。
+
 目的: ワイヤーフレーム/管理画面的な「無難で単調な」印象を消し、意図を感じる UI にする。
 既存のデザインシステム（DeckType/DeckSpace/DeckRadius/DeckDimens・モノクロ）を土台に、4施策を段階適用する。
 基準は [ui-design-principles.md](./ui-design-principles.md) / [tokens.css](./tokens.css)。
