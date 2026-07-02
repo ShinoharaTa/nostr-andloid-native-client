@@ -70,12 +70,9 @@ fun DeckRail(state: DeckState) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
-            // ブランドマーク（非操作）。スロット内に中央配置して footprint を他項目と揃える。
+            // ブランドマーク（非操作）＝アプリアイコンと同一デザイン。スロット内に中央配置。
             RailSlot {
-                Box(
-                    Modifier.size(DeckDimens.RailMark).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Accent),
-                    contentAlignment = Alignment.Center,
-                ) { Text("N", color = DeckColors.Bg, fontWeight = FontWeight.Black, fontSize = DeckType.Title) }
+                AppMark(Modifier.size(DeckDimens.RailMark))
             }
 
             NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
