@@ -70,6 +70,8 @@ fun NoteItem(
   var repostMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
   var showReactionPicker by remember { mutableStateOf(false) }
+  // ファボ/リアクションの取り消しは kind:5（削除イベント）の発行を伴うため、確認を挟む。
+  var confirmUnreact by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
   Column(modifier.fillMaxWidth()) {
@@ -148,12 +150,17 @@ fun NoteItem(
                 // 自分が非♡の絵文字でリアクション済みなら、♡でなくその絵文字を表示（タップで取り消し）。
                 val myRx = note.mineReaction
                 if (myRx != null && myRx.display != "❤️") {
-                    MyReactionGlyph(myRx) { scope.launch { repo?.toggleReaction(note.event) } }
+                    // 取り消し=kind:5 発行なので確認を挟む。
+                    MyReactionGlyph(myRx) { confirmUnreact = true }
                 } else {
                     ActionButton(
                         if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
-                        onClick = { scope.launch { repo?.toggleReaction(note.event) } },
+                        onClick = {
+                            // リアクション済み→取り消し(kind:5)は確認を挟む。未リアクション→即送信。
+                            if (note.mineReacted) confirmUnreact = true
+                            else scope.launch { repo?.toggleReaction(note.event) }
+                        },
                     )
                 }
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
@@ -166,6 +173,18 @@ fun NoteItem(
             }
         }
     }
+  }
+
+  // リアクション取り消しの確認。NIP-09 削除イベント(kind:5)を発行するため一旦止める。
+  if (confirmUnreact) {
+      DeckConfirmDialog(
+          title = "リアクションを取り消しますか？",
+          text = "削除イベント（kind:5）を発行してリアクションを取り消します。" +
+              "リレーによっては削除が反映されない場合があります。",
+          confirmLabel = "取り消す", destructive = true,
+          onConfirm = { confirmUnreact = false; scope.launch { repo?.toggleReaction(note.event) } },
+          onDismiss = { confirmUnreact = false },
+      )
   }
 
   // [M10] Zap: lud16 を提示（自動 Zap=NIP-57 は今後）。ボタンとしては機能する。
