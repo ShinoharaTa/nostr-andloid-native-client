@@ -238,7 +238,11 @@ class EventRepository(
             scope.launch { client.messages.collect(::onMessage) }
             // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
             scope.launch { client.state.collect { withContext(relayDispatcher) { refreshRelayConns() } } }
-            activeSubs.forEach { (subId, filters) -> client.subscribe(subId, *filters.toTypedArray()) }
+            // 限定なし(subTargets 無)のサブ、または新リレーが対象集合に含まれるサブだけ張り直す。
+            activeSubs.forEach { (subId, filters) ->
+                val t = subTargets[subId]
+                if (t == null || key in t) client.subscribe(subId, *filters.toTypedArray())
+            }
         }
     }
 
@@ -267,13 +271,34 @@ class EventRepository(
         val list = filters.toList()
         scope.launch(relayDispatcher) {
             activeSubs[subId] = list
+            subTargets.remove(subId)  // 全リレー対象（限定なし）
             relays.values.forEach { it.subscribe(subId, *list.toTypedArray()) }
+        }
+    }
+
+    /** subId ごとの配信先リレー限定（グローバルの複数リレー選択用）。未登録=全リレー。 */
+    private val subTargets = mutableMapOf<String, Set<String>>()
+
+    /**
+     * 指定リレーだけへ購読（未接続なら接続する）。[targets] が空なら全リレーへ。
+     * REQ の配信先のみを絞る簡易版（DB 読み出しは全リレー混在のまま）。
+     */
+    private fun subscribeTargeted(subId: String, targets: Set<String>, vararg filters: Filter) {
+        val norm = targets.map { normalizeRelayUrl(it) }.filter { it.isNotBlank() }.toSet()
+        if (norm.isEmpty()) { subscribeAll(subId, *filters); return }
+        val list = filters.toList()
+        scope.launch(relayDispatcher) {
+            activeSubs[subId] = list
+            subTargets[subId] = norm
+            norm.forEach { ensureRelay(it) }  // 選択リレーへ接続保証
+            relays.filterKeys { it in norm }.values.forEach { it.subscribe(subId, *list.toTypedArray()) }
         }
     }
 
     private fun unsubscribeAll(subId: String) {
         scope.launch(relayDispatcher) {
             activeSubs.remove(subId)
+            subTargets.remove(subId)
             relays.values.forEach { it.unsubscribe(subId) }
         }
     }
@@ -457,10 +482,12 @@ class EventRepository(
     // ---- カラム = REQ ライフサイクル ----
     private val openColumns = mutableSetOf<String>()
 
-    /** カラム表示時に購読開始（subId = columnId）。 */
+    /** カラム表示時に購読開始（subId = columnId）。filter.relays 指定時はそのリレーだけへ配信。 */
     fun subscribeColumn(columnId: String, filter: ReqFilter) {
         if (!openColumns.add(columnId)) return
-        subscribeAll(columnId, filter.toProtocol(limit = 100))
+        val targets = filter.relays.toSet()
+        if (targets.isNotEmpty()) subscribeTargeted(columnId, targets, filter.toProtocol(limit = 100))
+        else subscribeAll(columnId, filter.toProtocol(limit = 100))
     }
 
     /** カラム除去/オフスクリーン時に CLOSE。 */

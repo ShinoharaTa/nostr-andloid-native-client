@@ -23,6 +23,7 @@ import app.nostrdeck.model.NotifKind
 import app.nostrdeck.model.build
 import app.nostrdeck.model.editTemplate
 import app.nostrdeck.model.editText
+import app.nostrdeck.model.editRelays
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckRadius
@@ -47,6 +48,7 @@ fun EditColumnDialog(state: DeckState) {
 
     val repo = LocalRepository.current
     var text by remember(id) { mutableStateOf(spec.editText()) }
+    var relays by remember(id) { mutableStateOf(spec.editRelays()) }
     val kinds = remember(id) {
         mutableStateMapOf<NotifKind, Boolean>().apply {
             NotifKind.entries.forEach { put(it, it.kind in spec.filter.kinds) }
@@ -70,6 +72,7 @@ fun EditColumnDialog(state: DeckState) {
                         placeholder = template.hint ?: "",
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    ColumnConfig.RELAY_SET -> RelaySetEditor(initial = relays, onChange = { relays = it })
                     ColumnConfig.NOTIF_FILTER -> Column {
                         Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
                         Spacer(Modifier.size(DeckSpace.Xs))
@@ -95,10 +98,9 @@ fun EditColumnDialog(state: DeckState) {
             DeckTextButton("保存", color = if (canSave) DeckColors.Text else DeckColors.Text3, onClick = {
                 if (canSave) {
                     val selected = NotifKind.entries.filter { kinds[it] == true }.map { it.kind }
-                    val newSpec = template.build(input = text, notifKinds = selected)
-                    // 変更したカラムはキャッシュを破棄してリロード:
-                    // 旧フィルターの残骸と、新フィルターに一致する古いキャッシュの両方を消し、
-                    // updateColumn による再購読（filter キー）で新鮮なデータを取り直す。
+                    val newSpec = template.build(input = text, notifKinds = selected, relays = relays)
+                    // テキスト系フィルターの変更はキャッシュを破棄してリロード。
+                    // RELAY_SET は配信先の変更のみで DB 内容は同じ（グローバル）なので破棄しない。
                     if (template.config == ColumnConfig.TEXT) {
                         repo?.purgeFeedCache(spec.filter)
                         repo?.purgeFeedCache(newSpec.filter)

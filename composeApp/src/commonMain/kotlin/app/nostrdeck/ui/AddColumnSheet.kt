@@ -96,6 +96,7 @@ private fun TemplateList(onPick: (ColumnTemplate) -> Unit) {
 @Composable
 private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec) -> Unit) {
     var text by remember { mutableStateOf("") }
+    var relays by remember { mutableStateOf<List<String>>(emptyList()) }
     val notif = remember { mutableStateMapOf<NotifKind, Boolean>().apply { NotifKind.entries.forEach { put(it, true) } } }
 
     Column(Modifier.fillMaxWidth().padding(DeckSpace.Lg)) {
@@ -105,6 +106,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                 placeholder = t.hint ?: "",
                 modifier = Modifier.fillMaxWidth(),
             )
+            ColumnConfig.RELAY_SET -> RelaySetEditor(initial = emptyList(), onChange = { relays = it })
             ColumnConfig.NOTIF_FILTER -> Column {
                 Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
                 NotifKind.entries.forEach { k ->
@@ -131,7 +133,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                 "追加",
                 onClick = {
                     val kinds = NotifKind.entries.filter { notif[it] == true }.map { it.kind }
-                    onAdd(t.build(input = text, notifKinds = kinds))
+                    onAdd(t.build(input = text, notifKinds = kinds, relays = relays))
                 },
                 enabled = t.config != ColumnConfig.TEXT || text.isNotBlank(),
             )

@@ -3,7 +3,7 @@ package app.nostrdeck.model
 import app.nostrdeck.crypto.currentUnixTime
 
 /** 追加カラムの設定種別。 */
-enum class ColumnConfig { NONE, TEXT, NOTIF_FILTER }
+enum class ColumnConfig { NONE, TEXT, NOTIF_FILTER, RELAY_SET }
 
 /**
  * 追加できるカラムの種別を「絞った」一覧（白紙のフィルタ組みではなく選ぶ）。
@@ -15,7 +15,7 @@ enum class ColumnTemplate(
     val hint: String? = null,
 ) {
     FOLLOWING("フォロー中"),
-    GLOBAL("グローバル", ColumnConfig.TEXT, "リレー URL（空=全リレー）"),
+    GLOBAL("グローバル", ColumnConfig.RELAY_SET, "配信先リレー（未選択＝全リレー）"),
     NOTIFICATIONS("通知", ColumnConfig.NOTIF_FILTER),
     DM("DM"),
     PROFILE("指定 npub の投稿", ColumnConfig.TEXT, "npub または hex"),
@@ -31,8 +31,12 @@ enum class NotifKind(val label: String, val kind: Int) {
     REPOST("リポスト", 6),
 }
 
-/** テンプレ + 入力 → ColumnSpec を生成。 */
-fun ColumnTemplate.build(input: String = "", notifKinds: List<Int> = NotifKind.entries.map { it.kind }): ColumnSpec {
+/** テンプレ + 入力 → ColumnSpec を生成。[relays]=GLOBAL の配信先リレー集合。 */
+fun ColumnTemplate.build(
+    input: String = "",
+    notifKinds: List<Int> = NotifKind.entries.map { it.kind },
+    relays: List<String> = emptyList(),
+): ColumnSpec {
     val id = "col_${name.lowercase()}_${currentUnixTime()}"
     val text = input.trim()
     return when (this) {
@@ -40,8 +44,8 @@ fun ColumnTemplate.build(input: String = "", notifKinds: List<Int> = NotifKind.e
             ReqFilter(kinds = listOf(1)))
 
         ColumnTemplate.GLOBAL -> spec(id, "グローバル",
-            if (text.isBlank()) "all relays" else text, ColumnKind.GLOBAL,
-            ReqFilter(kinds = listOf(1), relays = if (text.isBlank()) emptyList() else listOf(text)))
+            if (relays.isEmpty()) "all relays" else "${relays.size} relays", ColumnKind.GLOBAL,
+            ReqFilter(kinds = listOf(1), relays = relays))
 
         ColumnTemplate.NOTIFICATIONS -> spec(id, "通知",
             "mentions/zaps…", ColumnKind.NOTIFICATIONS,
@@ -81,9 +85,12 @@ fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
 fun ColumnSpec.editText(): String = when (kind) {
     ColumnKind.HASHTAG -> filter.hashtags.firstOrNull().orEmpty()
     ColumnKind.PROFILE -> filter.authors.firstOrNull().orEmpty()
-    ColumnKind.GLOBAL -> filter.search ?: filter.relays.firstOrNull().orEmpty()
+    ColumnKind.GLOBAL -> filter.search ?: ""
     else -> ""
 }
+
+/** GLOBAL カラムの現在の配信先リレー（RELAY_SET のプリフィル用）。 */
+fun ColumnSpec.editRelays(): List<String> = if (kind == ColumnKind.GLOBAL) filter.relays else emptyList()
 
 private fun npubShort(s: String): String =
     if (s.length > 14) s.take(10) + "…" else s.ifBlank { "profile" }
