@@ -264,16 +264,9 @@ fun NoteItem(
       )
   }
 
-  // [M10] Zap: lud16 を提示（自動 Zap=NIP-57 は今後）。ボタンとしては機能する。
+  // [M13] Zap: NIP-57 で invoice を作り、lightning: URI で外部ウォレットへ。⚡は lud16 がある時だけ表示。
   if (showZap) {
-      // ⚡ は lud16 がある時だけ表示しているので、ここでは常に設定済み。
-      DeckConfirmDialog(
-          title = "⚡ Zap",
-          text = "${note.author.name} の Lightning アドレス:\n${note.author.lud16}\n\n自動 Zap（NIP-57）は今後対応します。",
-          confirmLabel = "閉じる", dismissLabel = null,
-          onConfirm = { showZap = false },
-          onDismiss = { showZap = false },
-      )
+      ZapSheet(note, onDismiss = { showZap = false })
   }
 
   // 絵文字リアクションピッカー（NIP-25/30）。選択で kind:7 を送る。

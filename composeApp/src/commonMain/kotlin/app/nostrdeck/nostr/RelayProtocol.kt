@@ -104,6 +104,9 @@ object RelayProtocol {
         sig = o["sig"]!!.jsonPrimitive.content,
     )
 
+    /** 署名済みイベントの JSON 文字列（NIP-57 の zap request を LNURL callback に渡す等）。 */
+    fun eventJson(e: NostrEvent): String = eventToJson(e).toString()
+
     private fun eventToJson(e: NostrEvent): JsonObject = buildJsonObject {
         put("id", e.id)
         put("pubkey", e.pubkey)

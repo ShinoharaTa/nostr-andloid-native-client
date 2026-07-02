@@ -17,6 +17,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -76,8 +77,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -1955,6 +1958,61 @@ class EventRepository(
     private fun decodeHtmlEntities(s: String): String = s
         .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
         .replace("&quot;", "\"").replace("&#39;", "'").replace("&#x27;", "'").replace("&nbsp;", " ")
+
+    // ---- [M13] NIP-57 Zap（LNURL-pay → invoice → 外部ウォレット起動） ----
+
+    /** LNURL-pay の payRequest メタ（NIP-57 の allowsNostr/nostrPubkey を含む）。 */
+    data class LnurlPay(
+        val callback: String, val minSats: Long, val maxSats: Long,
+        val commentAllowed: Int, val allowsNostr: Boolean, val nostrPubkey: String?,
+    )
+
+    /** lud16(name@domain) から LNURL-pay メタを取得。取得/解析失敗は null。 */
+    suspend fun fetchLnurlPay(lud16: String): LnurlPay? = runCatching {
+        withContext(Dispatchers.Default) {
+            val at = lud16.indexOf('@'); if (at <= 0) return@withContext null
+            val url = "https://${lud16.substring(at + 1)}/.well-known/lnurlp/${lud16.substring(0, at)}"
+            val o = json.parseToJsonElement(uploadHttp.get(url).bodyAsText()).jsonObject
+            if (o["tag"]?.jsonPrimitive?.contentOrNull != "payRequest") return@withContext null
+            LnurlPay(
+                callback = o["callback"]?.jsonPrimitive?.contentOrNull ?: return@withContext null,
+                minSats = (o["minSendable"]?.jsonPrimitive?.long ?: 1000L) / 1000,
+                maxSats = (o["maxSendable"]?.jsonPrimitive?.long ?: 100_000_000L) / 1000,
+                commentAllowed = o["commentAllowed"]?.jsonPrimitive?.intOrNull ?: 0,
+                allowsNostr = o["allowsNostr"]?.jsonPrimitive?.booleanOrNull ?: false,
+                nostrPubkey = o["nostrPubkey"]?.jsonPrimitive?.contentOrNull,
+            )
+        }
+    }.getOrNull()
+
+    /**
+     * Zap invoice(bolt11) を取得する。allowsNostr のサーバには NIP-57 zap request(kind:9734)を
+     * 署名して `nostr` パラメータで添付する。返り値の invoice を `lightning:` URI で外部ウォレットへ渡す。
+     * [eventId] を渡すとノートへの Zap（e タグ付き）、null ならプロフィール Zap。失敗は null。
+     */
+    suspend fun requestZapInvoice(
+        recipientPubkey: String, lud16: String, amountSats: Long, comment: String, eventId: String?,
+    ): String? = runCatching {
+        val pay = fetchLnurlPay(lud16) ?: return null
+        val msat = amountSats * 1000
+        val sep = if ('?' in pay.callback) '&' else '?'
+        val sb = StringBuilder(pay.callback).append(sep).append("amount=").append(msat)
+        if (pay.allowsNostr && !pay.nostrPubkey.isNullOrBlank()) {
+            val relays = q.allRelays().executeAsList().filter { it.read != 0L }.map { it.url }.take(6)
+            val tags = buildList {
+                add(listOf("relays") + relays)
+                add(listOf("amount", msat.toString()))
+                add(listOf("p", recipientPubkey))
+                if (eventId != null) add(listOf("e", eventId))
+            }
+            val zapReq = SignerProvider.current().sign(UnsignedEvent(kind = 9734, content = comment, tags = tags))
+            sb.append("&nostr=").append(RelayProtocol.eventJson(zapReq).encodeURLParameter())
+        } else if (comment.isNotBlank() && pay.commentAllowed > 0) {
+            sb.append("&comment=").append(comment.take(pay.commentAllowed).encodeURLParameter())
+        }
+        val resp = json.parseToJsonElement(uploadHttp.get(sb.toString()).bodyAsText()).jsonObject
+        resp["pr"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
 
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。
