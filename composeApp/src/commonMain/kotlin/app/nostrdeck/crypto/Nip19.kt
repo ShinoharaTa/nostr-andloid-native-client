@@ -27,6 +27,31 @@ object Nip19 {
     fun hexToNote(hex: String): String = encodeFixed("note", hex)
 
     /**
+     * イベント id（+ 任意の著者/リレー/kind）→ nevent(bech32)（NIP-19 TLV）。
+     *  - type=0 special : 32byte event id（必須）
+     *  - type=1 relay   : リレー URL（ASCII, 複数可）
+     *  - type=2 author  : 32byte 著者 pubkey
+     *  - type=3 kind    : 4byte big-endian uint32
+     */
+    fun hexToNevent(
+        id: String,
+        author: String? = null,
+        relays: List<String> = emptyList(),
+        kind: Int? = null,
+    ): String {
+        val tlv = ArrayList<Byte>()
+        fun put(type: Int, value: ByteArray) {
+            tlv.add(type.toByte()); tlv.add(value.size.toByte()); value.forEach { tlv.add(it) }
+        }
+        put(0, id.hexToBytes())
+        relays.forEach { put(1, it.encodeToByteArray()) }
+        author?.let { put(2, it.hexToBytes()) }
+        kind?.let { k -> put(3, byteArrayOf((k ushr 24).toByte(), (k ushr 16).toByte(), (k ushr 8).toByte(), k.toByte())) }
+        val five = Bech32.convertBits(tlv.toByteArray(), 8, 5, true)
+        return Bech32.encode("nevent", five)
+    }
+
+    /**
      * note(32byte 単発) / nevent(TLV) の bech32 → 64文字 hex イベント id。
      * 解析できなければ null（チェックサム不正・未対応 hrp など）。
      *  - note   : 32byte の event id をそのまま hex 化。

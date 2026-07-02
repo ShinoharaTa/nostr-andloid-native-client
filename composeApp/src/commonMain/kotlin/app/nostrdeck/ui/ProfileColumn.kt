@@ -42,6 +42,7 @@ fun ProfileColumn(
     profile: Profile?,
     isFollowing: Boolean,
     notes: List<NoteUi>,
+    pinnedNotes: List<NoteUi> = emptyList(),
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
@@ -65,6 +66,26 @@ fun ProfileColumn(
             item {
                 ProfileHeaderCard(pubkey, profile, isFollowing, onFollowToggle)
                 HorizontalDivider(color = DeckColors.Border)
+            }
+            // 固定投稿（NIP-51 kind:10001）を最上部に「📌 固定」ラベル付きで表示。
+            if (pinnedNotes.isNotEmpty()) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("📌", fontSize = DeckType.Label)
+                        Spacer(Modifier.width(DeckSpace.Xs))
+                        Text("固定された投稿", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
+                    }
+                }
+                items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
+                    NoteItem(
+                        note, Modifier.clickable { onNoteClick(note) },
+                        onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
+                    )
+                    HorizontalDivider(color = DeckColors.Border)
+                }
             }
             items(notes, key = { it.event.id }) { note ->
                 NoteItem(

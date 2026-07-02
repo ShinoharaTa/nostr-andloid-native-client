@@ -90,6 +90,9 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val notes = repo?.let { remember(pubkey) { it.columnFeed(ReqFilter(kinds = listOf(1), authors = listOf(pubkey))) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
 
+    val pinnedNotes = repo?.let { remember(pubkey) { it.pinnedNotesFor(pubkey) } }
+        ?.collectAsState(emptyList())?.value ?: emptyList()
+
     var tab by rememberSaveable(pubkey) { mutableStateOf(ProfileTab.POSTS) }
     val visible = remember(notes, tab) {
         when (tab) {
@@ -98,6 +101,10 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
             ProfileTab.MEDIA -> notes.filter { it.images.isNotEmpty() }
         }
     }
+    // 固定投稿は「投稿」タブでのみ最上部に出す。重複を避けるため通常一覧からは除外。
+    val pinnedIds = remember(pinnedNotes) { pinnedNotes.map { it.event.id }.toSet() }
+    val pinnedForTab = if (tab == ProfileTab.POSTS) pinnedNotes else emptyList()
+    val visibleNoPins = if (pinnedForTab.isEmpty()) visible else visible.filterNot { it.event.id in pinnedIds }
 
     val onFollowToggle: () -> Unit = {
         scope.launch { if (following) repo?.unfollow(pubkey) else repo?.follow(pubkey) }
@@ -110,15 +117,17 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
 
     if (isCompact) {
         ProfileCompact(
-            pubkey, profile, following, tab, visible,
+            pubkey, profile, following, tab, visibleNoPins,
             onTab = { tab = it }, onFollowToggle = onFollowToggle, onBack = onBack,
             onNoteClick = onNoteClick, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick,
+            pinnedNotes = pinnedForTab,
         )
     } else {
         ProfileExpanded(
-            pubkey, profile, following, tab, visible,
+            pubkey, profile, following, tab, visibleNoPins,
             onTab = { tab = it }, onFollowToggle = onFollowToggle, onBack = onBack,
             onNoteClick = onNoteClick, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick,
+            pinnedNotes = pinnedForTab,
         )
     }
 }
@@ -140,6 +149,7 @@ private fun ProfileCompact(
     onReply: (NoteUi) -> Unit,
     onQuote: (NoteUi) -> Unit,
     onAuthorClick: (String) -> Unit,
+    pinnedNotes: List<NoteUi> = emptyList(),
     listState: LazyListState = rememberLazyListState(),
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
@@ -154,7 +164,7 @@ private fun ProfileCompact(
                 ProfileTabs(tab, onTab)
                 HorizontalDivider(color = DeckColors.Border)
             }
-            notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick)
+            notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick, pinnedNotes)
         }
     }
 }
@@ -175,6 +185,7 @@ private fun ProfileExpanded(
     onReply: (NoteUi) -> Unit,
     onQuote: (NoteUi) -> Unit,
     onAuthorClick: (String) -> Unit,
+    pinnedNotes: List<NoteUi> = emptyList(),
     listState: LazyListState = rememberLazyListState(),
 ) {
     Row(Modifier.fillMaxSize().background(DeckColors.Surface)) {
@@ -192,7 +203,7 @@ private fun ProfileExpanded(
             ProfileTabs(tab, onTab)
             HorizontalDivider(color = DeckColors.Border)
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick)
+                notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick, pinnedNotes)
             }
         }
     }
@@ -206,8 +217,29 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
     onReply: (NoteUi) -> Unit,
     onQuote: (NoteUi) -> Unit,
     onAuthorClick: (String) -> Unit,
+    pinnedNotes: List<NoteUi> = emptyList(),
 ) {
-    if (visible.isEmpty()) {
+    // 固定投稿（NIP-51 kind:10001）を「📌 固定された投稿」ラベル付きで最上部に。
+    if (pinnedNotes.isNotEmpty()) {
+        item(key = "pin_label") {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("📌", fontSize = DeckType.Label)
+                Spacer(Modifier.width(DeckSpace.Xs))
+                Text("固定された投稿", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
+            }
+        }
+        items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
+            NoteItem(
+                note, Modifier.clickable { onNoteClick(note) },
+                onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
+            )
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+    if (visible.isEmpty() && pinnedNotes.isEmpty()) {
         item {
             Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
                 Text("まだ投稿がありません", color = DeckColors.Text3, fontSize = DeckType.Caption)

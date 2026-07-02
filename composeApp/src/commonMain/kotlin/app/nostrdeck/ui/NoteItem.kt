@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -74,6 +75,8 @@ fun NoteItem(
   val scope = rememberCoroutineScope()
   val clipboard = LocalClipboardManager.current
   val me by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+  val bookmarks by (repo?.bookmarkIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
+  val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   var repostMenu by remember { mutableStateOf(false) }
   var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
@@ -131,6 +134,8 @@ fun NoteItem(
                 Spacer(Modifier.size(DeckSpace.Sm))
                 NoteImages(note.images)
             }
+            // [M14] リンク埋め込み（YouTube/Spotify/OGP）。設定で表示可否/画像読込を制御。
+            LinkEmbeds(note.text ?: note.event.content, Modifier.padding(top = DeckSpace.Sm))
             // [施策4] 本文/メディア↔アクション群は Md で明確に分離（別ブロック化）。
             Spacer(Modifier.size(DeckSpace.Md))
             // アクションはアイコンのみ・左揃え。返信/リポスト/♡/絵文字を左に密に、Zap だけ右端へ。
@@ -181,14 +186,33 @@ fun NoteItem(
                 // 3点リーダー（追加操作）は右端。ミュート/各種コピー。
                 Box {
                     ActionButton(Icons.Outlined.MoreHoriz, DeckColors.Text3, onClick = { moreMenu = true })
+                    val note1 = remember(note.event.id) { runCatching { Nip19.hexToNote(note.event.id) }.getOrNull() }
+                    val nevent = remember(note.event.id) {
+                        runCatching { Nip19.hexToNevent(note.event.id, author = note.event.pubkey, kind = note.event.kind) }.getOrNull()
+                    }
+                    val isBookmarked = note.event.id in bookmarks
+                    val isPinned = note.event.id in pinned
+                    val isMine = note.event.pubkey == me
                     DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                        // 自分の投稿にはミュートを出さない。
-                        if (note.event.pubkey != me) {
+                        // --- 操作系 ---
+                        DropdownMenuItem(
+                            text = { Text(if (isBookmarked) "ブックマークを解除" else "ブックマーク") },
+                            onClick = { moreMenu = false; scope.launch { repo?.toggleBookmark(note.event.id) } },
+                        )
+                        // 自分の投稿だけ「プロフィールに固定」。他人はミュート。
+                        if (isMine) {
+                            DropdownMenuItem(
+                                text = { Text(if (isPinned) "プロフィールの固定を解除" else "プロフィールに固定") },
+                                onClick = { moreMenu = false; scope.launch { repo?.togglePinned(note.event.id) } },
+                            )
+                        } else {
                             DropdownMenuItem(
                                 text = { Text("このユーザーをミュート") },
                                 onClick = { moreMenu = false; scope.launch { repo?.muteUserPrivate(note.event.pubkey) } },
                             )
                         }
+                        HorizontalDivider(color = DeckColors.Border)
+                        // --- コピー系 ---
                         DropdownMenuItem(
                             text = { Text("テキストをコピー") },
                             onClick = {
@@ -196,15 +220,29 @@ fun NoteItem(
                                 clipboard.setText(AnnotatedString(note.text ?: note.event.content))
                             },
                         )
+                        if (nevent != null || note1 != null) {
+                            DropdownMenuItem(
+                                text = { Text("リンクをコピー（njump）") },
+                                onClick = {
+                                    moreMenu = false
+                                    clipboard.setText(AnnotatedString("https://njump.me/${nevent ?: note1}"))
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("投稿IDをコピー") },
                             onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note.event.id)) },
                         )
-                        val note1 = remember(note.event.id) { runCatching { Nip19.hexToNote(note.event.id) }.getOrNull() }
                         if (note1 != null) {
                             DropdownMenuItem(
                                 text = { Text("${note1.take(12)}… をコピー") },
                                 onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note1)) },
+                            )
+                        }
+                        if (nevent != null) {
+                            DropdownMenuItem(
+                                text = { Text("${nevent.take(12)}… をコピー") },
+                                onClick = { moreMenu = false; clipboard.setText(AnnotatedString(nevent)) },
                             )
                         }
                     }

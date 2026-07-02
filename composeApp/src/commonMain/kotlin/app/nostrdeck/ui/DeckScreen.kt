@@ -254,8 +254,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val notes = if (revealed) allNotes else allNotes.filterNot { matcher.muted(it) }
                     val profile = remember(spec.id) { repo!!.profileFlow(profilePubkey) }.collectAsState(null).value
                     val following = remember(spec.id) { repo!!.isFollowingFlow(profilePubkey) }.collectAsState(false).value
+                    val allPinned = remember(spec.id) { repo!!.pinnedNotesFor(profilePubkey) }.collectAsState(emptyList()).value
+                    val pinnedNotes = if (revealed) allPinned else allPinned.filterNot { matcher.muted(it) }
                     ProfileColumn(
-                        spec, profilePubkey, profile, following, notes, modifier, listState,
+                        spec, profilePubkey, profile, following, notes, pinnedNotes, modifier, listState,
                         menu = menu,
                         onFollowToggle = {
                             scope.launch { if (following) repo!!.unfollow(profilePubkey) else repo!!.follow(profilePubkey) }

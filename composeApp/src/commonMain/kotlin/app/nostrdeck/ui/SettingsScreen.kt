@@ -67,7 +67,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
         detail = {
             if (selectedId == null) DetailPlaceholder("メニューを選択")
             // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
-            else SettingsContent(selectedId, onBack = if (isCompact) ({ state.settingsSection = null }) else null)
+            else SettingsContent(selectedId, state, onBack = if (isCompact) ({ state.settingsSection = null }) else null)
         },
         listWidth = 280,
     )
@@ -99,7 +99,7 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
+private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> Unit)? = null) {
     val title = SampleData.settingsSections.firstOrNull { it.first == sectionId }?.second ?: ""
     Column(Modifier.fillMaxSize().background(DeckColors.Bg).padding(DeckSpace.Lg)) {
         // タイトル横に ← を置いて一覧へ戻る（Compact のみ。自然な単一ヘッダー）。
@@ -115,8 +115,10 @@ private fun SettingsContent(sectionId: String, onBack: (() -> Unit)? = null) {
             "signer" -> SignerSettings()
             "relays" -> RelaySettings()
             "mute" -> MuteSettings()
+            "bookmarks" -> BookmarkSettings(state)
             "media" -> MediaSettings()
             "data" -> DataSettings()
+            "appearance" -> AppearanceSettings()
             else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Sub)
         }
     }
@@ -196,6 +198,100 @@ private fun MediaSettings() {
             onDismiss = { confirmRemove = null },
         )
     }
+}
+
+/**
+ * [M14] ブックマーク一覧（NIP-51 kind:10003）。タップでスレッドを開く。
+ * 追加/解除は各ノートの ⋯ メニューから。ここは閲覧と解除に絞る。
+ */
+@Composable
+private fun BookmarkSettings(state: DeckState) {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("ブックマークを利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val notes by repo.bookmarkedNotesFlow().collectAsState(emptyList())
+    val ids by repo.bookmarkIdsFlow().collectAsState()
+    val scope = rememberCoroutineScope()
+
+    if (ids.isEmpty()) {
+        Text("ブックマークはまだありません。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text("各投稿の ⋯ メニュー →「ブックマーク」で追加できます。", color = DeckColors.Text3, fontSize = DeckType.Label)
+        return
+    }
+    if (notes.isEmpty()) {
+        Text("リレーから取得中…（${ids.size}件）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(notes, key = { it.event.id }) { note ->
+            NoteItem(
+                note, Modifier.clickable { state.openThreadDetail(note.event.id) },
+                onReply = { state.replyTo = note.event; state.showCompose = true },
+                onQuote = { state.quoting = note.event; state.showCompose = true },
+                onAuthorClick = { pk -> state.openProfile(pk) },
+            )
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
+/**
+ * [M14] 表示（リンク埋め込み）。YouTube/Spotify/OGP カードの表示可否と、
+ * OGP 画像の読み込み可否を切り替える。設定は app_setting(KV) に即時保存。
+ */
+@Composable
+private fun AppearanceSettings() {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val prefs by repo.embedPrefsFlow().collectAsState()
+
+    Text("リンクの埋め込み表示", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "本文中のリンクをカードやサムネイルで表示します。通信量が気になる場合はオフにできます。",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+
+    SettingToggle("YouTube のサムネイルを表示", prefs.youtube) { repo.setEmbedPrefs(prefs.copy(youtube = it)) }
+    SettingToggle("Spotify のカードを表示", prefs.spotify) { repo.setEmbedPrefs(prefs.copy(spotify = it)) }
+    SettingToggle("その他リンクの OGP カードを表示", prefs.ogp) { repo.setEmbedPrefs(prefs.copy(ogp = it)) }
+    // OGP 画像は OGP 表示が有効なときだけ意味を持つ。
+    SettingToggle(
+        "OGP カードの画像を読み込む", prefs.ogpImages, enabled = prefs.ogp,
+        onChange = { repo.setEmbedPrefs(prefs.copy(ogpImages = it)) },
+    )
+}
+
+/** ラベル + 右端チェックボックスの1行トグル（設定用）。 */
+@Composable
+private fun SettingToggle(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(enabled = enabled) { onChange(!checked) }
+            .padding(vertical = DeckSpace.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = if (enabled) DeckColors.Text else DeckColors.Text3,
+            fontSize = DeckType.Sub, modifier = Modifier.weight(1f),
+        )
+        Checkbox(
+            checked = checked, onCheckedChange = { onChange(it) }, enabled = enabled,
+            colors = CheckboxDefaults.colors(
+                checkedColor = DeckColors.Accent, uncheckedColor = DeckColors.Text3,
+                checkmarkColor = DeckColors.Bg,
+            ),
+        )
+    }
+    HorizontalDivider(color = DeckColors.Border)
 }
 
 /**

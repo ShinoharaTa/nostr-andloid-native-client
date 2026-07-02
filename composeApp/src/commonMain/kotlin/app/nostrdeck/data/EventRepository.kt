@@ -27,8 +27,10 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.MuteCategory
+import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.MuteEntry
 import app.nostrdeck.model.MuteList
+import app.nostrdeck.model.OgpData
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
@@ -60,11 +62,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
@@ -182,6 +187,8 @@ class EventRepository(
         hideSelfNoticesFlow.value = q.settingsByPrefix(HIDE_SELF_NOTICES_PREFIX).executeAsList()
             .filter { it.value_ == "1" }
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
+        // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
+        loadEmbedPrefs()
         scope.launch { eventBatchLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
@@ -191,6 +198,9 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
+            // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
+            subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
+            subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
         }
     }
 
@@ -404,6 +414,8 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
+            subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
+            subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
@@ -1319,6 +1331,8 @@ class EventRepository(
             3 -> updateFollows(e)
             10002 -> updateRelayList(e)
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
+            10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
+            10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
         }
@@ -1457,6 +1471,104 @@ class EventRepository(
             entries + MuteEntry(MuteCategory.USER, pubkey, isPublic = false, isPrivate = true)
         }
         return publishMuteList(merged)
+    }
+
+    // ---- NIP-51 固定投稿(kind:10001) / ブックマーク(kind:10003) ----
+
+    /** 自分の編集可能な e-id リスト（公開 e タグ）。非公開/未知タグは content/other で温存し再発行で失わない。 */
+    private class EIdList {
+        var at = 0L
+        var content: String = ""
+        var other: List<List<String>> = emptyList()
+        val ids = MutableStateFlow<List<String>>(emptyList())  // 追加順を保持
+    }
+    private val bookmarkList = EIdList()
+    private val pinnedList = EIdList()
+
+    /** 自分のブックマーク(kind:10003)の event id（追加順）。 */
+    fun bookmarkIdsFlow(): StateFlow<List<String>> = bookmarkList.ids
+    /** 自分の固定投稿(kind:10001)の event id（追加順）。 */
+    fun pinnedIdsFlow(): StateFlow<List<String>> = pinnedList.ids
+
+    /** 他ユーザーも含む固定投稿リスト（author→ordered event id）。プロフィール表示用。 */
+    private val pinsByAuthor = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    private val pinsAtByAuthor = mutableMapOf<String, Long>()
+
+    private fun updateBookmarkList(e: NostrEvent) {
+        if (e.pubkey != myPubkey || e.createdAt <= bookmarkList.at) return
+        bookmarkList.at = e.createdAt
+        bookmarkList.content = e.content
+        val ids = ArrayList<String>(); val other = ArrayList<List<String>>()
+        e.tags.forEach { t -> if (t.size >= 2 && t[0] == "e") ids.add(t[1]) else other.add(t) }
+        bookmarkList.other = other
+        bookmarkList.ids.value = ids.distinct()
+        if (ids.isNotEmpty()) subscribeAll("bookmark_items", Filter(ids = ids.distinct(), limit = ids.size))
+    }
+
+    private fun updatePinnedList(e: NostrEvent) {
+        if ((pinsAtByAuthor[e.pubkey] ?: 0L) >= e.createdAt) return
+        pinsAtByAuthor[e.pubkey] = e.createdAt
+        val ids = e.tags.filter { it.size >= 2 && it[0] == "e" }.map { it[1] }.distinct()
+        pinsByAuthor.value = pinsByAuthor.value + (e.pubkey to ids)
+        if (ids.isNotEmpty()) subscribeAll("pinitems_${e.pubkey.take(8)}", Filter(ids = ids, limit = ids.size))
+        if (e.pubkey == myPubkey) {   // 自分の分は編集用リストにも反映（other/content を温存）。
+            pinnedList.at = e.createdAt
+            pinnedList.content = e.content
+            pinnedList.other = e.tags.filterNot { it.size >= 2 && it[0] == "e" }
+            pinnedList.ids.value = ids
+        }
+    }
+
+    private suspend fun publishEIdList(target: EIdList, kind: Int, ids: List<String>): Boolean = runCatching {
+        val tags = ids.map { listOf("e", it) } + target.other
+        val signed = publishSigned(UnsignedEvent(kind = kind, content = target.content, tags = tags))
+        target.at = signed.createdAt
+        target.ids.value = ids
+        true
+    }.getOrElse { false }
+
+    /** ブックマークをトグル（NIP-51 kind:10003 の公開 e タグ）。戻り値=操作後にブックマーク済みか。 */
+    suspend fun toggleBookmark(eventId: String): Boolean {
+        val cur = bookmarkList.ids.value
+        val was = eventId in cur
+        publishEIdList(bookmarkList, 10003, if (was) cur - eventId else cur + eventId)
+        return !was
+    }
+
+    /** 固定投稿をトグル（NIP-51 kind:10001、自分のノートのみ）。戻り値=操作後に固定済みか。 */
+    suspend fun togglePinned(eventId: String): Boolean {
+        val cur = pinnedList.ids.value
+        val was = eventId in cur
+        publishEIdList(pinnedList, 10001, if (was) cur - eventId else cur + eventId)
+        // pinsByAuthor（自分の分）も即時反映。
+        myPubkey?.let { pinsByAuthor.value = pinsByAuthor.value + (it to (if (was) cur - eventId else cur + eventId)) }
+        return !was
+    }
+
+    /** id リスト順に DB から NoteUi を解決する（未取得 id はスキップ）。ブックマーク/固定表示用。 */
+    private fun notesByIds(ids: List<String>): Flow<List<NoteUi>> =
+        if (ids.isEmpty()) flowOf(emptyList())
+        else combine(
+            q.eventsByIds(ids).asFlow().mapToList(Dispatchers.Default), profilesFlow, noteMetaFlow,
+        ) { rows, profiles, meta ->
+            val byPubkey = profiles.associateBy { it.pubkey }
+            val byId = rows.associateBy { it.id }
+            ids.mapNotNull { id ->
+                byId[id]?.let { r -> applyMeta(withQuoteAndReply(toNoteUi(r, byPubkey[r.pubkey]), r, byPubkey), meta) }
+            }
+        }.flowOn(Dispatchers.Default)
+
+    /** 自分のブックマーク済みノート（追加順の新しい方が上＝逆順表示）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun bookmarkedNotesFlow(): Flow<List<NoteUi>> =
+        bookmarkList.ids.flatMapLatest { notesByIds(it.asReversed()) }.flowOn(Dispatchers.Default)
+
+    /** 指定ユーザーの固定投稿を購読し、固定 note を追加順で返す（ProfileColumn 上部用）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun pinnedNotesFor(pubkey: String): Flow<List<NoteUi>> {
+        subscribeAll("pins_${pubkey.take(8)}", Filter(kinds = listOf(10001), authors = listOf(pubkey), limit = 1))
+        return pinsByAuthor.map { it[pubkey] ?: emptyList() }.distinctUntilChanged()
+            .flatMapLatest { notesByIds(it) }.flowOn(Dispatchers.Default)
     }
 
     /**
@@ -1769,6 +1881,70 @@ class EventRepository(
     fun setMediaServerEnabled(url: String, enabled: Boolean) =
         q.setMediaServerEnabled(if (enabled) 1 else 0, url)
 
+    // ---- [M14] リンク埋め込み（OGP / YouTube / Spotify）の設定 + OGP 取得 ----
+
+    private val embedPrefsFlow = MutableStateFlow(EmbedPrefs())
+    /** リンク埋め込み設定（設定 > 表示）。 */
+    fun embedPrefsFlow(): StateFlow<EmbedPrefs> = embedPrefsFlow
+
+    /** KV から埋め込み設定を復元（未設定は既定=有効）。start() から呼ぶ。 */
+    private fun loadEmbedPrefs() {
+        fun b(key: String, def: Boolean) = q.getSetting(EMBED_PREFIX + key).executeAsOneOrNull()?.let { it == "1" } ?: def
+        embedPrefsFlow.value = EmbedPrefs(
+            youtube = b("youtube", true), spotify = b("spotify", true),
+            ogp = b("ogp", true), ogpImages = b("ogp_images", true),
+        )
+    }
+
+    fun setEmbedPrefs(prefs: EmbedPrefs) {
+        q.putSetting(EMBED_PREFIX + "youtube", if (prefs.youtube) "1" else "0")
+        q.putSetting(EMBED_PREFIX + "spotify", if (prefs.spotify) "1" else "0")
+        q.putSetting(EMBED_PREFIX + "ogp", if (prefs.ogp) "1" else "0")
+        q.putSetting(EMBED_PREFIX + "ogp_images", if (prefs.ogpImages) "1" else "0")
+        embedPrefsFlow.value = prefs
+    }
+
+    private val ogpCache = mutableMapOf<String, OgpData?>()
+    private val ogpMutex = Mutex()
+
+    /**
+     * URL の OGP(OpenGraph) メタを取得する。成功/失敗ともメモリキャッシュ（null もキャッシュ）。
+     * HTML 先頭のみを走査して og:title/og:description/og:image/og:site_name を拾う簡易実装。
+     */
+    suspend fun fetchOgp(url: String): OgpData? {
+        ogpMutex.withLock { if (ogpCache.containsKey(url)) return ogpCache[url] }
+        val data = runCatching {
+            withContext(Dispatchers.Default) {
+                val html = uploadHttp.get(url).bodyAsText()
+                val head = html.take(200_000)  // <head> を含む先頭のみ
+                fun meta(prop: String): String? {
+                    // property="og:x" content="..." と content="..." property="og:x" の両順序に対応。
+                    val a = Regex(
+                        """<meta[^>]+(?:property|name)=["']$prop["'][^>]*content=["']([^"']*)["']""",
+                        RegexOption.IGNORE_CASE,
+                    ).find(head)?.groupValues?.get(1)
+                    val b = Regex(
+                        """<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']$prop["']""",
+                        RegexOption.IGNORE_CASE,
+                    ).find(head)?.groupValues?.get(1)
+                    return (a ?: b)?.let { decodeHtmlEntities(it) }?.ifBlank { null }
+                }
+                val title = meta("og:title")
+                    ?: Regex("""<title[^>]*>([^<]*)</title>""", RegexOption.IGNORE_CASE).find(head)?.groupValues?.get(1)
+                        ?.let { decodeHtmlEntities(it.trim()) }?.ifBlank { null }
+                val image = meta("og:image")
+                if (title == null && image == null) null
+                else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
+            }
+        }.getOrNull()
+        ogpMutex.withLock { ogpCache[url] = data }
+        return data
+    }
+
+    private fun decodeHtmlEntities(s: String): String = s
+        .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&quot;", "\"").replace("&#39;", "'").replace("&#x27;", "'").replace("&nbsp;", " ")
+
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。
      * 有効なメディアサーバ(NIP-96)を順に試し、最初に成功した URL を返す。全滅なら null。
@@ -1880,5 +2056,8 @@ class EventRepository(
 
         /** フォロー中カラム別「自分への反応を隠す」設定の KV キー接頭辞。 */
         const val HIDE_SELF_NOTICES_PREFIX = "col_hide_self_notices:"
+
+        /** リンク埋め込み設定の KV キー接頭辞。 */
+        const val EMBED_PREFIX = "embed:"
     }
 }
