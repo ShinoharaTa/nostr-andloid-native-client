@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -556,14 +557,17 @@ class EventRepository(
                 q.feedFollowingWithReposts(authors, 0L).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
                 noteMetaFlow,  // [M10] 自分の♡/リポスト済み状態（ボタンのハイライト用）
-            ) { rows, profiles, meta ->
-                val byPubkey = profiles.associateBy { it.pubkey }
-                // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
-                // 同一ノートを複数人がリポスト/元と重複 → 表示 id が衝突するので id で重複排除（LazyColumn key 一意化）。
-                rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
-                    .distinctBy { it.event.id }
-            // 変換（eventById 解決・集約付与）は重いので Default に載せ、UI スレッドを塞がない（ANR 対策）。
-            }.flowOn(Dispatchers.Default)
+            ) { rows, profiles, meta -> Triple(rows, profiles, meta) }
+                // conflate: 変換は重いので rapid な profiles/rows 更新は最新だけ処理して間引く。
+                .conflate()
+                .map { (rows, profiles, meta) ->
+                    val byPubkey = profiles.associateBy { it.pubkey }
+                    // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
+                    // 同一ノートを複数人がリポスト/元と重複 → 表示 id が衝突するので id で重複排除（LazyColumn key 一意化）。
+                    rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
+                        .distinctBy { it.event.id }
+                // 変換（eventById 解決・集約付与）は重いので Default に載せ、UI スレッドを塞がない（ANR 対策）。
+                }.flowOn(Dispatchers.Default)
         }
 
     /**
@@ -609,12 +613,17 @@ class EventRepository(
         }
 
     private fun buildColumnFeed(filter: ReqFilter): Flow<List<NoteUi>> =
-        combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta ->
-            val byPubkey = profiles.associateBy { it.pubkey }
-            rows.map { row ->
-                applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta)
-            }
-        }.flowOn(Dispatchers.Default)
+        // combine は入力が変わる度に発火する。profilesFlow は kind:0 受信の度に流れるため、
+        // 重い変換（200件×引用/返信の DB 解決）を毎回やると Default/SQLite が飽和して
+        // ライブ更新が遅延する。conflate() で「最新だけ処理」して無駄な再構築を間引く（遅延は増えない）。
+        combine(rowsFlow(filter), profilesFlow, noteMetaFlow) { rows, profiles, meta -> Triple(rows, profiles, meta) }
+            .conflate()
+            .map { (rows, profiles, meta) ->
+                val byPubkey = profiles.associateBy { it.pubkey }
+                rows.map { row ->
+                    applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta)
+                }
+            }.flowOn(Dispatchers.Default)
 
     // ---- NIP-28 パブリックチャット（kind:40/41 一覧 + kind:42 メッセージ） ----
 
