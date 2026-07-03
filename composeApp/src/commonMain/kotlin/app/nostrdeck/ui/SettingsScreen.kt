@@ -14,7 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -307,8 +311,8 @@ private fun DmRelaySettings() {
 }
 
 /**
- * [M16] リアクション設定。♡ボタンの「デフォルトリアクション」を絵文字ピッカーで変更する。
- * 変更後は各投稿の♡ボタンがその内容（☆/絵文字/カスタム絵文字）を送り、押下でハイライトする。
+ * [M16] リアクション設定。各投稿の「デフォルトリアクション」ボタンを ♡（ハート）か ☆（スター）から選ぶ。
+ * アプリの単色アイコンで表示され、押すと選んだ内容で kind:7 を送る。
  */
 @Composable
 private fun ReactionSettings() {
@@ -318,41 +322,37 @@ private fun ReactionSettings() {
         return
     }
     val def by repo.defaultReactionFlow().collectAsState()
-    var showPicker by remember { mutableStateOf(false) }
+    val isStar = def.first == "⭐" || def.first == "★"
 
     Text("デフォルトのリアクション", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "各投稿の♡ボタンを押したときに送るリアクションです。絵文字ピッカーから選べます。" +
+        "各投稿のリアクションボタンの形を選べます。押すとこの内容で送信されます。" +
             "（絵文字ピッカーからは別の絵文字を何度でも付けられます）",
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2),
-            contentAlignment = Alignment.Center) {
-            val (content, img) = def
-            when {
-                content == "+" || content == "❤️" || content.isEmpty() ->
-                    Text("❤️", fontSize = DeckType.Emoji)
-                !img.isNullOrBlank() -> AsyncImage(
-                    model = ImageRequest.Builder(LocalPlatformContext.current)
-                        .data(ImageProxy.proxied(img, width = 64, quality = 80, animated = true)).build(),
-                    contentDescription = content, modifier = Modifier.size(24.dp),
-                )
-                else -> Text(content, fontSize = DeckType.Emoji)
-            }
-        }
-        Spacer(Modifier.size(DeckSpace.Md))
-        DeckButton("変更", onClick = { showPicker = true })
+    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Md)) {
+        ReactionChoice(Icons.Filled.Favorite, "ハート", selected = !isStar) { repo.setDefaultReaction("+", null) }
+        ReactionChoice(Icons.Filled.Star, "スター", selected = isStar) { repo.setDefaultReaction("⭐", null) }
     }
+}
 
-    if (showPicker) {
-        ReactionPickerSheet(
-            onPick = { content, imageUrl -> repo.setDefaultReaction(content, imageUrl); showPicker = false },
-            onDismiss = { showPicker = false },
-        )
+/** リアクション種別（♡/☆）の選択チップ。選択中はアクセント背景＋濃色アイコン。 */
+@Composable
+private fun ReactionChoice(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(DeckRadius.Md))
+            .background(if (selected) DeckColors.AccentWeak else DeckColors.Surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = label,
+            tint = if (selected) DeckColors.Like else DeckColors.Text3, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(label, color = if (selected) DeckColors.Text else DeckColors.Text3, fontSize = DeckType.Sub)
     }
 }
 

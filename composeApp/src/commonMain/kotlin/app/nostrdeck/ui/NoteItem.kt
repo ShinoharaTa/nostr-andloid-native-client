@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.DropdownMenu
@@ -45,7 +47,6 @@ import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ReactionUi
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -166,7 +167,7 @@ fun NoteItem(
                 }
                 // デフォルトリアクション（設定で ♡/☆/絵文字を変更可）。押すと送信し、押下状態になる。
                 DefaultReactionButton(
-                    content = defaultReaction.first, imageUrl = defaultReaction.second, active = note.mineReacted,
+                    content = defaultReaction.first, active = note.mineReacted,
                     onClick = {
                         // 付与済み→取り消し(kind:5)は確認を挟む。未付与→即送信。絵文字ピッカーは別途何度でも可。
                         if (note.mineReacted) confirmUnreact = true
@@ -320,37 +321,19 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
 }
 
 /**
- * デフォルトリアクションのボタン。設定内容に応じて表示を出し分ける:
- *  - "+"/"❤️" → ハート（付与済みで塗り、未付与で枠線）
- *  - ":shortcode:"（imageUrl 付き）→ カスタム絵文字画像
- *  - それ以外の Unicode 絵文字（☆ 等）→ その文字
- * 未付与は淡色/半透明、付与済み（[active]）は濃色/不透明で「押された状態」を示す。
+ * デフォルトリアクションのボタン。設定に応じて ♡（ハート）か ☆（スター）の単色アイコンを出す。
+ * 付与済み（[active]）は塗り＋濃色、未付与は枠線＋淡色で「押された状態」を示す（絵文字は使わない）。
  */
 @Composable
-private fun DefaultReactionButton(content: String, imageUrl: String?, active: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            content == "+" || content == "❤️" || content.isEmpty() -> Icon(
-                if (active) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                contentDescription = "リアクション",
-                tint = if (active) DeckColors.Like else DeckColors.Text3,
-                modifier = Modifier.size(DeckDimens.IconMd),
-            )
-            !imageUrl.isNullOrBlank() -> AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(ImageProxy.proxied(imageUrl, width = 64, quality = 80, animated = true)).crossfade(true).build(),
-                contentDescription = content,
-                modifier = Modifier.size(DeckDimens.IconMd).alpha(if (active) 1f else 0.45f),
-            )
-            else -> Text(
-                content, fontSize = DeckType.Emoji, maxLines = 1,
-                modifier = Modifier.alpha(if (active) 1f else 0.45f),
-            )
-        }
+private fun DefaultReactionButton(content: String, active: Boolean, onClick: () -> Unit) {
+    val isStar = content == "⭐" || content == "★"
+    val icon = when {
+        isStar && active -> Icons.Filled.Star
+        isStar -> Icons.Outlined.StarBorder
+        active -> Icons.Filled.Favorite
+        else -> Icons.Outlined.FavoriteBorder
     }
+    ActionButton(icon, if (active) DeckColors.Like else DeckColors.Text3, onClick)
 }
 
 private fun relativeTime(createdAt: Long): String {
