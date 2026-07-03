@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CheckBox
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
@@ -25,8 +27,10 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import app.nostrdeck.model.FeedNoticeCategory
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,9 +66,9 @@ data class ColumnMenuActions(
     /** コンテンツフィルター: ミュートを表示中か（目アイコン）。null なら項目非表示。 */
     val mutedRevealed: Boolean? = null,
     val onToggleMuted: (() -> Unit)? = null,
-    /** フォロー中カラム: 自分への反応(kind:7/リポスト)を隠すか。null なら項目非表示。 */
-    val selfNoticesHidden: Boolean? = null,
-    val onToggleSelfNotices: (() -> Unit)? = null,
+    /** フォロー中カラム: 非表示中の通知系カテゴリ集合。null なら項目非表示（フォロー中以外）。 */
+    val hiddenCategories: Set<FeedNoticeCategory>? = null,
+    val onToggleCategory: ((FeedNoticeCategory) -> Unit)? = null,
 )
 
 /**
@@ -170,17 +174,20 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
                     onClick = { open = false; menu.onToggleMuted.invoke() },
                 )
             }
-            // フォロー中カラム: 自分への反応（kind:7/リポスト）の表示切替（通知カラムと役割が被るため）。
-            if (menu.selfNoticesHidden != null && menu.onToggleSelfNotices != null) {
-                val hidden = menu.selfNoticesHidden
-                DropdownMenuItem(
-                    text = { Text(if (hidden) "自分への反応を表示" else "自分への反応を隠す") },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Notifications, null, tint = if (hidden) DeckColors.Text3 else DeckColors.Text,
-                            modifier = Modifier.size(DeckDimens.IconMd))
-                    },
-                    onClick = { open = false; menu.onToggleSelfNotices.invoke() },
+            // フォロー中カラム: 通知系（自分への反応/自分のリアクション）を種別ごとに表示/非表示。
+            // タップしてもメニューは閉じない（連続でトグルできるように）。
+            if (menu.hiddenCategories != null && menu.onToggleCategory != null) {
+                HorizontalDivider(color = DeckColors.Border)
+                Text(
+                    "タイムラインに混ぜる表示",
+                    color = DeckColors.Text3, fontSize = DeckType.Label,
+                    modifier = Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                 )
+                FeedCategoryItem("自分へのリアクション", FeedNoticeCategory.REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem("自分への返信・メンション", FeedNoticeCategory.REPLIES, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem("自分へのリポスト", FeedNoticeCategory.REPOSTS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem("自分がしたリアクション", FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
+                HorizontalDivider(color = DeckColors.Border)
             }
             DropdownMenuItem(
                 text = { Text("カラムを削除", color = DeckColors.Warn) },
@@ -189,6 +196,27 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
             )
         }
     }
+}
+
+/** [M18] 通知系カテゴリの表示トグル項目（チェック=表示中）。タップしてもメニューは閉じない。 */
+@Composable
+private fun FeedCategoryItem(
+    label: String,
+    category: FeedNoticeCategory,
+    hidden: Set<FeedNoticeCategory>,
+    onToggle: (FeedNoticeCategory) -> Unit,
+) {
+    val shown = category !in hidden
+    DropdownMenuItem(
+        text = { Text(label, color = if (shown) DeckColors.Text else DeckColors.Text3) },
+        leadingIcon = {
+            Icon(
+                if (shown) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null,
+                tint = if (shown) DeckColors.Text else DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+            )
+        },
+        onClick = { onToggle(category) },
+    )
 }
 
 /** メニュー内の ◀/▶（32dp 実タップ領域・Surface2 の面・無効時は沈める）。 */

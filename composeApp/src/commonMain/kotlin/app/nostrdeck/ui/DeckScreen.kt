@@ -44,6 +44,8 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.editTemplate
 import app.nostrdeck.model.FeedEntry
+import app.nostrdeck.model.FeedNoticeCategory
+import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
@@ -174,10 +176,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
     val revealed = rememberColumnRevealMuted(spec.id)
     // ミュートを適用する描画種別（フィード/スレッド/通知）だけ目アイコンを出す。
     val filtersMuted = spec.renderer == ColumnRenderer.FEED || spec.renderer == ColumnRenderer.THREAD
-    // フォロー中カラムだけ「自分への反応」トグルを出す。
+    // フォロー中カラムだけ「タイムラインに混ぜる表示」カテゴリのトグルを出す。
     val isFollowing = spec.kind == ColumnKind.FOLLOWING
-    val hideSelfNotices = isFollowing && repoForMenu != null &&
-        (spec.id in repoForMenu.hideSelfNoticesColumns().collectAsState().value)
+    val hiddenCategories = if (isFollowing && repoForMenu != null)
+        repoForMenu.columnHiddenCategoriesFlow().collectAsState().value[spec.id].orEmpty() else emptySet()
 
     // デッキカラムの操作は ⋯ メニューに集約（移動 ◀▶ / フィルター編集 / 削除 / ミュート表示 / 自分への反応）。
     val index = state.columns.indexOfFirst { it.id == spec.id }
@@ -190,8 +192,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         onDelete = { state.removeColumn(spec.id) },
         mutedRevealed = if (filtersMuted && repoForMenu != null) revealed else null,
         onToggleMuted = if (filtersMuted && repoForMenu != null) ({ repoForMenu.setColumnRevealMuted(spec.id, !revealed) }) else null,
-        selfNoticesHidden = if (isFollowing && repoForMenu != null) hideSelfNotices else null,
-        onToggleSelfNotices = if (isFollowing && repoForMenu != null) ({ repoForMenu.setColumnHideSelfNotices(spec.id, !hideSelfNotices) }) else null,
+        hiddenCategories = if (isFollowing && repoForMenu != null) hiddenCategories else null,
+        onToggleCategory = if (isFollowing && repoForMenu != null)
+            ({ cat: FeedNoticeCategory -> repoForMenu.setColumnCategoryHidden(spec.id, cat, cat !in hiddenCategories) }) else null,
     )
 
     when (spec.renderer) {
@@ -230,8 +233,18 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
                     val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
                     val entries = all.filterNot {
-                        // 自分への反応（Notice）を隠す設定なら除外。
-                        if (hideSelfNotices && it is FeedEntry.Notice) return@filterNot true
+                        // メニューで非表示にした通知系カテゴリを除外。
+                        val cat = when (it) {
+                            is FeedEntry.Notice -> when (it.notif.kind) {
+                                NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
+                                NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
+                                NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
+                                else -> null
+                            }
+                            is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS
+                            is FeedEntry.Post -> null
+                        }
+                        if (cat != null && cat in hiddenCategories) return@filterNot true
                         if (revealed) return@filterNot false
                         when (it) {
                             is FeedEntry.Post -> matcher.muted(it.note)

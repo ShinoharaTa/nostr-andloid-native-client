@@ -158,6 +158,13 @@ data class UsedEmoji(val content: String, val imageUrl: String?)
 enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP }
 
 /**
+ * [M18] フォロー中TLに混ぜる通知系の表示カテゴリ。カラムの ⋯ メニューから個別に表示/非表示できる。
+ * REACTIONS=自分へのリアクション / REPLIES=自分への返信・メンション / REPOSTS=自分へのリポスト /
+ * MY_REACTIONS=自分がしたリアクション。
+ */
+enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS }
+
+/**
  * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。
  *  - [actor]         アクションした人（返信/リアクション/リポストの主）
  *  - [reaction]      REACTION の絵文字（NIP-25。"+"/空は ❤️ に正規化済み）

@@ -40,6 +40,7 @@ import app.nostrdeck.model.OgpData
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.FeedNoticeCategory
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.Profile
@@ -211,6 +212,8 @@ class EventRepository(
         hideSelfNoticesFlow.value = q.settingsByPrefix(HIDE_SELF_NOTICES_PREFIX).executeAsList()
             .filter { it.value_ == "1" }
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
+        // [M18] カラム別「非表示にする通知系カテゴリ」を KV から復元。
+        loadHiddenCategories()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -624,8 +627,9 @@ class EventRepository(
             val notices = notifs.filter { n ->
                 when (n.kind) {
                     NotificationKind.REACTION -> true
-                    // リポストはフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
+                    // リポスト/返信はフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
                     NotificationKind.REPOST -> n.actor.pubkey !in followSet
+                    NotificationKind.REPLY, NotificationKind.MENTION -> n.actor.pubkey !in followSet
                     else -> false
                 }
             }
@@ -1553,6 +1557,26 @@ class EventRepository(
     fun setColumnHideSelfNotices(columnId: String, hide: Boolean) {
         q.putSetting(HIDE_SELF_NOTICES_PREFIX + columnId, if (hide) "1" else "0")
         hideSelfNoticesFlow.value = if (hide) hideSelfNoticesFlow.value + columnId else hideSelfNoticesFlow.value - columnId
+    }
+
+    // [M18] フォロー中カラムで「非表示にする通知系カテゴリ」をカラム別に持つ。KV 永続（カンマ区切り）。
+    private val hiddenCategoriesFlow = MutableStateFlow<Map<String, Set<FeedNoticeCategory>>>(emptyMap())
+    fun columnHiddenCategoriesFlow(): StateFlow<Map<String, Set<FeedNoticeCategory>>> = hiddenCategoriesFlow
+
+    fun setColumnCategoryHidden(columnId: String, category: FeedNoticeCategory, hidden: Boolean) {
+        val next = hiddenCategoriesFlow.value[columnId].orEmpty().let { if (hidden) it + category else it - category }
+        q.putSetting(FEED_CAT_HIDDEN_PREFIX + columnId, next.joinToString(",") { it.name })
+        hiddenCategoriesFlow.value = hiddenCategoriesFlow.value.toMutableMap().apply {
+            if (next.isEmpty()) remove(columnId) else put(columnId, next)
+        }
+    }
+
+    private fun loadHiddenCategories() {
+        hiddenCategoriesFlow.value = q.settingsByPrefix(FEED_CAT_HIDDEN_PREFIX).executeAsList()
+            .associate { row ->
+                row.key.removePrefix(FEED_CAT_HIDDEN_PREFIX) to
+                    row.value_.split(",").mapNotNull { runCatching { FeedNoticeCategory.valueOf(it) }.getOrNull() }.toSet()
+            }.filterValues { it.isNotEmpty() }
     }
 
     /**
@@ -2602,6 +2626,9 @@ class EventRepository(
 
         /** フォロー中カラム別「自分への反応を隠す」設定の KV キー接頭辞。 */
         const val HIDE_SELF_NOTICES_PREFIX = "col_hide_self_notices:"
+
+        /** [M18] フォロー中カラム別「非表示にする通知系カテゴリ」の KV キー接頭辞（カンマ区切り）。 */
+        const val FEED_CAT_HIDDEN_PREFIX = "col_feedcat_hidden:"
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
