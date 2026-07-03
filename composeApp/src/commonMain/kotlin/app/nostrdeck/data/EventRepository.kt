@@ -163,6 +163,9 @@ class EventRepository(
     private var emojiListAt = 0L
 
     fun start() {
+        // [M15] 過去タイムラインはキャッシュしない: 起動毎に DM 以外のイベントを解放し、
+        // リレーから読み直す。コールド起動を軽く保ち、DB を溜め込まない。
+        q.transaction { q.clearTimelineEvents(); q.clearOrphanTags() }
         // 末尾スラッシュ違い（例: nos.lol と nos.lol/）で二重登録された既存行を一度だけ統合する。
         dedupeRelayUrls()
         // ブートストラップ・リレーは**初回（リレー表が空）のみ** seed する。

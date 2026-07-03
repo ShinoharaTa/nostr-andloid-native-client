@@ -22,6 +22,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 clearEvents:
 DELETE FROM event;
 
+-- [M15] 起動時のタイムライン・キャッシュ解放。DM(kind:14)だけ残して他は消し、
+-- 毎起動でリレーから読み直す（過去TLを溜め込まない・コールド起動を軽くする）。
+clearTimelineEvents:
+DELETE FROM event WHERE kind != 14;
+
+-- タイムライン消去後に残ったイベントに紐づかない孤児タグを掃除する（DMのpタグは残る）。
+clearOrphanTags:
+DELETE FROM event_tag WHERE event_id NOT IN (SELECT id FROM event);
+
 -- フィード（kind:1 を新しい順）。M1 の global/購読結果の表示に使う。
 recentNotes:
 SELECT * FROM event WHERE kind = 1 ORDER BY created_at DESC LIMIT ?;

@@ -17,13 +17,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
@@ -37,12 +42,32 @@ import app.nostrdeck.theme.DeckWeight
  * どこか1つでも繋がれば消える。待機状態を一目で分かるようにするための控えめなピル。
  * モノクロ配色を守り、スピナーは Text2 グレー。
  */
+/** 接続待ちの間に回すゆるいメッセージ（2秒おきに切り替え・真面目じゃなくてよい）。 */
+private val CONNECTING_MESSAGES = listOf(
+    "リレーに接続中…",
+    "ダチョウを追いかけています…",
+    "分散の海を泳いでいます…",
+    "野生のノートを探しています…",
+    "リレーと握手しています…",
+    "波長を合わせています…",
+)
+
 @Composable
 fun BoxScope.ConnectionIndicator() {
     val repo = LocalRepository.current ?: return
     val conns by repo.relayConnFlow().collectAsState()
     // 設定リレーが存在し、かつ1つも CONNECTED でないとき＝待機中。
     val waiting = conns.isNotEmpty() && conns.none { it.state == RelayConnState.CONNECTED }
+
+    // 待機中は 2 秒おきにメッセージを回す。接続できたら 0 番に戻す。
+    var msgIndex by remember { mutableStateOf(0) }
+    LaunchedEffect(waiting) {
+        if (!waiting) { msgIndex = 0; return@LaunchedEffect }
+        while (true) {
+            delay(2000)
+            msgIndex = (msgIndex + 1) % CONNECTING_MESSAGES.size
+        }
+    }
 
     AnimatedVisibility(
         visible = waiting,
@@ -61,7 +86,10 @@ fun BoxScope.ConnectionIndicator() {
                 modifier = Modifier.size(13.dp), strokeWidth = 2.dp, color = DeckColors.Text2,
             )
             Spacer(Modifier.width(DeckSpace.Sm))
-            Text("接続中…", color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Link)
+            Text(
+                CONNECTING_MESSAGES[msgIndex], color = DeckColors.Text2,
+                fontSize = DeckType.Caption, fontWeight = DeckWeight.Link,
+            )
         }
     }
 }
