@@ -66,9 +66,11 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
             DmConversation(pk, names[pk]?.takeIf { it.isNotBlank() } ?: pk.take(10), "", "")
         }
 
-    // DM 相手のアイコン/名前は接続中リレーに無いことが多いので、開いたら複数リレーから取得する。
-    LaunchedEffect(selected?.pubkey) {
-        selected?.pubkey?.let { repo?.fetchProfilesNow(listOf(it)) }
+    // DM 相手のアイコン/名前は接続中リレーに無いことが多いので、複数リレーから取得する。
+    // 一覧の全相手ぶんもまとめて取得してアバター/名前を解決する。
+    LaunchedEffect(convos.map { it.pubkey }) {
+        val ids = (convos.map { it.pubkey } + listOfNotNull(selected?.pubkey)).distinct()
+        if (ids.isNotEmpty()) repo?.fetchProfilesNow(ids)
     }
     var showNew by remember { mutableStateOf(false) }
     TwoPane(
@@ -157,7 +159,7 @@ private fun DmList(
                         .clickable { onSelect(c) }.padding(DeckSpace.Md, DeckSpace.Sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(c.name, modifier = Modifier.size(40.dp))
+                    Avatar(c.name, c.pictureUrl, modifier = Modifier.size(40.dp))
                     Spacer(Modifier.width(DeckSpace.Sm))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,

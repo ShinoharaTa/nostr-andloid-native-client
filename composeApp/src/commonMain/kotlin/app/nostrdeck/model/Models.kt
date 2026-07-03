@@ -223,6 +223,7 @@ data class DmConversation(
     val name: String,
     val handle: String,
     val lastMessage: String,
+    val pictureUrl: String? = null,
     val unread: Int = 0,
 )
 

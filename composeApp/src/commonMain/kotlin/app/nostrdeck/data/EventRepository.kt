@@ -2377,6 +2377,7 @@ class EventRepository(
                     name = p?.name?.takeIf { it.isNotBlank() } ?: other.take(10),
                     handle = p?.handle.orEmpty(),
                     lastMessage = row.content,
+                    pictureUrl = p?.picture_url,
                 )
             }
         }.flowOn(Dispatchers.Default)
