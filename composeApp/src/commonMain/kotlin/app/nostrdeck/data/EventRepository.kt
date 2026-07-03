@@ -199,6 +199,8 @@ class EventRepository(
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
         scope.launch { eventBatchLoop() }
+        // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
+        scope.launch { ingestLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
         scope.launch {
@@ -1357,12 +1359,43 @@ class EventRepository(
         }
     }
 
+    // 受信イベントの取り込みキュー。ソケット読取スレッドを塞がないよう trySend で流し込み、
+    // [ingestLoop] がまとめて署名検証＋1トランザクション書き込みする。
+    private val ingestChannel = Channel<NostrEvent>(Channel.UNLIMITED)
+
     private fun onMessage(msg: RelayMessage) {
-        if (msg is RelayMessage.Event) ingest(msg.event)
+        if (msg is RelayMessage.Event) ingestChannel.trySend(msg.event)
     }
 
+    /**
+     * 取り込みループ。短時間到着分をまとめて（最大 [INGEST_BATCH]）、
+     *  1. 署名検証（ソケット読取パス外で・重い JNI をここに集約）
+     *  2. **1トランザクション**で DB 書き込み（commit/クエリ通知の回数を激減）
+     * を行う。これで「1件ずつ autocommit → fsync」による TL 構築の遅延を解消する。
+     */
+    private suspend fun ingestLoop() {
+        val batch = ArrayList<NostrEvent>(INGEST_BATCH)
+        val seen = HashSet<String>()
+        while (true) {
+            batch.clear(); seen.clear()
+            val first = ingestChannel.receive()
+            if (seen.add(first.id)) batch.add(first)
+            // 連続到着分を短い窓でまとめる。
+            withTimeoutOrNull(80) {
+                while (batch.size < INGEST_BATCH) {
+                    val e = ingestChannel.receive()
+                    if (seen.add(e.id)) batch.add(e)
+                }
+            }
+            withContext(Dispatchers.Default) {
+                val valid = batch.filter { EventCrypto.verify(it) }   // 重い署名検証は Default で
+                if (valid.isNotEmpty()) q.transaction { valid.forEach { runCatching { ingest(it) } } }
+            }
+        }
+    }
+
+    /** 1イベントの取り込み（署名検証は [ingestLoop] で済ませ、ここは DB 書き込み＋副作用のみ）。 */
     private fun ingest(e: NostrEvent) {
-        if (!EventCrypto.verify(e)) return
         when (e.kind) {
             1 -> {
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
@@ -2437,6 +2470,9 @@ class EventRepository(
 
         /** 引用/返信ヒント + インデクサで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 16
+
+        /** 取り込みループが1トランザクションでまとめる最大イベント数。 */
+        const val INGEST_BATCH = 400
 
         /**
          * kind:0/10002 を確実に引くためのインデクサ系リレー。DM相手のアイコン/名前が
