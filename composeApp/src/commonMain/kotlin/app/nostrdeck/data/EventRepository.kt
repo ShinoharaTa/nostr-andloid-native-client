@@ -215,6 +215,8 @@ class EventRepository(
         loadEmbedPrefs()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
+        // 「古のSNS廃人モード」を KV から復元。
+        loadRetroMode()
         scope.launch { eventBatchLoop() }
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
@@ -1176,6 +1178,15 @@ class EventRepository(
         q.putSetting(DEFAULT_REACTION_CONTENT, content)
         q.putSetting(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
         defaultReactionState.value = content to imageUrl
+    }
+
+    /** [M17] 「古のSNS廃人モード」。ON でデッキが高密度・玄人寄りの見た目/挙動になる。既定OFF。 */
+    private val retroModeState = MutableStateFlow(false)
+    fun retroModeFlow(): StateFlow<Boolean> = retroModeState
+    private fun loadRetroMode() { retroModeState.value = q.getSetting(RETRO_MODE).executeAsOneOrNull() == "1" }
+    fun setRetroMode(on: Boolean) {
+        q.putSetting(RETRO_MODE, if (on) "1" else "0")
+        retroModeState.value = on
     }
 
     /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
@@ -2598,5 +2609,8 @@ class EventRepository(
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */
         const val DEFAULT_REACTION_CONTENT = "default_reaction:content"
         const val DEFAULT_REACTION_IMAGE = "default_reaction:image"
+
+        /** 「古のSNS廃人モード」の KV キー（"1"/"0"）。 */
+        const val RETRO_MODE = "retro_haijin_mode"
     }
 }
