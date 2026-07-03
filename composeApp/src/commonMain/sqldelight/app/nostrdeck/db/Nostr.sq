@@ -299,6 +299,13 @@ SELECT et.value AS note_id, e.tags_json
 FROM event e JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 9735 AND et.tag = 'e';
 
+-- [M13] 指定ノートへの Zap 受領（スレッドでリプライ風に列挙）。新しい順。
+zapReceiptsForNote:
+SELECT DISTINCT e.* FROM event e
+JOIN event_tag et ON e.id = et.event_id
+WHERE e.kind = 9735 AND et.tag = 'e' AND et.value = ?
+ORDER BY e.created_at DESC;
+
 -- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
 -- リアクション(kind7) を新しい順に。自分自身の操作は除外。
 notificationsFor:

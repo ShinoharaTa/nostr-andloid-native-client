@@ -14,8 +14,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -24,11 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ThreadEntry
+import app.nostrdeck.model.ZapUi
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -48,6 +52,7 @@ fun ThreadColumn(
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
+    zaps: List<ZapUi> = emptyList(),
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
     onAuthorClick: ((String) -> Unit)? = null,
@@ -63,6 +68,25 @@ fun ThreadColumn(
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             items(entries, key = { it.note.event.id }) { entry ->
                 ThreadRow(entry, onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) }, onAuthorClick = onAuthorClick)
+            }
+            // Zap を「リプライ風」に列挙（誰がいくら Zap したか＋コメント）。
+            if (zaps.isNotEmpty()) {
+                item(key = "zap_header") {
+                    val total = zaps.sumOf { it.sats }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.Bolt, null, tint = DeckColors.Zap, modifier = Modifier.width(16.dp))
+                        Spacer(Modifier.width(DeckSpace.Xs))
+                        Text("Zap · 合計 $total sats", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.SemiBold)
+                    }
+                    HorizontalDivider(color = DeckColors.Border)
+                }
+                items(zaps, key = { "zap_" + it.id }) { z ->
+                    ZapRow(z, onAuthorClick = onAuthorClick)
+                    HorizontalDivider(color = DeckColors.Border)
+                }
             }
         }
         // 下部の返信ボックスは起点（フォーカス）ノート、無ければ先頭への返信。
@@ -89,6 +113,37 @@ private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit, onQuote: () -> Un
             )
         }
         NoteItem(entry.note, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick)
+    }
+}
+
+/** Zap 1件をリプライ風に表示（⚡アバター + 名前 + 金額 + 任意コメント）。 */
+@Composable
+private fun ZapRow(zap: ZapUi, onAuthorClick: ((String) -> Unit)?) {
+    val tap = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(zap.zapper.pubkey) } else Modifier
+    Row(Modifier.fillMaxWidth().padding(DeckSpace.Md)) {
+        Box {
+            Avatar(zap.zapper.name, zap.zapper.pictureUrl, Modifier.then(tap))
+            // 右下に ⚡ バッジ。
+            Icon(
+                Icons.Outlined.Bolt, "Zap", tint = DeckColors.Zap,
+                modifier = Modifier.align(Alignment.BottomEnd).width(14.dp),
+            )
+        }
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    zap.zapper.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).then(tap),
+                )
+                Spacer(Modifier.width(DeckSpace.Xs))
+                Text("${zap.sats} sats", color = DeckColors.Zap, fontSize = DeckType.Sub, fontWeight = FontWeight.Bold)
+            }
+            if (zap.comment.isNotBlank()) {
+                Spacer(Modifier.width(DeckSpace.Xs))
+                Text(zap.comment, color = DeckColors.Text2, fontSize = DeckType.Body)
+            }
+        }
     }
 }
 

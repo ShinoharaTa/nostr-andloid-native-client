@@ -294,8 +294,11 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 // スレッドは起点ノートは残し、ミュート著者の返信のみ隠す。
                 val entries = if (revealed) allEntries
                 else allEntries.filterNot { it.note.event.id != focusId && matcher.muted(it.note) }
+                // 起点ノートへの Zap を購読して「リプライ風」に列挙する。
+                SubscribeZaps(repo, spec.id, listOf(focusId))
+                val zaps = remember(spec.id) { repo.zapsForNote(focusId) }.collectAsState(emptyList()).value
                 ThreadColumn(
-                    spec, entries, modifier, listState, menu = menu,
+                    spec, entries, modifier, listState, menu = menu, zaps = zaps,
                     onReply = { note -> state.replyTo = note.event; state.showCompose = true },
                     onQuote = { note -> state.quoting = note.event; state.showCompose = true },
                     onAuthorClick = { pk -> state.openProfile(pk) },

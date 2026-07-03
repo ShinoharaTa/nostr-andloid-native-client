@@ -2101,16 +2101,60 @@ class EventRepository(
     }
     fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
 
-    /** 9735 のタグ群から zap 額(sats)を取り出す。description の zap request の amount(msats) を優先。 */
+    /** 9735 のタグ群から zap 額(sats)を取り出す。description の amount(msats) 優先、無ければ bolt11 から。 */
     private fun zapAmountSats(tags: List<List<String>>): Long {
-        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1) ?: return 0
+        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1)
         val msat = runCatching {
-            json.parseToJsonElement(desc).jsonObject["tags"]?.jsonArray
-                ?.map { t -> t.jsonArray.map { it.jsonPrimitive.content } }
-                ?.firstOrNull { it.size >= 2 && it[0] == "amount" }?.get(1)?.toLongOrNull()
+            desc?.let {
+                json.parseToJsonElement(it).jsonObject["tags"]?.jsonArray
+                    ?.map { t -> t.jsonArray.map { s -> s.jsonPrimitive.content } }
+                    ?.firstOrNull { t -> t.size >= 2 && t[0] == "amount" }?.get(1)?.toLongOrNull()
+            }
         }.getOrNull() ?: 0
-        return msat / 1000
+        if (msat > 0) return msat / 1000
+        // フォールバック: bolt11 タグの金額を解析。
+        val bolt11 = tags.firstOrNull { it.size >= 2 && it[0] == "bolt11" }?.get(1) ?: return 0
+        return bolt11Sats(bolt11)
     }
+
+    /** bolt11 invoice の金額(sats)を解析。`lnbc<amount><multiplier>` 形式（m/u/n/p）。 */
+    private fun bolt11Sats(invoice: String): Long {
+        val m = Regex("""^ln(?:bc|tb|bcrt)(\d+)([munp]?)""", RegexOption.IGNORE_CASE).find(invoice.trim()) ?: return 0
+        val num = m.groupValues[1].toLongOrNull() ?: return 0
+        return when (m.groupValues[2].lowercase()) {
+            "m" -> num * 100_000        // milli-BTC
+            "u" -> num * 100            // micro
+            "n" -> num / 10             // nano
+            "p" -> num / 10_000         // pico
+            else -> num * 100_000_000   // BTC
+        }
+    }
+
+    /** 9735 のタグから Zap 送信者/コメントを取り出して ZapUi を組み立てる。 */
+    private fun toZapUi(row: Event, byPk: Map<String, app.nostrdeck.db.Profile>): app.nostrdeck.model.ZapUi? {
+        val tags = parseTags(row.tags_json)
+        val sats = zapAmountSats(tags)
+        val zapper = (tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1) ?: zapSenderFrom(tags)) ?: return null
+        val comment = runCatching {
+            tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1)
+                ?.let { json.parseToJsonElement(it).jsonObject["content"]?.jsonPrimitive?.contentOrNull }
+        }.getOrNull().orEmpty()
+        val prof = byPk[zapper]
+        return app.nostrdeck.model.ZapUi(
+            id = row.id, sats = sats, comment = comment, createdAt = row.created_at,
+            zapper = Profile(zapper, prof?.name?.takeIf { it.isNotBlank() } ?: zapper.take(10),
+                prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16),
+        )
+    }
+
+    /** 指定ノートへの Zap（受領 9735）をリプライ風に列挙する（スレッド表示用）。 */
+    fun zapsForNote(noteId: String): Flow<List<app.nostrdeck.model.ZapUi>> =
+        combine(
+            q.zapReceiptsForNote(noteId).asFlow().mapToList(Dispatchers.Default), profilesFlow,
+        ) { rows, profiles ->
+            val byPk = profiles.associateBy { it.pubkey }
+            rows.mapNotNull { toZapUi(it, byPk) }
+        }.flowOn(Dispatchers.Default)
 
     /** 9735 の description(zap request) から Zap 送信者 pubkey を取り出す（P タグが無い時のフォールバック）。 */
     private fun zapSenderFrom(tags: List<List<String>>): String? {

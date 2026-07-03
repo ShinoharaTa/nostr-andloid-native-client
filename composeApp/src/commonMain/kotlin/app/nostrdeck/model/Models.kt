@@ -208,6 +208,15 @@ data class Channel(
     val lastMessage: String = "",
 )
 
+/** [M13] NIP-57 Zap 受領(kind:9735)の表示用。スレッドで「誰がいくら Zap したか」をリプライ風に出す。 */
+data class ZapUi(
+    val id: String,
+    val zapper: Profile,
+    val sats: Long,
+    val comment: String,
+    val createdAt: Long,
+)
+
 /** DM 会話一覧の行（NIP-17 想定）。 */
 data class DmConversation(
     val pubkey: String,

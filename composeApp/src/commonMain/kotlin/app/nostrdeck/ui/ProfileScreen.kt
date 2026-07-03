@@ -398,8 +398,12 @@ fun ThreadDetail(state: DeckState, eventId: String) {
     }
     val entries = repo?.let { remember(eventId) { it.threadFeed(eventId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // 起点ノートへの Zap を購読して「リプライ風」に列挙。
+    androidx.compose.runtime.LaunchedEffect(eventId) { repo?.subscribeZaps("${subId}_zaps", listOf(eventId)) }
+    val zaps = repo?.let { remember(eventId) { it.zapsForNote(eventId) } }
+        ?.collectAsState(emptyList())?.value ?: emptyList()
     ThreadColumn(
-        spec, entries, Modifier.fillMaxSize(),
+        spec, entries, Modifier.fillMaxSize(), zaps = zaps,
         onBack = { state.popDetail() },
         onReply = { state.replyTo = it.event; state.showCompose = true },
         onQuote = { state.quoting = it.event; state.showCompose = true },
