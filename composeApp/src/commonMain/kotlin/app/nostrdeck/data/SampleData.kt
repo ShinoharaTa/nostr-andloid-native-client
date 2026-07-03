@@ -180,6 +180,7 @@ object SampleData {
         "bookmarks" to "ブックマーク",
         "dmrelays" to "DMリレー",
         "media" to "メディアサーバー",
+        "reaction" to "リアクション",
         "data" to "データ・キャッシュ",
         "appearance" to "表示",
         "about" to "このアプリについて",

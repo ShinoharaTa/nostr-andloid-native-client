@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.hexToBytes
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
@@ -117,6 +120,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
             "mute" -> MuteSettings()
             "bookmarks" -> BookmarkSettings(state)
             "dmrelays" -> DmRelaySettings()
+            "reaction" -> ReactionSettings()
             "media" -> MediaSettings()
             "data" -> DataSettings()
             "appearance" -> AppearanceSettings()
@@ -299,6 +303,56 @@ private fun DmRelaySettings() {
                 HorizontalDivider(color = DeckColors.Border)
             }
         }
+    }
+}
+
+/**
+ * [M16] リアクション設定。♡ボタンの「デフォルトリアクション」を絵文字ピッカーで変更する。
+ * 変更後は各投稿の♡ボタンがその内容（☆/絵文字/カスタム絵文字）を送り、押下でハイライトする。
+ */
+@Composable
+private fun ReactionSettings() {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("リアクション設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val def by repo.defaultReactionFlow().collectAsState()
+    var showPicker by remember { mutableStateOf(false) }
+
+    Text("デフォルトのリアクション", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "各投稿の♡ボタンを押したときに送るリアクションです。絵文字ピッカーから選べます。" +
+            "（絵文字ピッカーからは別の絵文字を何度でも付けられます）",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2),
+            contentAlignment = Alignment.Center) {
+            val (content, img) = def
+            when {
+                content == "+" || content == "❤️" || content.isEmpty() ->
+                    Text("❤️", fontSize = DeckType.Emoji)
+                !img.isNullOrBlank() -> AsyncImage(
+                    model = ImageRequest.Builder(LocalPlatformContext.current)
+                        .data(ImageProxy.proxied(img, width = 64, quality = 80, animated = true)).build(),
+                    contentDescription = content, modifier = Modifier.size(24.dp),
+                )
+                else -> Text(content, fontSize = DeckType.Emoji)
+            }
+        }
+        Spacer(Modifier.size(DeckSpace.Md))
+        DeckButton("変更", onClick = { showPicker = true })
+    }
+
+    if (showPicker) {
+        ReactionPickerSheet(
+            onPick = { content, imageUrl -> repo.setDefaultReaction(content, imageUrl); showPicker = false },
+            onDismiss = { showPicker = false },
+        )
     }
 }
 

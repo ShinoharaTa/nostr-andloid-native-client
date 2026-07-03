@@ -194,6 +194,10 @@ sealed interface FeedEntry {
     data class Notice(val notif: NotificationUi) : FeedEntry {
         override val sortAt: Long get() = notif.createdAt
     }
+    /** [M16] 自分が付けたリアクション（kind:7）と、その宛先の投稿。TL に「自分が◯◯にリアクション」と出す。 */
+    data class MyReaction(val reaction: ReactionUi, val target: NoteUi, val reactedAt: Long) : FeedEntry {
+        override val sortAt: Long get() = reactedAt
+    }
 }
 
 /** NIP-28 チャンネル（kind:40 作成 + kind:41 最新メタ）。一覧カラムの行。 */

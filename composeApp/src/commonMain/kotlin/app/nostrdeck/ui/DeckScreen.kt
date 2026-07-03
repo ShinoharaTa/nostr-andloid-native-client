@@ -236,6 +236,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         when (it) {
                             is FeedEntry.Post -> matcher.muted(it.note)
                             is FeedEntry.Notice -> matcher.muted(it.notif)
+                            is FeedEntry.MyReaction -> matcher.muted(it.target)
                         }
                     }
                     SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })

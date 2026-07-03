@@ -4,21 +4,35 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import kotlinx.coroutines.launch
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckSpace
+import app.nostrdeck.theme.DeckType
 
 /**
  * FEED レンダラー：逆時系列の読み物（Following / hashtag / 通知）。
@@ -97,7 +111,7 @@ fun FollowingFeedColumn(
         if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
     }
     val scope = rememberCoroutineScope()
-    val keys = entries.map { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } }
+    val keys = entries.map { feedEntryKey(it) }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -107,7 +121,7 @@ fun FollowingFeedColumn(
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(entries, key = { e -> when (e) { is FeedEntry.Post -> "p_${e.note.event.id}"; is FeedEntry.Notice -> "n_${e.notif.id}" } }) { entry ->
+                items(entries, key = { feedEntryKey(it) }) { entry ->
                     when (entry) {
                         is FeedEntry.Post -> NoteItem(
                             entry.note, Modifier.clickable { onNoteClick(entry.note) },
@@ -119,6 +133,12 @@ fun FollowingFeedColumn(
                             onClick = { onNoticeClick(entry.notif.targetNoteId ?: entry.notif.id) },
                             onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
                         )
+                        is FeedEntry.MyReaction -> MyReactionRow(
+                            entry,
+                            onNoteClick = { onNoteClick(entry.target) },
+                            onReply = { onReply(entry.target) }, onQuote = { onQuote(entry.target) },
+                            onAuthorClick = onAuthorClick,
+                        )
                     }
                 }
             }
@@ -126,5 +146,47 @@ fun FollowingFeedColumn(
                 scope.launch { listState.animateScrollToItem(0) }
             }
         }
+    }
+}
+
+/** LazyColumn の安定キー。エントリ種別ごとに一意化する。 */
+private fun feedEntryKey(e: FeedEntry): String = when (e) {
+    is FeedEntry.Post -> "p_${e.note.event.id}"
+    is FeedEntry.Notice -> "n_${e.notif.id}"
+    is FeedEntry.MyReaction -> "r_${e.target.event.id}_${e.reactedAt}"
+}
+
+/** [M16] 「あなたがリアクション」＋宛先ノートを表示する行（自分の kind:7 を TL に出す）。 */
+@Composable
+private fun MyReactionRow(
+    entry: FeedEntry.MyReaction,
+    onNoteClick: () -> Unit,
+    onReply: () -> Unit,
+    onQuote: () -> Unit,
+    onAuthorClick: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = DeckSpace.Md, top = DeckSpace.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val r = entry.reaction
+            val img = r.imageUrl
+            if (img != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalPlatformContext.current)
+                        .data(ImageProxy.proxied(img, width = 48, quality = 80, animated = true)).build(),
+                    contentDescription = r.display, modifier = Modifier.size(14.dp),
+                )
+            } else {
+                Text(r.display, fontSize = DeckType.Label)
+            }
+            Spacer(Modifier.width(DeckSpace.Xs))
+            Text("あなたがリアクション", color = DeckColors.Text3, fontSize = DeckType.Label)
+        }
+        NoteItem(
+            entry.target, Modifier.clickable(onClick = onNoteClick),
+            onReply = { onReply() }, onQuote = { onQuote() }, onAuthorClick = onAuthorClick,
+        )
     }
 }

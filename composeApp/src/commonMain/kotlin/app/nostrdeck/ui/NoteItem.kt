@@ -45,6 +45,7 @@ import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ReactionUi
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -79,6 +80,7 @@ fun NoteItem(
   val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val zapTotals by (repo?.zapTotalsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, Long>()) })
   val zapSats = zapTotals[note.event.id] ?: 0L
+  val defaultReaction by (repo?.defaultReactionFlow()?.collectAsState() ?: remember { mutableStateOf("+" to null) })
   var repostMenu by remember { mutableStateOf(false) }
   var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
@@ -162,22 +164,15 @@ fun NoteItem(
                         )
                     }
                 }
-                // 自分が非♡の絵文字でリアクション済みなら、♡でなくその絵文字を表示（タップで取り消し）。
-                val myRx = note.mineReaction
-                if (myRx != null && myRx.display != "❤️") {
-                    // 取り消し=kind:5 発行なので確認を挟む。
-                    MyReactionGlyph(myRx) { confirmUnreact = true }
-                } else {
-                    ActionButton(
-                        if (note.mineReacted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        if (note.mineReacted) DeckColors.Like else DeckColors.Text3,
-                        onClick = {
-                            // リアクション済み→取り消し(kind:5)は確認を挟む。未リアクション→即送信。
-                            if (note.mineReacted) confirmUnreact = true
-                            else scope.launch { repo?.toggleReaction(note.event) }
-                        },
-                    )
-                }
+                // デフォルトリアクション（設定で ♡/☆/絵文字を変更可）。押すと送信し、押下状態になる。
+                DefaultReactionButton(
+                    content = defaultReaction.first, imageUrl = defaultReaction.second, active = note.mineReacted,
+                    onClick = {
+                        // 付与済み→取り消し(kind:5)は確認を挟む。未付与→即送信。絵文字ピッカーは別途何度でも可。
+                        if (note.mineReacted) confirmUnreact = true
+                        else scope.launch { repo?.reactWithDefault(note.event) }
+                    },
+                )
                 // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                 ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
                 // Zap は絵文字の隣。lud16 があれば送信可、Zap 受領があれば合計 sats を表示。
@@ -324,23 +319,36 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
     }
 }
 
-/** 自分が付けた非♡リアクションの表示（NIP-30 はカスタム画像、通常は絵文字文字）。タップで取り消し。 */
+/**
+ * デフォルトリアクションのボタン。設定内容に応じて表示を出し分ける:
+ *  - "+"/"❤️" → ハート（付与済みで塗り、未付与で枠線）
+ *  - ":shortcode:"（imageUrl 付き）→ カスタム絵文字画像
+ *  - それ以外の Unicode 絵文字（☆ 等）→ その文字
+ * 未付与は淡色/半透明、付与済み（[active]）は濃色/不透明で「押された状態」を示す。
+ */
 @Composable
-private fun MyReactionGlyph(reaction: ReactionUi, onClick: () -> Unit) {
-    val url = reaction.imageUrl
+private fun DefaultReactionButton(content: String, imageUrl: String?, active: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (url != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(ImageProxy.proxied(url, width = 64, quality = 80)).crossfade(true).build(),
-                contentDescription = reaction.display,
+        when {
+            content == "+" || content == "❤️" || content.isEmpty() -> Icon(
+                if (active) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                contentDescription = "リアクション",
+                tint = if (active) DeckColors.Like else DeckColors.Text3,
                 modifier = Modifier.size(DeckDimens.IconMd),
             )
-        } else {
-            Text(reaction.display, fontSize = DeckType.Emoji, maxLines = 1)
+            !imageUrl.isNullOrBlank() -> AsyncImage(
+                model = ImageRequest.Builder(LocalPlatformContext.current)
+                    .data(ImageProxy.proxied(imageUrl, width = 64, quality = 80, animated = true)).crossfade(true).build(),
+                contentDescription = content,
+                modifier = Modifier.size(DeckDimens.IconMd).alpha(if (active) 1f else 0.45f),
+            )
+            else -> Text(
+                content, fontSize = DeckType.Emoji, maxLines = 1,
+                modifier = Modifier.alpha(if (active) 1f else 0.45f),
+            )
         }
     }
 }

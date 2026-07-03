@@ -124,12 +124,28 @@ class EventRepository(
     /** [M8-counts] 自分の公開鍵を Flow でも公開（♡/リポスト済み判定が鍵切替に追従するため）。 */
     private val myPubkeyFlow = MutableStateFlow<String?>(null)
 
-    /** [M8-counts] 自分が♡済みのノート id 集合（公開鍵の変化に追従）。 */
+    /** 自分の全 kind:7 行（note_id / content / tags_json）。♡状態と自分リアクション表示の元。 */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val myReactedFlow: Flow<Set<String>> = myPubkeyFlow.flatMapLatest { pk ->
-        if (pk == null) flowOf(emptySet())
-        else q.myReactedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
+    private val myReactionRowsFlow = myPubkeyFlow.flatMapLatest { pk ->
+        if (pk == null) flowOf(emptyList()) else q.myReactionsForNotes(pk).asFlow().mapToList(Dispatchers.Default)
     }
+
+    /** ユーザー設定のデフォルトリアクション（content, imageUrl）。♡ボタンで送る内容。 */
+    private val defaultReactionState = MutableStateFlow("+" to null as String?)
+    fun defaultReactionFlow(): StateFlow<Pair<String, String?>> = defaultReactionState
+    /** デフォルトリアクションの正規化 content（"+"/空→"❤️"、それ以外はそのまま）。DB照合・表示判定用。 */
+    private fun normalizedDefaultReaction(): String =
+        defaultReactionState.value.first.let { if (it == "+" || it.isEmpty()) "❤️" else it }
+
+    /**
+     * [M8/M16] ♡が押された状態＝「自分がデフォルトリアクションを付けたノート」集合。
+     * デフォルトの content を変えると追従する（設定で☆等に変更しても正しくハイライト）。
+     */
+    private val myReactedFlow: Flow<Set<String>> =
+        combine(myReactionRowsFlow, defaultReactionState) { rows, def ->
+            val target = if (def.first == "+" || def.first.isEmpty()) "❤️" else def.first
+            rows.filter { it.content == target }.map { it.note_id }.toSet()
+        }
 
     /** [M8-counts] 自分がリポスト済みのノート id 集合。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -138,13 +154,9 @@ class EventRepository(
         else q.myRepostedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
     }
 
-    /** 自分が各ノートに付けたリアクション（note_id→ReactionUi）。非♡ならボタンにその絵文字を出す。 */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val myReactionMapFlow: Flow<Map<String, ReactionUi>> = myPubkeyFlow.flatMapLatest { pk ->
-        if (pk == null) flowOf(emptyMap())
-        else q.myReactionsForNotes(pk).asFlow().mapToList(Dispatchers.Default).map { rows ->
-            rows.associate { it.note_id to normalizeReaction(it.content, parseTags(it.tags_json)) }
-        }
+    /** 自分が各ノートに付けたリアクション（note_id→ReactionUi）。集約表示等に使う。 */
+    private val myReactionMapFlow: Flow<Map<String, ReactionUi>> = myReactionRowsFlow.map { rows ->
+        rows.associate { it.note_id to normalizeReaction(it.content, parseTags(it.tags_json)) }
     }
 
     /** [M10] フィードに載せるメタ: 自分が♡/リポスト済みか + 自分のリアクション絵文字。 */
@@ -201,6 +213,8 @@ class EventRepository(
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
+        // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
+        loadDefaultReaction()
         scope.launch { eventBatchLoop() }
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
@@ -222,6 +236,8 @@ class EventRepository(
             // NIP-04 旧型DM(kind:4): 受信(自分宛)・送信(自分発)の両方を購読して統合表示。
             subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
             subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
+            // [M16] 自分のリアクション(kind:7)を購読し、宛先ノートと共に TL へ混ぜる。
+            subscribeAll("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
         }
     }
 
@@ -441,6 +457,7 @@ class EventRepository(
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
             subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
             subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
+            subscribeAll("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
@@ -598,7 +615,7 @@ class EventRepository(
     fun followingFeedMixed(): StateFlow<List<FeedEntry>> = followingMixedCache
 
     private fun buildFollowingFeedMixed(): Flow<List<FeedEntry>> =
-        combine(followingFeed(), notificationsFeed(), follows) { notes, notifs, follows ->
+        combine(followingFeed(), notificationsFeed(), myReactionsFeed(), follows) { notes, notifs, myReactions, follows ->
             val followSet = follows.toSet()
             // 件数表示は不要。混ぜ込むのは「自分へのリアクション/リポスト」だけ
             //（リプライ/メンションは本文ノートとして既に流れるため重複させない）。
@@ -610,9 +627,27 @@ class EventRepository(
                     else -> false
                 }
             }
-            (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) })
+            (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) } + myReactions)
                 .sortedByDescending { it.sortAt }
         }.flowOn(Dispatchers.Default)
+
+    /** [M16] 自分が付けた kind:7 リアクションと、その宛先ノートを TL エントリにする。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun myReactionsFeed(): Flow<List<FeedEntry>> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(emptyList())
+        else combine(
+            q.myReactionsAll(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, noteMetaFlow,
+        ) { rows, profiles, meta ->
+            val byPk = profiles.associateBy { it.pubkey }
+            rows.mapNotNull { r ->
+                val targetId = r.target_id ?: return@mapNotNull null
+                val targetRow = q.eventById(targetId).executeAsOneOrNull()
+                if (targetRow == null) { requestEvent(targetId); return@mapNotNull null }  // 未取得なら取りに行く
+                val target = applyMeta(withQuoteAndReply(toNoteUi(targetRow, byPk[targetRow.pubkey]), targetRow, byPk), meta)
+                FeedEntry.MyReaction(normalizeReaction(r.content, parseTags(r.tags_json)), target, r.created_at)
+            }
+        }.flowOn(Dispatchers.Default)
+    }
 
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。
      *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]）。 */
@@ -1107,17 +1142,40 @@ class EventRepository(
      * [M8-counts] ♡ のトグル。未リアクションなら "+" を送信、既にリアクション済みなら
      * NIP-09 削除イベント(kind:5)で取り消し、ローカルからも除去する（ハイライト/数が即反映）。
      */
-    suspend fun toggleReaction(target: NostrEvent) {
+    suspend fun toggleReaction(target: NostrEvent) = reactWithDefault(target)
+
+    /**
+     * [M16] ♡ボタン＝デフォルトリアクションのトグル。未リアクションなら設定のデフォルト内容で kind:7、
+     * 既に同じデフォルト内容で付けていれば NIP-09 削除(kind:5)で取り消す。
+     * （絵文字ピッカーからのリアクションは publishReaction で何度でも重ねられる＝ここでは触らない）
+     */
+    suspend fun reactWithDefault(target: NostrEvent) {
         val pk = myPubkey ?: SignerProvider.current().publicKeyHex().also {
             myPubkey = it; myPubkeyFlow.value = it
         }
-        val mineId = q.myReactionIdFor(pk, target.id).executeAsOneOrNull()
+        val (content, img) = defaultReactionState.value
+        val stored = normalizedDefaultReaction()
+        val mineId = q.myReactionIdForContent(pk, target.id, stored).executeAsOneOrNull()
         if (mineId != null) {
             publishSigned(UnsignedEvent(kind = 5, content = "", tags = listOf(listOf("e", mineId))))
             q.transaction { q.deleteEventById(mineId); q.deleteTagsForEvent(mineId) }
         } else {
-            publishReaction(target, "+")
+            publishReaction(target, content, img)
         }
+    }
+
+    /** デフォルトリアクションを KV から復元（未設定は "+"＝❤️）。start() から呼ぶ。 */
+    private fun loadDefaultReaction() {
+        val c = q.getSetting(DEFAULT_REACTION_CONTENT).executeAsOneOrNull()?.ifBlank { null } ?: "+"
+        val img = q.getSetting(DEFAULT_REACTION_IMAGE).executeAsOneOrNull()?.ifBlank { null }
+        defaultReactionState.value = c to img
+    }
+
+    /** デフォルトリアクションを設定（設定画面のピッカーから）。content=":shortcode:" のときは imageUrl も保存。 */
+    fun setDefaultReaction(content: String, imageUrl: String?) {
+        q.putSetting(DEFAULT_REACTION_CONTENT, content)
+        q.putSetting(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
+        defaultReactionState.value = content to imageUrl
     }
 
     /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
@@ -1415,6 +1473,8 @@ class EventRepository(
                 val content = when (e.content) { "+", "" -> "❤️"; else -> e.content }
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, content, tagsToJson(e.tags), e.sig)
                 indexTags(e)
+                // [M16] 自分のリアクションは宛先ノートも TL に出すため、対象イベントの取得を促す。
+                if (e.pubkey == myPubkey) e.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)?.let { requestEvent(it) }
             }
             // [M8-repost] NIP-18 リポスト(kind:6) / 汎用リポスト(kind:16)。
             //   本体を保存し q/e を索引、リポスト主の profile を要求。content に元イベント JSON が
@@ -2534,5 +2594,9 @@ class EventRepository(
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
+
+        /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */
+        const val DEFAULT_REACTION_CONTENT = "default_reaction:content"
+        const val DEFAULT_REACTION_IMAGE = "default_reaction:image"
     }
 }
