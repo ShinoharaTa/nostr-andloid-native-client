@@ -216,9 +216,12 @@ class EventRepository(
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
             // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
-            // 10050 が届いたら updateDmRelayList が dm_inbox をその DM リレーへ張り直す。
+            // 10050 が届いたら updateDmRelayList が DM リレーへも追加購読する（broad は維持）。
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
+            // NIP-04 旧型DM(kind:4): 受信(自分宛)・送信(自分発)の両方を購読して統合表示。
+            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
+            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
         }
     }
 
@@ -436,6 +439,8 @@ class EventRepository(
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
+            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
+            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
@@ -1440,6 +1445,7 @@ class EventRepository(
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
+            4 -> ingestLegacyDm(e)        // NIP-04 旧型DM（kind:4）を復号して kind:14 に統合保存
             1059 -> ingestGiftWrap(e)     // NIP-17 DM（gift wrap を復号して kind:14 保存）
             9735 -> ingestZapReceipt(e)   // NIP-57 Zap 受領（#e 集計・受信通知に使う）
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
@@ -2230,6 +2236,27 @@ class EventRepository(
         }
     }
 
+    private val processedLegacyDm = mutableSetOf<String>()
+
+    /**
+     * NIP-04 旧型DM（kind:4）を復号して NIP-17 と同じ kind:14 として保存し、DM 画面に統合表示する。
+     * content は「自分↔相手」の ECDH 共有鍵で AES-CBC 暗号（"?iv=" 形式）。相手＝
+     * 自分が送信者なら p タグ(受信者)、そうでなければ送信者。復号失敗は無視。
+     */
+    private fun ingestLegacyDm(e: NostrEvent) {
+        if (!processedLegacyDm.add(e.id)) return
+        scope.launch {
+            val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+            val recipient = e.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+            val peer = if (e.pubkey == me) recipient else e.pubkey
+            if (peer.isNullOrBlank()) return@launch
+            val plain = runCatching { SignerProvider.current().nip04Decrypt(peer, e.content) }.getOrNull() ?: return@launch
+            requestProfile(e.pubkey); recipient?.let { requestProfile(it) }
+            requestProfileFromIndexers(listOfNotNull(e.pubkey, recipient))
+            storeDm(e.id, e.pubkey, recipient ?: me, plain, e.createdAt)
+        }
+    }
+
     private fun storeDm(id: String, sender: String, recipient: String?, content: String, createdAt: Long) {
         val tags = recipient?.let { listOf(listOf("p", it)) } ?: emptyList()
         q.insertEvent(id, sender, 14, createdAt, content, tagsToJson(tags), "")
@@ -2278,9 +2305,10 @@ class EventRepository(
         val urls = e.tags.filter { it.size >= 2 && it[0] == "relay" }.map { normalizeRelayUrl(it[1]) }
             .filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
         dmRelaysByAuthor.value = dmRelaysByAuthor.value + (e.pubkey to urls)
-        // 自分の DM リレーが判明したら、そこへ接続して受信購読を張り直す。
+        // 自分の DM リレーが判明したら、そこへも接続して追加購読する（broad な dm_inbox は維持）。
         if (e.pubkey == myPubkey && urls.isNotEmpty()) {
-            subscribeTargeted("dm_inbox", urls.toSet(), Filter(kinds = listOf(1059), pTags = listOf(e.pubkey)))
+            subscribeTargeted("dm_inbox_relays", urls.toSet(), Filter(kinds = listOf(1059), pTags = listOf(e.pubkey)))
+            subscribeTargeted("dm4_relays", urls.toSet(), Filter(kinds = listOf(4), pTags = listOf(e.pubkey)))
         }
     }
 
