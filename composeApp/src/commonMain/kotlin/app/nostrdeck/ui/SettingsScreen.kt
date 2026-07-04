@@ -53,6 +53,8 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerMethod
@@ -124,19 +126,22 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
             Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
         }
         Spacer(Modifier.size(DeckSpace.Md))
-        when (sectionId) {
-            "account" -> AccountSettings()
-            "signer" -> SignerSettings()
-            "relays" -> RelaySettings()
-            "mute" -> MuteSettings()
-            "bookmarks" -> BookmarkSettings(state)
-            "dmrelays" -> DmRelaySettings()
-            "reaction" -> ReactionSettings()
-            "retro" -> RetroSettings()
-            "media" -> MediaSettings()
-            "data" -> DataSettings()
-            "appearance" -> AppearanceSettings()
-            else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        // セクションは残り高さいっぱいに配置（内部で verticalScroll / LazyColumn が正しくスクロールできるように）。
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            when (sectionId) {
+                "account" -> AccountSettings()
+                "signer" -> SignerSettings()
+                "relays" -> RelaySettings()
+                "mute" -> MuteSettings()
+                "bookmarks" -> BookmarkSettings(state)
+                "dmrelays" -> DmRelaySettings()
+                "reaction" -> ReactionSettings()
+                "retro" -> RetroSettings()
+                "media" -> MediaSettings()
+                "data" -> DataSettings()
+                "appearance" -> AppearanceSettings()
+                else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+            }
         }
     }
 }
@@ -365,6 +370,8 @@ private fun AccountSettings() {
     var saved by remember { mutableStateOf(false) }
     val clearSaved: (String) -> Unit = { saved = false }
 
+    // フォームが縦に長く 保存ボタンが見切れるため、詳細ペイン内でスクロールできるようにする。
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     Text("プロフィール", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text("変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。",
@@ -395,6 +402,8 @@ private fun AccountSettings() {
             }
         },
     )
+    Spacer(Modifier.size(DeckSpace.Lg))
+    }
 }
 
 /** プロフィール編集の1フィールド（ラベル＋DeckTextField）。 */
