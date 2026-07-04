@@ -158,6 +158,12 @@ data class UsedEmoji(val content: String, val imageUrl: String?)
 enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP }
 
 /**
+ * [NIP-42] リレーの AUTH 要求への応答ポリシー。
+ * OFF=応答しない / DM_AND_MINE=自分のリレー・DMリレーのみ(既定) / ALWAYS=常に応答。
+ */
+enum class AuthPolicy { OFF, DM_AND_MINE, ALWAYS }
+
+/**
  * [M18] フォロー中TLに混ぜる通知系の表示カテゴリ。カラムの ⋯ メニューから個別に表示/非表示できる。
  * REACTIONS=自分へのリアクション / REPLIES=自分への返信・メンション / REPOSTS=自分へのリポスト /
  * MY_REACTIONS=自分がしたリアクション。

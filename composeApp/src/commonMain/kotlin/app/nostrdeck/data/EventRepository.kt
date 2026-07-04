@@ -40,6 +40,7 @@ import app.nostrdeck.model.OgpData
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.AuthPolicy
 import app.nostrdeck.model.FeedNoticeCategory
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
@@ -223,6 +224,8 @@ class EventRepository(
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
         loadRetroMode()
+        // [NIP-42] AUTH 応答ポリシーを KV から復元。
+        loadAuthPolicy()
         scope.launch { eventBatchLoop() }
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
@@ -290,7 +293,7 @@ class EventRepository(
             val client = RelayClient(key, scope)
             relays[key] = client
             client.start()
-            scope.launch { client.messages.collect(::onMessage) }
+            scope.launch { client.messages.collect { onMessage(it, client) } }
             // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
             scope.launch { client.state.collect { withContext(relayDispatcher) { refreshRelayConns() } } }
             // 限定なし(subTargets 無)のサブ、または新リレーが対象集合に含まれるサブだけ張り直す。
@@ -1447,8 +1450,63 @@ class EventRepository(
     // [ingestLoop] がまとめて署名検証＋1トランザクション書き込みする。
     private val ingestChannel = Channel<NostrEvent>(Channel.UNLIMITED)
 
-    private fun onMessage(msg: RelayMessage) {
-        if (msg is RelayMessage.Event) ingestChannel.trySend(msg.event)
+    // ---- [NIP-42] AUTH ----
+    /** AUTH 応答ポリシー（既定=自分/DMリレーのみ）。KV 永続。 */
+    private val authPolicyState = MutableStateFlow(AuthPolicy.DM_AND_MINE)
+    fun authPolicyFlow(): StateFlow<AuthPolicy> = authPolicyState
+    private fun loadAuthPolicy() {
+        authPolicyState.value = when (q.getSetting(AUTH_POLICY).executeAsOneOrNull()) {
+            "off" -> AuthPolicy.OFF; "always" -> AuthPolicy.ALWAYS; else -> AuthPolicy.DM_AND_MINE
+        }
+    }
+    fun setAuthPolicy(p: AuthPolicy) {
+        q.putSetting(AUTH_POLICY, when (p) { AuthPolicy.OFF -> "off"; AuthPolicy.ALWAYS -> "always"; AuthPolicy.DM_AND_MINE -> "dm" })
+        authPolicyState.value = p
+    }
+
+    private val authChallengeByRelay = mutableMapOf<String, String>()  // url → 応答済みチャレンジ（重複応答の抑止）
+    /** ポリシー判定: この URL の AUTH 要求に応答するか。 */
+    private fun shouldAuth(url: String): Boolean = when (authPolicyState.value) {
+        AuthPolicy.OFF -> false
+        AuthPolicy.ALWAYS -> true
+        AuthPolicy.DM_AND_MINE -> {
+            val u = normalizeRelayUrl(url)
+            val mine = q.allRelays().executeAsList().map { normalizeRelayUrl(it.url) }.toSet()
+            val dm = myPubkey?.let { dmRelaysByAuthor.value[it] }?.map { normalizeRelayUrl(it) }?.toSet() ?: emptySet()
+            u in mine || u in dm
+        }
+    }
+
+    /**
+     * [NIP-42] リレーの AUTH チャレンジに kind:22242 で応答し、成立後に購読を張り直す。
+     * ポリシー該当リレーのみ。自分の pubkey をそのリレーに証明するため、既定は自分/DMリレー限定。
+     */
+    private suspend fun handleAuthChallenge(client: RelayClient, challenge: String) {
+        if (challenge.isBlank() || !shouldAuth(client.url)) return
+        // 同じチャレンジには一度だけ応答（relayDispatcher 直列化で dedup がアトミック）。
+        val key = normalizeRelayUrl(client.url)
+        if (authChallengeByRelay[key] == challenge) return
+        authChallengeByRelay[key] = challenge
+        val signed = runCatching {
+            SignerProvider.current().sign(
+                UnsignedEvent(
+                    kind = 22242, content = "",
+                    tags = listOf(listOf("relay", client.url), listOf("challenge", challenge)),
+                )
+            )
+        }.getOrNull() ?: return
+        client.publish(RelayProtocol.auth(signed))
+        delay(300)  // AUTH の OK を待ってから購読(1059 等の制限イベント)を取り直す
+        client.resendSubscriptions()
+    }
+
+    private fun onMessage(msg: RelayMessage, client: RelayClient) {
+        when (msg) {
+            is RelayMessage.Event -> ingestChannel.trySend(msg.event)
+            // [NIP-42] AUTH 応答は relayDispatcher(直列)で処理し、チャレンジ重複応答を dedup する。
+            is RelayMessage.Auth -> scope.launch(relayDispatcher) { handleAuthChallenge(client, msg.challenge) }
+            else -> {}
+        }
     }
 
     /**
@@ -2683,5 +2741,8 @@ class EventRepository(
 
         /** 自分の最新 kind:0 生JSON（プロフィール編集の未知フィールド温存・purge 耐性用）。 */
         const val MY_PROFILE_JSON = "my_profile_json"
+
+        /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
+        const val AUTH_POLICY = "nip42_auth_policy"
     }
 }

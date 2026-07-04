@@ -51,6 +51,8 @@ sealed interface RelayMessage {
     data class Ok(val eventId: String, val accepted: Boolean, val message: String) : RelayMessage
     data class Notice(val message: String) : RelayMessage
     data class Closed(val subscriptionId: String, val message: String) : RelayMessage
+    /** [NIP-42] リレーからの AUTH チャレンジ（["AUTH", <challenge>]）。 */
+    data class Auth(val challenge: String) : RelayMessage
     data class Unknown(val raw: String) : RelayMessage
 }
 
@@ -71,6 +73,11 @@ object RelayProtocol {
         add("EVENT"); add(eventToJson(e))
     }.toString()
 
+    /** [NIP-42] AUTH 応答（["AUTH", <kind:22242 署名済みイベント>]）。 */
+    fun auth(e: NostrEvent): String = buildJsonArray {
+        add("AUTH"); add(eventToJson(e))
+    }.toString()
+
     // ---- リレー→クライアント ----
     fun parse(text: String): RelayMessage = try {
         val arr = json.parseToJsonElement(text).jsonArray
@@ -86,6 +93,7 @@ object RelayProtocol {
             "CLOSED" -> RelayMessage.Closed(
                 arr[1].jsonPrimitive.content, arr.getOrNull(2)?.jsonPrimitive?.content ?: "",
             )
+            "AUTH" -> RelayMessage.Auth(arr.getOrNull(1)?.jsonPrimitive?.content ?: "")
             else -> RelayMessage.Unknown(text)
         }
     } catch (t: Throwable) {

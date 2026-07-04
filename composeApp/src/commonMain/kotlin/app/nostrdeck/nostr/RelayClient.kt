@@ -112,6 +112,11 @@ class RelayClient(
         outgoing.trySend(eventJson)
     }
 
+    /** [NIP-42] AUTH 成立後などに、現在アクティブな購読(REQ)を張り直して制限イベントを取り直す。 */
+    fun resendSubscriptions() {
+        activeReqs.values.forEach { outgoing.trySend(it) }
+    }
+
     /** バックオフ待機中なら即再接続を促す（フォアグラウンド復帰時に呼ぶ）。接続中なら無害。 */
     fun wake() {
         wakeSignal.trySend(Unit)

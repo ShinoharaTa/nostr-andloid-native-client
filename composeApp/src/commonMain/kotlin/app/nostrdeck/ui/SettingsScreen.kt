@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.hexToBytes
+import app.nostrdeck.model.AuthPolicy
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
@@ -510,6 +511,20 @@ private fun RetroSettings() {
     SettingToggle("廃人モードを有効にする（高密度表示）", on) { repo.setRetroMode(it) }
 }
 
+/** [NIP-42] AUTH 応答ポリシーの選択チップ。選択中はアクセント背景。 */
+@Composable
+private fun AuthPolicyChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (selected) DeckColors.Text else DeckColors.Text3,
+        fontSize = DeckType.Label,
+        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Md))
+            .background(if (selected) DeckColors.AccentWeak else DeckColors.Surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+    )
+}
+
 /** リアクション種別（♡/☆）の選択チップ。選択中はアクセント背景＋濃色アイコン。 */
 @Composable
 private fun ReactionChoice(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
@@ -690,6 +705,24 @@ private fun RelaySettings() {
         enabled = !publishing,
         onClick = { confirmSave = true },
     )
+
+    // [NIP-42] AUTH 応答ポリシー。AUTH必須リレーからのDM等を受け取るための認証。
+    val authPolicy by repo.authPolicyFlow().collectAsState()
+    Spacer(Modifier.size(DeckSpace.Md))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(DeckSpace.Md))
+    Text("AUTH（NIP-42）への応答", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "AUTH必須リレーからのDM等を受け取るための認証です。応答すると自分の公開鍵をそのリレーに証明します。",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        AuthPolicyChip("DM/自分のリレーのみ", authPolicy == AuthPolicy.DM_AND_MINE) { repo.setAuthPolicy(AuthPolicy.DM_AND_MINE) }
+        AuthPolicyChip("常に応答", authPolicy == AuthPolicy.ALWAYS) { repo.setAuthPolicy(AuthPolicy.ALWAYS) }
+        AuthPolicyChip("無効", authPolicy == AuthPolicy.OFF) { repo.setAuthPolicy(AuthPolicy.OFF) }
+    }
 
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
