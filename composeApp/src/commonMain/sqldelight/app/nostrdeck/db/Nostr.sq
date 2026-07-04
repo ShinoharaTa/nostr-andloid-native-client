@@ -92,6 +92,10 @@ SELECT * FROM profile WHERE pubkey IN ?;
 profileByPubkey:
 SELECT * FROM profile WHERE pubkey = ?;
 
+-- [M18] 自分の最新 kind:0 の生 content(JSON)。編集時に未知フィールドを保持するため。
+myProfileContent:
+SELECT content FROM event WHERE kind = 0 AND pubkey = ? ORDER BY created_at DESC LIMIT 1;
+
 allProfiles:
 SELECT * FROM profile;
 

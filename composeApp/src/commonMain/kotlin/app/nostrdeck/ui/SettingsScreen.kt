@@ -27,6 +27,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,6 +121,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
         }
         Spacer(Modifier.size(DeckSpace.Md))
         when (sectionId) {
+            "account" -> AccountSettings()
             "signer" -> SignerSettings()
             "relays" -> RelaySettings()
             "mute" -> MuteSettings()
@@ -309,6 +312,107 @@ private fun DmRelaySettings() {
             }
         }
     }
+}
+
+/**
+ * [M18-#2] アカウント: 自分のプロフィール(kind:0)を編集・発行。
+ * 既存の未知フィールドは保持し、標準フィールドだけ上書き（[EventRepository.publishProfile]）。
+ * 画像(アイコン/バナー)は既存メディアアップロード基盤で差し替え。lud16 を入れると Zap を受け取れる。
+ */
+@Composable
+private fun AccountSettings() {
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    if (repo == null) {
+        Text("アカウント設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val pubkey by repo.loggedInPubkey().collectAsState(null)
+    val profile by (pubkey?.let { repo.profileFlow(it) } ?: flowOf(null)).collectAsState(null)
+    // 開いたら自分の kind:0 を複数リレーから取り直し、生JSON(未知フィールド含む)を最新化する。
+    LaunchedEffect(pubkey) { pubkey?.let { repo.fetchProfilesNow(listOf(it)) } }
+
+    var name by remember { mutableStateOf("") }
+    var about by remember { mutableStateOf("") }
+    var picture by remember { mutableStateOf("") }
+    var banner by remember { mutableStateOf("") }
+    var website by remember { mutableStateOf("") }
+    var lud16 by remember { mutableStateOf("") }
+    var nip05 by remember { mutableStateOf("") }
+    var initialized by remember { mutableStateOf(false) }
+    // 取得済みプロフィールで初期値を一度だけ埋める（以後の編集は上書きしない）。
+    LaunchedEffect(profile) {
+        val p = profile
+        if (!initialized && p != null) {
+            name = p.name; about = p.about; picture = p.pictureUrl ?: ""; banner = p.banner ?: ""
+            website = p.website ?: ""; lud16 = p.lud16 ?: ""; nip05 = p.handle
+            initialized = true
+        }
+    }
+    var uploadingPic by remember { mutableStateOf(false) }
+    var uploadingBanner by remember { mutableStateOf(false) }
+    val picPicker = rememberImagePicker { picked ->
+        picked.firstOrNull()?.let { p -> uploadingPic = true; scope.launch { picture = repo.uploadImage(p.bytes, p.mime, p.name) ?: picture; uploadingPic = false } }
+    }
+    val bannerPicker = rememberImagePicker { picked ->
+        picked.firstOrNull()?.let { p -> uploadingBanner = true; scope.launch { banner = repo.uploadImage(p.bytes, p.mime, p.name) ?: banner; uploadingBanner = false } }
+    }
+    var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    val clearSaved: (String) -> Unit = { saved = false }
+
+    Text("プロフィール", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text("変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。",
+        color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Md))
+
+    ProfileField("表示名", name) { name = it; saved = false }
+    ProfileField("自己紹介", about, singleLine = false) { about = it; saved = false }
+    ProfileImageField("アイコン画像", picture, uploadingPic, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
+    ProfileImageField("バナー画像", banner, uploadingBanner, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
+    ProfileField("Lightning アドレス (lud16)", lud16) { lud16 = it; saved = false }
+    ProfileField("NIP-05", nip05) { nip05 = it; saved = false }
+    ProfileField("Web サイト", website) { website = it; saved = false }
+
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckButton(
+        if (saving) "保存中…" else if (saved) "保存しました ✓" else "保存",
+        enabled = initialized && !saving && !uploadingPic && !uploadingBanner,
+        onClick = {
+            saving = true
+            scope.launch {
+                repo.publishProfile(mapOf(
+                    "name" to name.trim(), "about" to about.trim(), "picture" to picture.trim(),
+                    "banner" to banner.trim(), "website" to website.trim(),
+                    "lud16" to lud16.trim(), "nip05" to nip05.trim(),
+                ))
+                saving = false; saved = true
+            }
+        },
+    )
+}
+
+/** プロフィール編集の1フィールド（ラベル＋DeckTextField）。 */
+@Composable
+private fun ProfileField(label: String, value: String, singleLine: Boolean = true, onValueChange: (String) -> Unit) {
+    Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    DeckTextField(value = value, onValueChange = onValueChange, singleLine = singleLine, modifier = Modifier.fillMaxWidth())
+    Spacer(Modifier.size(DeckSpace.Md))
+}
+
+/** 画像URLフィールド（URL入力＋「選択」でアップロード）。 */
+@Composable
+private fun ProfileImageField(label: String, value: String, uploading: Boolean, onValueChange: (String) -> Unit, onPick: () -> Unit) {
+    Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        DeckTextField(value = value, onValueChange = onValueChange, placeholder = "https://…", modifier = Modifier.weight(1f))
+        Spacer(Modifier.size(DeckSpace.Sm))
+        DeckButton(if (uploading) "…" else "選択", enabled = !uploading, onClick = onPick)
+    }
+    Spacer(Modifier.size(DeckSpace.Md))
 }
 
 /**

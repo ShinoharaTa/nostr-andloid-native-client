@@ -88,6 +88,9 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -1848,6 +1851,42 @@ class EventRepository(
         }
     }
 
+    /**
+     * 自分の最新 kind:0 の生 content(JSON)。未取得なら null。編集時の未知フィールド温存に使う。
+     * イベント表は起動時 purge で消える & 受信 kind:0 は profile 表にしか入らないため、
+     * 自分の分だけ KV(MY_PROFILE_JSON)に退避したものを優先で読む（無ければイベント表）。
+     */
+    fun myProfileContent(): String? {
+        val pk = myPubkey ?: return null
+        return q.getSetting(MY_PROFILE_JSON).executeAsOneOrNull()?.ifBlank { null }
+            ?: q.myProfileContent(pk).executeAsOneOrNull()
+    }
+
+    /**
+     * [M18-#2] プロフィール(kind:0)を発行。既存 content の**未知フィールドは保持**し、標準キーだけ上書き。
+     * 空文字のキーは削除。表示名は `name` に集約し、既存が `display_name`/`displayName` を持つ場合のみ同値で同期。
+     * [fields] は "name"/"about"/"picture"/"banner"/"website"/"lud16"/"nip05" のうち編集対象のみ。
+     */
+    suspend fun publishProfile(fields: Map<String, String>) {
+        val pk = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+        // KV優先(purge耐性)で生JSONを読む。イベント表は起動時purgeで消えるため直読みは不可。
+        val base = myProfileContent()
+            ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
+        val map = LinkedHashMap<String, JsonElement>()
+        base?.forEach { (k, v) -> map[k] = v }  // 未知フィールドを温存
+        fields.forEach { (k, v) -> if (v.isBlank()) map.remove(k) else map[k] = JsonPrimitive(v) }
+        // 表示名(name)を display_name/displayName にも同期（既存が持っている場合のみ）
+        fields["name"]?.let { nm ->
+            listOf("display_name", "displayName").forEach { key ->
+                if (map.containsKey(key)) { if (nm.isBlank()) map.remove(key) else map[key] = JsonPrimitive(nm) }
+            }
+        }
+        val content = json.encodeToString(JsonObject.serializer(), JsonObject(map))
+        val signed = publishSigned(UnsignedEvent(kind = 0, content = content, tags = emptyList()))
+        q.putSetting(MY_PROFILE_JSON, content)  // 次回編集の温存元を更新（purge 耐性のため KV に保持）
+        upsertProfile(signed)  // ローカル projection を即更新
+    }
+
     private fun upsertProfile(e: NostrEvent) {
         // NIP-01 kind:0 の content は JSON 文字列（user metadata）。標準フィールドを整理して取り込む。
         val o = runCatching { json.parseToJsonElement(e.content).jsonObject }.getOrNull()
@@ -1863,6 +1902,8 @@ class EventRepository(
         val banner = str("banner")                            // ヘッダ画像
         q.insertProfileIfAbsent(e.pubkey, name, nip05, picture, e.createdAt, about, website, lud16, banner)
         q.updateProfileIfNewer(name, nip05, picture, e.createdAt, about, website, lud16, banner, e.pubkey, e.createdAt)
+        // 自分の kind:0 は生JSONを KV に退避（編集時の未知フィールド温存。purge で消えないように）。
+        if (e.pubkey == myPubkey) q.putSetting(MY_PROFILE_JSON, e.content)
     }
 
     private fun toNoteUi(row: Event, prof: app.nostrdeck.db.Profile?): NoteUi {
@@ -2639,5 +2680,8 @@ class EventRepository(
 
         /** 「古のSNS廃人モード」の KV キー（"1"/"0"）。 */
         const val RETRO_MODE = "retro_haijin_mode"
+
+        /** 自分の最新 kind:0 生JSON（プロフィール編集の未知フィールド温存・purge 耐性用）。 */
+        const val MY_PROFILE_JSON = "my_profile_json"
     }
 }
