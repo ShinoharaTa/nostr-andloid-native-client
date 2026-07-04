@@ -48,8 +48,12 @@ import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.hexToBytes
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.ContentScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
@@ -369,8 +373,8 @@ private fun AccountSettings() {
 
     ProfileField("表示名", name) { name = it; saved = false }
     ProfileField("自己紹介", about, singleLine = false) { about = it; saved = false }
-    ProfileImageField("アイコン画像", picture, uploadingPic, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
-    ProfileImageField("バナー画像", banner, uploadingBanner, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
+    ProfileImageField("アイコン画像", picture, uploadingPic, banner = false, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
+    ProfileImageField("バナー画像", banner, uploadingBanner, banner = true, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
     ProfileField("Lightning アドレス (lud16)", lud16) { lud16 = it; saved = false }
     ProfileField("NIP-05", nip05) { nip05 = it; saved = false }
     ProfileField("Web サイト", website) { website = it; saved = false }
@@ -402,15 +406,43 @@ private fun ProfileField(label: String, value: String, singleLine: Boolean = tru
     Spacer(Modifier.size(DeckSpace.Md))
 }
 
-/** 画像URLフィールド（URL入力＋「選択」でアップロード）。 */
+/**
+ * 画像URLフィールド（URL入力＋「選択」でアップロード）。
+ * URL があれば下にプレビューを出し、読み込み中/失敗/成功を表示（＝入力URLのチェックになる）。
+ * [banner]=true は横長プレビュー、false は正方形（アイコン）。
+ */
 @Composable
-private fun ProfileImageField(label: String, value: String, uploading: Boolean, onValueChange: (String) -> Unit, onPick: () -> Unit) {
+private fun ProfileImageField(label: String, value: String, uploading: Boolean, banner: Boolean, onValueChange: (String) -> Unit, onPick: () -> Unit) {
     Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
     Spacer(Modifier.size(DeckSpace.Xs))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(value = value, onValueChange = onValueChange, placeholder = "https://…", modifier = Modifier.weight(1f))
         Spacer(Modifier.size(DeckSpace.Sm))
         DeckButton(if (uploading) "…" else "選択", enabled = !uploading, onClick = onPick)
+    }
+    if (value.isNotBlank()) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        var state by remember(value) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+        val shape = RoundedCornerShape(DeckRadius.Sm)
+        Box(
+            (if (banner) Modifier.fillMaxWidth().height(80.dp) else Modifier.size(72.dp))
+                .clip(shape).background(DeckColors.Surface2),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalPlatformContext.current)
+                    .data(ImageProxy.proxied(value, width = if (banner) 800 else 256, quality = 80)).crossfade(true).build(),
+                contentDescription = label, modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop, onState = { state = it },
+            )
+            when (state) {
+                is AsyncImagePainter.State.Loading ->
+                    Text("読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+                is AsyncImagePainter.State.Error ->
+                    Text("画像を読み込めません", color = DeckColors.Warn, fontSize = DeckType.Label)
+                else -> {}
+            }
+        }
     }
     Spacer(Modifier.size(DeckSpace.Md))
 }
