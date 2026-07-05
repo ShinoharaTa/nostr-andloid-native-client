@@ -11,6 +11,7 @@ import kotlin.random.Random
 import app.nostrdeck.db.Event
 import app.nostrdeck.db.NostrDb
 import app.nostrdeck.crypto.Nip19
+import app.nostrdeck.crypto.Nip57
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
@@ -2439,34 +2440,8 @@ class EventRepository(
     }
     fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
 
-    /** 9735 のタグ群から zap 額(sats)を取り出す。description の amount(msats) 優先、無ければ bolt11 から。 */
-    private fun zapAmountSats(tags: List<List<String>>): Long {
-        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1)
-        val msat = runCatching {
-            desc?.let {
-                json.parseToJsonElement(it).jsonObject["tags"]?.jsonArray
-                    ?.map { t -> t.jsonArray.map { s -> s.jsonPrimitive.content } }
-                    ?.firstOrNull { t -> t.size >= 2 && t[0] == "amount" }?.get(1)?.toLongOrNull()
-            }
-        }.getOrNull() ?: 0
-        if (msat > 0) return msat / 1000
-        // フォールバック: bolt11 タグの金額を解析。
-        val bolt11 = tags.firstOrNull { it.size >= 2 && it[0] == "bolt11" }?.get(1) ?: return 0
-        return bolt11Sats(bolt11)
-    }
-
-    /** bolt11 invoice の金額(sats)を解析。`lnbc<amount><multiplier>` 形式（m/u/n/p）。 */
-    private fun bolt11Sats(invoice: String): Long {
-        val m = Regex("""^ln(?:bc|tb|bcrt)(\d+)([munp]?)""", RegexOption.IGNORE_CASE).find(invoice.trim()) ?: return 0
-        val num = m.groupValues[1].toLongOrNull() ?: return 0
-        return when (m.groupValues[2].lowercase()) {
-            "m" -> num * 100_000        // milli-BTC
-            "u" -> num * 100            // micro
-            "n" -> num / 10             // nano
-            "p" -> num / 10_000         // pico
-            else -> num * 100_000_000   // BTC
-        }
-    }
+    /** 9735 のタグ群から zap 額(sats)を取り出す（純関数 [Nip57] に委譲・単体テスト可能）。 */
+    private fun zapAmountSats(tags: List<List<String>>): Long = Nip57.zapAmountSats(tags)
 
     /** 9735 のタグから Zap 送信者/コメントを取り出して ZapUi を組み立てる。 */
     private fun toZapUi(row: Event, byPk: Map<String, app.nostrdeck.db.Profile>): app.nostrdeck.model.ZapUi? {
