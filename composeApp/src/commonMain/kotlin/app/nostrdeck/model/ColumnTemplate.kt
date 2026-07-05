@@ -21,6 +21,7 @@ enum class ColumnTemplate(
     PROFILE("指定 npub の投稿", ColumnConfig.TEXT, "npub または hex"),
     SEARCH("ワード検索", ColumnConfig.TEXT, "検索ワード"),
     HASHTAG("ハッシュタグ", ColumnConfig.TEXT, "タグ（# は不要）"),
+    FAVS("ふぁぼ欄", hint = "自分がリアクションした投稿"),
 }
 
 /** 通知で選べるイベント種別（永続化されるフィルタ）。 */
@@ -62,6 +63,9 @@ fun ColumnTemplate.build(
 
         ColumnTemplate.HASHTAG -> spec(id, "#${text.removePrefix("#")}", "hashtag", ColumnKind.HASHTAG,
             ReqFilter(kinds = listOf(1), hashtags = listOf(text.removePrefix("#"))))
+
+        ColumnTemplate.FAVS -> spec(id, "ふぁぼ欄", "自分のリアクション", ColumnKind.FAVS,
+            ReqFilter(kinds = listOf(7)))
     }
 }
 

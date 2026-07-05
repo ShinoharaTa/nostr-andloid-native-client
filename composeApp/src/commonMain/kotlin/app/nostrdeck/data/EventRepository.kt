@@ -560,9 +560,13 @@ class EventRepository(
     /** カラム表示時に購読開始（subId = columnId）。filter.relays 指定時はそのリレーだけへ配信。 */
     fun subscribeColumn(columnId: String, filter: ReqFilter) {
         if (!openColumns.add(columnId)) return
-        val targets = filter.relays.toSet()
-        if (targets.isNotEmpty()) subscribeTargeted(columnId, targets, filter.toProtocol(limit = 100))
-        else subscribeAll(columnId, filter.toProtocol(limit = 100))
+        val proto = filter.toProtocol(limit = 100)
+        when {
+            // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
+            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), proto)
+            filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
+            else -> subscribeAll(columnId, proto)
+        }
     }
 
     /** カラム除去/オフスクリーン時に CLOSE。 */
@@ -652,6 +656,12 @@ class EventRepository(
             (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) } + myReactions)
                 .sortedByDescending { it.sortAt }
         }.flowOn(Dispatchers.Default)
+
+    /** [#12] ふぁぼ欄カラム用: 自分のリアクション＋宛先ノートのフィード（cache-first）。 */
+    private val favsFeedCache: StateFlow<List<FeedEntry>> by lazy {
+        myReactionsFeed().stateIn(scope, feedSharing, emptyList())
+    }
+    fun favsFeed(): StateFlow<List<FeedEntry>> = favsFeedCache
 
     /** [M16] 自分が付けた kind:7 リアクションと、その宛先ノートを TL エントリにする。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -2779,6 +2789,12 @@ class EventRepository(
             "wss://relay.damus.io",
             "wss://nos.lol",
             "wss://relay.primal.net",
+        )
+
+        /** [#8] NIP-50 検索対応リレー。検索カラムはここへ問い合わせる（接続中リレーが未対応でも動くように）。 */
+        val SEARCH_RELAYS = listOf(
+            "wss://relay.nostr.band",
+            "wss://search.nos.today",
         )
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */

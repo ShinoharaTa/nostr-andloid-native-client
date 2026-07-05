@@ -206,6 +206,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             val isFollowingFeed = repo != null && spec.kind == ColumnKind.FOLLOWING
             val isProfile = repo != null && spec.kind == ColumnKind.PROFILE
             val isNotifications = repo != null && spec.kind == ColumnKind.NOTIFICATIONS
+            val isFavs = repo != null && spec.kind == ColumnKind.FAVS  // [#12] ふぁぼ欄
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             val profilePubkey = spec.filter.authors.firstOrNull()
             if (live) {
@@ -263,6 +264,18 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。ミュートを適用。
                     NotificationsColumn(state, spec, modifier, listState, menu = menu,
                         mute = matcher, revealMuted = revealed)
+                }
+                isFavs -> {
+                    // [#12] ふぁぼ欄: 自分がリアクションした投稿を「あなたがリアクション」＋対象で表示。
+                    val all = remember(spec.id) { repo!!.favsFeed() }.collectAsState().value
+                    val entries = if (revealed) all
+                    else all.filterNot { it is FeedEntry.MyReaction && matcher.muted(it.target) }
+                    SubscribeZaps(repo, spec.id, all.filterIsInstance<FeedEntry.MyReaction>().map { it.target.event.id })
+                    FollowingFeedColumn(
+                        spec, entries, modifier, listState, menu = menu,
+                        onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
+                        onNoticeClick = { id -> state.openThreadDetail(id) },
+                    )
                 }
                 isProfile && profilePubkey != null -> {
                     val scope = rememberCoroutineScope()
