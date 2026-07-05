@@ -69,6 +69,9 @@ data class ColumnMenuActions(
     /** フォロー中カラム: 非表示中の通知系カテゴリ集合。null なら項目非表示（フォロー中以外）。 */
     val hiddenCategories: Set<FeedNoticeCategory>? = null,
     val onToggleCategory: ((FeedNoticeCategory) -> Unit)? = null,
+    /** [#10] カラム幅（"S"/"M"/"L"）。null なら幅切替を出さない。 */
+    val columnWidth: String? = null,
+    val onSetWidth: ((String) -> Unit)? = null,
 )
 
 /**
@@ -90,6 +93,8 @@ fun ColumnHeader(
     onBack: (() -> Unit)? = null,
     /** デッキカラムの ⋯ メニュー（移動 ◀▶ / フィルター編集 / 削除）。 */
     menu: ColumnMenuActions? = null,
+    /** [#11] 廃人モード時の流速（件/分）。null なら非表示。 */
+    velocity: Int? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface)
@@ -112,6 +117,15 @@ fun ColumnHeader(
                 lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
                 lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        // [#11] 流速（件/分）チップ。廃人モード時のみ渡される。
+        if (velocity != null && velocity > 0) {
+            Text(
+                "$velocity/分", color = DeckColors.Text2, fontSize = DeckType.Label,
+                modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2)
+                    .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
+            )
+            Spacer(Modifier.width(DeckSpace.Xs))
         }
         if (menu != null) {
             // デッキカラム: ⋯ に集約（移動 ◀▶ / フィルター編集 / 削除）。
@@ -189,6 +203,22 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
                 FeedCategoryItem("自分がしたリアクション", FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
                 HorizontalDivider(color = DeckColors.Border)
             }
+            // [#10] カラム幅（S/M/L）。タップしてもメニューは閉じない。
+            if (menu.columnWidth != null && menu.onSetWidth != null) {
+                HorizontalDivider(color = DeckColors.Border)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("カラム幅", color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
+                    WidthChip("狭", "S", menu.columnWidth, menu.onSetWidth)
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    WidthChip("標準", "M", menu.columnWidth, menu.onSetWidth)
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    WidthChip("広", "L", menu.columnWidth, menu.onSetWidth)
+                }
+                HorizontalDivider(color = DeckColors.Border)
+            }
             DropdownMenuItem(
                 text = { Text("カラムを削除", color = DeckColors.Warn) },
                 leadingIcon = { Icon(Icons.Outlined.Close, null, tint = DeckColors.Warn, modifier = Modifier.size(DeckDimens.IconMd)) },
@@ -196,6 +226,20 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
             )
         }
     }
+}
+
+/** [#10] カラム幅の選択チップ（S/M/L）。選択中はアクセント背景。タップしてもメニューは閉じない。 */
+@Composable
+private fun WidthChip(label: String, size: String, current: String, onSet: (String) -> Unit) {
+    val selected = current == size || (current.isBlank() && size == "M")
+    Text(
+        label,
+        color = if (selected) DeckColors.Text else DeckColors.Text3, fontSize = DeckType.Label,
+        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm))
+            .background(if (selected) DeckColors.AccentWeak else DeckColors.Surface2)
+            .clickable { onSet(size) }
+            .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
+    )
 }
 
 /** [M18] 通知系カテゴリの表示トグル項目（チェック=表示中）。タップしてもメニューは閉じない。 */

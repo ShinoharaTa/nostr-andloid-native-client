@@ -27,6 +27,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +61,15 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
+    // [#9] 通知/DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
+    val notifUnread by (repo?.notifUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
+    val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
+    LaunchedEffect(state.navDest, notifUnread) {
+        if (state.navDest == NavDest.NOTIFICATIONS && notifUnread > 0) repo?.markNotificationsSeen()
+    }
+    LaunchedEffect(state.navDest, dmUnread) {
+        if (state.navDest == NavDest.DM && dmUnread > 0) repo?.markDmSeen()
+    }
     Column(
         Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -77,14 +87,14 @@ fun DeckRail(state: DeckState) {
 
             NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
             NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS) {
+            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
                 state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
             }
             // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
             NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
                 state.clearDetail(); state.navDest = NavDest.CHANNELS
             }
-            NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM) {
+            NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM, badge = dmUnread) {
                 state.clearDetail(); state.navDest = NavDest.DM
             }
         }

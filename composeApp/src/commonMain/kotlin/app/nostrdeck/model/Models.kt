@@ -63,6 +63,7 @@ data class ColumnSpec(
 
 enum class ColumnKind {
     FOLLOWING, HASHTAG, NOTIFICATIONS, DM, GLOBAL, PROFILE,
+    FAVS,           // [#12] ふぁぼ欄: 自分がリアクション(kind:7)した投稿の一覧
     THREAD,         // NIP-10 返信ツリー（ツリー表示・返信ボックス）
     CHANNEL_LIST,   // NIP-28 チャンネル一覧（kind:40/41）
     CHANNEL_ROOM,   // NIP-28 チャンネルルーム（kind:42・チャット表示・下部入力）

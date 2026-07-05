@@ -11,6 +11,7 @@ import kotlin.random.Random
 import app.nostrdeck.db.Event
 import app.nostrdeck.db.NostrDb
 import app.nostrdeck.crypto.Nip19
+import app.nostrdeck.crypto.Nip57
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
@@ -219,6 +220,8 @@ class EventRepository(
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
         // [M18] カラム別「非表示にする通知系カテゴリ」を KV から復元。
         loadHiddenCategories()
+        // [#10] カラム別の幅を KV から復元。
+        loadColumnWidths()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -227,6 +230,8 @@ class EventRepository(
         loadRetroMode()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
+        // [#9] 通知/DM の最終閲覧時刻を KV から復元。
+        loadUnreadSeen()
         scope.launch { eventBatchLoop() }
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
@@ -558,9 +563,13 @@ class EventRepository(
     /** カラム表示時に購読開始（subId = columnId）。filter.relays 指定時はそのリレーだけへ配信。 */
     fun subscribeColumn(columnId: String, filter: ReqFilter) {
         if (!openColumns.add(columnId)) return
-        val targets = filter.relays.toSet()
-        if (targets.isNotEmpty()) subscribeTargeted(columnId, targets, filter.toProtocol(limit = 100))
-        else subscribeAll(columnId, filter.toProtocol(limit = 100))
+        val proto = filter.toProtocol(limit = 100)
+        when {
+            // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
+            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), proto)
+            filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
+            else -> subscribeAll(columnId, proto)
+        }
     }
 
     /** カラム除去/オフスクリーン時に CLOSE。 */
@@ -650,6 +659,12 @@ class EventRepository(
             (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) } + myReactions)
                 .sortedByDescending { it.sortAt }
         }.flowOn(Dispatchers.Default)
+
+    /** [#12] ふぁぼ欄カラム用: 自分のリアクション＋宛先ノートのフィード（cache-first）。 */
+    private val favsFeedCache: StateFlow<List<FeedEntry>> by lazy {
+        myReactionsFeed().stateIn(scope, feedSharing, emptyList())
+    }
+    fun favsFeed(): StateFlow<List<FeedEntry>> = favsFeedCache
 
     /** [M16] 自分が付けた kind:7 リアクションと、その宛先ノートを TL エントリにする。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -846,6 +861,43 @@ class EventRepository(
         buildNotificationsFeed().stateIn(scope, feedSharing, emptyList())
     }
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
+
+    // ---- [#9] 通知/DM の未読（最終閲覧時刻方式）----
+    private val notifLastSeen = MutableStateFlow(0L)
+    private val dmLastSeen = MutableStateFlow(0L)
+    private fun loadUnreadSeen() {
+        // 初回は「今」を既読基準にする（過去の全通知でバッジが巨大化するのを防ぐ）。
+        val now = currentUnixTime()
+        notifLastSeen.value = q.getSetting(NOTIF_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
+            ?: now.also { q.putSetting(NOTIF_LAST_SEEN, it.toString()) }
+        dmLastSeen.value = q.getSetting(DM_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
+            ?: now.also { q.putSetting(DM_LAST_SEEN, it.toString()) }
+    }
+
+    /** 通知の未読件数（最終閲覧時刻より新しい通知の数）。 */
+    fun notifUnreadFlow(): Flow<Int> =
+        combine(notificationsFeed(), notifLastSeen) { list, seen -> list.count { it.createdAt > seen } }
+
+    /** 通知を既読にする（最終閲覧時刻を現在時刻に進める）。 */
+    fun markNotificationsSeen() {
+        val now = currentUnixTime()
+        if (now > notifLastSeen.value) { notifLastSeen.value = now; q.putSetting(NOTIF_LAST_SEEN, now.toString()) }
+    }
+
+    /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun dmUnreadFlow(): Flow<Int> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(0)
+        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen) { rows, seen ->
+            rows.count { it.pubkey != me && it.created_at > seen }
+        }
+    }
+
+    /** DM を既読にする（最終閲覧時刻を現在時刻に進める）。 */
+    fun markDmSeen() {
+        val now = currentUnixTime()
+        if (now > dmLastSeen.value) { dmLastSeen.value = now; q.putSetting(DM_LAST_SEEN, now.toString()) }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun buildNotificationsFeed(): Flow<List<NotificationUi>> =
@@ -1640,6 +1692,18 @@ class EventRepository(
         }
     }
 
+    // [#10] カラム幅（"S"/"M"/"L"）をカラム別に持つ。KV 永続。未設定は既定(M)。
+    private val columnWidthsState = MutableStateFlow<Map<String, String>>(emptyMap())
+    fun columnWidthsFlow(): StateFlow<Map<String, String>> = columnWidthsState
+    fun setColumnWidth(columnId: String, size: String) {
+        q.putSetting(COL_WIDTH_PREFIX + columnId, size)
+        columnWidthsState.value = columnWidthsState.value + (columnId to size)
+    }
+    private fun loadColumnWidths() {
+        columnWidthsState.value = q.settingsByPrefix(COL_WIDTH_PREFIX).executeAsList()
+            .associate { it.key.removePrefix(COL_WIDTH_PREFIX) to it.value_ }
+    }
+
     private fun loadHiddenCategories() {
         hiddenCategoriesFlow.value = q.settingsByPrefix(FEED_CAT_HIDDEN_PREFIX).executeAsList()
             .associate { row ->
@@ -2376,34 +2440,8 @@ class EventRepository(
     }
     fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
 
-    /** 9735 のタグ群から zap 額(sats)を取り出す。description の amount(msats) 優先、無ければ bolt11 から。 */
-    private fun zapAmountSats(tags: List<List<String>>): Long {
-        val desc = tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1)
-        val msat = runCatching {
-            desc?.let {
-                json.parseToJsonElement(it).jsonObject["tags"]?.jsonArray
-                    ?.map { t -> t.jsonArray.map { s -> s.jsonPrimitive.content } }
-                    ?.firstOrNull { t -> t.size >= 2 && t[0] == "amount" }?.get(1)?.toLongOrNull()
-            }
-        }.getOrNull() ?: 0
-        if (msat > 0) return msat / 1000
-        // フォールバック: bolt11 タグの金額を解析。
-        val bolt11 = tags.firstOrNull { it.size >= 2 && it[0] == "bolt11" }?.get(1) ?: return 0
-        return bolt11Sats(bolt11)
-    }
-
-    /** bolt11 invoice の金額(sats)を解析。`lnbc<amount><multiplier>` 形式（m/u/n/p）。 */
-    private fun bolt11Sats(invoice: String): Long {
-        val m = Regex("""^ln(?:bc|tb|bcrt)(\d+)([munp]?)""", RegexOption.IGNORE_CASE).find(invoice.trim()) ?: return 0
-        val num = m.groupValues[1].toLongOrNull() ?: return 0
-        return when (m.groupValues[2].lowercase()) {
-            "m" -> num * 100_000        // milli-BTC
-            "u" -> num * 100            // micro
-            "n" -> num / 10             // nano
-            "p" -> num / 10_000         // pico
-            else -> num * 100_000_000   // BTC
-        }
-    }
+    /** 9735 のタグ群から zap 額(sats)を取り出す（純関数 [Nip57] に委譲・単体テスト可能）。 */
+    private fun zapAmountSats(tags: List<List<String>>): Long = Nip57.zapAmountSats(tags)
 
     /** 9735 のタグから Zap 送信者/コメントを取り出して ZapUi を組み立てる。 */
     private fun toZapUi(row: Event, byPk: Map<String, app.nostrdeck.db.Profile>): app.nostrdeck.model.ZapUi? {
@@ -2742,6 +2780,12 @@ class EventRepository(
             "wss://relay.primal.net",
         )
 
+        /** [#8] NIP-50 検索対応リレー。検索カラムはここへ問い合わせる（接続中リレーが未対応でも動くように）。 */
+        val SEARCH_RELAYS = listOf(
+            "wss://relay.nostr.band",
+            "wss://search.nos.today",
+        )
+
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
 
@@ -2759,6 +2803,9 @@ class EventRepository(
         /** [M18] フォロー中カラム別「非表示にする通知系カテゴリ」の KV キー接頭辞（カンマ区切り）。 */
         const val FEED_CAT_HIDDEN_PREFIX = "col_feedcat_hidden:"
 
+        /** [#10] カラム別の幅（"S"/"M"/"L"）の KV キー接頭辞。 */
+        const val COL_WIDTH_PREFIX = "col_width:"
+
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
 
@@ -2774,5 +2821,9 @@ class EventRepository(
 
         /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
         const val AUTH_POLICY = "nip42_auth_policy"
+
+        /** [#9] 通知/DM の最終閲覧時刻（未読件数算出用）の KV キー。 */
+        const val NOTIF_LAST_SEEN = "notif_last_seen"
+        const val DM_LAST_SEEN = "dm_last_seen"
     }
 }
