@@ -54,6 +54,7 @@ import app.nostrdeck.model.UsedEmoji
 import app.nostrdeck.nostr.Filter
 import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayConn
+import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.signer.SignerProvider
@@ -295,7 +296,14 @@ class EventRepository(
             client.start()
             scope.launch { client.messages.collect { onMessage(it, client) } }
             // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
-            scope.launch { client.state.collect { withContext(relayDispatcher) { refreshRelayConns() } } }
+            // [NIP-42/#16] 切断時は AUTH の応答済みチャレンジを破棄し、再接続で確実に再 AUTH する。
+            //   （再接続時は RelayClient が activeReqs を自動で張り直すため購読は自己修復する）
+            scope.launch {
+                client.state.collect { st ->
+                    if (st == RelayConnState.DISCONNECTED) authChallengeByRelay.remove(key)
+                    withContext(relayDispatcher) { refreshRelayConns() }
+                }
+            }
             // 限定なし(subTargets 無)のサブ、または新リレーが対象集合に含まれるサブだけ張り直す。
             activeSubs.forEach { (subId, filters) ->
                 val t = subTargets[subId]
