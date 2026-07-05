@@ -219,6 +219,8 @@ class EventRepository(
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
         // [M18] カラム別「非表示にする通知系カテゴリ」を KV から復元。
         loadHiddenCategories()
+        // [#10] カラム別の幅を KV から復元。
+        loadColumnWidths()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -1689,6 +1691,18 @@ class EventRepository(
         }
     }
 
+    // [#10] カラム幅（"S"/"M"/"L"）をカラム別に持つ。KV 永続。未設定は既定(M)。
+    private val columnWidthsState = MutableStateFlow<Map<String, String>>(emptyMap())
+    fun columnWidthsFlow(): StateFlow<Map<String, String>> = columnWidthsState
+    fun setColumnWidth(columnId: String, size: String) {
+        q.putSetting(COL_WIDTH_PREFIX + columnId, size)
+        columnWidthsState.value = columnWidthsState.value + (columnId to size)
+    }
+    private fun loadColumnWidths() {
+        columnWidthsState.value = q.settingsByPrefix(COL_WIDTH_PREFIX).executeAsList()
+            .associate { it.key.removePrefix(COL_WIDTH_PREFIX) to it.value_ }
+    }
+
     private fun loadHiddenCategories() {
         hiddenCategoriesFlow.value = q.settingsByPrefix(FEED_CAT_HIDDEN_PREFIX).executeAsList()
             .associate { row ->
@@ -2813,6 +2827,9 @@ class EventRepository(
 
         /** [M18] フォロー中カラム別「非表示にする通知系カテゴリ」の KV キー接頭辞（カンマ区切り）。 */
         const val FEED_CAT_HIDDEN_PREFIX = "col_feedcat_hidden:"
+
+        /** [#10] カラム別の幅（"S"/"M"/"L"）の KV キー接頭辞。 */
+        const val COL_WIDTH_PREFIX = "col_width:"
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"

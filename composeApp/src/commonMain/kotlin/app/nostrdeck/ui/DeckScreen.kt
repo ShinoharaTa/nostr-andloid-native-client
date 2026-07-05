@@ -72,6 +72,9 @@ fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier
 private fun ExpandedDeck(state: DeckState) {
     val scroll = rememberScrollState()
     val colWidthPx = with(LocalDensity.current) { DeckDimens.ColumnWidth.toPx() }
+    // [#10] カラム別の幅（S/M/L）。未設定は既定(M=ColumnWidth)。
+    val repo = LocalRepository.current
+    val widths by (repo?.columnWidthsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, String>()) })
 
     // レール/タブからのジャンプ要求を消費して横スクロール
     LaunchedEffect(state.jumpTarget) {
@@ -87,7 +90,7 @@ private fun ExpandedDeck(state: DeckState) {
             key(spec.id) {
                 RenderColumn(
                     spec, state, state.listStateFor(spec.id),
-                    Modifier.width(DeckDimens.ColumnWidth).fillMaxHeight(),
+                    Modifier.width(columnWidthDp(widths[spec.id])).fillMaxHeight(),
                 )
                 // カラム境界は「線」ではなく Bg の隙間(ガター)で。暗い背景で明るいカラムを分離。
                 Box(Modifier.fillMaxHeight().width(DeckSpace.Sm).background(DeckColors.Bg))
@@ -195,6 +198,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         hiddenCategories = if (isFollowing && repoForMenu != null) hiddenCategories else null,
         onToggleCategory = if (isFollowing && repoForMenu != null)
             ({ cat: FeedNoticeCategory -> repoForMenu.setColumnCategoryHidden(spec.id, cat, cat !in hiddenCategories) }) else null,
+        columnWidth = if (repoForMenu != null) (repoForMenu.columnWidthsFlow().collectAsState().value[spec.id] ?: "M") else null,
+        onSetWidth = if (repoForMenu != null) ({ s: String -> repoForMenu.setColumnWidth(spec.id, s) }) else null,
     )
 
     when (spec.renderer) {
@@ -373,6 +378,13 @@ private fun SubscribeZaps(repo: EventRepository?, colId: String, noteIds: List<S
 private val LIVE_FEED_KINDS = setOf(
     ColumnKind.FOLLOWING, ColumnKind.GLOBAL, ColumnKind.HASHTAG, ColumnKind.PROFILE,
 )
+
+/** [#10] カラム幅プリセット（S=狭 / M=標準 / L=広）。 */
+private fun columnWidthDp(size: String?): androidx.compose.ui.unit.Dp = when (size) {
+    "S" -> 280.dp
+    "L" -> 460.dp
+    else -> DeckDimens.ColumnWidth  // M（既定 340dp）
+}
 
 /** 現在ピン留め済みのチャンネル room の channelId 集合（一覧の📌表示用）。 */
 private fun pinnedChannelIds(state: DeckState): Set<String> =
