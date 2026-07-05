@@ -227,6 +227,8 @@ class EventRepository(
         loadRetroMode()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
+        // [#9] 通知/DM の最終閲覧時刻を KV から復元。
+        loadUnreadSeen()
         scope.launch { eventBatchLoop() }
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
@@ -846,6 +848,43 @@ class EventRepository(
         buildNotificationsFeed().stateIn(scope, feedSharing, emptyList())
     }
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
+
+    // ---- [#9] 通知/DM の未読（最終閲覧時刻方式）----
+    private val notifLastSeen = MutableStateFlow(0L)
+    private val dmLastSeen = MutableStateFlow(0L)
+    private fun loadUnreadSeen() {
+        // 初回は「今」を既読基準にする（過去の全通知でバッジが巨大化するのを防ぐ）。
+        val now = currentUnixTime()
+        notifLastSeen.value = q.getSetting(NOTIF_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
+            ?: now.also { q.putSetting(NOTIF_LAST_SEEN, it.toString()) }
+        dmLastSeen.value = q.getSetting(DM_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
+            ?: now.also { q.putSetting(DM_LAST_SEEN, it.toString()) }
+    }
+
+    /** 通知の未読件数（最終閲覧時刻より新しい通知の数）。 */
+    fun notifUnreadFlow(): Flow<Int> =
+        combine(notificationsFeed(), notifLastSeen) { list, seen -> list.count { it.createdAt > seen } }
+
+    /** 通知を既読にする（最終閲覧時刻を現在時刻に進める）。 */
+    fun markNotificationsSeen() {
+        val now = currentUnixTime()
+        if (now > notifLastSeen.value) { notifLastSeen.value = now; q.putSetting(NOTIF_LAST_SEEN, now.toString()) }
+    }
+
+    /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun dmUnreadFlow(): Flow<Int> = myPubkeyFlow.flatMapLatest { me ->
+        if (me == null) flowOf(0)
+        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen) { rows, seen ->
+            rows.count { it.pubkey != me && it.created_at > seen }
+        }
+    }
+
+    /** DM を既読にする（最終閲覧時刻を現在時刻に進める）。 */
+    fun markDmSeen() {
+        val now = currentUnixTime()
+        if (now > dmLastSeen.value) { dmLastSeen.value = now; q.putSetting(DM_LAST_SEEN, now.toString()) }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun buildNotificationsFeed(): Flow<List<NotificationUi>> =
@@ -2774,5 +2813,9 @@ class EventRepository(
 
         /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
         const val AUTH_POLICY = "nip42_auth_policy"
+
+        /** [#9] 通知/DM の最終閲覧時刻（未読件数算出用）の KV キー。 */
+        const val NOTIF_LAST_SEEN = "notif_last_seen"
+        const val DM_LAST_SEEN = "dm_last_seen"
     }
 }
