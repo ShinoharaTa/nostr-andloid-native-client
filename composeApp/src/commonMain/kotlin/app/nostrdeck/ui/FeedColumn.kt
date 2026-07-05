@@ -19,6 +19,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,11 +67,13 @@ fun FeedColumn(
         }
     }
     val scope = rememberCoroutineScope()
+    val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
+            velocity = if (retro) feedVelocity(notes.map { it.event.createdAt }) else null,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -112,11 +118,13 @@ fun FollowingFeedColumn(
     }
     val scope = rememberCoroutineScope()
     val keys = entries.map { feedEntryKey(it) }
+    val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
+            velocity = if (retro) feedVelocity(entries.map { it.sortAt }) else null,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -147,6 +155,15 @@ fun FollowingFeedColumn(
             }
         }
     }
+}
+
+/** [#11] 流速（件/分）: 直近5分の件数から算出。時刻(Unix秒)は順不同でよい。 */
+private fun feedVelocity(times: List<Long>): Int {
+    if (times.size < 2) return 0
+    val newest = times.maxOrNull() ?: return 0
+    val windowSec = 300L
+    val cnt = times.count { it > newest - windowSec }
+    return (cnt.toLong() * 60 / windowSec).toInt()
 }
 
 /** LazyColumn の安定キー。エントリ種別ごとに一意化する。 */
