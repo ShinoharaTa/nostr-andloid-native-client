@@ -108,6 +108,21 @@ fun MuteSettings() {
         )
         Spacer(Modifier.size(DeckSpace.Md))
 
+        // [#4] ミュートワードの追加（非公開＝NIP-44 暗号で保存。本文＋ハッシュタグにマッチ。/正規表現/ 可）。
+        var wordInput by remember { mutableStateOf("") }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            DeckTextField(
+                value = wordInput, onValueChange = { wordInput = it },
+                placeholder = "ミュートするワード（/正規表現/ 可）", modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckButton("追加", enabled = wordInput.isNotBlank(), onClick = {
+                val w = wordInput.trim(); wordInput = ""
+                scope.launch { if (repo.addMuteWord(w)) toast("ミュートワードを追加しました") else toast("追加できませんでした") }
+            })
+        }
+        Spacer(Modifier.size(DeckSpace.Md))
+
         val entries = draft
         when {
             // 読み込み中は「無い」と誤表示せず、届くまでスピナーで待機し続ける。

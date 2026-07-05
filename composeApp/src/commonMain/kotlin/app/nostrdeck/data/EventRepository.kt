@@ -1753,6 +1753,28 @@ class EventRepository(
         return publishMuteList(merged)
     }
 
+    /** [#4] 自分のミュートワード一覧（NIP-51 kind:10000 の private "word"）。 */
+    fun muteWordsFlow(): Flow<List<String>> =
+        muteFlow.map { m -> m?.entries?.filter { it.category == MuteCategory.WORD }?.map { it.value } ?: emptyList() }
+
+    /** ミュートワードを追加（非公開＝NIP-44 で暗号化）。空/重複は false。/.../ で正規表現。 */
+    suspend fun addMuteWord(word: String): Boolean {
+        val w = word.trim()
+        if (w.isEmpty()) return false
+        val current = muteFlow.value
+        if (current?.nip44Locked == true) return false
+        val entries = current?.entries ?: emptyList()
+        if (entries.any { it.category == MuteCategory.WORD && it.value.equals(w, ignoreCase = true) }) return false
+        return publishMuteList(entries + MuteEntry(MuteCategory.WORD, w, isPublic = false, isPrivate = true))
+    }
+
+    /** ミュートワードを削除。 */
+    suspend fun removeMuteWord(word: String): Boolean {
+        val current = muteFlow.value ?: return false
+        if (current.nip44Locked) return false
+        return publishMuteList(current.entries.filterNot { it.category == MuteCategory.WORD && it.value == word })
+    }
+
     // ---- NIP-51 固定投稿(kind:10001) / ブックマーク(kind:10003) ----
 
     /** 自分の編集可能な e-id リスト（公開 e タグ）。非公開/未知タグは content/other で温存し再発行で失わない。 */
