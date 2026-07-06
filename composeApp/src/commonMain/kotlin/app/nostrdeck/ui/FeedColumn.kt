@@ -91,7 +91,7 @@ fun FeedColumn(
                 }
             }
             // 下を読んでいる間に積まれた新着だけピル表示。タップで最上部へ。
-            NewItemsPill(rememberNewItemsCount(notes.map { it.event.id }, listState)) {
+            NewItemsPill(rememberNewItemsCount(remember(notes) { notes.map { it.event.id } }, listState)) {
                 scope.launch { listState.animateScrollToItem(0) }
             }
         }
@@ -121,7 +121,7 @@ fun FollowingFeedColumn(
         if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
     }
     val scope = rememberCoroutineScope()
-    val keys = entries.map { feedEntryKey(it) }
+    val keys = remember(entries) { entries.map { feedEntryKey(it) } }
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     // [#24] 流速は先頭/件数が変わったときだけ再計算。
     val velocity = if (retro) remember(keys.firstOrNull(), entries.size) {
