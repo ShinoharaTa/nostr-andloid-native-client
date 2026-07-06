@@ -78,7 +78,8 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "app.nostrdeck"
+        // Play 上のアプリID。コードのパッケージ(namespace=app.nostrdeck)とは独立でよい。
+        applicationId = "net.shino3.nostrism"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
