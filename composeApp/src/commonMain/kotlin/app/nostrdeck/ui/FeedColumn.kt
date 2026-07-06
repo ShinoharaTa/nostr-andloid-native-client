@@ -3,6 +3,7 @@ package app.nostrdeck.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,14 +17,17 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -31,6 +35,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
@@ -68,11 +73,31 @@ fun FeedColumn(
         }
     }
     val scope = rememberCoroutineScope()
-    val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    val repo = LocalRepository.current
+    val retro by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     // [#24] 流速は再コンポーズ毎ではなく、フィード先頭/件数が変わったときだけ再計算する。
     val velocity = if (retro) remember(notes.firstOrNull()?.event?.id, notes.size) {
         feedVelocity(notes.map { it.event.createdAt })
     } else null
+    // [#3] 無限スクロール: 末尾付近まで来たら、最古より古いイベントをリレーから継ぎ足す。
+    // derivedStateOf で「末尾付近か」の真偽が変わったときだけ再コンポーズ（スクロール中は無反応）。
+    var loadingOlder by remember(spec.id) { mutableStateOf(false) }
+    var lastOlderTs by remember(spec.id) { mutableStateOf(0L) }
+    val nearBottom by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+        }
+    }
+    LaunchedEffect(nearBottom, notes.size) {
+        val oldest = notes.lastOrNull()?.event?.createdAt ?: return@LaunchedEffect
+        if (nearBottom && repo != null && oldest != lastOlderTs) {
+            lastOlderTs = oldest; loadingOlder = true
+            repo.loadOlderColumn(spec.id, spec.filter, oldest)
+        }
+    }
+    LaunchedEffect(lastOlderTs) { if (lastOlderTs != 0L) { delay(4000); loadingOlder = false } }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -90,6 +115,7 @@ fun FeedColumn(
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                     )
                 }
+                if (loadingOlder && notes.isNotEmpty()) item("load_older") { LoadMoreFooter() }
             }
             // 下を読んでいる間に積まれた新着だけピル表示。タップで最上部へ。
             NewItemsPill(rememberNewItemsCount(remember(notes) { notes.map { it.event.id } }, listState)) {
@@ -163,6 +189,19 @@ fun FollowingFeedColumn(
                 scope.launch { listState.animateScrollToItem(0) }
             }
         }
+    }
+}
+
+/** [#3] 無限スクロールの読み込み中フッター。 */
+@Composable
+private fun LoadMoreFooter() {
+    Row(
+        Modifier.fillMaxWidth().padding(DeckSpace.Md),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(color = DeckColors.Text3, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Text("過去を読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
     }
 }
 

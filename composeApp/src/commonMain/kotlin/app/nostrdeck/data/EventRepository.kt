@@ -584,6 +584,25 @@ class EventRepository(
         }
     }
 
+    // [#3] 過去方向の追い読み用の一発 REQ 連番。
+    private var olderReqSeq = 0
+
+    /**
+     * [#3] 無限スクロール: [untilSec] より古いイベントを1回だけ取得する（過去へ継ぎ足し）。
+     * カラムと同じ配信先へ until 付き REQ を投げ、少し待って CLOSE（sub を溜めない）。
+     * 取り込まれた古いイベントは feedBy* クエリ(降順・上限)に載って表示される。
+     */
+    fun loadOlderColumn(columnId: String, filter: ReqFilter, untilSec: Long) {
+        val proto = filter.toProtocol(limit = 100).copy(until = untilSec)
+        val subId = "older-$columnId-${olderReqSeq++}"
+        when {
+            !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
+            filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
+            else -> subscribeAll(subId, proto)
+        }
+        scope.launch { delay(6000); unsubscribeAll(subId); openColumns.remove(subId) }
+    }
+
     /** カラム除去/オフスクリーン時に CLOSE。 */
     fun unsubscribeColumn(columnId: String) {
         followingJobs.remove(columnId)?.cancel()
@@ -1153,7 +1172,7 @@ class EventRepository(
             filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
             filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
             !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
-            else -> q.recentNotes(200L)
+            else -> q.recentNotes(300L)
         }.executeAsList().map { it.id }
         q.transaction { ids.forEach { id -> q.deleteEventById(id); q.deleteTagsForEvent(id) } }
     }
@@ -1162,7 +1181,7 @@ class EventRepository(
         filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
         filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
         !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
-        else -> q.recentNotes(200L)
+        else -> q.recentNotes(300L)
     }.asFlow().mapToList(Dispatchers.Default)
 
     private fun ReqFilter.toProtocol(limit: Int) = Filter(
