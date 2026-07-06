@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +70,10 @@ import kotlinx.coroutines.launch
 fun NoteItem(
     note: NoteUi,
     modifier: Modifier = Modifier,
+    // [perf] タップは modifier ではなくこの callback で受ける。呼び出し側で Modifier.clickable を
+    // 毎回生成すると modifier 引数が毎回別インスタンスになり NoteItem が skip されず、新着 emit の
+    // たびに可視ノートが全再コンポーズしてしまうため（clickable は NoteItem 内部で適用する）。
+    onClick: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onQuote: (() -> Unit)? = null,
     onAuthorClick: ((String) -> Unit)? = null,
@@ -80,7 +85,10 @@ fun NoteItem(
   val bookmarks by (repo?.bookmarkIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val zapTotals by (repo?.zapTotalsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, Long>()) })
-  val zapSats = zapTotals[note.event.id] ?: 0L
+  // [perf] zapTotals は zap 受信の度に Map 全体が差し替わる。全項目を素で読むと、可視ノートが
+  // 一斉に再コンポーズされスクロールが詰まる。derivedStateOf でこのノートの値だけに依存させ、
+  // 自分の zap 合計が変わったときのみ再コンポーズする。
+  val zapSats by remember(note.event.id) { derivedStateOf { zapTotals[note.event.id] ?: 0L } }
   val defaultReaction by (repo?.defaultReactionFlow()?.collectAsState() ?: remember { mutableStateOf("+" to null) })
   // [M17] 廃人モード: ON でアバター縮小・余白圧縮の高密度表示（"TLを浴びる"用）。
   val compact by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
@@ -92,7 +100,7 @@ fun NoteItem(
   var confirmUnreact by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
-  Column(modifier.fillMaxWidth()) {
+  Column(if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm))
     }

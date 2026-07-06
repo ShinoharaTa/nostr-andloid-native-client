@@ -93,7 +93,7 @@ fun ColumnHeader(
     onBack: (() -> Unit)? = null,
     /** デッキカラムの ⋯ メニュー（移動 ◀▶ / フィルター編集 / 削除）。 */
     menu: ColumnMenuActions? = null,
-    /** [#11] 廃人モード時の流速（件/分）。null なら非表示。 */
+    /** [#11/#24] 廃人モード時の流速（直近10分の件数）。null なら非表示。 */
     velocity: Int? = null,
 ) {
     Row(
@@ -118,10 +118,10 @@ fun ColumnHeader(
             Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
                 lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // [#11] 流速（件/分）チップ。廃人モード時のみ渡される。
+        // [#11/#24] 流速（直近10分の件数）チップ。廃人モード時のみ渡される。
         if (velocity != null && velocity > 0) {
             Text(
-                "$velocity/分", color = DeckColors.Text2, fontSize = DeckType.Label,
+                "$velocity/10分", color = DeckColors.Text2, fontSize = DeckType.Label,
                 modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2)
                     .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
             )

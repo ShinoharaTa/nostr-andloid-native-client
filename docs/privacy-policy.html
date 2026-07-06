@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>プライバシーポリシー / Privacy Policy — Nostrism</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 760px; margin: 0 auto; padding: 32px 20px 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.75; color: #1a1a1a; background: #fff;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #0f0f0f; } a { color: #7db4ff; } code { background:#222; } }
+  h1 { font-size: 1.6rem; margin-bottom: .2em; }
+  h2 { font-size: 1.25rem; margin-top: 2em; border-bottom: 1px solid #8884; padding-bottom: .2em; }
+  h3 { font-size: 1.05rem; margin-top: 1.5em; }
+  .meta { color: #8a8a8a; font-size: .9rem; }
+  code { background: #f0f0f0; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  hr { border: none; border-top: 1px solid #8884; margin: 2.5em 0; }
+  ul { padding-left: 1.3em; }
+</style>
+</head>
+<body>
+<h1>プライバシーポリシー / Privacy Policy — Nostrism</h1>
+<p class="meta">最終更新 / Last updated: 2026-07-06</p>
+
+<hr>
+
+<h2>日本語</h2>
+<p><strong>Nostrism</strong>（以下「本アプリ」）は、分散型プロトコル <a href="https://nostr.com/">Nostr</a> のクライアントアプリです。本アプリは、開発者が運営するサーバーを持たず、利用者の個人情報を開発者側で収集・保存しません。</p>
+
+<h3>1. 開発者が収集する情報</h3>
+<p><strong>ありません。</strong> 本アプリは解析ツール・広告・トラッキングSDKを一切使用せず、開発者のサーバーへ利用者のデータを送信しません。</p>
+
+<h3>2. 端末内に保存される情報</h3>
+<p>以下は<strong>利用者の端末内にのみ</strong>保存されます（開発者は参照できません）。</p>
+<ul>
+  <li>秘密鍵（nsec）およびアカウント情報</li>
+  <li>取得したイベント（投稿等）のキャッシュ</li>
+  <li>アプリの設定（リレー一覧、表示設定 等）</li>
+</ul>
+<p>秘密鍵は署名・暗号化のために端末内で使用されます。アプリのデータ削除・アンインストールで消去されます。</p>
+
+<h3>3. 第三者へ送信される情報</h3>
+<p>Nostr は公開プロトコルです。利用者の操作により、以下が<strong>利用者が選んだ第三者</strong>へ送信されます。</p>
+<ul>
+  <li><strong>リレー</strong>：投稿・リアクション・フォロー等の公開イベントは、利用者が設定したリレーへ送信され、公開されます。ダイレクトメッセージは暗号化（NIP-17/NIP-44）されますが、送受信のメタデータはリレーを経由します。</li>
+  <li><strong>メディアサーバー</strong>：画像等をアップロードする場合、利用者が選んだサーバー（NIP-96/Blossom）へ送信されます。</li>
+  <li><strong>画像プロキシ（wsrv.nl）</strong>：タイムライン上の画像は、表示最適化のため公開画像プロキシ <code>wsrv.nl</code> を経由して読み込まれます。この際、画像URLと利用者のIPアドレスが当該プロキシに送信されます。設定で自前のプロキシへ変更可能です。</li>
+</ul>
+<p>これら第三者はそれぞれ独自のプライバシーポリシーに従います。開発者はこれらのサービスを管理していません。</p>
+
+<h3>4. 子どものプライバシー</h3>
+<p>本アプリは13歳未満の子どもを対象としていません。</p>
+
+<h3>5. 本ポリシーの変更</h3>
+<p>本ポリシーは予告なく変更されることがあります。変更時は本ページの「最終更新」日を更新します。</p>
+
+<h3>6. お問い合わせ</h3>
+<ul>
+  <li>連絡先: <code>&lt;ここに公開用の連絡先メールを記載&gt;</code></li>
+  <li>リポジトリ: <a href="https://github.com/ShinoharaTa/nostr-andloid-native-client">github.com/ShinoharaTa/nostr-andloid-native-client</a></li>
+</ul>
+
+<hr>
+
+<h2>English</h2>
+<p><strong>Nostrism</strong> ("the App") is a client for the decentralized <a href="https://nostr.com/">Nostr</a> protocol. The App has no developer-operated backend and the developer does <strong>not</strong> collect or store your personal data.</p>
+
+<h3>1. Information collected by the developer</h3>
+<p><strong>None.</strong> The App uses no analytics, ads, or tracking SDKs, and sends no user data to any developer-operated server.</p>
+
+<h3>2. Information stored on your device</h3>
+<p>The following are stored <strong>only on your device</strong> (the developer cannot access them):</p>
+<ul>
+  <li>Your private key (nsec) and account information</li>
+  <li>Cached events (posts, etc.)</li>
+  <li>App settings (relay list, display preferences, etc.)</li>
+</ul>
+<p>Your private key is used on-device for signing and encryption. It is removed when you clear the app data or uninstall.</p>
+
+<h3>3. Information sent to third parties</h3>
+<p>Nostr is a public protocol. By your actions, data is sent to <strong>third parties you choose</strong>:</p>
+<ul>
+  <li><strong>Relays</strong>: Public events (posts, reactions, follows) are published to the relays you configure. Direct messages are encrypted (NIP-17/NIP-44), but delivery metadata passes through relays.</li>
+  <li><strong>Media servers</strong>: If you upload media, it is sent to the server you choose (NIP-96/Blossom).</li>
+  <li><strong>Image proxy (wsrv.nl)</strong>: Images in the timeline are loaded through the public image proxy <code>wsrv.nl</code> for optimization; the image URL and your IP address are sent to it. You can change this to your own proxy in settings.</li>
+</ul>
+<p>These third parties operate under their own privacy policies. The developer does not control them.</p>
+
+<h3>4. Children's privacy</h3>
+<p>The App is not directed to children under 13.</p>
+
+<h3>5. Changes</h3>
+<p>This policy may change; the "Last updated" date will be revised accordingly.</p>
+
+<h3>6. Contact</h3>
+<ul>
+  <li>Contact: <code>&lt;your public contact email here&gt;</code></li>
+  <li>Repository: <a href="https://github.com/ShinoharaTa/nostr-andloid-native-client">github.com/ShinoharaTa/nostr-andloid-native-client</a></li>
+</ul>
+</body>
+</html>

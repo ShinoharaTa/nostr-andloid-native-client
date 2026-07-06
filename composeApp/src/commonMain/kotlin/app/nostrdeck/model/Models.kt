@@ -1,5 +1,6 @@
 package app.nostrdeck.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 /**
@@ -8,6 +9,7 @@ import kotlinx.serialization.Serializable
  */
 
 /** Nostr イベント (kind:1 等)。SQLDelight `events` テーブルと対応。 */
+@Immutable
 data class NostrEvent(
     val id: String,
     val pubkey: String,
@@ -27,6 +29,7 @@ data class UnsignedEvent(
 )
 
 /** kind:0 プロフィール。pubkey ごとに createdAt 最大の1件だけ保持（dedup 済み）。 */
+@Immutable
 data class Profile(
     val pubkey: String,
     val name: String,
@@ -111,6 +114,7 @@ data class RelayPref(
 enum class NetworkTier { UNMETERED, METERED, CONSTRAINED, OFFLINE }
 
 /** 1ノートの表示用モデル（event + 解決済み profile を束ねたもの）。 */
+@Immutable
 data class NoteUi(
     val event: NostrEvent,
     val author: Profile,
@@ -139,6 +143,7 @@ data class NoteUi(
  *  - [count]    同一絵文字の合計数
  *  - [imageUrl] NIP-30 カスタム絵文字の画像 URL（無ければ display を文字表示）
  */
+@Immutable
 data class ReactionUi(
     val key: String,
     val display: String,

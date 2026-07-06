@@ -81,7 +81,7 @@ fun ProfileColumn(
                 }
                 items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
                     NoteItem(
-                        note, Modifier.clickable { onNoteClick(note) },
+                        note, onClick = { onNoteClick(note) },
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                     )
                     HorizontalDivider(color = DeckColors.Border)
@@ -89,7 +89,7 @@ fun ProfileColumn(
             }
             items(notes, key = { it.event.id }) { note ->
                 NoteItem(
-                    note, Modifier.clickable { onNoteClick(note) },
+                    note, onClick = { onNoteClick(note) },
                     onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                 )
             }

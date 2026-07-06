@@ -14,6 +14,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,8 +42,12 @@ import app.nostrdeck.theme.DeckWeight
 fun rememberNewItemsCount(keys: List<String>, listState: LazyListState): Int {
     var seenTopKey by remember { mutableStateOf(keys.firstOrNull()) }
     val firstKey = keys.firstOrNull()
-    // ほぼ先頭（index 0 付近）なら「先頭にいる」とみなす。
-    val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 40
+    // [perf] firstVisibleItemScrollOffset はスクロール中に毎フレーム変化する。これを composition で
+    // 素に読むとフィード枠が毎フレーム再コンポーズされスクロールが詰まる。derivedStateOf で包み、
+    // 「先頭にいるか」の真偽が変わった瞬間だけ再コンポーズさせる（途中スクロール中は再計算しない）。
+    val atTop by remember(listState) {
+        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 40 }
+    }
     LaunchedEffect(atTop, firstKey) { if (atTop) seenTopKey = firstKey }
     return if (atTop) 0 else keys.indexOf(seenTopKey).coerceAtLeast(0)
 }

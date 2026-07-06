@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckRadius
@@ -102,15 +103,21 @@ fun DeckTextField(
     inputModifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    // [#22] 複数行(singleLine=false)は角丸ピルではなく、上寄せ・控えめ角丸・複数行の高さを確保した
+    // テキストエリア表示にする（単一行は従来どおりの丸ピル）。
+    val shape = if (singleLine) RoundedCornerShape(DeckRadius.Full) else RoundedCornerShape(DeckRadius.Md)
+    val minHeight = if (singleLine) DeckDimens.TouchTargetSm else 112.dp
+    val vAlign = if (singleLine) Alignment.CenterVertically else Alignment.Top
+    val boxAlign = if (singleLine) Alignment.CenterStart else Alignment.TopStart
     Row(
         modifier
-            .heightIn(min = DeckDimens.TouchTargetSm)
-            .clip(RoundedCornerShape(DeckRadius.Full))
+            .heightIn(min = minHeight)
+            .clip(shape)
             .background(DeckColors.Surface2)
             .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = vAlign,
     ) {
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.weight(1f), contentAlignment = boxAlign) {
             if (value.isEmpty()) {
                 Text(placeholder, color = DeckColors.Text3, fontSize = DeckType.Caption)
             }

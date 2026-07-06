@@ -61,19 +61,24 @@ fun FeedColumn(
 ) {
     // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
     // 下までスクロールしている場合は読書位置を保つため動かさない。
+    // [perf] ユーザーが指でスクロール中は自動スクロールで割り込まない（新着で操作が引っかかるのを防ぐ）。
     LaunchedEffect(notes.firstOrNull()?.event?.id) {
-        if (listState.firstVisibleItemIndex <= 2) {
+        if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
             listState.animateScrollToItem(0)
         }
     }
     val scope = rememberCoroutineScope()
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    // [#24] 流速は再コンポーズ毎ではなく、フィード先頭/件数が変わったときだけ再計算する。
+    val velocity = if (retro) remember(notes.firstOrNull()?.event?.id, notes.size) {
+        feedVelocity(notes.map { it.event.createdAt })
+    } else null
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = if (retro) feedVelocity(notes.map { it.event.createdAt }) else null,
+            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -81,13 +86,13 @@ fun FeedColumn(
                 if (offline) item { OfflineBanner(pendingCount = 3) }
                 items(notes, key = { it.event.id }) { note ->
                     NoteItem(
-                        note, Modifier.clickable { onNoteClick(note) },
+                        note, onClick = { onNoteClick(note) },
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                     )
                 }
             }
             // 下を読んでいる間に積まれた新着だけピル表示。タップで最上部へ。
-            NewItemsPill(rememberNewItemsCount(notes.map { it.event.id }, listState)) {
+            NewItemsPill(rememberNewItemsCount(remember(notes) { notes.map { it.event.id } }, listState)) {
                 scope.launch { listState.animateScrollToItem(0) }
             }
         }
@@ -114,17 +119,21 @@ fun FollowingFeedColumn(
     onNoticeClick: (String) -> Unit = {},
 ) {
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
-        if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
+        if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
     }
     val scope = rememberCoroutineScope()
-    val keys = entries.map { feedEntryKey(it) }
+    val keys = remember(entries) { entries.map { feedEntryKey(it) } }
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    // [#24] 流速は先頭/件数が変わったときだけ再計算。
+    val velocity = if (retro) remember(keys.firstOrNull(), entries.size) {
+        feedVelocity(entries.map { it.sortAt })
+    } else null
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = if (retro) feedVelocity(entries.map { it.sortAt }) else null,
+            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -132,7 +141,7 @@ fun FollowingFeedColumn(
                 items(entries, key = { feedEntryKey(it) }) { entry ->
                     when (entry) {
                         is FeedEntry.Post -> NoteItem(
-                            entry.note, Modifier.clickable { onNoteClick(entry.note) },
+                            entry.note, onClick = { onNoteClick(entry.note) },
                             onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
                             onAuthorClick = onAuthorClick,
                         )
@@ -157,13 +166,11 @@ fun FollowingFeedColumn(
     }
 }
 
-/** [#11] 流速（件/分）: 直近5分の件数から算出。時刻(Unix秒)は順不同でよい。 */
+/** [#11/#24] 流速: 直近10分の件数。時刻(Unix秒)は順不同でよい。表示は「N/10分」。 */
 private fun feedVelocity(times: List<Long>): Int {
-    if (times.size < 2) return 0
+    if (times.isEmpty()) return 0
     val newest = times.maxOrNull() ?: return 0
-    val windowSec = 300L
-    val cnt = times.count { it > newest - windowSec }
-    return (cnt.toLong() * 60 / windowSec).toInt()
+    return times.count { it > newest - 600L }  // 直近10分
 }
 
 /** LazyColumn の安定キー。エントリ種別ごとに一意化する。 */
@@ -202,7 +209,7 @@ private fun MyReactionRow(
             Text("あなたがリアクション", color = DeckColors.Text3, fontSize = DeckType.Label)
         }
         NoteItem(
-            entry.target, Modifier.clickable(onClick = onNoteClick),
+            entry.target, onClick = onNoteClick,
             onReply = { onReply() }, onQuote = { onQuote() }, onAuthorClick = onAuthorClick,
         )
     }

@@ -233,7 +233,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
         }
         items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
             NoteItem(
-                note, Modifier.clickable { onNoteClick(note) },
+                note, onClick = { onNoteClick(note) },
                 onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
             )
             HorizontalDivider(color = DeckColors.Border)
@@ -248,7 +248,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
     } else {
         items(visible, key = { it.event.id }) { note ->
             NoteItem(
-                note, Modifier.clickable { onNoteClick(note) },
+                note, onClick = { onNoteClick(note) },
                 onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
             )
         }

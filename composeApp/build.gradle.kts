@@ -1,5 +1,12 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// リリース署名の資格情報は keystore.properties（.gitignore 済み）から読む。無ければ未署名。
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
 
 plugins {
     alias(libs.plugins.multiplatform)
@@ -80,6 +87,29 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            // R8 は proguard ルール整備後に別途有効化する（beta は未圧縮 release で十分高速）。
+            isMinifyEnabled = false
+            signingConfig = if (keystorePropsFile.exists()) signingConfigs.getByName("release") else signingConfig
+        }
+    }
+    // [#26] ネイティブ .so を非圧縮で梱包し 16KB ページ境界に揃える（AGP が整列）。
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 }
 

@@ -119,6 +119,16 @@ class EventRepository(
     private val relayDispatcher = Dispatchers.Default.limitedParallelism(1)
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * [#20/#21] KV(app_setting) 書き込みを UI スレッドから外す。
+     * SQLite 書き込みは取り込みトランザクションと DB ロックを奪い合い、UI スレッドで同期実行すると
+     * タップ応答が詰まる。呼び出し側で StateFlow を即時更新し、永続化はここで後追いする。
+     * relayDispatcher(単一スレッド) 上で直列化して実行する。
+     */
+    private fun putSettingAsync(key: String, value: String) {
+        scope.launch(relayDispatcher) { q.putSetting(key, value) }
+    }
+
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
     private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
 
@@ -881,7 +891,7 @@ class EventRepository(
     /** 通知を既読にする（最終閲覧時刻を現在時刻に進める）。 */
     fun markNotificationsSeen() {
         val now = currentUnixTime()
-        if (now > notifLastSeen.value) { notifLastSeen.value = now; q.putSetting(NOTIF_LAST_SEEN, now.toString()) }
+        if (now > notifLastSeen.value) { notifLastSeen.value = now; putSettingAsync(NOTIF_LAST_SEEN, now.toString()) }
     }
 
     /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
@@ -896,7 +906,7 @@ class EventRepository(
     /** DM を既読にする（最終閲覧時刻を現在時刻に進める）。 */
     fun markDmSeen() {
         val now = currentUnixTime()
-        if (now > dmLastSeen.value) { dmLastSeen.value = now; q.putSetting(DM_LAST_SEEN, now.toString()) }
+        if (now > dmLastSeen.value) { dmLastSeen.value = now; putSettingAsync(DM_LAST_SEEN, now.toString()) }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -1245,9 +1255,9 @@ class EventRepository(
 
     /** デフォルトリアクションを設定（設定画面のピッカーから）。content=":shortcode:" のときは imageUrl も保存。 */
     fun setDefaultReaction(content: String, imageUrl: String?) {
-        q.putSetting(DEFAULT_REACTION_CONTENT, content)
-        q.putSetting(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
         defaultReactionState.value = content to imageUrl
+        putSettingAsync(DEFAULT_REACTION_CONTENT, content)
+        putSettingAsync(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
     }
 
     /** [M17] 「古のSNS廃人モード」。ON でデッキが高密度・玄人寄りの見た目/挙動になる。既定OFF。 */
@@ -1255,8 +1265,8 @@ class EventRepository(
     fun retroModeFlow(): StateFlow<Boolean> = retroModeState
     private fun loadRetroMode() { retroModeState.value = q.getSetting(RETRO_MODE).executeAsOneOrNull() == "1" }
     fun setRetroMode(on: Boolean) {
-        q.putSetting(RETRO_MODE, if (on) "1" else "0")
         retroModeState.value = on
+        putSettingAsync(RETRO_MODE, if (on) "1" else "0")
     }
 
     /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
@@ -1520,8 +1530,8 @@ class EventRepository(
         }
     }
     fun setAuthPolicy(p: AuthPolicy) {
-        q.putSetting(AUTH_POLICY, when (p) { AuthPolicy.OFF -> "off"; AuthPolicy.ALWAYS -> "always"; AuthPolicy.DM_AND_MINE -> "dm" })
         authPolicyState.value = p
+        putSettingAsync(AUTH_POLICY, when (p) { AuthPolicy.OFF -> "off"; AuthPolicy.ALWAYS -> "always"; AuthPolicy.DM_AND_MINE -> "dm" })
     }
 
     private val authChallengeByRelay = mutableMapOf<String, String>()  // url → 応答済みチャレンジ（重複応答の抑止）
@@ -1667,8 +1677,8 @@ class EventRepository(
 
     /** カラムでミュートを表示するか（目アイコン）を切り替え、KV に保存する。 */
     fun setColumnRevealMuted(columnId: String, reveal: Boolean) {
-        q.putSetting(REVEAL_MUTED_PREFIX + columnId, if (reveal) "1" else "0")
         revealMutedFlow.value = if (reveal) revealMutedFlow.value + columnId else revealMutedFlow.value - columnId
+        putSettingAsync(REVEAL_MUTED_PREFIX + columnId, if (reveal) "1" else "0")
     }
 
     // フォロー中カラムで「自分への反応（kind:7/フォロー外リポスト）」を隠すカラム集合。KV 永続。
@@ -1676,8 +1686,8 @@ class EventRepository(
     fun hideSelfNoticesColumns(): StateFlow<Set<String>> = hideSelfNoticesFlow
 
     fun setColumnHideSelfNotices(columnId: String, hide: Boolean) {
-        q.putSetting(HIDE_SELF_NOTICES_PREFIX + columnId, if (hide) "1" else "0")
         hideSelfNoticesFlow.value = if (hide) hideSelfNoticesFlow.value + columnId else hideSelfNoticesFlow.value - columnId
+        putSettingAsync(HIDE_SELF_NOTICES_PREFIX + columnId, if (hide) "1" else "0")
     }
 
     // [M18] フォロー中カラムで「非表示にする通知系カテゴリ」をカラム別に持つ。KV 永続（カンマ区切り）。
@@ -1686,18 +1696,18 @@ class EventRepository(
 
     fun setColumnCategoryHidden(columnId: String, category: FeedNoticeCategory, hidden: Boolean) {
         val next = hiddenCategoriesFlow.value[columnId].orEmpty().let { if (hidden) it + category else it - category }
-        q.putSetting(FEED_CAT_HIDDEN_PREFIX + columnId, next.joinToString(",") { it.name })
         hiddenCategoriesFlow.value = hiddenCategoriesFlow.value.toMutableMap().apply {
             if (next.isEmpty()) remove(columnId) else put(columnId, next)
         }
+        putSettingAsync(FEED_CAT_HIDDEN_PREFIX + columnId, next.joinToString(",") { it.name })
     }
 
     // [#10] カラム幅（"S"/"M"/"L"）をカラム別に持つ。KV 永続。未設定は既定(M)。
     private val columnWidthsState = MutableStateFlow<Map<String, String>>(emptyMap())
     fun columnWidthsFlow(): StateFlow<Map<String, String>> = columnWidthsState
     fun setColumnWidth(columnId: String, size: String) {
-        q.putSetting(COL_WIDTH_PREFIX + columnId, size)
         columnWidthsState.value = columnWidthsState.value + (columnId to size)
+        putSettingAsync(COL_WIDTH_PREFIX + columnId, size)
     }
     private fun loadColumnWidths() {
         columnWidthsState.value = q.settingsByPrefix(COL_WIDTH_PREFIX).executeAsList()
@@ -2301,11 +2311,11 @@ class EventRepository(
     }
 
     fun setEmbedPrefs(prefs: EmbedPrefs) {
-        q.putSetting(EMBED_PREFIX + "youtube", if (prefs.youtube) "1" else "0")
-        q.putSetting(EMBED_PREFIX + "spotify", if (prefs.spotify) "1" else "0")
-        q.putSetting(EMBED_PREFIX + "ogp", if (prefs.ogp) "1" else "0")
-        q.putSetting(EMBED_PREFIX + "ogp_images", if (prefs.ogpImages) "1" else "0")
         embedPrefsFlow.value = prefs
+        putSettingAsync(EMBED_PREFIX + "youtube", if (prefs.youtube) "1" else "0")
+        putSettingAsync(EMBED_PREFIX + "spotify", if (prefs.spotify) "1" else "0")
+        putSettingAsync(EMBED_PREFIX + "ogp", if (prefs.ogp) "1" else "0")
+        putSettingAsync(EMBED_PREFIX + "ogp_images", if (prefs.ogpImages) "1" else "0")
     }
 
     private val ogpCache = mutableMapOf<String, OgpData?>()
@@ -2780,9 +2790,13 @@ class EventRepository(
             "wss://relay.primal.net",
         )
 
-        /** [#8] NIP-50 検索対応リレー。検索カラムはここへ問い合わせる（接続中リレーが未対応でも動くように）。 */
+        /**
+         * [#8/#23] NIP-50 検索対応リレー。検索カラムはここへ問い合わせる（接続中リレーが未対応でも動くように）。
+         * 到達性のばらつきに備えて複数へ投げ、どれか通れば結果が出るようにする。
+         */
         val SEARCH_RELAYS = listOf(
             "wss://relay.nostr.band",
+            "wss://relay.noswhere.sh",
             "wss://search.nos.today",
         )
 
