@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +81,10 @@ fun NoteItem(
   val bookmarks by (repo?.bookmarkIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val zapTotals by (repo?.zapTotalsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, Long>()) })
-  val zapSats = zapTotals[note.event.id] ?: 0L
+  // [perf] zapTotals は zap 受信の度に Map 全体が差し替わる。全項目を素で読むと、可視ノートが
+  // 一斉に再コンポーズされスクロールが詰まる。derivedStateOf でこのノートの値だけに依存させ、
+  // 自分の zap 合計が変わったときのみ再コンポーズする。
+  val zapSats by remember(note.event.id) { derivedStateOf { zapTotals[note.event.id] ?: 0L } }
   val defaultReaction by (repo?.defaultReactionFlow()?.collectAsState() ?: remember { mutableStateOf("+" to null) })
   // [M17] 廃人モード: ON でアバター縮小・余白圧縮の高密度表示（"TLを浴びる"用）。
   val compact by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
