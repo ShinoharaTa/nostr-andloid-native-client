@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +17,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -62,6 +75,7 @@ import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -89,6 +103,34 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     )
 }
 
+// [#28] メニューを「ランチャー(パレット)」化。よく使う機能をタイルで前面に、設定はグループ化。
+private data class SItem(val id: String, val label: String, val icon: ImageVector)
+
+// ① よく使う（大タイル）: 日常操作。設定というより機能。
+private val paletteFav = listOf(
+    SItem("account", "プロフィール", Icons.Outlined.Person),
+    SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
+    SItem("mute", "ミュート", Icons.Outlined.Block),
+)
+// ②③④ グループ化した設定。
+private val paletteGroups = listOf(
+    "カスタマイズ" to listOf(
+        SItem("reaction", "リアクション", Icons.Outlined.FavoriteBorder),
+        SItem("appearance", "表示", Icons.Outlined.Visibility),
+        SItem("retro", "古のSNS廃人モード", Icons.Outlined.AutoAwesome),
+    ),
+    "接続・アカウント" to listOf(
+        SItem("signer", "ログイン方法", Icons.Outlined.Key),
+        SItem("relays", "リレー", Icons.Outlined.Cloud),
+        SItem("dmrelays", "DMリレー", Icons.Outlined.MailOutline),
+        SItem("media", "メディアサーバー", Icons.Outlined.CloudUpload),
+    ),
+    "システム" to listOf(
+        SItem("data", "データ・キャッシュ", Icons.Outlined.Storage),
+        SItem("about", "このアプリについて", Icons.Outlined.Info),
+    ),
+)
+
 @Composable
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
@@ -96,21 +138,64 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
             Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         }
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(SampleData.settingsSections, key = { it.first }) { (id, label) ->
-                val active = id == selectedId
-                Text(
-                    label,
-                    color = if (active) DeckColors.Accent else DeckColors.Text,
-                    fontSize = DeckType.Sub,
-                    fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
-                    modifier = Modifier.fillMaxWidth()
-                        .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
-                        .clickable { onSelect(id) }.padding(DeckSpace.Lg, DeckSpace.Md),
-                )
-                HorizontalDivider(color = DeckColors.Border)
+        LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
+            item { PaletteGroupHeader("よく使う") }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+                ) {
+                    paletteFav.forEach { PaletteTile(it, selectedId, onSelect, Modifier.weight(1f)) }
+                }
+            }
+            paletteGroups.forEach { (title, rows) ->
+                item { PaletteGroupHeader(title) }
+                items(rows, key = { it.id }) { PaletteRow(it, selectedId, onSelect) }
             }
         }
+    }
+}
+
+@Composable
+private fun PaletteGroupHeader(title: String) {
+    Text(
+        title, color = DeckColors.Text3, fontSize = DeckType.Label,
+        modifier = Modifier.padding(horizontal = DeckSpace.Md).padding(top = DeckSpace.Md, bottom = DeckSpace.Xs),
+    )
+}
+
+@Composable
+private fun PaletteTile(item: SItem, selectedId: String?, onSelect: (String) -> Unit, modifier: Modifier) {
+    val active = item.id == selectedId
+    Column(
+        modifier.clip(RoundedCornerShape(DeckRadius.Md))
+            .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
+            .clickable { onSelect(item.id) }
+            .padding(vertical = DeckSpace.Md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(item.icon, null, tint = if (active) DeckColors.Text else DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg))
+        Spacer(Modifier.height(DeckSpace.Xs))
+        Text(item.label, color = if (active) DeckColors.Text else DeckColors.Text2, fontSize = DeckType.Label, maxLines = 1)
+    }
+}
+
+@Composable
+private fun PaletteRow(item: SItem, selectedId: String?, onSelect: (String) -> Unit) {
+    val active = item.id == selectedId
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
+            .clickable { onSelect(item.id) }.padding(DeckSpace.Lg, DeckSpace.Md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(item.icon, null, tint = if (active) DeckColors.Accent else DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd))
+        Spacer(Modifier.width(DeckSpace.Md))
+        Text(
+            item.label,
+            color = if (active) DeckColors.Accent else DeckColors.Text, fontSize = DeckType.Sub,
+            fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
+        )
     }
 }
 
