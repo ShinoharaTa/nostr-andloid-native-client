@@ -173,6 +173,7 @@ private fun ResultsPane(
         onDispose { repo.unsubscribeColumn("search_screen") }
     }
     val results = remember(active) { repo.columnFeed(filter) }.collectAsState().value
+    val loaded by repo.columnLoadedFlow().collectAsState()
 
     Column(modifier) {
         // ヘッダ: 検索語 ＋「Deckに追加」
@@ -197,9 +198,7 @@ private fun ResultsPane(
         }
         HorizontalDivider(color = DeckColors.Border)
         if (results.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
-                Text("結果がありません（取得中の場合があります）", color = DeckColors.Text3, fontSize = DeckType.Caption)
-            }
+            ColumnStateView("search_screen" !in loaded, "検索結果がありません", Modifier.fillMaxSize())
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { it.event.id }) { note ->

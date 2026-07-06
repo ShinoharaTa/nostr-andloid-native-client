@@ -575,6 +575,12 @@ class EventRepository(
     /** カラム表示時に購読開始（subId = columnId）。filter.relays 指定時はそのリレーだけへ配信。 */
     fun subscribeColumn(columnId: String, filter: ReqFilter) {
         if (!openColumns.add(columnId)) return
+        columnLoadedState.value = columnLoadedState.value - columnId  // [#17] 再購読でロード中に戻す
+        // [#17] EOSE が来ない/遅いリレーでも無限ロードにしない安全網（8秒でロード済み扱い）。
+        scope.launch {
+            delay(8000)
+            if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
+        }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
@@ -607,6 +613,7 @@ class EventRepository(
     fun unsubscribeColumn(columnId: String) {
         followingJobs.remove(columnId)?.cancel()
         notifJobs.remove(columnId)?.cancel()
+        columnLoadedState.value = columnLoadedState.value - columnId  // [#17]
         if (openColumns.remove(columnId)) unsubscribeAll(columnId)
     }
 
@@ -1609,9 +1616,15 @@ class EventRepository(
             is RelayMessage.Event -> ingestChannel.trySend(msg.event)
             // [NIP-42] AUTH 応答は relayDispatcher(直列)で処理し、チャレンジ重複応答を dedup する。
             is RelayMessage.Auth -> scope.launch(relayDispatcher) { handleAuthChallenge(client, msg.challenge) }
+            // [#17] EOSE = 蓄積イベント送信完了。どこか1リレーから来たらそのカラムを「読込済み」に。
+            is RelayMessage.Eose -> columnLoadedState.value = columnLoadedState.value + msg.subscriptionId
             else -> {}
         }
     }
+
+    // [#17] カラム(サブスク)別の「初期読込完了(EOSE受信済み)」集合。空表示とロード表示の判別に使う。
+    private val columnLoadedState = MutableStateFlow<Set<String>>(emptySet())
+    fun columnLoadedFlow(): StateFlow<Set<String>> = columnLoadedState
 
     /**
      * 取り込みループ。短時間到着分をまとめて（最大 [INGEST_BATCH]）、

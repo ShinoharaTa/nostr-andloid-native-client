@@ -75,6 +75,8 @@ fun FeedColumn(
     val scope = rememberCoroutineScope()
     val repo = LocalRepository.current
     val retro by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    // [#17] EOSE 受信済みか（空 vs 読込中の判別）。
+    val loaded by (repo?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
     // [#24] 流速は再コンポーズ毎ではなく、フィード先頭/件数が変わったときだけ再計算する。
     val velocity = if (retro) remember(notes.firstOrNull()?.event?.id, notes.size) {
         feedVelocity(notes.map { it.event.createdAt })
@@ -121,6 +123,8 @@ fun FeedColumn(
             NewItemsPill(rememberNewItemsCount(remember(notes) { notes.map { it.event.id } }, listState)) {
                 scope.launch { listState.animateScrollToItem(0) }
             }
+            // [#17] 空/読込中の表示（0件のときだけ重ねる）。
+            if (notes.isEmpty()) ColumnStateView(spec.id !in loaded, "投稿がありません", Modifier.fillMaxSize())
         }
     }
 }
@@ -150,6 +154,7 @@ fun FollowingFeedColumn(
     val scope = rememberCoroutineScope()
     val keys = remember(entries) { entries.map { feedEntryKey(it) } }
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    val loaded by (LocalRepository.current?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
     // [#24] 流速は先頭/件数が変わったときだけ再計算。
     val velocity = if (retro) remember(keys.firstOrNull(), entries.size) {
         feedVelocity(entries.map { it.sortAt })
@@ -188,6 +193,8 @@ fun FollowingFeedColumn(
             NewItemsPill(rememberNewItemsCount(keys, listState)) {
                 scope.launch { listState.animateScrollToItem(0) }
             }
+            // [#17] 空/読込中の表示。
+            if (entries.isEmpty()) ColumnStateView(spec.id !in loaded, "投稿がありません", Modifier.fillMaxSize())
         }
     }
 }
