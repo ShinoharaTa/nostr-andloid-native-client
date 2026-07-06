@@ -37,7 +37,7 @@ SELECT * FROM event WHERE kind = 1 ORDER BY created_at DESC LIMIT ?;
 
 feedBySearch:
 SELECT * FROM event WHERE kind = 1 AND content LIKE ('%' || ? || '%')
-ORDER BY created_at DESC LIMIT 200;
+ORDER BY created_at DESC LIMIT 300;
 
 -- ============ event_tag: タグ索引（#t ハッシュタグ等のカラム検索用） ============
 CREATE TABLE event_tag (
@@ -58,7 +58,7 @@ feedByHashtag:
 SELECT event.* FROM event
 JOIN event_tag ON event.id = event_tag.event_id
 WHERE event.kind = 1 AND event_tag.tag = 't' AND event_tag.value = ?
-ORDER BY event.created_at DESC LIMIT 200;
+ORDER BY event.created_at DESC LIMIT 300;
 
 -- ============ profile: kind:0。pubkey ごとに最新1件だけ（dedup） ============
 CREATE TABLE profile (
@@ -168,7 +168,7 @@ feedByAuthors:
 SELECT * FROM event
 WHERE kind = 1 AND pubkey IN ? AND created_at > ?
 ORDER BY created_at DESC
-LIMIT 200;
+LIMIT 300;
 
 -- ============ pinned_column: ピン留めカラム（永続） ============
 -- レール/デッキの並びの source of truth（whiteboard「統合モデル」）。
@@ -282,7 +282,7 @@ feedFollowingWithReposts:
 SELECT * FROM event
 WHERE kind IN (1, 6, 16) AND pubkey IN ? AND created_at > ?
 ORDER BY created_at DESC
-LIMIT 200;
+LIMIT 300;
 
 -- [M8-repost] イベント id 単一解決（リポスト元 / 引用ノートの解決用）。
 eventById:
