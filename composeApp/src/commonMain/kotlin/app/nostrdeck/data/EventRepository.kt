@@ -1214,6 +1214,38 @@ class EventRepository(
     }
 
     /**
+     * [#13] 連投スレッド。[segments] を先頭から順に投稿し、2件目以降は NIP-10 で
+     * root(先頭) と reply(直前) を e タグに付けて自己スレッド化する。
+     */
+    suspend fun publishThread(segments: List<String>) {
+        val segs = segments.map { it.trim() }.filter { it.isNotEmpty() }
+        if (segs.isEmpty()) return
+        var rootId: String? = null
+        var prevId: String? = null
+        var myPk: String? = null
+        for (seg in segs) {
+            val tags = buildList {
+                if (rootId != null) {
+                    add(listOf("e", rootId!!, "", "root"))
+                    if (prevId != null && prevId != rootId) add(listOf("e", prevId!!, "", "reply"))
+                    myPk?.let { add(listOf("p", it)) }
+                }
+                addAll(hashtagsIn(seg).map { listOf("t", it) })
+                addAll(emojiTagsIn(seg))
+            }
+            val signed = publishSigned(UnsignedEvent(kind = 1, content = seg, tags = tags))
+            recordHashtags(seg, signed.createdAt)
+            if (rootId == null) { rootId = signed.id; myPk = signed.pubkey }
+            prevId = signed.id
+        }
+    }
+
+    // [#13] 投稿の下書き（未送信テキスト）を1枠だけ KV に保持。閉じたら保存/次回開いたら復元。
+    fun saveDraft(text: String) = putSettingAsync(COMPOSE_DRAFT, text)
+    fun loadDraft(): String = q.getSetting(COMPOSE_DRAFT).executeAsOneOrNull().orEmpty()
+    fun clearDraft() = putSettingAsync(COMPOSE_DRAFT, "")
+
+    /**
      * [M8] NIP-25 リアクション（kind:7）。デフォルトは "+"（♡=いいね）。即時にカウント反映。
      * カスタム絵文字は [emoji]=":shortcode:" + [imageUrl] を渡すと NIP-30 の `emoji` タグを付ける。
      * "+" 以外はピッカーの「最近」（used_emoji）に記録する。
@@ -2898,6 +2930,9 @@ class EventRepository(
 
         /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
         const val SEARCH_HISTORY = "search_history"
+
+        /** [#13] 投稿の下書き（未送信テキスト）の KV キー。 */
+        const val COMPOSE_DRAFT = "compose_draft"
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"

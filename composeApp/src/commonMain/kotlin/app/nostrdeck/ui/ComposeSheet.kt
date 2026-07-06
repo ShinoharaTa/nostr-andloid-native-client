@@ -33,18 +33,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.setValue
@@ -107,6 +110,19 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     var showEmojiPicker by remember { mutableStateOf(false) }
     // [#5] NIP-36 センシティブ投稿トグル。ON で content-warning を付けて投稿。
     var sensitive by remember { mutableStateOf(false) }
+    // [#13] 連投スレッドの先行セグメント（＋で積む。送信時に自己スレッド化）。
+    val threadSegments = remember { mutableStateListOf<String>() }
+    // [#13] 送信済みなら閉じても下書き保存しない。
+    var sentOk by remember { mutableStateOf(false) }
+    val latestText by rememberUpdatedState(field.text)
+    // [#13] 未送信で閉じたら下書き保存（新規投稿のみ）。空なら消す。
+    DisposableEffect(Unit) {
+        onDispose {
+            if (replyTo == null && quoting == null && !sentOk) {
+                if (latestText.isNotBlank()) repo?.saveDraft(latestText) else repo?.clearDraft()
+            }
+        }
+    }
 
     // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
     val images = remember { mutableStateListOf<ComposeAttachment>() }
@@ -129,8 +145,14 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     LaunchedEffect(resolution) {
         images.forEach { att -> scope.launch { att.compress(resolution) } }
     }
-    // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。
-    LaunchedEffect(Unit) { runCatching { bodyFocus.requestFocus() } }
+    // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。[#13] 新規は下書きを復元。
+    LaunchedEffect(Unit) {
+        if (replyTo == null && quoting == null && field.text.isEmpty()) {
+            val d = repo?.loadDraft().orEmpty()
+            if (d.isNotBlank()) field = TextFieldValue(d, selection = TextRange(d.length))
+        }
+        runCatching { bodyFocus.requestFocus() }
+    }
 
     // ログイン中アカウント（ヘッダ表示）。DB キャッシュの Flow。
     // remember しないと再コンポーズごとに新しい Flow を購読し直し、表示ラグ/ちらつきが出る。
@@ -187,7 +209,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
         customEmojis.filter { it.shortcode.startsWith(activeEmoji, ignoreCase = true) }.take(12)
     } else emptyList()
 
-    val canSend = !sending && (text.isNotBlank() || images.isNotEmpty() || quoting != null)
+    val canSend = !sending && (text.isNotBlank() || images.isNotEmpty() || quoting != null || threadSegments.isNotEmpty())
     val doSend: () -> Unit = {
         if (canSend) {
             sending = true; sendError = null; uploadProgress.value = 0
@@ -217,8 +239,12 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     when {
                         replyTo != null -> repo?.publishReply(replyTo, body)
                         quoting != null -> repo?.publishQuote(quoting, body)
+                        // [#13] 先行セグメントがあれば自己スレッドとして連投（最後が現在の本文）。
+                        threadSegments.isNotEmpty() -> repo?.publishThread(threadSegments.toList() + body)
+                        // [#5] センシティブONなら content-warning を付けて投稿。
                         else -> repo?.publishNote(body, if (sensitive) "" else null)
                     }
+                    sentOk = true; repo?.clearDraft()   // [#13] 送信できたら下書き破棄
                     sending = false
                     onDismiss()
                 } catch (c: CancellationException) {
@@ -403,9 +429,34 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                                 modifier = Modifier.size(DeckDimens.IconLg),
                             )
                         }
+                        // [#13] 連投: 現在の本文をスレッドに積んで次を書く（新規投稿のみ）。
+                        if (replyTo == null && quoting == null) {
+                            Box(
+                                Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
+                                    .clickable(enabled = text.isNotBlank()) {
+                                        threadSegments.add(text.trimEnd()); field = TextFieldValue("")
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Outlined.PlaylistAdd, "連投に追加",
+                                    tint = if (text.isNotBlank()) DeckColors.Text else DeckColors.Text3,
+                                    modifier = Modifier.size(DeckDimens.IconLg),
+                                )
+                            }
+                            if (threadSegments.isNotEmpty()) {
+                                Text(
+                                    "連投 ${threadSegments.size + 1}", color = DeckColors.Accent, fontSize = DeckType.Label,
+                                    modifier = Modifier.padding(start = DeckSpace.Xs),
+                                )
+                            }
+                        }
                         Spacer(Modifier.weight(1f))
                         DeckButton(
-                            when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
+                            when {
+                                replyTo != null -> "返信"; quoting != null -> "引用"
+                                threadSegments.isNotEmpty() -> "連投"; else -> "送信"
+                            },
                             onClick = doSend, enabled = canSend,
                         )
                     }
