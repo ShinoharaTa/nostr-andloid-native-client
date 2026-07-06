@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -100,6 +101,7 @@ fun DeckTextField(
     singleLine: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
     inputModifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -129,6 +131,7 @@ fun DeckTextField(
                 cursorBrush = SolidColor(DeckColors.Accent),
                 visualTransformation = visualTransformation,
                 keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
                 modifier = inputModifier.fillMaxWidth(),
             )
         }

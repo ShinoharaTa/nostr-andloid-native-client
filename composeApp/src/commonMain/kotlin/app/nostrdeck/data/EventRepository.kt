@@ -232,6 +232,8 @@ class EventRepository(
         loadHiddenCategories()
         // [#10] カラム別の幅を KV から復元。
         loadColumnWidths()
+        // [#27] 検索履歴を KV から復元。
+        loadSearchHistory()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -1727,6 +1729,30 @@ class EventRepository(
             .associate { it.key.removePrefix(COL_WIDTH_PREFIX) to it.value_ }
     }
 
+    // [#27] 検索履歴（新しい順・上限30・KV 永続）。検索タブの履歴一覧に使う。
+    private val searchHistoryState = MutableStateFlow<List<String>>(emptyList())
+    fun searchHistoryFlow(): StateFlow<List<String>> = searchHistoryState
+    fun addSearchHistory(term: String) {
+        val t = term.trim()
+        if (t.isEmpty()) return
+        val next = (listOf(t) + searchHistoryState.value.filter { it != t }).take(30)
+        searchHistoryState.value = next
+        putSettingAsync(SEARCH_HISTORY, next.joinToString("\n"))
+    }
+    fun removeSearchHistory(term: String) {
+        val next = searchHistoryState.value.filter { it != term }
+        searchHistoryState.value = next
+        putSettingAsync(SEARCH_HISTORY, next.joinToString("\n"))
+    }
+    fun clearSearchHistory() {
+        searchHistoryState.value = emptyList()
+        putSettingAsync(SEARCH_HISTORY, "")
+    }
+    private fun loadSearchHistory() {
+        searchHistoryState.value = q.getSetting(SEARCH_HISTORY).executeAsOneOrNull()
+            ?.split("\n")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    }
+
     private fun loadHiddenCategories() {
         hiddenCategoriesFlow.value = q.settingsByPrefix(FEED_CAT_HIDDEN_PREFIX).executeAsList()
             .associate { row ->
@@ -2832,6 +2858,9 @@ class EventRepository(
 
         /** [#10] カラム別の幅（"S"/"M"/"L"）の KV キー接頭辞。 */
         const val COL_WIDTH_PREFIX = "col_width:"
+
+        /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
+        const val SEARCH_HISTORY = "search_history"
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"

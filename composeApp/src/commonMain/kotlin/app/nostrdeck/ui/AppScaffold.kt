@@ -137,7 +137,7 @@ private fun Destination(state: DeckState, isCompact: Boolean) {
         // スレッド詳細と同様に中央寄せ・最大幅を制限する（Compact では全幅）。
         NavDest.NOTIFICATIONS -> SingleColumnPane(isCompact) { NotificationsScreen(state) }
         NavDest.SETTINGS -> SettingsScreen(state, isCompact)
-        NavDest.SEARCH -> SingleColumnPane(isCompact) { SearchScreen() }
+        NavDest.SEARCH -> SearchScreen(state, isCompact)
     }
 }
 
