@@ -105,6 +105,10 @@ android {
             isMinifyEnabled = false
             signingConfig = if (keystorePropsFile.exists()) signingConfigs.getByName("release") else signingConfig
         }
+        debug {
+            // debug は別パッケージ(...debug)にして、Play/release 版(net.shino3.nostrism)と端末上で共存させる。
+            applicationIdSuffix = ".debug"
+        }
     }
     // [#26] ネイティブ .so を非圧縮で梱包し 16KB ページ境界に揃える（AGP が整列）。
     packaging {
