@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -104,6 +105,8 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
     var field by remember { mutableStateOf(TextFieldValue("")) }
     val text = field.text
     var showEmojiPicker by remember { mutableStateOf(false) }
+    // [#5] NIP-36 センシティブ投稿トグル。ON で content-warning を付けて投稿。
+    var sensitive by remember { mutableStateOf(false) }
 
     // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
     val images = remember { mutableStateListOf<ComposeAttachment>() }
@@ -214,7 +217,7 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     when {
                         replyTo != null -> repo?.publishReply(replyTo, body)
                         quoting != null -> repo?.publishQuote(quoting, body)
-                        else -> repo?.publishNote(body)
+                        else -> repo?.publishNote(body, if (sensitive) "" else null)
                     }
                     sending = false
                     onDismiss()
@@ -387,6 +390,19 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                                 .clickable { showEmojiPicker = true },
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+                        // [#5] センシティブ(NIP-36 content-warning)トグル。ON はアクセント色。
+                        Box(
+                            Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
+                                .clickable { sensitive = !sensitive },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Outlined.VisibilityOff,
+                                if (sensitive) "センシティブ: ON" else "センシティブ指定",
+                                tint = if (sensitive) DeckColors.Accent else DeckColors.Text,
+                                modifier = Modifier.size(DeckDimens.IconLg),
+                            )
+                        }
                         Spacer(Modifier.weight(1f))
                         DeckButton(
                             when { replyTo != null -> "返信"; quoting != null -> "引用"; else -> "送信" },
