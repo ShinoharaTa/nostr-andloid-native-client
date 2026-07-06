@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
@@ -104,6 +106,8 @@ fun NoteItem(
   var confirmUnreact by remember { mutableStateOf(false) }
   // [#6] NIP-56 通報ダイアログ。
   var showReport by remember { mutableStateOf(false) }
+  // [#5] NIP-36 コンテンツ警告: 既定は折りたたみ、タップで開く。
+  var cwRevealed by remember(note.event.id) { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
   Column(if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()) {
@@ -136,6 +140,11 @@ fun NoteItem(
             }
             // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差を付け、テキスト羅列→UIブロック化。廃人モードは詰める。
             Spacer(Modifier.size(if (compact) DeckSpace.Xs else DeckSpace.Sm))
+            // [#5] NIP-36 コンテンツ警告: 未開封なら本文/メディアを隠して警告のみ表示。
+            val cw = note.contentWarning
+            if (cw != null && !cwRevealed) {
+                ContentWarningFold(cw) { cwRevealed = true }
+            } else {
             // 画像URLを除去した本文（画像は下にグリッド/カルーセルで表示する）。NIP-30 絵文字は画像化。
             CollapsibleText(note.text ?: note.event.content, emojis = note.customEmojis) // [M8-collapse]
 
@@ -158,6 +167,7 @@ fun NoteItem(
             }
             // [M14] リンク埋め込み（YouTube/Spotify/OGP）。設定で表示可否/画像読込を制御。
             LinkEmbeds(note.text ?: note.event.content, Modifier.padding(top = DeckSpace.Sm))
+            }
             // [施策4] 本文/メディア↔アクション群は Md で明確に分離（別ブロック化）。
             Spacer(Modifier.size(DeckSpace.Md))
             // アクションはアイコンのみ・左揃え。返信/リポスト/♡/絵文字を左に密に、Zap だけ右端へ。
@@ -308,6 +318,27 @@ fun NoteItem(
           onDismiss = { showReport = false },
       )
   }
+}
+
+/** [#5] NIP-36 コンテンツ警告の折りたたみ。理由（あれば）＋「表示」。タップで開く。 */
+@Composable
+private fun ContentWarningFold(reason: String, onReveal: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
+            .background(DeckColors.Surface2).clickable { onReveal() }.padding(DeckSpace.Md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.VisibilityOff, null, tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd))
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Column(Modifier.weight(1f)) {
+            Text("センシティブな内容", color = DeckColors.Text2, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name)
+            if (reason.isNotBlank()) {
+                Text(reason, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(Modifier.width(DeckSpace.Sm))
+        Text("表示", color = DeckColors.Accent, fontSize = DeckType.Label, fontWeight = DeckWeight.Name)
+    }
 }
 
 /** [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。 */

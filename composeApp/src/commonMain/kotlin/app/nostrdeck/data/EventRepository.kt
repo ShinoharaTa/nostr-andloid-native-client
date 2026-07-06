@@ -1204,9 +1204,11 @@ class EventRepository(
      * kind:1 ノートを投稿（NIP-01）。
      * 署名 → 楽観的にローカル DB へ挿入（即時表示）→ publish_queue へ積み、各リレーへ送信。
      */
-    suspend fun publishNote(content: String) {
+    suspend fun publishNote(content: String, contentWarning: String? = null) {
         // NIP-24/NIP-12: 本文中の #ハッシュタグ を 't' タグ / NIP-30: :shortcode: を emoji タグに。
-        val tags = hashtagsIn(content).map { listOf("t", it) } + emojiTagsIn(content)
+        // [#5] NIP-36: センシティブ指定時は content-warning タグを付与（理由は任意）。
+        val tags = hashtagsIn(content).map { listOf("t", it) } + emojiTagsIn(content) +
+            (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList())
         val signed = publishSigned(UnsignedEvent(kind = 1, content = content, tags = tags))
         recordHashtags(content, signed.createdAt)
     }
@@ -2147,10 +2149,13 @@ class EventRepository(
         val isReply = row.kind.toInt() == 1 && tags.any { it.size >= 2 && it[0] == "e" }
         // NIP-30: 本文中の :shortcode: → 画像URL のマップ。
         val emojis = tags.filter { it.size >= 3 && it[0] == "emoji" }.associate { it[1] to it[2] }
+        // NIP-36: content-warning タグ（あれば表示前に折りたたむ）。2要素目が理由（任意）。
+        val cw = tags.firstOrNull { it.isNotEmpty() && it[0] == "content-warning" }
+            ?.let { if (it.size >= 2) it[1] else "" }
         return NoteUi(
             event = NostrEvent(row.id, row.pubkey, row.kind.toInt(), row.created_at, row.content, emptyList(), row.sig),
             author = Profile(row.pubkey, name, prof?.handle ?: "", prof?.picture_url, lud16 = prof?.lud16),
-            text = text, images = images, isReply = isReply, customEmojis = emojis,
+            text = text, images = images, isReply = isReply, customEmojis = emojis, contentWarning = cw,
         )
     }
 
