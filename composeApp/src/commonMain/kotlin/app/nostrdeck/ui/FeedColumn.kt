@@ -68,12 +68,16 @@ fun FeedColumn(
     }
     val scope = rememberCoroutineScope()
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    // [#24] 流速は再コンポーズ毎ではなく、フィード先頭/件数が変わったときだけ再計算する。
+    val velocity = if (retro) remember(notes.firstOrNull()?.event?.id, notes.size) {
+        feedVelocity(notes.map { it.event.createdAt })
+    } else null
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = if (retro) feedVelocity(notes.map { it.event.createdAt }) else null,
+            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -119,12 +123,16 @@ fun FollowingFeedColumn(
     val scope = rememberCoroutineScope()
     val keys = entries.map { feedEntryKey(it) }
     val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+    // [#24] 流速は先頭/件数が変わったときだけ再計算。
+    val velocity = if (retro) remember(keys.firstOrNull(), entries.size) {
+        feedVelocity(entries.map { it.sortAt })
+    } else null
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = if (retro) feedVelocity(entries.map { it.sortAt }) else null,
+            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.fillMaxSize()) {
@@ -157,13 +165,11 @@ fun FollowingFeedColumn(
     }
 }
 
-/** [#11] 流速（件/分）: 直近5分の件数から算出。時刻(Unix秒)は順不同でよい。 */
+/** [#11/#24] 流速: 直近10分の件数。時刻(Unix秒)は順不同でよい。表示は「N/10分」。 */
 private fun feedVelocity(times: List<Long>): Int {
-    if (times.size < 2) return 0
+    if (times.isEmpty()) return 0
     val newest = times.maxOrNull() ?: return 0
-    val windowSec = 300L
-    val cnt = times.count { it > newest - windowSec }
-    return (cnt.toLong() * 60 / windowSec).toInt()
+    return times.count { it > newest - 600L }  // 直近10分
 }
 
 /** LazyColumn の安定キー。エントリ種別ごとに一意化する。 */
