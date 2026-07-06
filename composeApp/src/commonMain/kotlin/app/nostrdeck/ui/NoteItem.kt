@@ -70,6 +70,10 @@ import kotlinx.coroutines.launch
 fun NoteItem(
     note: NoteUi,
     modifier: Modifier = Modifier,
+    // [perf] タップは modifier ではなくこの callback で受ける。呼び出し側で Modifier.clickable を
+    // 毎回生成すると modifier 引数が毎回別インスタンスになり NoteItem が skip されず、新着 emit の
+    // たびに可視ノートが全再コンポーズしてしまうため（clickable は NoteItem 内部で適用する）。
+    onClick: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onQuote: (() -> Unit)? = null,
     onAuthorClick: ((String) -> Unit)? = null,
@@ -96,7 +100,7 @@ fun NoteItem(
   var confirmUnreact by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
-  Column(modifier.fillMaxWidth()) {
+  Column(if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm))
     }

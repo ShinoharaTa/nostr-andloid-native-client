@@ -251,7 +251,7 @@ private fun BookmarkSettings(state: DeckState) {
     LazyColumn(Modifier.fillMaxSize()) {
         items(notes, key = { it.event.id }) { note ->
             NoteItem(
-                note, Modifier.clickable { state.openThreadDetail(note.event.id) },
+                note, onClick = { state.openThreadDetail(note.event.id) },
                 onReply = { state.replyTo = note.event; state.showCompose = true },
                 onQuote = { state.quoting = note.event; state.showCompose = true },
                 onAuthorClick = { pk -> state.openProfile(pk) },

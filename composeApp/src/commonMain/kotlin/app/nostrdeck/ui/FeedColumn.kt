@@ -61,8 +61,9 @@ fun FeedColumn(
 ) {
     // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
     // 下までスクロールしている場合は読書位置を保つため動かさない。
+    // [perf] ユーザーが指でスクロール中は自動スクロールで割り込まない（新着で操作が引っかかるのを防ぐ）。
     LaunchedEffect(notes.firstOrNull()?.event?.id) {
-        if (listState.firstVisibleItemIndex <= 2) {
+        if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
             listState.animateScrollToItem(0)
         }
     }
@@ -85,7 +86,7 @@ fun FeedColumn(
                 if (offline) item { OfflineBanner(pendingCount = 3) }
                 items(notes, key = { it.event.id }) { note ->
                     NoteItem(
-                        note, Modifier.clickable { onNoteClick(note) },
+                        note, onClick = { onNoteClick(note) },
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
                     )
                 }
@@ -118,7 +119,7 @@ fun FollowingFeedColumn(
     onNoticeClick: (String) -> Unit = {},
 ) {
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
-        if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
+        if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
     }
     val scope = rememberCoroutineScope()
     val keys = remember(entries) { entries.map { feedEntryKey(it) } }
@@ -140,7 +141,7 @@ fun FollowingFeedColumn(
                 items(entries, key = { feedEntryKey(it) }) { entry ->
                     when (entry) {
                         is FeedEntry.Post -> NoteItem(
-                            entry.note, Modifier.clickable { onNoteClick(entry.note) },
+                            entry.note, onClick = { onNoteClick(entry.note) },
                             onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
                             onAuthorClick = onAuthorClick,
                         )
@@ -208,7 +209,7 @@ private fun MyReactionRow(
             Text("あなたがリアクション", color = DeckColors.Text3, fontSize = DeckType.Label)
         }
         NoteItem(
-            entry.target, Modifier.clickable(onClick = onNoteClick),
+            entry.target, onClick = onNoteClick,
             onReply = { onReply() }, onQuote = { onQuote() }, onAuthorClick = onAuthorClick,
         )
     }
