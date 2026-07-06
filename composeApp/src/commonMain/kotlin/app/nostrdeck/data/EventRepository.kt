@@ -1200,6 +1200,19 @@ class EventRepository(
         recordUsedEmoji(emoji, imageUrl)
     }
 
+    /**
+     * [#6] NIP-56 通報。kind:1984 で対象の投稿/ユーザーを報告する。
+     * [type] は "illegal"/"spam"/"nudity"/"profanity"/"impersonation"/"malware"/"other"。
+     * 児童の安全に関わる内容は "illegal" を用いる。[reason] は任意の補足。
+     */
+    suspend fun reportNote(target: NostrEvent, type: String, reason: String = "") {
+        val tags = listOf(
+            listOf("e", target.id, type),
+            listOf("p", target.pubkey),
+        )
+        publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = tags))
+    }
+
     /** リアクションピッカーの「最近」用に、飛ばした絵文字を記録（"+"/空は対象外）。 */
     private fun recordUsedEmoji(content: String, imageUrl: String?) {
         if (content == "+" || content.isEmpty()) return

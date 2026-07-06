@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,6 +22,8 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -51,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
+import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
@@ -98,6 +102,8 @@ fun NoteItem(
   var showReactionPicker by remember { mutableStateOf(false) }
   // ファボ/リアクションの取り消しは kind:5（削除イベント）の発行を伴うため、確認を挟む。
   var confirmUnreact by remember { mutableStateOf(false) }
+  // [#6] NIP-56 通報ダイアログ。
+  var showReport by remember { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
   Column(if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()) {
@@ -223,6 +229,10 @@ fun NoteItem(
                                 text = { Text("このユーザーをミュート") },
                                 onClick = { moreMenu = false; scope.launch { repo?.muteUserPrivate(note.event.pubkey) } },
                             )
+                            DropdownMenuItem(
+                                text = { Text("通報", color = DeckColors.Warn) },
+                                onClick = { moreMenu = false; showReport = true },
+                            )
                         }
                         HorizontalDivider(color = DeckColors.Border)
                         // --- コピー系 ---
@@ -290,6 +300,47 @@ fun NoteItem(
           targetNote = note,
       )
   }
+
+  // [#6] 通報（NIP-56 kind:1984）。理由を選んで報告イベントを発行する。
+  if (showReport) {
+      ReportDialog(
+          onPick = { type -> showReport = false; scope.launch { repo?.reportNote(note.event, type) } },
+          onDismiss = { showReport = false },
+      )
+  }
+}
+
+/** [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。 */
+@Composable
+private fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val reasons = listOf(
+        "illegal" to "違法・児童の安全に関わる",
+        "nudity" to "性的・ヌード",
+        "spam" to "スパム",
+        "impersonation" to "なりすまし",
+        "profanity" to "不適切な表現",
+        "other" to "その他",
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DeckColors.Surface,
+        shape = RoundedCornerShape(DeckRadius.Lg),
+        title = { Text("この投稿を通報", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        text = {
+            Column {
+                Text("理由を選んでください（NIP-56 で報告します）", color = DeckColors.Text3, fontSize = DeckType.Label)
+                Spacer(Modifier.height(DeckSpace.Sm))
+                reasons.forEach { (type, label) ->
+                    Text(
+                        label, color = DeckColors.Text, fontSize = DeckType.Sub,
+                        modifier = Modifier.fillMaxWidth().clickable { onPick(type) }.padding(vertical = DeckSpace.Sm),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { DeckTextButton("キャンセル", onClick = onDismiss, color = DeckColors.Text3) },
+    )
 }
 
 /** ⚡Zap ボタン。受領 sats があればアイコンの右に金額（k 表記）を出す。Zap 不可なら表示のみ。 */
