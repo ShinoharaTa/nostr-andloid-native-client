@@ -34,6 +34,9 @@ object SignerProvider {
     /** ログイン方法の切替（LOCAL / NOSSKEY / NIP55 / NIP46 / NIP07）。 */
     fun use(signer: Signer) { current = signer }
 
+    /** [#39] 外部署名(NIP-55/46)から、保持している vault のローカル署名へ戻す。 */
+    fun useLocal() { current = LocalSigner(vault) }
+
     /**
      * 現在の vault に秘密鍵を取り込み、ローカル署名へ切替える（nsec ログイン）。
      * 公開鍵が変わるので LocalSigner を作り直す。

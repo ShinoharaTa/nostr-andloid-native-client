@@ -9,7 +9,10 @@ import androidx.activity.enableEdgeToEdge
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
+import app.nostrdeck.signer.AndroidExternalSigner
+import app.nostrdeck.signer.ExternalSignerHost
 import app.nostrdeck.signer.KeystoreKeyVault
+import app.nostrdeck.signer.Nip55Bridge
 import app.nostrdeck.signer.SignerProvider
 import android.os.Build
 import app.nostrdeck.ui.ImageProxy
@@ -82,6 +85,13 @@ class MainActivity : ComponentActivity() {
         // ここで注入した vault に永続化され、再起動後も同じ鍵が復元される。
         // 鍵未設定なら useVault が新規生成する（=毎インストールに永続 ID が付く）。
         SignerProvider.useVault(KeystoreKeyVault(applicationContext))
+
+        // [#39] NIP-55: 外部署名アプリ(Amber)連携を配線。ランチャー登録は STARTED 前(=onCreate)に行う。
+        // 保存済みの NIP-55 セッションがあれば、リポジトリ生成前にローカル鍵から外部署名へ差し替える
+        // （start() が SignerProvider から正しい公開鍵を読むように）。
+        Nip55Bridge.register(this)
+        ExternalSignerHost.provider = AndroidExternalSigner(applicationContext)
+        AndroidExternalSigner.restore(applicationContext)
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。

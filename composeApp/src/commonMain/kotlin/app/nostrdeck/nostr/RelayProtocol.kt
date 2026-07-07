@@ -115,6 +115,24 @@ object RelayProtocol {
     /** 署名済みイベントの JSON 文字列（NIP-57 の zap request を LNURL callback に渡す等）。 */
     fun eventJson(e: NostrEvent): String = eventToJson(e).toString()
 
+    /** [#39] 署名済みイベント JSON 文字列 → NostrEvent（NIP-55 外部署名アプリの応答パース用）。 */
+    fun parseEventJson(text: String): NostrEvent = eventFromJson(json.parseToJsonElement(text).jsonObject)
+
+    /** [#39] 未署名イベントの JSON（id/sig 無し）。NIP-55 で外部署名アプリに渡す用。 */
+    fun unsignedEventJson(
+        pubkeyHex: String,
+        createdAt: Long,
+        kind: Int,
+        tags: List<List<String>>,
+        content: String,
+    ): String = buildJsonObject {
+        put("pubkey", pubkeyHex)
+        put("created_at", createdAt)
+        put("kind", kind)
+        putJsonArray("tags") { tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) } }
+        put("content", content)
+    }.toString()
+
     private fun eventToJson(e: NostrEvent): JsonObject = buildJsonObject {
         put("id", e.id)
         put("pubkey", e.pubkey)
