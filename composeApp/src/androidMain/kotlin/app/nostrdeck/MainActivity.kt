@@ -10,9 +10,12 @@ import app.nostrdeck.data.EventRepository
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.AndroidExternalSigner
+import app.nostrdeck.signer.AndroidNosskey
 import app.nostrdeck.signer.ExternalSignerHost
 import app.nostrdeck.signer.KeystoreKeyVault
 import app.nostrdeck.signer.Nip55Bridge
+import app.nostrdeck.signer.NosskeyBridge
+import app.nostrdeck.signer.NosskeyHost
 import app.nostrdeck.signer.SignerProvider
 import android.os.Build
 import app.nostrdeck.ui.ImageProxy
@@ -91,7 +94,11 @@ class MainActivity : ComponentActivity() {
         // （start() が SignerProvider から正しい公開鍵を読むように）。
         Nip55Bridge.register(this)
         ExternalSignerHost.provider = AndroidExternalSigner(applicationContext)
-        AndroidExternalSigner.restore(applicationContext)
+        // [#Nosskey] パスキー(WebAuthn PRF)保護。Credential Manager 用に Activity を渡す。
+        NosskeyBridge.activity = this
+        NosskeyHost.provider = AndroidNosskey(applicationContext)
+        // 保存済み外部/保護セッションを復元（NIP-55 優先、無ければ Nosskey は未解錠状態で identity のみ復元）。
+        if (!AndroidExternalSigner.restore(applicationContext)) AndroidNosskey.restore(applicationContext)
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。

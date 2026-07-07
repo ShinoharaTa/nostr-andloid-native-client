@@ -62,6 +62,8 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android)
             implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体
+            implementation(libs.androidx.credentials)                 // [#Nosskey] パスキー(WebAuthn PRF)
+            implementation(libs.androidx.credentials.play.services)    // GMS 経由の passkey provider
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

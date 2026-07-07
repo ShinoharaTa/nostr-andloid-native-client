@@ -72,6 +72,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.ExternalSignerHost
+import app.nostrdeck.signer.NosskeyHost
+import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
@@ -725,10 +727,13 @@ private fun SignerSettings() {
     val current = SignerProvider.current().method
     // [#39] 外部署名アプリ(Amber 等)が入っていれば NIP-55 も利用可能として扱う。
     val extAvailable = ExternalSignerHost.provider?.isAvailable() == true
+    // [#Nosskey] パスキー(Credential Manager)が使える環境なら NOSSKEY も利用可能。
+    val nosskeyAvailable = NosskeyHost.provider?.isAvailable() == true
     Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub)
     Spacer(Modifier.size(DeckSpace.Md))
     SignerMethod.entries.forEach { m ->
-        val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable)
+        val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable) ||
+            (m == SignerMethod.NOSSKEY && nosskeyAvailable)
         Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm)) {
             Text(if (m == current) "● " else "○ ", color = DeckColors.Accent, fontSize = DeckType.Sub)
             Text(
@@ -743,7 +748,89 @@ private fun SignerSettings() {
     Spacer(Modifier.size(DeckSpace.Lg))
     // [#39] 外部署名アプリ(NIP-55/Amber)ログイン。導入時のみ表示。
     ExternalSignerLogin()
+    // [#Nosskey] パスキー(WebAuthn PRF)で nsec を保護。
+    NosskeyLogin()
     LocalSignerLogin()
+}
+
+/**
+ * [#Nosskey] パスキー(WebAuthn PRF)保護のログイン UI。
+ *  - ローカル鍵のとき「パスキーで保護する」で登録。
+ *  - 登録済み未解錠のとき「パスキーで解錠」。解錠済みは保護解除のみ。
+ * ※ パスキー作成には RP ドメイン(assetlinks.json) の関連付けが必要。
+ */
+@Composable
+private fun NosskeyLogin() {
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    val provider = NosskeyHost.provider ?: return
+    if (!provider.isAvailable()) return
+
+    var refresh by remember { mutableStateOf(0) }
+    // refresh を読むことでローカル操作(enroll/unlock/logout)後に再評価。current/hasSession は毎回読み直す。
+    val current = run { refresh; SignerProvider.current() }
+    val hasSession = provider.hasSession()
+    val isNosskey = current.method == SignerMethod.NOSSKEY
+    val unlocked = isNosskey && current.capabilities.contains(SignerCap.SIGN)
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Text("パスキーで保護（Nosskey）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Text(
+        "秘密鍵をパスキー(生体認証)の PRF で暗号化して保護します（WebAuthn PRF）。",
+        color = DeckColors.Text2, fontSize = DeckType.Caption,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    when {
+        unlocked -> {
+            Text("● パスキーで保護中（解錠済み）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckGhostButton("保護を解除（ローカル鍵に戻す）", onClick = {
+                provider.logout(); SignerProvider.useLocal(); repo?.reloadForNewIdentity(); refresh++
+            })
+        }
+        hasSession -> {
+            Text("● パスキーで保護中（未解錠）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckButton(if (busy) "解錠中…" else "パスキーで解錠", enabled = !busy, onClick = {
+                busy = true; error = null
+                scope.launch {
+                    try {
+                        if (provider.unlock() != null) refresh++ else error = "解錠に失敗しました"
+                    } catch (e: Throwable) { error = "解錠失敗: ${e.message}" }
+                    busy = false
+                }
+            })
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckGhostButton("保護を解除", onClick = { provider.logout(); refresh++ })
+        }
+        current.method == SignerMethod.LOCAL -> {
+            DeckButton(if (busy) "登録中…" else "パスキーで保護する", enabled = !busy, onClick = {
+                busy = true; error = null
+                scope.launch {
+                    try {
+                        if (provider.enroll() != null) {
+                            ExternalSignerHost.provider?.logout() // 他方式の永続セッションを掃除
+                            refresh++
+                        } else error = "登録に失敗しました（PRF 非対応/キャンセル/ドメイン未関連付け）"
+                    } catch (e: Throwable) { error = "登録失敗: ${e.message}" }
+                    busy = false
+                }
+            })
+        }
+        else -> {
+            Text("ローカル鍵のときにパスキー保護を設定できます。", color = DeckColors.Text3, fontSize = DeckType.Caption)
+        }
+    }
+    error?.let {
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(it, color = DeckColors.Accent, fontSize = DeckType.Caption)
+    }
+
+    Spacer(Modifier.size(DeckSpace.Lg))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(DeckSpace.Lg))
 }
 
 /**
