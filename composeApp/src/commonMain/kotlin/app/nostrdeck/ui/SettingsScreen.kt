@@ -71,6 +71,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import app.nostrdeck.data.SampleData
+import app.nostrdeck.signer.ExternalSignerHost
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
@@ -718,14 +719,16 @@ private fun DataSettings() {
     }
 }
 
-/** ログイン方法（Signer 抽象の出し分け）。実装済みは LOCAL のみ、他は今後。 */
+/** ログイン方法（Signer 抽象の出し分け）。実装済み: LOCAL / NIP55(外部署名アプリ導入時)。 */
 @Composable
 private fun SignerSettings() {
     val current = SignerProvider.current().method
+    // [#39] 外部署名アプリ(Amber 等)が入っていれば NIP-55 も利用可能として扱う。
+    val extAvailable = ExternalSignerHost.provider?.isAvailable() == true
     Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub)
     Spacer(Modifier.size(DeckSpace.Md))
     SignerMethod.entries.forEach { m ->
-        val done = m == SignerMethod.LOCAL
+        val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable)
         Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm)) {
             Text(if (m == current) "● " else "○ ", color = DeckColors.Accent, fontSize = DeckType.Sub)
             Text(
@@ -738,7 +741,72 @@ private fun SignerSettings() {
     Spacer(Modifier.size(DeckSpace.Lg))
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Lg))
+    // [#39] 外部署名アプリ(NIP-55/Amber)ログイン。導入時のみ表示。
+    ExternalSignerLogin()
     LocalSignerLogin()
+}
+
+/**
+ * [#39] 外部署名アプリ(NIP-55/Amber)ログイン UI。秘密鍵をアプリに渡さず署名アプリ側で署名する。
+ * 端末に署名アプリが無ければ何も出さない（LocalSignerLogin のみになる）。
+ */
+@Composable
+private fun ExternalSignerLogin() {
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    val provider = ExternalSignerHost.provider ?: return
+    if (!provider.isAvailable()) return
+
+    val onExternal = SignerProvider.current().method == SignerMethod.NIP55
+    var confirm by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Text("外部署名アプリでログイン", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Text(
+        "秘密鍵をアプリに渡さず、${provider.label} 側で署名します（NIP-55）。",
+        color = DeckColors.Text2, fontSize = DeckType.Caption,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    if (onExternal) {
+        Text("● ${provider.label} で認証中", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Spacer(Modifier.size(DeckSpace.Sm))
+        DeckGhostButton("ローカル鍵に戻す", onClick = {
+            provider.logout()
+            SignerProvider.useLocal()
+            repo?.reloadForNewIdentity()
+        })
+    } else {
+        DeckButton(if (busy) "接続中…" else "${provider.label} でログイン", enabled = !busy, onClick = { confirm = true })
+    }
+    error?.let {
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(it, color = DeckColors.Accent, fontSize = DeckType.Caption)
+    }
+
+    if (confirm) {
+        KeySwitchConfirm(
+            title = "${provider.label} でログインしますか？",
+            onConfirm = {
+                confirm = false; busy = true; error = null
+                scope.launch {
+                    try {
+                        val hex = provider.login()
+                        if (hex != null) repo?.reloadForNewIdentity() else error = "ログインがキャンセルされました"
+                    } catch (e: Throwable) {
+                        error = "ログイン失敗: ${e.message}"
+                    }
+                    busy = false
+                }
+            },
+            onDismiss = { confirm = false },
+        )
+    }
+
+    Spacer(Modifier.size(DeckSpace.Lg))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(DeckSpace.Lg))
 }
 
 /**
