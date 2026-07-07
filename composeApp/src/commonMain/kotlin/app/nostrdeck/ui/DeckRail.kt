@@ -129,7 +129,7 @@ fun DeckRail(state: DeckState) {
                 RailSlot(onClick = { showRelays = true }) { RelayRailIndicator(conns, vertical = true, onClick = null) }
                 if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
             }
-            NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
+            NavIcon(Icons.Outlined.Settings, "メニュー", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.hubScreen = null; state.navDest = NavDest.SETTINGS }
             RailSlot { Avatar("me", modifier = Modifier.size(DeckDimens.RailMark)) }
         }
     }

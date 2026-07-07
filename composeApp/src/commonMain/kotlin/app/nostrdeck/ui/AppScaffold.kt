@@ -53,7 +53,7 @@ fun AppScaffold(state: DeckState) {
             NavDest.HOME -> state.hasTransient
             NavDest.CHANNELS -> isCompact && state.publicChatRoom != null
             NavDest.DM -> isCompact && state.dmThread != null
-            NavDest.SETTINGS -> isCompact && state.settingsSection != null
+            NavDest.SETTINGS -> isCompact && (state.settingsSection != null || state.hubScreen != null)
             else -> false
         }
         PlatformBackHandler(enabled = backEnabled) {
@@ -62,7 +62,8 @@ fun AppScaffold(state: DeckState) {
                 NavDest.HOME -> state.back()
                 NavDest.CHANNELS -> state.publicChatRoom = null
                 NavDest.DM -> state.dmThread = null
-                NavDest.SETTINGS -> state.settingsSection = null
+                // [#hub] まず詳細設定の leaf を閉じ、無ければハブへ戻る。
+                NavDest.SETTINGS -> if (state.settingsSection != null) state.settingsSection = null else state.hubScreen = null
                 else -> {}
             }
         }
@@ -136,7 +137,7 @@ private fun Destination(state: DeckState, isCompact: Boolean) {
         // 単一フィード（通知/検索）は Deck 展開時に全幅へ広がると読みにくいので、
         // スレッド詳細と同様に中央寄せ・最大幅を制限する（Compact では全幅）。
         NavDest.NOTIFICATIONS -> SingleColumnPane(isCompact) { NotificationsScreen(state) }
-        NavDest.SETTINGS -> SettingsScreen(state, isCompact)
+        NavDest.SETTINGS -> MenuHub(state, isCompact)
         NavDest.SEARCH -> SearchScreen(state, isCompact)
     }
 }
@@ -228,7 +229,7 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
 ) {
     NavigationBarItem(
         selected = state.navDest == dest,
-        onClick = { state.clearDetail(); state.navDest = dest },
+        onClick = { state.clearDetail(); state.hubScreen = null; state.navDest = dest }, // [#hub] 常にハブ先頭へ
         icon = { Icon(icon, label) },
     )
 }

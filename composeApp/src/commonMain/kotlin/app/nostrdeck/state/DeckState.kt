@@ -53,6 +53,8 @@ class DeckState(
     var publicChatRoom by mutableStateOf<String?>(null)   // 選択中チャンネル id
     var dmThread by mutableStateOf<String?>(null)         // 選択中の相手 pubkey
     var settingsSection by mutableStateOf<String?>(null)  // 選択中の設定セクション
+    // [#hub] 機能ハブ(メニュー)の遷移先。null=タイル一覧 / "settings"=詳細設定 / "account"|"bookmarks"|"mute"=機能画面。
+    var hubScreen by mutableStateOf<String?>(null)
 
     /** レールアイコン/タブから要求されたジャンプ先カラム id（消費後に null へ）。 */
     var jumpTarget by mutableStateOf<String?>(null)

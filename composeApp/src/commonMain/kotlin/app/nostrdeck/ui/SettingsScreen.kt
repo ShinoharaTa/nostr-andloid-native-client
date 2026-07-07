@@ -29,6 +29,15 @@ import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.ui.text.style.TextOverflow
+import app.nostrdeck.model.ColumnKind
+import app.nostrdeck.model.ColumnTemplate
+import app.nostrdeck.model.build
+import app.nostrdeck.state.NavDest
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -88,13 +97,13 @@ import app.nostrdeck.theme.DeckWeight
  */
 @Composable
 fun SettingsScreen(state: DeckState, isCompact: Boolean) {
-    val sections = SampleData.settingsSections
-    val selectedId = state.settingsSection ?: if (!isCompact) sections.first().first else null
+    // [#hub] 既定詳細は最初のグループ項目（アカウント等はハブへ移動したのでグループ先頭を出す）。
+    val selectedId = state.settingsSection ?: if (!isCompact) paletteGroups.first().second.first().id else null
 
     TwoPane(
         isCompact = isCompact,
         showDetail = state.settingsSection != null,
-        list = { SettingsMenu(selectedId) { state.settingsSection = it } },
+        list = { SettingsMenu(selectedId, onBack = { state.hubScreen = null }) { state.settingsSection = it } },
         detail = {
             if (selectedId == null) DetailPlaceholder("メニューを選択")
             // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
@@ -104,16 +113,82 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     )
 }
 
+/**
+ * [#hub] 機能ハブ（⚙️ の遷移先）。タイル状の「その他の機能一覧」を出し、
+ * 「設定」はその一角のタイルとして詳細設定へドリルダウンする。
+ */
+@Composable
+fun MenuHub(state: DeckState, isCompact: Boolean) {
+    when (state.hubScreen) {
+        "settings" -> SettingsScreen(state, isCompact)          // 詳細設定（グループ）
+        "account", "bookmarks", "mute" ->                       // 機能を全幅表示（戻る=ハブ）
+            SettingsContent(state.hubScreen!!, state, onBack = { state.hubScreen = null })
+        else -> HubGrid(state)                                  // タイル一覧
+    }
+}
+
+private data class HubItem(val id: String, val label: String, val icon: ImageVector)
+private val hubItems = listOf(
+    HubItem("account", "プロフィール", Icons.Outlined.Person),
+    HubItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
+    HubItem("mute", "ミュート", Icons.Outlined.Block),
+    HubItem("favs", "ふぁぼ欄", Icons.Outlined.StarBorder),
+    HubItem("channels", "チャンネル一覧", Icons.AutoMirrored.Outlined.Chat),
+    HubItem("settings", "設定", Icons.Outlined.Settings),
+)
+
+private fun onHubClick(state: DeckState, id: String) {
+    when (id) {
+        // ふぁぼ欄はデッキのカラムとして開く（既にあればジャンプ）。
+        "favs" -> {
+            val existing = state.columns.firstOrNull { it.kind == ColumnKind.FAVS }
+            if (existing != null) state.jumpTo(existing.id) else state.addColumn(ColumnTemplate.FAVS.build())
+            state.hubScreen = null; state.navDest = NavDest.HOME
+        }
+        "channels" -> { state.hubScreen = null; state.navDest = NavDest.CHANNELS }
+        else -> state.hubScreen = id // account / bookmarks / mute / settings
+    }
+}
+
+@Composable
+private fun HubGrid(state: DeckState) {
+    Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
+        Row(Modifier.fillMaxWidth().padding(DeckSpace.Md)) {
+            Text("メニュー", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+        }
+        HorizontalDivider(color = DeckColors.Border)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(DeckSpace.Md),
+            verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+        ) {
+            hubItems.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+                    row.forEach { item -> HubTile(item, Modifier.weight(1f)) { onHubClick(state, item.id) } }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HubTile(item: HubItem, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface2)
+            .clickable(onClick = onClick).padding(vertical = DeckSpace.Lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(item.icon, null, tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg))
+        Spacer(Modifier.size(DeckSpace.Sm))
+        Text(item.label, color = DeckColors.Text, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 // [#28] メニューを「ランチャー(パレット)」化。よく使う機能をタイルで前面に、設定はグループ化。
 private data class SItem(val id: String, val label: String, val icon: ImageVector)
 
-// ① よく使う（大タイル）: 日常操作。設定というより機能。
-private val paletteFav = listOf(
-    SItem("account", "プロフィール", Icons.Outlined.Person),
-    SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
-    SItem("mute", "ミュート", Icons.Outlined.Block),
-)
-// ②③④ グループ化した設定。
+// [#hub] プロフィール/ブックマーク/ミュートは機能ハブのタイルへ移動（hubItems）。設定はグループのみ。
+// グループ化した設定。
 private val paletteGroups = listOf(
     "カスタマイズ" to listOf(
         SItem("reaction", "リアクション", Icons.Outlined.FavoriteBorder),
@@ -133,22 +208,21 @@ private val paletteGroups = listOf(
 )
 
 @Composable
-private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
+private fun SettingsMenu(selectedId: String?, onBack: (() -> Unit)?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
+        // [#hub] メニュー(ハブ)配下の詳細設定。タイトル横に ← でハブへ戻る。
+        Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md), verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack, "メニューへ戻る", tint = DeckColors.Text,
+                    modifier = Modifier.size(DeckDimens.IconMd).clickable(onClick = onBack),
+                )
+                Spacer(Modifier.width(DeckSpace.Sm))
+            }
             Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
-            item { PaletteGroupHeader("よく使う") }
-            item {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
-                ) {
-                    paletteFav.forEach { PaletteTile(it, selectedId, onSelect, Modifier.weight(1f)) }
-                }
-            }
             paletteGroups.forEach { (title, rows) ->
                 item { PaletteGroupHeader(title) }
                 items(rows, key = { it.id }) { PaletteRow(it, selectedId, onSelect) }
