@@ -12,7 +12,9 @@ import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.AndroidExternalSigner
 import app.nostrdeck.signer.ExternalSignerHost
 import app.nostrdeck.signer.KeystoreKeyVault
+import app.nostrdeck.signer.Nip46Manager
 import app.nostrdeck.signer.Nip55Bridge
+import app.nostrdeck.signer.SharedPrefsNip46Store
 import app.nostrdeck.signer.SignerProvider
 import android.os.Build
 import app.nostrdeck.ui.ImageProxy
@@ -91,7 +93,10 @@ class MainActivity : ComponentActivity() {
         // （start() が SignerProvider から正しい公開鍵を読むように）。
         Nip55Bridge.register(this)
         ExternalSignerHost.provider = AndroidExternalSigner(applicationContext)
-        AndroidExternalSigner.restore(applicationContext)
+        // [#41] NIP-46（bunker）マネージャを初期化（appScope + 永続化ストア注入）。
+        Nip46Manager.init(appScope, SharedPrefsNip46Store(applicationContext))
+        // 保存済みの外部署名セッションを復元（NIP-55 優先、無ければ NIP-46）。
+        if (!AndroidExternalSigner.restore(applicationContext)) Nip46Manager.restore()
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。
