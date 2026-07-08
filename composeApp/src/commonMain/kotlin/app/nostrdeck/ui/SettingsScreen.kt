@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.ui.text.style.TextOverflow
 import app.nostrdeck.model.ColumnKind
+import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.build
 import app.nostrdeck.state.NavDest
@@ -121,7 +122,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 fun MenuHub(state: DeckState, isCompact: Boolean) {
     when (state.hubScreen) {
         "settings" -> SettingsScreen(state, isCompact)          // 詳細設定（グループ）
-        "account", "bookmarks", "mute" ->                       // 機能を全幅表示（戻る=ハブ）
+        "account", "bookmarks", "mute", "favs" ->               // 機能を全幅表示（戻る=ハブ）
             SettingsContent(state.hubScreen!!, state, onBack = { state.hubScreen = null })
         else -> HubGrid(state)                                  // タイル一覧
     }
@@ -139,14 +140,10 @@ private val hubItems = listOf(
 
 private fun onHubClick(state: DeckState, id: String) {
     when (id) {
-        // ふぁぼ欄はデッキのカラムとして開く（既にあればジャンプ）。
-        "favs" -> {
-            val existing = state.columns.firstOrNull { it.kind == ColumnKind.FAVS }
-            if (existing != null) state.jumpTo(existing.id) else state.addColumn(ColumnTemplate.FAVS.build())
-            state.hubScreen = null; state.navDest = NavDest.HOME
-        }
+        // チャンネル一覧は既存のパブリックチャット画面へ。
         "channels" -> { state.hubScreen = null; state.navDest = NavDest.CHANNELS }
-        else -> state.hubScreen = id // account / bookmarks / mute / settings
+        // それ以外はハブ配下の一覧/機能画面へ（ふぁぼ欄はリスト＋Deck追加導線）。
+        else -> state.hubScreen = id // account / bookmarks / mute / favs / settings
     }
 }
 
@@ -295,6 +292,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "relays" -> RelaySettings()
                 "mute" -> MuteSettings()
                 "bookmarks" -> BookmarkSettings(state)
+                "favs" -> FavsSettings(state)
                 "dmrelays" -> DmRelaySettings()
                 "reaction" -> ReactionSettings()
                 "retro" -> RetroSettings()
@@ -406,6 +404,48 @@ private fun BookmarkSettings(state: DeckState) {
     }
     if (notes.isEmpty()) {
         Text("リレーから取得中…（${ids.size}件）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(notes, key = { it.event.id }) { note ->
+            NoteItem(
+                note, onClick = { state.openThreadDetail(note.event.id) },
+                onReply = { state.replyTo = note.event; state.showCompose = true },
+                onQuote = { state.quoting = note.event; state.showCompose = true },
+                onAuthorClick = { pk -> state.openProfile(pk) },
+            )
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
+/**
+ * [#hub] ふぁぼ欄一覧。自分がリアクションした投稿をブックマークと同様にリスト表示し、
+ * 「Deckに追加」で FAVS カラムとしてデッキ(フィード)に追加できる。
+ */
+@Composable
+private fun FavsSettings(state: DeckState) {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("ふぁぼ欄を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    val entries by repo.favsFeed().collectAsState()
+    val notes = remember(entries) {
+        entries.mapNotNull { (it as? FeedEntry.MyReaction)?.target }.distinctBy { it.event.id }
+    }
+
+    // Deck 追加導線（検索結果の「Deckに追加」と同じパターン）。
+    Row(Modifier.fillMaxWidth().padding(bottom = DeckSpace.Sm), verticalAlignment = Alignment.CenterVertically) {
+        Text("自分がリアクションした投稿", color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
+        DeckGhostButton("Deckに追加", onClick = {
+            val existing = state.columns.firstOrNull { it.kind == ColumnKind.FAVS }
+            if (existing != null) state.jumpTo(existing.id) else state.addColumn(ColumnTemplate.FAVS.build())
+            state.hubScreen = null; state.navDest = NavDest.HOME
+        })
+    }
+    if (notes.isEmpty()) {
+        Text("まだありません。投稿に♡やリアクションをすると並びます。", color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
