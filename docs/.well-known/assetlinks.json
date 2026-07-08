@@ -1,0 +1,28 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "net.shino3.nostrism.debug",
+      "sha256_cert_fingerprints": [
+        "B5:19:32:48:DE:38:5E:60:92:B5:95:BC:CD:AA:06:EB:B6:B6:BB:6C:AB:12:F0:8B:B3:82:D5:61:F8:9B:0A:B0"
+      ]
+    }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "net.shino3.nostrism",
+      "sha256_cert_fingerprints": [
+        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256"
+      ]
+    }
+  }
+]
