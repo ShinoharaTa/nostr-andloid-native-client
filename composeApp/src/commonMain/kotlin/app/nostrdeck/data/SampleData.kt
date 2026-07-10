@@ -177,6 +177,7 @@ object SampleData {
         "signer" to "ログイン方法",
         "relays" to "リレー",
         "mute" to "ミュート",
+        "favs" to "ふぁぼ",
         "bookmarks" to "ブックマーク",
         "dmrelays" to "DMリレー",
         "media" to "メディアサーバー",

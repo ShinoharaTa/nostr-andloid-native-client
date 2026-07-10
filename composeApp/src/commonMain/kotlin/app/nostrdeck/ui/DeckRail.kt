@@ -20,7 +20,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -64,6 +63,9 @@ fun DeckRail(state: DeckState) {
     // [#9] 通知/DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
     val notifUnread by (repo?.notifUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
+    // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
+    val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+    val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
     LaunchedEffect(state.navDest, notifUnread) {
         if (state.navDest == NavDest.NOTIFICATIONS && notifUnread > 0) repo?.markNotificationsSeen()
     }
@@ -129,8 +131,12 @@ fun DeckRail(state: DeckState) {
                 RailSlot(onClick = { showRelays = true }) { RelayRailIndicator(conns, vertical = true, onClick = null) }
                 if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
             }
-            NavIcon(Icons.Outlined.Settings, "設定", state.navDest == NavDest.SETTINGS) { state.clearDetail(); state.navDest = NavDest.SETTINGS }
-            RailSlot { Avatar("me", modifier = Modifier.size(DeckDimens.RailMark)) }
+
+            // [#hub] 自分=アバター1枠のみ。タップで設定一覧へ（プロフ/ふぁぼ/ブクマ/ミュートは
+            // 設定内の「よく使う」パネルに集約）。レールにボタンを増やさず煩雑さを避ける。
+            RailSlot(active = state.navDest == NavDest.SETTINGS, onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS }) {
+                Avatar(myProfile?.name ?: myPubkey ?: "me", myProfile?.pictureUrl, modifier = Modifier.size(DeckDimens.RailMark))
+            }
         }
     }
 }
