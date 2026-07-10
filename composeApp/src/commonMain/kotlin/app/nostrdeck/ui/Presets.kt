@@ -47,7 +47,12 @@ data class Preset(
 /** 追加済み判定・重複回避に使う URL 正規化（repo 側の addRelay/addMediaServer と同じ規則）。 */
 internal fun normalizePresetUrl(url: String): String = url.trim().trimEnd('/')
 
-/** 著名な公開リレー候補（汎用/日本/ペイド）。 */
+/**
+ * 静的なリレー候補（フォールバック用）。主役はフォロー中の NIP-65 集計レコメンド
+ * （[app.nostrdeck.data.EventRepository.fetchRelayRecommendations]）で、これは
+ * フォローが無い新規アカウント向けの最小リスト。2026-07 に NIP-11 応答で生存確認済み。
+ * 死活は変わるので、増やすよりレコメンド側に任せる方針。
+ */
 val RELAY_PRESETS: List<Preset> = listOf(
     // 汎用（無料・大手）
     Preset("wss://relay.damus.io", PresetCategory.General),
@@ -57,30 +62,25 @@ val RELAY_PRESETS: List<Preset> = listOf(
     Preset("wss://relay.snort.social", PresetCategory.General),
     Preset("wss://nostr.mom", PresetCategory.General),
     Preset("wss://offchain.pub", PresetCategory.General),
-    Preset("wss://nostr.oxtr.dev", PresetCategory.General),
-    Preset("wss://relay.nostr.bg", PresetCategory.General),
     Preset("wss://purplerelay.com", PresetCategory.General),
     // 日本
     Preset("wss://relay-jp.nostr.wirednet.jp", PresetCategory.Japan),
     Preset("wss://yabu.me", PresetCategory.Japan),
     Preset("wss://r.kojira.io", PresetCategory.Japan),
-    Preset("wss://nrelay-jp.c-stellar.net", PresetCategory.Japan),
-    Preset("wss://nostr-relay.nokotaro.com", PresetCategory.Japan),
     // ペイド（有料・認証必須のことが多い）
     Preset("wss://nostr.wine", PresetCategory.Paid, "有料"),
     Preset("wss://eden.nostr.land", PresetCategory.Paid, "有料"),
-    Preset("wss://relay.nostr.com.au", PresetCategory.Paid, "有料"),
     Preset("wss://nostrelites.org", PresetCategory.Paid, "有料"),
 )
 
-/** NIP-96 メディアサーバー候補（画像アップロード先）。 */
+/** NIP-96 メディアサーバー候補（画像アップロード先）。2026-07 に well-known 応答で生存確認済み。 */
 val MEDIA_PRESETS: List<Preset> = listOf(
     Preset("https://nostr.build", PresetCategory.Image),
     Preset("https://nostrcheck.me", PresetCategory.General),
     Preset("https://nostpic.com", PresetCategory.Image),
     Preset("https://nostrmedia.com", PresetCategory.Image),
     Preset("https://files.sovbit.host", PresetCategory.General),
-    Preset("https://cdn.satellite.earth", PresetCategory.Image, "有料"),
+    // cdn.satellite.earth は 2026-07 時点で NIP-96 応答なし(404)のため除外。
 )
 
 /**
@@ -120,6 +120,32 @@ internal fun PresetPicker(
             items.forEach { p -> PresetChip(p, onAdd) }
         }
         Spacer(Modifier.size(DeckSpace.Sm))
+    }
+}
+
+/**
+ * [#relay-recs] フォロー中の NIP-65 集計によるレコメンドをチップ表示（「＋url ・n人」）。
+ * 登録済みは除外。空なら何も描かない（呼び出し側でフォールバックを出す）。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun RecommendedRelayChips(
+    recs: List<Pair<String, Int>>,
+    registered: Set<String>,
+    onAdd: (String) -> Unit,
+) {
+    val remaining = recs.filter { normalizePresetUrl(it.first) !in registered }
+    if (remaining.isEmpty()) return
+    Text("フォロー中でよく使われているリレー", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+    ) {
+        remaining.forEach { (url, n) ->
+            PresetChip(Preset(url, PresetCategory.General, "${n}人"), onAdd)
+        }
     }
 }
 
