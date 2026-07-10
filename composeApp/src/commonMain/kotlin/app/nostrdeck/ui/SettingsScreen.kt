@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Visibility
@@ -96,11 +97,20 @@ import app.nostrdeck.theme.DeckWeight
 fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     val sections = SampleData.settingsSections
     val selectedId = state.settingsSection ?: if (!isCompact) sections.first().first else null
+    val repo = LocalRepository.current
+    val myPubkey = repo?.loggedInPubkey()?.collectAsState(null)?.value
+
+    // [#hub] プロフィールだけは全幅オーバーレイ（1枚の大きな画面）。
+    // ふぁぼ/ブックマーク/ミュート等は設定の右ペイン（リスト）に表示する。
+    val onSelect: (String) -> Unit = { id ->
+        if (id == "profile_view") myPubkey?.let { state.openProfile(it) }
+        else state.settingsSection = id
+    }
 
     TwoPane(
         isCompact = isCompact,
         showDetail = state.settingsSection != null,
-        list = { SettingsMenu(selectedId) { state.settingsSection = it } },
+        list = { SettingsMenu(selectedId, onSelect) },
         detail = {
             if (selectedId == null) DetailPlaceholder("メニューを選択")
             // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
@@ -114,8 +124,11 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 private data class SItem(val id: String, val label: String, val icon: ImageVector)
 
 // ① よく使う（大タイル）: 日常操作。設定というより機能。
+// [#hub] 自分ハブ = 設定一覧。プロフ/私的リスト/ミュートへの直行口をここに集約する
+// （レール/下バーはアバター1枠だけにして煩雑さを避ける）。
 private val paletteFav = listOf(
-    SItem("account", "プロフィール", Icons.Outlined.Person),
+    SItem("profile_view", "プロフィール", Icons.Outlined.Person),
+    SItem("favs", "ふぁぼ", Icons.Outlined.StarBorder),
     SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
     SItem("mute", "ミュート", Icons.Outlined.Block),
 )
@@ -148,11 +161,17 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
             item { PaletteGroupHeader("よく使う") }
             item {
-                Row(
+                // 2列グリッド（4タイルを2行に）。1行4列だとラベルが窮屈で見切れるため。
+                Column(
                     Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+                    verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
                 ) {
-                    paletteFav.forEach { PaletteTile(it, selectedId, onSelect, Modifier.weight(1f)) }
+                    paletteFav.chunked(2).forEach { rowItems ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+                            rowItems.forEach { PaletteTile(it, selectedId, onSelect, Modifier.weight(1f)) }
+                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
                 }
             }
             paletteGroups.forEach { (title, rows) ->
@@ -226,6 +245,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "signer" -> SignerSettings()
                 "relays" -> RelaySettings()
                 "mute" -> MuteSettings()
+                "favs" -> FavsSettings(state)
                 "bookmarks" -> BookmarkSettings(state)
                 "dmrelays" -> DmRelaySettings()
                 "reaction" -> ReactionSettings()
@@ -319,6 +339,36 @@ private fun MediaSettings() {
  * [M14] ブックマーク一覧（NIP-51 kind:10003）。タップでスレッドを開く。
  * 追加/解除は各ノートの ⋯ メニューから。ここは閲覧と解除に絞る。
  */
+@Composable
+private fun FavsSettings(state: DeckState) {
+    val repo = LocalRepository.current
+    if (repo == null) {
+        Text("ふぁぼを利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        return
+    }
+    // 自分がリアクション(kind:7)した対象ノートを新しい順で一覧。
+    val notes = repo.favsFeed().collectAsState().value
+        .mapNotNull { (it as? app.nostrdeck.model.FeedEntry.MyReaction)?.target }
+        .distinctBy { it.event.id }
+    if (notes.isEmpty()) {
+        Text("ふぁぼした投稿はまだありません。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text("各投稿の ♡ でふぁぼできます。", color = DeckColors.Text3, fontSize = DeckType.Label)
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(notes, key = { it.event.id }) { note ->
+            NoteItem(
+                note, onClick = { state.openThreadDetail(note.event.id) },
+                onReply = { state.replyTo = note.event; state.showCompose = true },
+                onQuote = { state.quoting = note.event; state.showCompose = true },
+                onAuthorClick = { pk -> state.openProfile(pk) },
+            )
+            HorizontalDivider(color = DeckColors.Border)
+        }
+    }
+}
+
 @Composable
 private fun BookmarkSettings(state: DeckState) {
     val repo = LocalRepository.current

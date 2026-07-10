@@ -20,12 +20,14 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -213,12 +215,21 @@ private fun ConstrainedOverlay(
 
 @Composable
 private fun BottomBar(state: DeckState) {
+    // [#hub] 5枠目=自分（アバター）→ 設定一覧（自分ハブ）。プロフ/私的リストは設定内のパネルへ集約。
+    val repo = LocalRepository.current
+    val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+    val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
     NavigationBar {
         NavItem(state, NavDest.HOME, Icons.Outlined.Home, "ホーム")
         NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, "通知")
         NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "Chat")
         NavItem(state, NavDest.DM, Icons.Outlined.MailOutline, "DM")
-        NavItem(state, NavDest.SETTINGS, Icons.Outlined.Settings, "設定")
+        val pk = myPubkey
+        NavigationBarItem(
+            selected = state.navDest == NavDest.SETTINGS,
+            onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS },
+            icon = { Avatar(myProfile?.name ?: pk ?: "me", myProfile?.pictureUrl, size = 24.dp) },
+        )
     }
 }
 

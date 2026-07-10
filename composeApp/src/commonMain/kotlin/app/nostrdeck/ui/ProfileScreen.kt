@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -49,21 +50,30 @@ import coil3.request.crossfade
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
+import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
+import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 import kotlinx.coroutines.launch
 
-/** プロフィールのタブ（投稿 / 投稿とリプライ / メディア）。 */
+/**
+ * プロフィールのタブ（投稿 / 投稿とリプライ / メディア）。
+ * ふぁぼ/ブックマークは「公開プロフ」ではなく私的リストなので、ここではなく
+ * 独立の目的地（レール自分ゾーン / コンパクトの自分シート）で開く。
+ */
 private enum class ProfileTab(val label: String) {
     POSTS("投稿"), REPLIES("投稿とリプライ"), MEDIA("メディア"),
 }
+
+private val ALL_TABS = ProfileTab.entries.toList()
 
 /**
  * [M9-profile] ユーザー名タップで開く全幅プロフィール。
@@ -93,7 +103,13 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val pinnedNotes = repo?.let { remember(pubkey) { it.pinnedNotesFor(pubkey) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
 
-    var tab by rememberSaveable(pubkey) { mutableStateOf(ProfileTab.POSTS) }
+    // 自分のプロフィールかどうか（編集/設定ボタンの出し分けに使う）。
+    val me = repo?.let { remember(it) { it.loggedInPubkey() } }?.collectAsState(null)?.value
+    val isMe = me != null && me == pubkey
+    val tabs = ALL_TABS
+
+    var tabRaw by rememberSaveable(pubkey) { mutableStateOf(ProfileTab.POSTS) }
+    val tab = tabRaw
     val visible = remember(notes, tab) {
         when (tab) {
             ProfileTab.POSTS -> notes.filter { !it.isReply }
@@ -114,18 +130,20 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val onReply: (NoteUi) -> Unit = { state.replyTo = it.event; state.showCompose = true }
     val onQuote: (NoteUi) -> Unit = { state.quoting = it.event; state.showCompose = true }
     val onBack: () -> Unit = { state.popDetail() }
+    // [#hub] 自分のプロフィールの「編集」→ 設定のアカウント（kind:0 編集）へ。オーバーレイは畳む。
+    val onEdit: () -> Unit = { state.clearDetail(); state.settingsSection = "account"; state.navDest = NavDest.SETTINGS }
 
     if (isCompact) {
         ProfileCompact(
-            pubkey, profile, following, tab, visibleNoPins,
-            onTab = { tab = it }, onFollowToggle = onFollowToggle, onBack = onBack,
+            pubkey, profile, following, tab, tabs, isMe, visibleNoPins,
+            onTab = { tabRaw = it }, onFollowToggle = onFollowToggle, onEdit = onEdit, onBack = onBack,
             onNoteClick = onNoteClick, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick,
             pinnedNotes = pinnedForTab,
         )
     } else {
         ProfileExpanded(
-            pubkey, profile, following, tab, visibleNoPins,
-            onTab = { tab = it }, onFollowToggle = onFollowToggle, onBack = onBack,
+            pubkey, profile, following, tab, tabs, isMe, visibleNoPins,
+            onTab = { tabRaw = it }, onFollowToggle = onFollowToggle, onEdit = onEdit, onBack = onBack,
             onNoteClick = onNoteClick, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick,
             pinnedNotes = pinnedForTab,
         )
@@ -141,9 +159,12 @@ private fun ProfileCompact(
     profile: Profile?,
     following: Boolean,
     tab: ProfileTab,
+    tabs: List<ProfileTab>,
+    isMe: Boolean,
     visible: List<NoteUi>,
     onTab: (ProfileTab) -> Unit,
     onFollowToggle: () -> Unit,
+    onEdit: () -> Unit,
     onBack: () -> Unit,
     onNoteClick: (NoteUi) -> Unit,
     onReply: (NoteUi) -> Unit,
@@ -157,11 +178,11 @@ private fun ProfileCompact(
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item {
-                ProfileHeaderCard(pubkey, profile, following, onFollowToggle)
+                ProfileHeaderCard(pubkey, profile, following, isMe, onFollowToggle, onEdit)
                 HorizontalDivider(color = DeckColors.Border)
             }
             stickyHeader {
-                ProfileTabs(tab, onTab)
+                ProfileTabs(tab, tabs, onTab)
                 HorizontalDivider(color = DeckColors.Border)
             }
             notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick, pinnedNotes)
@@ -177,9 +198,12 @@ private fun ProfileExpanded(
     profile: Profile?,
     following: Boolean,
     tab: ProfileTab,
+    tabs: List<ProfileTab>,
+    isMe: Boolean,
     visible: List<NoteUi>,
     onTab: (ProfileTab) -> Unit,
     onFollowToggle: () -> Unit,
+    onEdit: () -> Unit,
     onBack: () -> Unit,
     onNoteClick: (NoteUi) -> Unit,
     onReply: (NoteUi) -> Unit,
@@ -195,12 +219,12 @@ private fun ProfileExpanded(
         ) {
             ProfileTopBar("プロフィール", onBack)
             HorizontalDivider(color = DeckColors.Border)
-            ProfileHeaderCard(pubkey, profile, following, onFollowToggle)
+            ProfileHeaderCard(pubkey, profile, following, isMe, onFollowToggle, onEdit)
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Bg))
         // 右ペイン: タブ + 投稿リスト
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            ProfileTabs(tab, onTab)
+            ProfileTabs(tab, tabs, onTab)
             HorizontalDivider(color = DeckColors.Border)
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 notesItems(visible, onNoteClick, onReply, onQuote, onAuthorClick, pinnedNotes)
@@ -272,7 +296,9 @@ private fun ProfileHeaderCard(
     pubkey: String,
     profile: Profile?,
     following: Boolean,
+    isMe: Boolean,
     onFollowToggle: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val npub = remember(pubkey) { runCatching { Nip19.hexToNpub(pubkey) }.getOrNull() }
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
@@ -289,9 +315,10 @@ private fun ProfileHeaderCard(
             ) {
                 Avatar(profile?.name ?: pubkey, profile?.pictureUrl, size = 72.dp)
             }
-            // フォローボタン: アバターと同じ下端、右寄せ
+            // 右下ボタン: 自分は「編集」（プロフ札の上＝プロフ編集）、他人は「フォロー」。
+            // 設定はトップバー右上の⚙️へ分離（編集との誤読を避ける）。
             Box(Modifier.align(Alignment.BottomEnd).padding(end = DeckSpace.Lg, bottom = DeckSpace.Xs)) {
-                FollowButton(following, onFollowToggle)
+                if (isMe) DeckGhostButton("編集", onClick = onEdit) else FollowButton(following, onFollowToggle)
             }
         }
         // --- テキスト情報 ---
@@ -352,12 +379,12 @@ private fun FollowButton(following: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ProfileTabs(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
+private fun ProfileTabs(selected: ProfileTab, tabs: List<ProfileTab>, onSelect: (ProfileTab) -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(DeckColors.Surface),
         horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        ProfileTab.entries.forEach { t ->
+        tabs.forEach { t ->
             val active = t == selected
             Column(
                 Modifier.weight(1f).clickable { onSelect(t) }.padding(vertical = DeckSpace.Md),
@@ -368,6 +395,7 @@ private fun ProfileTabs(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
                     color = if (active) DeckColors.Text else DeckColors.Text3,
                     fontSize = DeckType.Caption,
                     fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.height(DeckSpace.Sm))
                 Box(
