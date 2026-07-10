@@ -104,7 +104,7 @@ fun LiveChannelRoom(
 
 /**
  * ROOM レンダラー：NIP-28 チャンネルルーム（kind:42）。
- * チャット表示＝時系列昇順・最新が下・下部に常設の入力欄（フィードと逆）。
+ * チャット表示＝フィードと同じく「最新が上」（先頭＝最新、下スクロールで過去へ）・下部に常設の入力欄。
  */
 @Composable
 fun ChannelRoomColumn(
@@ -123,7 +123,18 @@ fun ChannelRoomColumn(
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
     var pickerFor by remember { mutableStateOf<ChannelMessage?>(null) }
-    val byId = remember(messages) { messages.associateBy { it.event.id } }
+    // フィードと同じ「最新が上」。取得順は時系列昇順なので反転し、
+    // 連投まとめ（continuation）も反転後の並びで組み直す（先頭＝新しい側に頭を出す）。
+    val ordered = remember(messages) {
+        val rev = messages.asReversed()
+        rev.mapIndexed { i, m ->
+            val prev = rev.getOrNull(i - 1)  // 一つ上＝より新しいメッセージ
+            val cont = prev != null && prev.event.pubkey == m.event.pubkey &&
+                prev.event.createdAt - m.event.createdAt < 300
+            if (cont == m.continuation) m else m.copy(continuation = cont)
+        }
+    }
+    val byId = remember(ordered) { ordered.associateBy { it.event.id } }
 
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -138,7 +149,7 @@ fun ChannelRoomColumn(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            items(messages, key = { it.event.id }) { m ->
+            items(ordered, key = { it.event.id }) { m ->
                 MessageBubble(
                     m,
                     parent = replyParentId(m)?.let { byId[it] },
@@ -148,9 +159,12 @@ fun ChannelRoomColumn(
                 )
             }
         }
-        // 新着（末尾）が届いたら最下部へ寄せる（チャットは最新が下）。
-        LaunchedEffect(messages.size) {
-            if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        // フィードと同様、新着（先頭）が届いたら先頭付近にいるときだけ最上部へ寄せる。
+        // 下（過去）を読んでいる間は位置を保ち、指でスクロール中は割り込まない。
+        LaunchedEffect(ordered.firstOrNull()?.event?.id) {
+            if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
+                listState.animateScrollToItem(0)
+            }
         }
         if (onSend != null) {
             Composer(
