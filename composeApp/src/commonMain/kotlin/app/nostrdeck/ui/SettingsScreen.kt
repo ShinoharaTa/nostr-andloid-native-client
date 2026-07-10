@@ -238,8 +238,12 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
             Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
         }
         Spacer(Modifier.size(DeckSpace.Md))
-        // セクションは残り高さいっぱいに配置（内部で verticalScroll / LazyColumn が正しくスクロールできるように）。
-        Column(Modifier.weight(1f).fillMaxWidth()) {
+        // 一覧系（自前 LazyColumn を持つ）以外は、セクション全体をスクロール可能にする。
+        // 「ログイン方法」等のフォームが画面に収まらず操作できない問題の解消（全セクション既定でスクロール）。
+        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute", "media", "dmrelays")
+        val contentMod = Modifier.weight(1f).fillMaxWidth()
+            .let { if (selfScroll) it else it.verticalScroll(rememberScrollState()) }
+        Column(contentMod) {
             when (sectionId) {
                 "account" -> AccountSettings()
                 "signer" -> SignerSettings()
@@ -518,8 +522,8 @@ private fun AccountSettings() {
     var saved by remember { mutableStateOf(false) }
     val clearSaved: (String) -> Unit = { saved = false }
 
-    // フォームが縦に長く 保存ボタンが見切れるため、詳細ペイン内でスクロールできるようにする。
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    // スクロールは SettingsContent 側で一括して掛けるので、ここは列にまとめるだけ。
+    Column(Modifier.fillMaxWidth()) {
     Text("プロフィール", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text("変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。",
@@ -781,7 +785,37 @@ private fun DataSettings() {
     }
 }
 
-/** ログイン方法（Signer 抽象の出し分け）。実装済み: LOCAL / NIP55(外部署名アプリ導入時)。 */
+/**
+ * 未ログイン時のゲート画面（#login）。鍵は自動生成せず、必ずここでログイン方法を選ばせる。
+ * 既存のログインUI（NIP-55 / NIP-46 / Nosskey / ローカル: nsec取込・新規作成）を再利用する。
+ */
+@Composable
+fun LoginGate() {
+    Column(
+        Modifier.fillMaxSize().background(DeckColors.Bg)
+            .verticalScroll(rememberScrollState())
+            .padding(DeckSpace.Lg),
+    ) {
+        Spacer(Modifier.size(DeckSpace.Xl))
+        AppMark(Modifier.size(56.dp))
+        Spacer(Modifier.size(DeckSpace.Md))
+        Text("Nostrism へようこそ", color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(
+            "ログイン方法を選んでください。秘密鍵を勝手に生成することはありません。" +
+                "アカウントをお持ちでない場合は「ローカル」から新規に鍵を作成できます。",
+            color = DeckColors.Text3, fontSize = DeckType.Sub,
+        )
+        Spacer(Modifier.size(DeckSpace.Lg))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Lg))
+        ExternalSignerLogin()
+        Nip46Login()
+        NosskeyLogin()
+        LocalSignerLogin()
+    }
+}
+
 @Composable
 private fun SignerSettings() {
     val current = SignerProvider.current().method
@@ -791,7 +825,7 @@ private fun SignerSettings() {
     val nosskeyAvailable = NosskeyHost.provider?.isAvailable() == true
     Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub)
     Spacer(Modifier.size(DeckSpace.Md))
-    SignerMethod.entries.forEach { m ->
+    SignerMethod.entries.filter { it != SignerMethod.NONE }.forEach { m ->
         val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable) ||
             (m == SignerMethod.NOSSKEY && nosskeyAvailable) || m == SignerMethod.NIP46
         Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm)) {
@@ -1130,24 +1164,24 @@ private fun RelaySettings() {
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
-    LazyColumn(Modifier.fillMaxWidth()) {
-        items(relays, key = { it.url }) { r ->
-            val read = r.read != 0L
-            val write = r.write != 0L
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(r.url, color = DeckColors.Text, fontSize = DeckType.Sub)
-                    Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.Label)
-                }
-                RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
-                RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
-                DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
+    // 親(SettingsContent)が verticalScroll なので LazyColumn ではなく forEach で並べる
+    // （縦スクロール入れ子の測定エラー回避）。リレー数は少数なので非遅延で問題ない。
+    relays.forEach { r ->
+        val read = r.read != 0L
+        val write = r.write != 0L
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(r.url, color = DeckColors.Text, fontSize = DeckType.Sub)
+                Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.Label)
             }
-            HorizontalDivider(color = DeckColors.Border)
+            RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
+            RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
+            DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
         }
+        HorizontalDivider(color = DeckColors.Border)
     }
 
     // 削除は破壊的操作なので確認を挟む。
@@ -1228,10 +1262,12 @@ private fun LocalSignerLogin() {
 
     Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
-    Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
-    Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
-
-    Spacer(Modifier.size(DeckSpace.Md))
+    // ローカル鍵でログイン中のときだけ現在の npub を出す（未ログイン/外部署名時は隠す）。
+    if (SignerProvider.current().method == SignerMethod.LOCAL) {
+        Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
+        Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Spacer(Modifier.size(DeckSpace.Md))
+    }
     DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
