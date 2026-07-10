@@ -2,7 +2,12 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -136,6 +141,11 @@ fun ChannelRoomColumn(
     }
     val byId = remember(ordered) { ordered.associateBy { it.event.id } }
 
+    // 入力中（キーボード表示中）は、本文エリアへのタップを「フォーカス解除だけ」にする
+    // （メッセージや返信ボタン等の操作を貫通させない）。
+    var inputFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -144,18 +154,29 @@ fun ChannelRoomColumn(
             onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(
-            state = listState, modifier = Modifier.weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            items(ordered, key = { it.event.id }) { m ->
-                MessageBubble(
-                    m,
-                    parent = replyParentId(m)?.let { byId[it] },
-                    names = names,
-                    onReply = if (onSend != null) ({ replyingTo = m }) else null,
-                    onReact = if (onReact != null) ({ pickerFor = m }) else null,
+        Box(Modifier.weight(1f)) {
+            LazyColumn(
+                state = listState, modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items(ordered, key = { it.event.id }) { m ->
+                    MessageBubble(
+                        m,
+                        parent = replyParentId(m)?.let { byId[it] },
+                        names = names,
+                        onReply = if (onSend != null) ({ replyingTo = m }) else null,
+                        onReact = if (onReact != null) ({ pickerFor = m }) else null,
+                    )
+                }
+            }
+            // 入力中は本文エリアへのタップを吸収してフォーカス解除のみ（操作は貫通させない）。
+            // タップは detectTapGestures が消費し、ドラッグ（スクロール）は下の LazyColumn へ通す。
+            if (inputFocused) {
+                Box(
+                    Modifier.matchParentSize().pointerInput(Unit) {
+                        detectTapGestures { focusManager.clearFocus() }
+                    },
                 )
             }
         }
@@ -171,6 +192,7 @@ fun ChannelRoomColumn(
                 replyingTo = replyingTo,
                 onCancelReply = { replyingTo = null },
                 onSend = { text -> onSend(text, replyingTo); replyingTo = null },
+                onFocusChanged = { inputFocused = it },
             )
         } else ComposerDisabled()
     }
@@ -313,6 +335,7 @@ private fun Composer(
     replyingTo: ChannelMessage?,
     onCancelReply: () -> Unit,
     onSend: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     var text by remember { mutableStateOf("") }
     val canSend = text.isNotBlank()
@@ -357,7 +380,7 @@ private fun Composer(
                 onValueChange = { text = it },
                 textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Caption),
                 cursorBrush = SolidColor(DeckColors.Accent),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChanged(it.isFocused) },
             )
         }
         Spacer(Modifier.width(DeckSpace.Sm))
