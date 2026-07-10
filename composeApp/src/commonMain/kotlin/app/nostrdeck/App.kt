@@ -2,18 +2,22 @@ package app.nostrdeck
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
+import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
 import app.nostrdeck.ui.LocalNoteNav
 import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
+import app.nostrdeck.ui.LoginGate
 import app.nostrdeck.ui.NoteNav
 
 /**
@@ -42,12 +46,21 @@ fun App(repository: EventRepository? = null) {
                 onEvent = { id -> state.openThreadDetail(id) },
             )
         }
+        // [#login] 未ログイン（鍵を自動生成しない）ならログインゲートを出す。
+        // ログイン成立の瞬間だけ identity を読み直す（起動時に既ログインなら start() 済みなので二重取得しない）。
+        val loggedIn by SignerProvider.session.collectAsState()
+        var wasLoggedIn by remember { mutableStateOf(loggedIn) }
+        LaunchedEffect(loggedIn) {
+            if (loggedIn && !wasLoggedIn) repository?.reloadForNewIdentity()
+            wasLoggedIn = loggedIn
+        }
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,
             LocalNoteNav provides noteNav,
         ) {
-            AppScaffold(state)
+            // 実データ運用（repository あり）で未ログインならゲート。SampleData プレビュー時は素通し。
+            if (repository != null && !loggedIn) LoginGate() else AppScaffold(state)
         }
     }
 }

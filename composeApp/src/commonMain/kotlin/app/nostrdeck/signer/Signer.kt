@@ -32,6 +32,7 @@ interface Signer {
 }
 
 enum class SignerMethod {
+    NONE,     // 未ログイン（署名者なし）。勝手に鍵を作らず、ログイン画面を出すための状態。
     LOCAL,    // nsec を端末に保管し secp256k1 で署名
     NOSSKEY,  // パスキー(WebAuthn PRF)で暗号化した nsec
     NIP55,    // Android の外部署名アプリ(Amber)へ Intent 委譲

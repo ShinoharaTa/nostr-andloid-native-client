@@ -260,6 +260,9 @@ class EventRepository(
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
         scope.launch {
+            // 未ログイン時は自分の識別子が無いので、identity 依存の購読はしない。
+            // ログイン後に reloadForNewIdentity() から張り直す（#login: 勝手に鍵を作らない）。
+            if (!SignerProvider.hasSession()) return@launch
             val me = SignerProvider.current().publicKeyHex()
             myPubkey = me; myPubkeyFlow.value = me
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
