@@ -56,6 +56,7 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
             EmbedKind.YOUTUBE -> prefs.youtube
             EmbedKind.SPOTIFY -> prefs.spotify
             EmbedKind.OGP -> prefs.ogp
+            EmbedKind.VIDEO -> prefs.video
         }
     }
     if (visible.isEmpty() || repo == null) return
@@ -65,6 +66,7 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
                 EmbedKind.YOUTUBE -> YouTubeEmbed(e.url, e.youtubeId!!)
                 EmbedKind.SPOTIFY -> OgpEmbed(e.url, loadImage = true)   // Spotify も OGP カードで表現
                 EmbedKind.OGP -> OgpEmbed(e.url, loadImage = prefs.ogpImages)
+                EmbedKind.VIDEO -> VideoPlayer(e.url)                    // 動画直リンクはインライン再生
             }
         }
     }

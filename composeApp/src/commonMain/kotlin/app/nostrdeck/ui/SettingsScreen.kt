@@ -710,6 +710,7 @@ private fun AppearanceSettings() {
     )
     Spacer(Modifier.size(DeckSpace.Md))
 
+    SettingToggle("動画（mp4 等）をインライン再生", prefs.video) { repo.setEmbedPrefs(prefs.copy(video = it)) }
     SettingToggle("YouTube のサムネイルを表示", prefs.youtube) { repo.setEmbedPrefs(prefs.copy(youtube = it)) }
     SettingToggle("Spotify のカードを表示", prefs.spotify) { repo.setEmbedPrefs(prefs.copy(spotify = it)) }
     SettingToggle("その他リンクの OGP カードを表示", prefs.ogp) { repo.setEmbedPrefs(prefs.copy(ogp = it)) }

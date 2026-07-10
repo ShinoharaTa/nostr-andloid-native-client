@@ -30,6 +30,14 @@ class EmbedTest {
     }
 
     @Test
+    fun direct_video_links_are_video_kind() {
+        // .mp4/.webm/.mov 等の直リンクはインライン動画として分類する。
+        assertEquals(EmbedKind.VIDEO, detectEmbeds("clip https://example.com/v.mp4")[0].kind)
+        assertEquals(EmbedKind.VIDEO, detectEmbeds("https://example.com/v.webm?x=1")[0].kind)
+        assertEquals(EmbedKind.VIDEO, detectEmbeds("https://example.com/v.mov")[0].kind)
+    }
+
+    @Test
     fun images_are_excluded() {
         // 画像 URL は NoteImages が別途表示するので埋め込み候補から外す。
         val embeds = detectEmbeds("pic https://example.com/cat.jpg here")

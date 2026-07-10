@@ -2227,7 +2227,10 @@ class EventRepository(
     private fun withQuoteAndReply(
         base: NoteUi, row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>,
     ): NoteUi {
-        val (cleaned, inlineQuoted) = resolveInlineQuote(base.text, byPubkey)
+        // 画像が無いノートは base.text が null（表示は event.content）。それでも本文中の nevent/note を
+        // カード化できるよう、実際に表示される本文（base.text ?: content）を対象に参照を解決する。
+        val src = base.text ?: row.content
+        val (cleaned, inlineQuoted) = resolveInlineQuote(src, byPubkey)
         val quoted = inlineQuoted ?: run {
             // 本文に解決できる参照が無い → q タグから補完（relay ヒント= 3要素目。未取得なら取得を促す）。
             val qtag = parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "q" }
@@ -2235,7 +2238,10 @@ class EventRepository(
             val hints = qtag?.getOrNull(2)?.let { listOf(it) }.orEmpty()
             quotedId?.let { resolveNoteUi(it, byPubkey) ?: run { requestEvent(it, hints); null } }
         }
-        return base.copy(text = cleaned, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
+        // インライン参照を解決してテキストを削った場合のみ text を差し替える。未解決なら元の base.text を維持
+        // （null のままにして event.content 表示に委ねる＝挙動を変えない）。
+        val newText = if (inlineQuoted != null) cleaned else base.text
+        return base.copy(text = newText, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
     }
 
     /**
@@ -2415,6 +2421,7 @@ class EventRepository(
         embedPrefsFlow.value = EmbedPrefs(
             youtube = b("youtube", true), spotify = b("spotify", true),
             ogp = b("ogp", true), ogpImages = b("ogp_images", true),
+            video = b("video", true),
         )
     }
 
@@ -2424,6 +2431,7 @@ class EventRepository(
         putSettingAsync(EMBED_PREFIX + "spotify", if (prefs.spotify) "1" else "0")
         putSettingAsync(EMBED_PREFIX + "ogp", if (prefs.ogp) "1" else "0")
         putSettingAsync(EMBED_PREFIX + "ogp_images", if (prefs.ogpImages) "1" else "0")
+        putSettingAsync(EMBED_PREFIX + "video", if (prefs.video) "1" else "0")
     }
 
     private val ogpCache = mutableMapOf<String, OgpData?>()
