@@ -127,6 +127,7 @@ data class NoteUi(
     val reactions: List<ReactionUi> = emptyList(),  // [M8-react] NIP-25/30 集約リアクション
     val repostedBy: Profile? = null,  // [M8-repost] kind:6/16 のリポスト主（非nullなら「がリポスト」ヘッダ）
     val repostAt: Long? = null,       // [M8-repost] リポストした時刻（kind:6/16 の created_at）。並びは元投稿でなくこれを使う
+    val repostId: String? = null,     // [#61] リポストイベント(kind:6/16)自身の id。元投稿のコピーを一意化するキー（元投稿は null）
     val quoted: NoteUi? = null,       // [M8-repost] NIP-18 引用（q タグ）で参照する埋め込み元ノート
     val replyParent: NoteUi? = null,  // [M10] NIP-10 返信先（解決できた親ノート。返信の文脈表示用）
     val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
@@ -208,7 +209,8 @@ data class NotificationUi(
 sealed interface FeedEntry {
     val sortAt: Long
     data class Post(val note: NoteUi) : FeedEntry {
-        // リポストは「リポストした時刻」で並べる（元投稿の古い created_at では沈むため）。
+        // [#61] リポストのコピー（repostId 非null）は「リポストした時刻」で並べる。
+        // 元投稿(repostId=null)は自分の created_at のまま動かさない（リポストで元が移動しない）。
         override val sortAt: Long get() = note.repostAt ?: note.event.createdAt
     }
     data class Notice(val notif: NotificationUi) : FeedEntry {

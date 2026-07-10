@@ -248,10 +248,12 @@ fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: No
                     sending = false
                     onDismiss()
                 } catch (c: CancellationException) {
-                    sending = false          // 強制キャンセル → 入力状態へ戻す
+                    sending = false          // 強制キャンセル → 入力状態へ戻す（本文/添付は保持）
                     throw c
                 } catch (_: Throwable) {
-                    sendError = "投稿に失敗しました。もう一度お試しください。"
+                    // [#55] タイムアウト等でハングが失敗に変わってもここに落ちる。本文・添付・下書きは
+                    // 保持したまま（clearDraft は成功時のみ）、送信ボタンを再有効化してワンタップ再送できる。
+                    sendError = "投稿に失敗しました。添付はそのままなので、もう一度お試しください。"
                     sending = false          // 失敗判定 → 送信ボタン再有効化
                 }
             }
