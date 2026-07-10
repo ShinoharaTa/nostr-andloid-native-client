@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -794,6 +795,7 @@ fun LoginGate() {
     Column(
         Modifier.fillMaxSize().background(DeckColors.Bg)
             .verticalScroll(rememberScrollState())
+            .imePadding()  // キーボード表示時に最下部の nsec 欄が隠れないように
             .padding(DeckSpace.Lg),
     ) {
         Spacer(Modifier.size(DeckSpace.Xl))
@@ -823,7 +825,29 @@ private fun SignerSettings() {
     val extAvailable = ExternalSignerHost.provider?.isAvailable() == true
     // [#Nosskey] パスキー(Credential Manager)が使える環境なら NOSSKEY も利用可能。
     val nosskeyAvailable = NosskeyHost.provider?.isAvailable() == true
-    Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub)
+    // [#login] ログアウト: 全セッション/ローカル鍵を破棄して未ログイン（ゲート）へ。破壊的なので確認を挟む。
+    var confirmLogout by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+        DeckTextButton("ログアウト", color = DeckColors.Warn, onClick = { confirmLogout = true })
+    }
+    if (confirmLogout) {
+        DeckConfirmDialog(
+            title = "ログアウトしますか？",
+            text = "この端末のログイン情報を削除します。ローカル鍵(nsec)は端末から消去されるため、" +
+                "バックアップが無いと元に戻せません。外部署名(Amber/リモート/パスキー)の接続も解除されます。",
+            confirmLabel = "ログアウト", destructive = true,
+            onConfirm = {
+                confirmLogout = false
+                // 外部の永続セッションを全て破棄してから未ログインへ（次回起動もゲートになる）。
+                ExternalSignerHost.provider?.logout()
+                Nip46Manager.disconnect()
+                NosskeyHost.provider?.logout()
+                SignerProvider.logout()
+            },
+            onDismiss = { confirmLogout = false },
+        )
+    }
     Spacer(Modifier.size(DeckSpace.Md))
     SignerMethod.entries.filter { it != SignerMethod.NONE }.forEach { m ->
         val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable) ||

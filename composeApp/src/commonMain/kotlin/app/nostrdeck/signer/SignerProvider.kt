@@ -65,8 +65,15 @@ object SignerProvider {
         return k
     }
 
-    /** ログアウト（未ログイン状態へ戻す）。 */
-    fun logout() { activate(NoSigner) }
+    /**
+     * ログアウト（未ログイン状態へ戻す）。vault のローカル鍵も破棄する
+     * （残すと次回起動の useVault が復元してゲートを素通りしてしまうため）。
+     * 呼び出し側は外部セッション(NIP-55/46/Nosskey)の破棄も併せて行うこと。
+     */
+    fun logout() {
+        vault.clear()
+        activate(NoSigner)
+    }
 }
 
 /** 未ログインを表す署名者。identity/署名の使用は例外（UI は method==NONE で判定して使わない）。 */

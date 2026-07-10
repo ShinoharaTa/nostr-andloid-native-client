@@ -60,6 +60,11 @@ class KeystoreKeyVault(context: Context) : KeyVault {
         return k
     }
 
+    /** 保存済みの暗号文/IV を削除（ログアウト）。Keystore のラップ鍵は残しても害がない。 */
+    override fun clear() {
+        prefs.edit().remove(PREF_CIPHERTEXT).remove(PREF_IV).apply()
+    }
+
     /** Keystore からラップ用 AES 鍵を取得。無ければ生成する。 */
     private fun wrapKey(): SecretKey {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
