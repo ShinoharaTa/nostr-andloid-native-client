@@ -73,14 +73,14 @@ val RELAY_PRESETS: List<Preset> = listOf(
     Preset("wss://nostrelites.org", PresetCategory.Paid, "有料"),
 )
 
-/** NIP-96 メディアサーバー候補（画像アップロード先）。 */
+/** NIP-96 メディアサーバー候補（画像アップロード先）。2026-07 に well-known 応答で生存確認済み。 */
 val MEDIA_PRESETS: List<Preset> = listOf(
     Preset("https://nostr.build", PresetCategory.Image),
     Preset("https://nostrcheck.me", PresetCategory.General),
     Preset("https://nostpic.com", PresetCategory.Image),
     Preset("https://nostrmedia.com", PresetCategory.Image),
     Preset("https://files.sovbit.host", PresetCategory.General),
-    Preset("https://cdn.satellite.earth", PresetCategory.Image, "有料"),
+    // cdn.satellite.earth は 2026-07 時点で NIP-96 応答なし(404)のため除外。
 )
 
 /**

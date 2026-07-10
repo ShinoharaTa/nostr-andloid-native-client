@@ -2186,9 +2186,14 @@ class EventRepository(
         val subId = "recs_nip65"
         subscribeAll(subId, Filter(kinds = listOf(10002), authors = authors))
         subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(10002), authors = authors))
-        delay(3500)
-        unsubscribeAll(subId)
-        unsubscribeAll("${subId}_idx")
+        try {
+            delay(3500)
+        } finally {
+            // 画面離脱等で呼び出し元コルーチンがキャンセルされても REQ を残さない
+            // （unsubscribeAll は repo スコープへ enqueue するのでキャンセル中でも安全）。
+            unsubscribeAll(subId)
+            unsubscribeAll("${subId}_idx")
+        }
         val followSet = authors.toSet()
         val registered = q.allRelays().executeAsList().map { normalizeRelayUrl(it.url) }.toSet()
         return nip65ByAuthor.filterKeys { it in followSet }
