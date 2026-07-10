@@ -296,11 +296,6 @@ private fun MediaSettings() {
         DeckButton("追加", onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
     }
 
-    // 候補（おすすめ）：NIP-96 メディアサーバーをワンタップで追加。登録済みは非表示。
-    Spacer(Modifier.size(DeckSpace.Md))
-    val registeredMedia = servers.map { normalizePresetUrl(it.url) }.toSet()
-    PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it) })
-
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
@@ -331,6 +326,19 @@ private fun MediaSettings() {
             }
             HorizontalDivider(color = DeckColors.Border)
         }
+    }
+
+    // [#relay-recs] 候補は一覧の「下」に折りたたみで（リレー設定と体裁を揃える）。
+    var showMediaPresets by remember { mutableStateOf(false) }
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton(
+        if (showMediaPresets) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        onClick = { showMediaPresets = !showMediaPresets },
+    )
+    if (showMediaPresets) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        val registeredMedia = servers.map { normalizePresetUrl(it.url) }.toSet()
+        PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it) })
     }
 
     // 削除は破壊的操作なので確認を挟む。
@@ -1154,11 +1162,6 @@ private fun RelaySettings() {
         DeckButton("追加", onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
     }
 
-    // 候補（おすすめ）：著名な公開リレーをワンタップで追加。登録済みは非表示。
-    Spacer(Modifier.size(DeckSpace.Md))
-    val registeredRelays = relays.map { normalizePresetUrl(it.url) }.toSet()
-    PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
-
     Spacer(Modifier.size(DeckSpace.Md))
     // 保存 = kind:10002 をネットワークへ公開する外向き操作なので確認を挟む。
     DeckButton(
@@ -1206,6 +1209,40 @@ private fun RelaySettings() {
             DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
         }
         HorizontalDivider(color = DeckColors.Border)
+    }
+
+    // [#relay-recs] 候補は一覧の「下」に折りたたみで（一覧を主役に保つ）。
+    // 開いたときにフォロー中の NIP-65(kind:10002) を集計し「よく使われているリレー」を出す。
+    // 静的プリセットは集計できない場合（フォロー無し等）のフォールバック。
+    var showRecs by remember { mutableStateOf(false) }
+    var recs by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
+    var recsLoading by remember { mutableStateOf(false) }
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton(
+        if (showRecs) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        onClick = {
+            showRecs = !showRecs
+            if (showRecs && recs == null && !recsLoading) {
+                recsLoading = true
+                scope.launch {
+                    recs = runCatching { repo.fetchRelayRecommendations() }.getOrDefault(emptyList())
+                    recsLoading = false
+                }
+            }
+        },
+    )
+    if (showRecs) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        val registeredRelays = relays.map { normalizePresetUrl(it.url) }.toSet()
+        when {
+            recsLoading -> Text("フォロー中のリレーリスト(NIP-65)を集計中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+            !recs.isNullOrEmpty() -> RecommendedRelayChips(recs!!, registeredRelays, onAdd = { repo.addRelay(it) })
+            else -> {
+                Text("集計できませんでした（フォローが無い等）。定番の候補:", color = DeckColors.Text3, fontSize = DeckType.Label)
+                Spacer(Modifier.size(DeckSpace.Sm))
+                PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
+            }
+        }
     }
 
     // 削除は破壊的操作なので確認を挟む。

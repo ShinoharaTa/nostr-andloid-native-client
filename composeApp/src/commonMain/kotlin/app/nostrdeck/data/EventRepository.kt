@@ -1796,7 +1796,7 @@ class EventRepository(
             }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
-            10002 -> updateRelayList(e)
+            10002 -> { captureNip65(e); updateRelayList(e) }
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
@@ -2161,6 +2161,45 @@ class EventRepository(
      * DB に 'nip65' として保存し、read(Inbox) のものだけ購読接続する。古い版は無視。
      * write 専用(Outbox)は購読せず、配信時に一時接続する（NIP-65 outbox）。
      */
+    // ---- [#relay-recs] リレーのオススメ（フォロー中の NIP-65 集計） ----
+
+    /** フォロー中の kind:10002 をメモリに集計（pubkey → 最新の r タグ URL 群）。DB には入れない。 */
+    private val nip65ByAuthor = mutableMapOf<String, Pair<Long, List<String>>>()
+
+    private fun captureNip65(e: NostrEvent) {
+        val prev = nip65ByAuthor[e.pubkey]
+        if (prev != null && prev.first >= e.createdAt) return
+        val urls = e.tags.filter { it.size >= 2 && it[0] == "r" }
+            .map { normalizeRelayUrl(it[1]) }
+            .filter { it.startsWith("wss://") }
+        nip65ByAuthor[e.pubkey] = e.createdAt to urls
+    }
+
+    /**
+     * 「フォロー中でよく使われているリレー」を返す（url → 使用人数、多い順）。
+     * フォロー先の kind:10002 を接続中リレー＋インデクサへ一括要求し、数秒集めて集計する。
+     * 常に“いまの”有力候補が出る nostr ネイティブなレコメンド（静的リストは新規垢向けフォールバック）。
+     */
+    suspend fun fetchRelayRecommendations(): List<Pair<String, Int>> {
+        val authors = follows.value.take(300)  // REQ の肥大化を避けて直近300人まで
+        if (authors.isEmpty()) return emptyList()
+        val subId = "recs_nip65"
+        subscribeAll(subId, Filter(kinds = listOf(10002), authors = authors))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(10002), authors = authors))
+        delay(3500)
+        unsubscribeAll(subId)
+        unsubscribeAll("${subId}_idx")
+        val followSet = authors.toSet()
+        val registered = q.allRelays().executeAsList().map { normalizeRelayUrl(it.url) }.toSet()
+        return nip65ByAuthor.filterKeys { it in followSet }
+            .values.flatMap { it.second.distinct() }
+            .groupingBy { it }.eachCount()
+            .filterKeys { it !in registered }
+            .entries.sortedByDescending { it.value }
+            .take(12)
+            .map { it.key to it.value }
+    }
+
     private fun updateRelayList(e: NostrEvent) {
         if (e.pubkey != myPubkey) return
         if (e.createdAt < relayListAt) return
