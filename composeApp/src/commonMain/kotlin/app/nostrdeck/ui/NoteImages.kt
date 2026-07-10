@@ -25,6 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +48,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -146,6 +152,27 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
         // 現在ページが拡大中はページャのスワイプを無効化し、パン/端ハンドオフを自前で処理する。
         var pagerScrollEnabled by remember { mutableStateOf(true) }
 
+        // 画像保存（端末ギャラリーへ）とトースト通知。
+        val saveImage = rememberImageSaver()
+        val toast = rememberToaster()
+        val clipboard = LocalClipboardManager.current
+        // 二重タップ連打での多重保存を防ぐ。
+        var saving by remember { mutableStateOf(false) }
+        // 長押しメニューの開閉。
+        var menuOpen by remember { mutableStateOf(false) }
+
+        val doSave: () -> Unit = {
+            if (!saving) {
+                saving = true
+                val url = urls[pager.currentPage]
+                scope.launch {
+                    val ok = saveImage(url)
+                    toast(if (ok) "画像を保存しました" else "保存に失敗しました")
+                    saving = false
+                }
+            }
+        }
+
         Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             HorizontalPager(
                 state = pager,
@@ -155,6 +182,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                 ZoomableImage(
                     url = urls[page],
                     onTap = onDismiss,
+                    onLongPress = { menuOpen = true },
                     onZoomChange = { zoomed -> if (page == pager.currentPage) pagerScrollEnabled = !zoomed },
                     onEdgeSwipe = { dir ->
                         val target = page + dir
@@ -169,15 +197,50 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                     color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Lg),
                 )
             }
-            // Lightbox 閉じる（オーバーレイ操作・40dp 実タップ領域）。
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md)
-                    .size(DeckDimens.TouchTargetSm).clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.4f)).clickable(onClick = onDismiss),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.Close, "閉じる", tint = Color.White, modifier = Modifier.size(DeckDimens.IconLg)) }
+            // 右上のオーバーレイ操作（ダウンロード＋閉じる）。40dp 実タップ領域・半透明の丸背景。
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md),
+                horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+            ) {
+                OverlayIconButton(Icons.Outlined.Download, "画像を保存", onClick = doSave)
+                OverlayIconButton(Icons.Filled.Close, "閉じる", onClick = onDismiss)
+            }
+
+            // 長押しメニュー（画像を保存 / URLをコピー）。中央付近にアンカーする。
+            Box(Modifier.align(Alignment.Center)) {
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("画像を保存") },
+                        leadingIcon = { Icon(Icons.Outlined.Download, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+                        onClick = { menuOpen = false; doSave() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("URLをコピー") },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+                        onClick = {
+                            menuOpen = false
+                            clipboard.setText(AnnotatedString(urls[pager.currentPage]))
+                            toast("URLをコピーしました")
+                        },
+                    )
+                }
+            }
         }
     }
+}
+
+/** Lightbox 右上のオーバーレイ操作ボタン（半透明の丸背景・白アイコン）。 */
+@Composable
+private fun OverlayIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.4f)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(DeckDimens.IconLg)) }
 }
 
 /** 端ハンドオフ（拡大中に画像の端からさらにドラッグ）を発火する閾値(px)。 */
@@ -193,6 +256,7 @@ private const val EDGE_HANDOFF_THRESHOLD = 140f
 private fun ZoomableImage(
     url: String,
     onTap: () -> Unit,
+    onLongPress: () -> Unit,
     onZoomChange: (Boolean) -> Unit,
     onEdgeSwipe: (Int) -> Unit,
 ) {
@@ -209,6 +273,7 @@ private fun ZoomableImage(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onTap() },
+                    onLongPress = { onLongPress() },
                     onDoubleTap = {
                         if (scale > 1.01f) {
                             scale = 1f; offset = Offset.Zero; edgeAccum = 0f
