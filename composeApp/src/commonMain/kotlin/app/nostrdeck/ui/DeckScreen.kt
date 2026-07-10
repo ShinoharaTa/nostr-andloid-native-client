@@ -263,6 +263,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onNoticeClick = { id -> state.openThreadDetail(id) },
+                        onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
                     )
                 }
                 isNotifications -> {
@@ -309,6 +310,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         spec, notes, modifier, listState,
                         menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
+                        onRefresh = if (live) ({ repo!!.refreshColumn(spec.id, spec.filter) }) else null,  // [#53]
                     )
                 }
             }

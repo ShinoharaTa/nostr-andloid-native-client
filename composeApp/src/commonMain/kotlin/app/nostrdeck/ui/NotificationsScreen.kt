@@ -174,8 +174,11 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
         // （リポストはテーマに馴染むグリーン）。
         LeftIndicator(n)
         Spacer(Modifier.width(DeckSpace.Sm))
+        // [#59] リアクションは「絵文字が主役／リアクターは控えめ」にするため、アバターを名前の
+        // 文字高さ相当(16dp)まで縮める。返信/メンション/リポスト/Zap は従来どおり 34dp。
+        val avatarSize = if (n.kind == NotificationKind.REACTION) 16.dp else 34.dp
         // アバターを少し下げて名前の文字位置に揃える。
-        Avatar(n.actor.name, n.actor.pictureUrl, Modifier.padding(top = DeckSpace.Xs).clickable(onClick = onActorClick), size = 34.dp)
+        Avatar(n.actor.name, n.actor.pictureUrl, Modifier.padding(top = DeckSpace.Xs).clickable(onClick = onActorClick), size = avatarSize)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             // 「○○がリアクション/リポスト」の文言は出さない（左アイコンで種別が分かる）。
@@ -215,21 +218,23 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
  */
 @Composable
 private fun LeftIndicator(n: NotificationUi) {
-    val glyph = 15.dp  // 文字高さに合わせる
+    val glyph = 15.dp  // 返信/メンション/リポストのアイコンは文字高さに合わせる
+    // [#59] リアクションの絵文字は主役として約1.5倍に拡大（カスタム絵文字画像は 23dp）。
+    val reactionGlyph = 23.dp
     val top = Modifier.padding(top = DeckSpace.Xs)  // アバターと同じだけ下げて名前の文字位置に揃える
     when {
         // NIP-30 カスタム絵文字: 固定サイズの画像。
         n.kind == NotificationKind.REACTION && n.reactionImageUrl != null ->
             AsyncImage(
                 model = ImageRequest.Builder(LocalPlatformContext.current)
-                    .data(ImageProxy.proxied(n.reactionImageUrl, width = 48, quality = 80, animated = true))
+                    .data(ImageProxy.proxied(n.reactionImageUrl, width = 64, quality = 80, animated = true))
                     .crossfade(true).build(),
                 contentDescription = n.reaction,
-                modifier = top.size(glyph),
+                modifier = top.size(reactionGlyph),
             )
         // 通常の unicode 絵文字: 高さを固定すると descender が切れるので Text を自然サイズで描く。
         n.kind == NotificationKind.REACTION ->
-            Text(n.reaction ?: "❤️", fontSize = DeckType.Body, maxLines = 1, modifier = top)
+            Text(n.reaction ?: "❤️", fontSize = DeckType.EmojiLg, maxLines = 1, modifier = top)
         // 返信/メンション/リポストはアイコン。
         else ->
             Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = top.size(glyph))
