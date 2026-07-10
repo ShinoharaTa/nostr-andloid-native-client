@@ -11,6 +11,7 @@ data class EmbedPrefs(
     val spotify: Boolean = true,
     val ogp: Boolean = true,
     val ogpImages: Boolean = true,
+    val video: Boolean = true,       // 動画(.mp4/.webm/.mov 等)の直リンクをインライン再生するか
 )
 
 /** OGP(OpenGraph) メタ情報。取得できた範囲のみ埋める。 */
@@ -23,13 +24,14 @@ data class OgpData(
 )
 
 /** 本文リンクの種別（表示カードの出し分けに使う）。 */
-enum class EmbedKind { YOUTUBE, SPOTIFY, OGP }
+enum class EmbedKind { YOUTUBE, SPOTIFY, OGP, VIDEO }
 
 /** 検出した1リンク。 */
 data class LinkEmbed(val url: String, val kind: EmbedKind, val youtubeId: String? = null)
 
 private val URL_RE = Regex("""https?://[^\s<>"'）】」]+""", RegexOption.IGNORE_CASE)
 private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
+private val VIDEO_EXT = setOf("mp4", "webm", "mov", "m4v")
 
 /**
  * 本文からリンク埋め込み候補を抽出する（純ロジック・テスト可能）。
@@ -46,6 +48,7 @@ fun detectEmbeds(content: String, max: Int = 4): List<LinkEmbed> {
         if (ext in IMAGE_EXT) continue                 // 画像は別枠で表示
         val yid = youtubeId(url)
         val kind = when {
+            ext in VIDEO_EXT -> EmbedKind.VIDEO         // 動画の直リンクはインラインプレイヤーで再生
             yid != null -> EmbedKind.YOUTUBE
             isSpotify(url) -> EmbedKind.SPOTIFY
             else -> EmbedKind.OGP

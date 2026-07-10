@@ -13,6 +13,7 @@ import app.nostrdeck.db.NostrDb
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.Nip57
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
@@ -112,6 +113,11 @@ class EventRepository(
     private val bootstrapUrls = relayUrls
     /** 接続中リレー（url→client）。NIP-65/手動で動的に増減する。 */
     private val relays = LinkedHashMap<String, RelayClient>()
+    /**
+     * [#50] 設定リストで read(Inbox) 有効なリレー（=常設接続すべき集合、正規化 URL）。
+     * 接続数(N/M)・ステータス一覧はこの集合だけを対象にし、インデクサ/ヒント等の一時接続は数えない。
+     */
+    private var listRelays: Set<String> = emptySet()
     /** 新規リレー接続時に張り直すための購読中フィルタ（subId→filters）。 */
     private val activeSubs = mutableMapOf<String, List<Filter>>()
     /** relays / activeSubs への全アクセスを直列化する単一スレッド相当のディスパッチャ（CME 回避）。 */
@@ -210,7 +216,11 @@ class EventRepository(
         // write 専用(Outbox)リレーは購読せず、配信時に一時接続して EVENT を送る（NIP-65 outbox）。
         scope.launch {
             q.allRelays().asFlow().mapToList(Dispatchers.Default).collect { rows ->
+                // [#50] 常設接続すべき集合＝read 有効なリスト由来リレー。N/M 表示の分母もこれ。
+                listRelays = rows.filter { it.read != 0L }.map { normalizeRelayUrl(it.url) }.toSet()
                 rows.forEach { if (it.read != 0L) ensureRelay(it.url) }
+                // リストが変わったらステータス表示を更新（外れたリレーは一覧から消す）。
+                withContext(relayDispatcher) { refreshRelayConns() }
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
@@ -250,6 +260,9 @@ class EventRepository(
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
         // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
         scope.launch {
+            // 未ログイン時は自分の識別子が無いので、identity 依存の購読はしない。
+            // ログイン後に reloadForNewIdentity() から張り直す（#login: 勝手に鍵を作らない）。
+            if (!SignerProvider.hasSession()) return@launch
             val me = SignerProvider.current().publicKeyHex()
             myPubkey = me; myPubkeyFlow.value = me
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
@@ -344,9 +357,42 @@ class EventRepository(
 
     /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
     private fun refreshRelayConns() {
-        // ヒント経由の一時接続はステータスに出さない（設定リレーのみ表示）。
-        _relayConns.value = relays.entries.filter { it.key !in hintRelays }.sortedBy { it.key }
+        // [#50] N/M と一覧は設定リスト(read 有効)のリレーだけを対象にする。
+        // インデクサ/ヒント等の一時接続は「リストに無いリレー」なので除外（数えない・出さない）。
+        _relayConns.value = relays.entries.filter { it.key in listRelays }.sortedBy { it.key }
             .map { RelayConn(it.key, it.value.state.value) }
+    }
+
+    /**
+     * [#50] 一時接続（設定リストに無いインデクサ/ヒント接続）のうち、限定 REQ の配信先に
+     * なっていない＝用が済んだものを閉じる。余剰接続の常駐（“リストに無いリレーが繋がったまま”）を防ぐ。
+     * relayDispatcher 上で呼ぶこと。
+     */
+    private fun closeIdleTransientRelays() {
+        val neededByTargeted = subTargets.values.flatten().toSet()
+        val closable = relays.keys.filter { it !in listRelays && it !in neededByTargeted }
+        if (closable.isEmpty()) return
+        closable.forEach { url ->
+            relays.remove(url)?.stop()
+            hintRelays.remove(url)
+        }
+        refreshRelayConns()
+    }
+
+    /**
+     * [#50] 一時 REQ（インデクサへのプロフィール/DMリレー問い合わせ等）を一定時間後に閉じる。
+     * REQ を CLOSE し、どの限定 REQ にも使われなくなった一時接続を切る（アイドルで閉じる）。
+     */
+    private fun scheduleTransientCleanup(subId: String, delayMs: Long = 20_000L) {
+        scope.launch {
+            delay(delayMs)
+            withContext(relayDispatcher) {
+                activeSubs.remove(subId)
+                subTargets.remove(subId)
+                relays.values.forEach { it.unsubscribe(subId) }
+                closeIdleTransientRelays()
+            }
+        }
     }
 
     /** 全リレーへ購読（subId 上書き）。新規リレー接続時の張り直し用に記録する。 */
@@ -638,6 +684,24 @@ class EventRepository(
         }
     }
 
+    /**
+     * [#53] カラムのプルリフレッシュ: 今の REQ を破棄して張り直す（取りこぼし解消・最新化）。
+     * ソケットは張り直さず、同一接続上で unsubscribe→subscribe する（用途は最新化なので十分）。
+     * 再購読で columnLoadedState もロード中に戻り、DB Flow 経由でタイムラインが再構成される。
+     */
+    fun refreshColumn(columnId: String, filter: ReqFilter) {
+        unsubscribeColumn(columnId)
+        subscribeColumn(columnId, filter)
+    }
+
+    /** [#53] フォロー中カラムのプルリフレッシュ。本体＋混ぜ込む自分宛通知の REQ を張り直す。 */
+    fun refreshFollowing(columnId: String) {
+        unsubscribeColumn(columnId)
+        unsubscribeColumn("home_notif")
+        subscribeFollowing(columnId)
+        subscribeNotifications("home_notif")
+    }
+
     /** フォロー中フィード（フォロー集合の更新に追従。自分の投稿も含む）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun followingFeed(): Flow<List<NoteUi>> =
@@ -656,9 +720,10 @@ class EventRepository(
                 .map { (rows, profiles, meta) ->
                     val byPubkey = profiles.associateBy { it.pubkey }
                     // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
-                    // 同一ノートを複数人がリポスト/元と重複 → 表示 id が衝突するので id で重複排除（LazyColumn key 一意化）。
+                    // [#61] 重複排除は「完全な同一エントリ」だけを畳む。元投稿は event.id、リポストの
+                    // コピーは repostId で一意化 → 元 vs リポストは別々に残り、複数人のリポストも各々残る。
                     rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
-                        .distinctBy { it.event.id }
+                        .distinctBy { it.repostId ?: it.event.id }
                 // 変換（eventById 解決・集約付与）は重いので Default に載せ、UI スレッドを塞がない（ANR 対策）。
                 }.flowOn(Dispatchers.Default)
         }
@@ -1501,8 +1566,11 @@ class EventRepository(
             }
         }
         // kind:0（プロフィール）と kind:10002（NIP-65 リレーリスト）をインデクサ集合へ要求。
-        subscribeTargeted("idx_profiles_${targets.first().take(6)}", INDEXER_RELAYS.toSet(),
+        val subId = "idx_profiles_${targets.first().take(6)}"
+        subscribeTargeted(subId, INDEXER_RELAYS.toSet(),
             Filter(kinds = listOf(0, 10002), authors = targets, limit = targets.size * 2))
+        // [#50] 用が済んだらインデクサへの一時接続を閉じる（リストに無いリレーの常駐を防ぐ）。
+        scheduleTransientCleanup(subId)
     }
 
     /** 本文中の `nostr:npub1…`（接頭辞任意）を hex に復号し、表示名解決のため kind:0 を要求する。 */
@@ -1728,7 +1796,7 @@ class EventRepository(
             }
             0 -> upsertProfile(e)
             3 -> updateFollows(e)
-            10002 -> updateRelayList(e)
+            10002 -> { captureNip65(e); updateRelayList(e) }
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
@@ -2093,6 +2161,50 @@ class EventRepository(
      * DB に 'nip65' として保存し、read(Inbox) のものだけ購読接続する。古い版は無視。
      * write 専用(Outbox)は購読せず、配信時に一時接続する（NIP-65 outbox）。
      */
+    // ---- [#relay-recs] リレーのオススメ（フォロー中の NIP-65 集計） ----
+
+    /** フォロー中の kind:10002 をメモリに集計（pubkey → 最新の r タグ URL 群）。DB には入れない。 */
+    private val nip65ByAuthor = mutableMapOf<String, Pair<Long, List<String>>>()
+
+    private fun captureNip65(e: NostrEvent) {
+        val prev = nip65ByAuthor[e.pubkey]
+        if (prev != null && prev.first >= e.createdAt) return
+        val urls = e.tags.filter { it.size >= 2 && it[0] == "r" }
+            .map { normalizeRelayUrl(it[1]) }
+            .filter { it.startsWith("wss://") }
+        nip65ByAuthor[e.pubkey] = e.createdAt to urls
+    }
+
+    /**
+     * 「フォロー中でよく使われているリレー」を返す（url → 使用人数、多い順）。
+     * フォロー先の kind:10002 を接続中リレー＋インデクサへ一括要求し、数秒集めて集計する。
+     * 常に“いまの”有力候補が出る nostr ネイティブなレコメンド（静的リストは新規垢向けフォールバック）。
+     */
+    suspend fun fetchRelayRecommendations(): List<Pair<String, Int>> {
+        val authors = follows.value.take(300)  // REQ の肥大化を避けて直近300人まで
+        if (authors.isEmpty()) return emptyList()
+        val subId = "recs_nip65"
+        subscribeAll(subId, Filter(kinds = listOf(10002), authors = authors))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(10002), authors = authors))
+        try {
+            delay(3500)
+        } finally {
+            // 画面離脱等で呼び出し元コルーチンがキャンセルされても REQ を残さない
+            // （unsubscribeAll は repo スコープへ enqueue するのでキャンセル中でも安全）。
+            unsubscribeAll(subId)
+            unsubscribeAll("${subId}_idx")
+        }
+        val followSet = authors.toSet()
+        val registered = q.allRelays().executeAsList().map { normalizeRelayUrl(it.url) }.toSet()
+        return nip65ByAuthor.filterKeys { it in followSet }
+            .values.flatMap { it.second.distinct() }
+            .groupingBy { it }.eachCount()
+            .filterKeys { it !in registered }
+            .entries.sortedByDescending { it.value }
+            .take(12)
+            .map { it.key to it.value }
+    }
+
     private fun updateRelayList(e: NostrEvent) {
         if (e.pubkey != myPubkey) return
         if (e.createdAt < relayListAt) return
@@ -2106,6 +2218,21 @@ class EventRepository(
             if (it.read) ensureRelay(it.url)
         }
         relayList.value = entries
+        // [#default-purge] 自分の NIP-65 が取れたら、ブートストラップ用 default リレーは用済み。
+        // 一覧から削除し接続も閉じる（同じ URL が NIP-65 にあれば upsert で nip65 へ昇格済みなので対象外）。
+        // read できるリレーが1つも無いリストの場合だけは、接続手段を失わないよう default を残す。
+        if (entries.any { it.read }) {
+            val keep = entries.map { it.url }.toSet()
+            q.allRelays().executeAsList()
+                .filter { it.source == "default" && normalizeRelayUrl(it.url) !in keep }
+                .forEach { row ->
+                    val u = normalizeRelayUrl(row.url)
+                    q.deleteRelay(row.url)
+                    scope.launch(relayDispatcher) {
+                        relays.remove(u)?.let { it.stop(); refreshRelayConns() }
+                    }
+                }
+        }
     }
 
     /** #t/#e/#p をタグ索引へ（ハッシュタグ等のカラム検索用）。't' は小文字化。 */
@@ -2212,7 +2339,13 @@ class EventRepository(
                     if (origId != null) requestEvent(origId, eTag?.getOrNull(2)?.let { listOf(it) }.orEmpty())
                     return null
                 }
-                original.copy(repostedBy = profileFor(row.pubkey, byPubkey), repostAt = row.created_at)
+                // [#61] リポストは元投稿のコピーとして別エントリで出す。リポストイベント自身の id を
+                // 持たせ、元投稿(repostId=null)と id 衝突しない一意キーにする（元は元の位置に残す）。
+                original.copy(
+                    repostedBy = profileFor(row.pubkey, byPubkey),
+                    repostAt = row.created_at,
+                    repostId = row.id,
+                )
             }
             else -> withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey)
         }
@@ -2227,7 +2360,10 @@ class EventRepository(
     private fun withQuoteAndReply(
         base: NoteUi, row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>,
     ): NoteUi {
-        val (cleaned, inlineQuoted) = resolveInlineQuote(base.text, byPubkey)
+        // 画像が無いノートは base.text が null（表示は event.content）。それでも本文中の nevent/note を
+        // カード化できるよう、実際に表示される本文（base.text ?: content）を対象に参照を解決する。
+        val src = base.text ?: row.content
+        val (cleaned, inlineQuoted) = resolveInlineQuote(src, byPubkey)
         val quoted = inlineQuoted ?: run {
             // 本文に解決できる参照が無い → q タグから補完（relay ヒント= 3要素目。未取得なら取得を促す）。
             val qtag = parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "q" }
@@ -2235,7 +2371,10 @@ class EventRepository(
             val hints = qtag?.getOrNull(2)?.let { listOf(it) }.orEmpty()
             quotedId?.let { resolveNoteUi(it, byPubkey) ?: run { requestEvent(it, hints); null } }
         }
-        return base.copy(text = cleaned, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
+        // インライン参照を解決してテキストを削った場合のみ text を差し替える。未解決なら元の base.text を維持
+        // （null のままにして event.content 表示に委ねる＝挙動を変えない）。
+        val newText = if (inlineQuoted != null) cleaned else base.text
+        return base.copy(text = newText, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
     }
 
     /**
@@ -2381,8 +2520,18 @@ class EventRepository(
 
     // ---- [M11] media upload (NIP-96/98) ----
 
-    /** 画像アップロードと NIP-96 探索に使う HttpClient（リレーの WebSocket とは別系統）。 */
-    private val uploadHttp = HttpClient()
+    /**
+     * 画像アップロードと NIP-96 探索に使う HttpClient（リレーの WebSocket とは別系統）。
+     * [#55] タイムアウトを設定: スリープ復帰後に TCP が黙って死んでいても無限ハングせず失敗させ、
+     * ComposeSheet の sendError 経路（＝送信ボタン再有効化・再送）へ確実に乗せる。
+     */
+    private val uploadHttp = HttpClient {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 60_000   // 1リクエスト全体（大きめ画像も許容）
+            connectTimeoutMillis = 15_000   // 接続確立
+            socketTimeoutMillis = 30_000    // 無通信（ソケット黙殺の検出）
+        }
+    }
 
     /** [M11] DB のメディアサーバ一覧（Settings 用）。enabled/順序つき。 */
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
@@ -2415,6 +2564,7 @@ class EventRepository(
         embedPrefsFlow.value = EmbedPrefs(
             youtube = b("youtube", true), spotify = b("spotify", true),
             ogp = b("ogp", true), ogpImages = b("ogp_images", true),
+            video = b("video", true),
         )
     }
 
@@ -2424,6 +2574,7 @@ class EventRepository(
         putSettingAsync(EMBED_PREFIX + "spotify", if (prefs.spotify) "1" else "0")
         putSettingAsync(EMBED_PREFIX + "ogp", if (prefs.ogp) "1" else "0")
         putSettingAsync(EMBED_PREFIX + "ogp_images", if (prefs.ogpImages) "1" else "0")
+        putSettingAsync(EMBED_PREFIX + "video", if (prefs.video) "1" else "0")
     }
 
     private val ogpCache = mutableMapOf<String, OgpData?>()
@@ -2698,12 +2849,17 @@ class EventRepository(
     /** 相手の DM リレー(kind:10050)を取得。既知なら即返し、未知ならインデクサ等へ問い合わせて短時間待つ。 */
     private suspend fun fetchDmRelaysFor(pubkey: String): List<String> {
         dmRelaysByAuthor.value[pubkey]?.let { if (it.isNotEmpty()) return it }
-        subscribeTargeted("dmrl_${pubkey.take(6)}", INDEXER_RELAYS.toSet(),
+        val idxSub = "dmrl_${pubkey.take(6)}"
+        val broadSub = "dmrl2_${pubkey.take(6)}"
+        subscribeTargeted(idxSub, INDEXER_RELAYS.toSet(),
             Filter(kinds = listOf(10050), authors = listOf(pubkey), limit = 1))
-        subscribeAll("dmrl2_${pubkey.take(6)}", Filter(kinds = listOf(10050), authors = listOf(pubkey), limit = 1))
+        subscribeAll(broadSub, Filter(kinds = listOf(10050), authors = listOf(pubkey), limit = 1))
         withTimeoutOrNull(2500) {
             while (dmRelaysByAuthor.value[pubkey].isNullOrEmpty()) delay(150)
         }
+        // [#50] DMリレー問い合わせ用の一時 REQ／接続を後始末（リストに無いインデクサを常駐させない）。
+        scheduleTransientCleanup(idxSub)
+        scheduleTransientCleanup(broadSub)
         return dmRelaysByAuthor.value[pubkey].orEmpty()
     }
 

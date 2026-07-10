@@ -2,7 +2,12 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,10 +79,11 @@ fun LiveChannelRoom(
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
+    deckMode: Boolean = false,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
-        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack)
+        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack, deckMode = deckMode)
         return
     }
     DisposableEffect(spec.id) {
@@ -96,6 +102,7 @@ fun LiveChannelRoom(
     val scope = rememberCoroutineScope()
     ChannelRoomColumn(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
+        deckMode = deckMode,
         names = names,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url) } },
@@ -104,7 +111,10 @@ fun LiveChannelRoom(
 
 /**
  * ROOM レンダラー：NIP-28 チャンネルルーム（kind:42）。
- * チャット表示＝時系列昇順・最新が下・下部に常設の入力欄（フィードと逆）。
+ * イディオムの不変則:「入力欄が下＝最新も下 / 入力がボタン・モーダル＝最新は上」。
+ *  - 専用画面(deckMode=false): チャット型。最新が下・下部に常設入力欄。reverseLayout で
+ *    最初から下端アンカー（読み込み後に最下部へ飛ぶジャンプは構造的に発生しない）。
+ *  - デッキ固定カラム(deckMode=true): フィード型。最新が上・入力欄なし・✏️ボタン→モーダル投稿。
  */
 @Composable
 fun ChannelRoomColumn(
@@ -116,6 +126,7 @@ fun ChannelRoomColumn(
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
+    deckMode: Boolean = false,
     names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
     onReact: ((NostrEvent, String, String?) -> Unit)? = null,
@@ -123,7 +134,25 @@ fun ChannelRoomColumn(
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
     var pickerFor by remember { mutableStateOf<ChannelMessage?>(null) }
-    val byId = remember(messages) { messages.associateBy { it.event.id } }
+    // [#dm-idiom] デッキ固定カラムの投稿モーダル（フィード型: 常設入力欄は置かない）。
+    var showComposeModal by remember { mutableStateOf(false) }
+    // リストは常に「新しい順」を保持し、描画側で向きを変える（deck=そのまま上から / chat=reverseLayout で下から）。
+    // 連投まとめ（continuation）の「頭」は視覚上の上側に出す: deck=新しい側 / chat=古い側。
+    val ordered = remember(messages, deckMode) {
+        val rev = messages.asReversed()
+        rev.mapIndexed { i, m ->
+            val neighbor = if (deckMode) rev.getOrNull(i - 1) else rev.getOrNull(i + 1)
+            val cont = neighbor != null && neighbor.event.pubkey == m.event.pubkey &&
+                kotlin.math.abs(neighbor.event.createdAt - m.event.createdAt) < 300
+            if (cont == m.continuation) m else m.copy(continuation = cont)
+        }
+    }
+    val byId = remember(ordered) { ordered.associateBy { it.event.id } }
+
+    // 入力中（キーボード表示中）は、本文エリアへのタップを「フォーカス解除だけ」にする
+    // （メッセージや返信ボタン等の操作を貫通させない）。
+    var inputFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -133,32 +162,81 @@ fun ChannelRoomColumn(
             onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(
-            state = listState, modifier = Modifier.weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            items(messages, key = { it.event.id }) { m ->
-                MessageBubble(
-                    m,
-                    parent = replyParentId(m)?.let { byId[it] },
-                    names = names,
-                    onReply = if (onSend != null) ({ replyingTo = m }) else null,
-                    onReact = if (onReact != null) ({ pickerFor = m }) else null,
+        Box(Modifier.weight(1f)) {
+            LazyColumn(
+                state = listState, modifier = Modifier.fillMaxSize(),
+                reverseLayout = !deckMode,  // chat型は下端アンカー（最新が下・ジャンプなし）
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items(ordered, key = { it.event.id }) { m ->
+                    MessageBubble(
+                        m,
+                        parent = replyParentId(m)?.let { byId[it] },
+                        names = names,
+                        onReply = if (onSend != null) ({ replyingTo = m; if (deckMode) showComposeModal = true }) else null,
+                        onReact = if (onReact != null) ({ pickerFor = m }) else null,
+                    )
+                }
+            }
+            // 入力中は本文エリアへのタップを吸収してフォーカス解除のみ（操作は貫通させない）。
+            // タップは detectTapGestures が消費し、ドラッグ（スクロール）は下の LazyColumn へ通す。
+            if (inputFocused) {
+                Box(
+                    Modifier.matchParentSize().pointerInput(Unit) {
+                        detectTapGestures { focusManager.clearFocus() }
+                    },
                 )
             }
         }
-        // 新着（末尾）が届いたら最下部へ寄せる（チャットは最新が下）。
-        LaunchedEffect(messages.size) {
-            if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        // フィードと同様、新着（先頭）が届いたら先頭付近にいるときだけ最上部へ寄せる。
+        // 下（過去）を読んでいる間は位置を保ち、指でスクロール中は割り込まない。
+        LaunchedEffect(ordered.firstOrNull()?.event?.id) {
+            if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
+                listState.animateScrollToItem(0)
+            }
         }
         if (onSend != null) {
-            Composer(
-                replyingTo = replyingTo,
-                onCancelReply = { replyingTo = null },
-                onSend = { text -> onSend(text, replyingTo); replyingTo = null },
-            )
+            if (deckMode) {
+                // フィード型: 通常投稿と同じ「ボタン → モーダル」。誤解のもとになる常設入力欄は置かない。
+                Row(
+                    Modifier.fillMaxWidth().padding(DeckSpace.Sm),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    DeckGhostButton("✏️ メッセージを書く", onClick = { replyingTo = null; showComposeModal = true })
+                }
+            } else {
+                Composer(
+                    replyingTo = replyingTo,
+                    onCancelReply = { replyingTo = null },
+                    onSend = { text -> onSend(text, replyingTo); replyingTo = null },
+                    onFocusChanged = { inputFocused = it },
+                )
+            }
         } else ComposerDisabled()
+    }
+
+    // [#dm-idiom] デッキ固定カラム用の投稿モーダル。返信もこの経路（replyingTo を引き継ぐ）。
+    if (showComposeModal && onSend != null) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showComposeModal = false; replyingTo = null }) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(DeckRadius.Md))
+                    .background(DeckColors.Surface)
+                    .padding(vertical = DeckSpace.Sm),
+            ) {
+                Text(
+                    spec.title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = DeckSpace.Md),
+                )
+                Composer(
+                    replyingTo = replyingTo,
+                    onCancelReply = { replyingTo = null },
+                    onSend = { text -> onSend(text, replyingTo); replyingTo = null; showComposeModal = false },
+                )
+            }
+        }
     }
 
     // リアクション（長押し→リアクション）: 既存の絵文字ピッカーを再利用し kind:7 を送る。
@@ -299,6 +377,7 @@ private fun Composer(
     replyingTo: ChannelMessage?,
     onCancelReply: () -> Unit,
     onSend: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     var text by remember { mutableStateOf("") }
     val canSend = text.isNotBlank()
@@ -343,7 +422,7 @@ private fun Composer(
                 onValueChange = { text = it },
                 textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Caption),
                 cursorBrush = SolidColor(DeckColors.Accent),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChanged(it.isFocused) },
             )
         }
         Spacer(Modifier.width(DeckSpace.Sm))

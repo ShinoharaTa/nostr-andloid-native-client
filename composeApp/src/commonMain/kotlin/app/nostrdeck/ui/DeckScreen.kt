@@ -20,6 +20,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -48,6 +51,7 @@ import app.nostrdeck.model.FeedNoticeCategory
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -153,6 +157,15 @@ private fun CompactPager(state: DeckState) {
                         .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                 )
             }
+            // [#62] 折り畳み時はレール（＝検索の唯一の入口）が出ないため、デッキ上部バーに
+            // 検索アイコンを常設して検索へ到達できるようにする。下タブは増やさずモノクロで据える。
+            Spacer(Modifier.width(DeckSpace.Xs))
+            Icon(
+                Icons.Outlined.Search, "検索", tint = DeckColors.Text2,
+                modifier = Modifier.size(DeckDimens.RailIcon)
+                    .clip(CircleShape)
+                    .clickable { state.clearDetail(); state.navDest = NavDest.SEARCH },
+            )
             // リレー接続ステータス（緑/黄/グレー ● + N/N）。タップで一覧ダイアログ。
             val repo = LocalRepository.current
             if (repo != null) {
@@ -263,6 +276,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onNoticeClick = { id -> state.openThreadDetail(id) },
+                        onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
                     )
                 }
                 isNotifications -> {
@@ -309,6 +323,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         spec, notes, modifier, listState,
                         menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
+                        onRefresh = if (live) ({ repo!!.refreshColumn(spec.id, spec.filter) }) else null,  // [#53]
                     )
                 }
             }
@@ -354,9 +369,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         ColumnRenderer.ROOM -> {
             val channelId = spec.filter.channelId
             if (channelId != null) {
-                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu)
+                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu, deckMode = true)
             } else {
-                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
+                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu, deckMode = true)
             }
         }
     }

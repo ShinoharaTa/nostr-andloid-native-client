@@ -122,7 +122,13 @@ class DeckState(
     private val listStates = mutableMapOf<String, LazyListState>()
     fun listStateFor(id: String): LazyListState = listStates.getOrPut(id) { LazyListState() }
 
-    fun jumpTo(columnId: String) { jumpTarget = columnId }
+    /**
+     * デッキの対象カラムへジャンプ要求を出す。ジャンプ先は必ずホームのデッキなので、
+     * 非ホーム宛先（設定/通知/DM/パブリックチャット等）から呼ばれても [navDest] を HOME に戻す。
+     * こうしないと DeckArea の LaunchedEffect（ホーム表示時のみ稼働）にジャンプが消費されず、
+     * 切り替えもスクロールも効かない（#49）。レール/タブ/カラム追加など全ジャンプ導線を一括で救う。
+     */
+    fun jumpTo(columnId: String) { navDest = NavDest.HOME; jumpTarget = columnId }
     fun consumeJump() { jumpTarget = null }
 
     // (一時カラム id → 開いた元カラム id) の戻りスタック。back の戻り先に使う。

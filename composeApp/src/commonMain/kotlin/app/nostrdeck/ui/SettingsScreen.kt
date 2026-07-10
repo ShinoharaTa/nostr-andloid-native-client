@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -238,8 +239,12 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
             Text(title, color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
         }
         Spacer(Modifier.size(DeckSpace.Md))
-        // セクションは残り高さいっぱいに配置（内部で verticalScroll / LazyColumn が正しくスクロールできるように）。
-        Column(Modifier.weight(1f).fillMaxWidth()) {
+        // 一覧系（自前 LazyColumn を持つ）以外は、セクション全体をスクロール可能にする。
+        // 「ログイン方法」等のフォームが画面に収まらず操作できない問題の解消（全セクション既定でスクロール）。
+        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute", "media", "dmrelays")
+        val contentMod = Modifier.weight(1f).fillMaxWidth()
+            .let { if (selfScroll) it else it.verticalScroll(rememberScrollState()) }
+        Column(contentMod) {
             when (sectionId) {
                 "account" -> AccountSettings()
                 "signer" -> SignerSettings()
@@ -321,6 +326,19 @@ private fun MediaSettings() {
             }
             HorizontalDivider(color = DeckColors.Border)
         }
+    }
+
+    // [#relay-recs] 候補は一覧の「下」に折りたたみで（リレー設定と体裁を揃える）。
+    var showMediaPresets by remember { mutableStateOf(false) }
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton(
+        if (showMediaPresets) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        onClick = { showMediaPresets = !showMediaPresets },
+    )
+    if (showMediaPresets) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        val registeredMedia = servers.map { normalizePresetUrl(it.url) }.toSet()
+        PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it) })
     }
 
     // 削除は破壊的操作なので確認を挟む。
@@ -513,8 +531,8 @@ private fun AccountSettings() {
     var saved by remember { mutableStateOf(false) }
     val clearSaved: (String) -> Unit = { saved = false }
 
-    // フォームが縦に長く 保存ボタンが見切れるため、詳細ペイン内でスクロールできるようにする。
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    // スクロールは SettingsContent 側で一括して掛けるので、ここは列にまとめるだけ。
+    Column(Modifier.fillMaxWidth()) {
     Text("プロフィール", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text("変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。",
@@ -705,6 +723,7 @@ private fun AppearanceSettings() {
     )
     Spacer(Modifier.size(DeckSpace.Md))
 
+    SettingToggle("動画（mp4 等）をインライン再生", prefs.video) { repo.setEmbedPrefs(prefs.copy(video = it)) }
     SettingToggle("YouTube のサムネイルを表示", prefs.youtube) { repo.setEmbedPrefs(prefs.copy(youtube = it)) }
     SettingToggle("Spotify のカードを表示", prefs.spotify) { repo.setEmbedPrefs(prefs.copy(spotify = it)) }
     SettingToggle("その他リンクの OGP カードを表示", prefs.ogp) { repo.setEmbedPrefs(prefs.copy(ogp = it)) }
@@ -775,7 +794,38 @@ private fun DataSettings() {
     }
 }
 
-/** ログイン方法（Signer 抽象の出し分け）。実装済み: LOCAL / NIP55(外部署名アプリ導入時)。 */
+/**
+ * 未ログイン時のゲート画面（#login）。鍵は自動生成せず、必ずここでログイン方法を選ばせる。
+ * 既存のログインUI（NIP-55 / NIP-46 / Nosskey / ローカル: nsec取込・新規作成）を再利用する。
+ */
+@Composable
+fun LoginGate() {
+    Column(
+        Modifier.fillMaxSize().background(DeckColors.Bg)
+            .verticalScroll(rememberScrollState())
+            .imePadding()  // キーボード表示時に最下部の nsec 欄が隠れないように
+            .padding(DeckSpace.Lg),
+    ) {
+        Spacer(Modifier.size(DeckSpace.Xl))
+        AppMark(Modifier.size(56.dp))
+        Spacer(Modifier.size(DeckSpace.Md))
+        Text("Nostrism へようこそ", color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(
+            "ログイン方法を選んでください。秘密鍵を勝手に生成することはありません。" +
+                "アカウントをお持ちでない場合は「ローカル」から新規に鍵を作成できます。",
+            color = DeckColors.Text3, fontSize = DeckType.Sub,
+        )
+        Spacer(Modifier.size(DeckSpace.Lg))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Lg))
+        ExternalSignerLogin()
+        Nip46Login()
+        NosskeyLogin()
+        LocalSignerLogin()
+    }
+}
+
 @Composable
 private fun SignerSettings() {
     val current = SignerProvider.current().method
@@ -783,9 +833,31 @@ private fun SignerSettings() {
     val extAvailable = ExternalSignerHost.provider?.isAvailable() == true
     // [#Nosskey] パスキー(Credential Manager)が使える環境なら NOSSKEY も利用可能。
     val nosskeyAvailable = NosskeyHost.provider?.isAvailable() == true
-    Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub)
+    // [#login] ログアウト: 全セッション/ローカル鍵を破棄して未ログイン（ゲート）へ。破壊的なので確認を挟む。
+    var confirmLogout by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+        DeckTextButton("ログアウト", color = DeckColors.Warn, onClick = { confirmLogout = true })
+    }
+    if (confirmLogout) {
+        DeckConfirmDialog(
+            title = "ログアウトしますか？",
+            text = "この端末のログイン情報を削除します。ローカル鍵(nsec)は端末から消去されるため、" +
+                "バックアップが無いと元に戻せません。外部署名(Amber/リモート/パスキー)の接続も解除されます。",
+            confirmLabel = "ログアウト", destructive = true,
+            onConfirm = {
+                confirmLogout = false
+                // 外部の永続セッションを全て破棄してから未ログインへ（次回起動もゲートになる）。
+                ExternalSignerHost.provider?.logout()
+                Nip46Manager.disconnect()
+                NosskeyHost.provider?.logout()
+                SignerProvider.logout()
+            },
+            onDismiss = { confirmLogout = false },
+        )
+    }
     Spacer(Modifier.size(DeckSpace.Md))
-    SignerMethod.entries.forEach { m ->
+    SignerMethod.entries.filter { it != SignerMethod.NONE }.forEach { m ->
         val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable) ||
             (m == SignerMethod.NOSSKEY && nosskeyAvailable) || m == SignerMethod.NIP46
         Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm)) {
@@ -1119,23 +1191,57 @@ private fun RelaySettings() {
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
-    LazyColumn(Modifier.fillMaxWidth()) {
-        items(relays, key = { it.url }) { r ->
-            val read = r.read != 0L
-            val write = r.write != 0L
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(r.url, color = DeckColors.Text, fontSize = DeckType.Sub)
-                    Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.Label)
-                }
-                RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
-                RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
-                DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
+    // 親(SettingsContent)が verticalScroll なので LazyColumn ではなく forEach で並べる
+    // （縦スクロール入れ子の測定エラー回避）。リレー数は少数なので非遅延で問題ない。
+    relays.forEach { r ->
+        val read = r.read != 0L
+        val write = r.write != 0L
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(r.url, color = DeckColors.Text, fontSize = DeckType.Sub)
+                Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.Label)
             }
-            HorizontalDivider(color = DeckColors.Border)
+            RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
+            RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
+            DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
+        }
+        HorizontalDivider(color = DeckColors.Border)
+    }
+
+    // [#relay-recs] 候補は一覧の「下」に折りたたみで（一覧を主役に保つ）。
+    // 開いたときにフォロー中の NIP-65(kind:10002) を集計し「よく使われているリレー」を出す。
+    // 静的プリセットは集計できない場合（フォロー無し等）のフォールバック。
+    var showRecs by remember { mutableStateOf(false) }
+    var recs by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
+    var recsLoading by remember { mutableStateOf(false) }
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton(
+        if (showRecs) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        onClick = {
+            showRecs = !showRecs
+            if (showRecs && recs == null && !recsLoading) {
+                recsLoading = true
+                scope.launch {
+                    recs = runCatching { repo.fetchRelayRecommendations() }.getOrDefault(emptyList())
+                    recsLoading = false
+                }
+            }
+        },
+    )
+    if (showRecs) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        val registeredRelays = relays.map { normalizePresetUrl(it.url) }.toSet()
+        when {
+            recsLoading -> Text("フォロー中のリレーリスト(NIP-65)を集計中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+            !recs.isNullOrEmpty() -> RecommendedRelayChips(recs!!, registeredRelays, onAdd = { repo.addRelay(it) })
+            else -> {
+                Text("集計できませんでした（フォローが無い等）。定番の候補:", color = DeckColors.Text3, fontSize = DeckType.Label)
+                Spacer(Modifier.size(DeckSpace.Sm))
+                PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
+            }
         }
     }
 
@@ -1217,10 +1323,12 @@ private fun LocalSignerLogin() {
 
     Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
-    Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
-    Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
-
-    Spacer(Modifier.size(DeckSpace.Md))
+    // ローカル鍵でログイン中のときだけ現在の npub を出す（未ログイン/外部署名時は隠す）。
+    if (SignerProvider.current().method == SignerMethod.LOCAL) {
+        Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
+        Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Spacer(Modifier.size(DeckSpace.Md))
+    }
     DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },

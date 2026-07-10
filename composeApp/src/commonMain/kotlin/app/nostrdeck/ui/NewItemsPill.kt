@@ -53,12 +53,36 @@ fun rememberNewItemsCount(keys: List<String>, listState: LazyListState): Int {
 }
 
 /**
- * カラム上部中央に重ねる新着ピル（モノクロ）。[count] 0 のときは何も描かない。
- * タップで [onClick]（最上部へスクロール）。Box の中で使う（TopCenter 配置）。
+ * [#52] 先頭から離れてスクロールしているか（>=3 件目が先頭に見えている）。
+ * derivedStateOf で「離れているか」の真偽が変わった瞬間だけ再コンポーズする（スクロール中は無反応）。
  */
 @Composable
-fun BoxScope.NewItemsPill(count: Int, onClick: () -> Unit) {
-    if (count <= 0) return
+fun rememberScrolledAway(listState: LazyListState): Boolean {
+    val away by remember(listState) {
+        derivedStateOf { listState.firstVisibleItemIndex >= 3 }
+    }
+    return away
+}
+
+/**
+ * [#52] フィード上部のピルを一本化して出す。Box の中で使う（TopCenter 配置）。
+ *  - 新着あり（[count] > 0）    → 「N 件の新着 ↑」
+ *  - 新着なしだがスクロール中   → 「最新へ戻る ↑」
+ * どちらもタップで最上部（＝最新）へ。二重に出さないよう1つに集約する。
+ */
+@Composable
+fun BoxScope.FeedTopPill(count: Int, listState: LazyListState, onClick: () -> Unit) {
+    // 状態観測は無条件で行い（remember スロットを安定させる）、表示だけ分岐する。
+    val scrolledAway = rememberScrolledAway(listState)
+    when {
+        count > 0 -> Pill("$count 件の新着", onClick)
+        scrolledAway -> Pill("最新へ戻る", onClick)
+    }
+}
+
+/** モノクロのピル本体（上部中央）。 */
+@Composable
+private fun BoxScope.Pill(label: String, onClick: () -> Unit) {
     Row(
         Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Sm)
             .clip(RoundedCornerShape(DeckRadius.Full))
@@ -70,7 +94,7 @@ fun BoxScope.NewItemsPill(count: Int, onClick: () -> Unit) {
     ) {
         Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = DeckSpace.Xs).size(15.dp))
         Text(
-            "$count 件の新着", color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = DeckWeight.Strong,
+            label, color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = DeckWeight.Strong,
         )
     }
 }

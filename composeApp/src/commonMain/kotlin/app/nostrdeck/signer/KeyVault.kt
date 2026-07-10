@@ -16,6 +16,8 @@ interface KeyVault {
     fun importPrivateKey(privateKey: ByteArray)
     /** 新規鍵を生成して保管し、返す。 */
     fun generate(): ByteArray
+    /** 保管中の鍵を破棄する（ログアウト用）。未設定なら何もしない。 */
+    fun clear()
 }
 
 /** 開発・テスト用のメモリ内保管。永続化しない。本番は secure storage 実装に差し替える。 */
@@ -36,4 +38,6 @@ class InMemoryKeyVault : KeyVault {
         importPrivateKey(k)
         return k
     }
+
+    override fun clear() { key = null }
 }

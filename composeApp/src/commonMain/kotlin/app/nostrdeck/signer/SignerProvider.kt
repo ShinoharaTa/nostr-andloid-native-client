@@ -1,55 +1,87 @@
 package app.nostrdeck.signer
 
+import app.nostrdeck.model.NostrEvent
+import app.nostrdeck.model.UnsignedEvent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
 /**
  * 現在アクティブな署名者を保持する。設定の「ログイン方法」に応じて差し替える。
- * 既定は開発用の LocalSigner(InMemoryKeyVault)。本番は保存済みのログイン状態から復元する。
  *
- * 鍵保管(KeyVault)も保持し、Settings からの import/generate はこの vault に対して行う。
- * vault を差し替える or 鍵を入れ替えたら LocalSigner を作り直す（公開鍵が変わるため）。
+ * 重要（#login）: **鍵を勝手に生成しない**。未ログイン時は [NoSigner]（method=NONE）を保持し、
+ * UI 側は [session] を見てログイン画面（ゲート）を表示する。鍵の新規生成は
+ * ユーザーが明示的に選んだとき（[generateNewKey]）だけ行う。
  *
- * TODO: アカウント切替（複数 npub）に拡張。
- * TODO: Android 起動時に KeystoreKeyVault(context) を、iOS は KeychainKeyVault を
- *       useVault() で注入し、永続化済みの鍵から復元する（Context 注入が必要なため未配線）。
+ * 鍵保管(KeyVault)も保持し、Settings/ログイン画面からの import/generate はこの vault に作用する。
  */
 object SignerProvider {
 
-    private var vault: KeyVault = InMemoryKeyVault().apply { generate() }
-    private var current: Signer = LocalSigner(vault)
+    // 起動時は空の vault（自動生成しない）。Keystore/Keychain 実装は useVault で注入する。
+    private var vault: KeyVault = InMemoryKeyVault()
+    private var current: Signer = NoSigner
+
+    /** ログイン中かどうか（UI のゲート表示に使う）。 */
+    private val _session = MutableStateFlow(false)
+    val session: StateFlow<Boolean> get() = _session
 
     fun current(): Signer = current
 
-    /** 現在アクティブな鍵保管。Settings の import/generate はこれに作用する。 */
+    /** ログイン済みか（署名者がある＝method != NONE）。 */
+    fun hasSession(): Boolean = current.method != SignerMethod.NONE
+
+    /** 現在アクティブな鍵保管。import/generate はこれに作用する。 */
     fun vault(): KeyVault = vault
 
+    private fun activate(signer: Signer) {
+        current = signer
+        _session.value = signer.method != SignerMethod.NONE
+    }
+
     /**
-     * 鍵保管を差し替える（例: 起動時に Keystore/Keychain 実装へ）。
-     * 鍵が未設定なら生成し、LocalSigner を作り直す。
+     * 鍵保管を差し替える（起動時に Keystore/Keychain 実装へ）。
+     * **既存の鍵があればローカル署名として復元する。無ければ未ログインのまま（自動生成しない）。**
      */
     fun useVault(v: KeyVault) {
-        if (!v.hasKey()) v.generate()
         vault = v
-        current = LocalSigner(v)
+        if (v.hasKey()) activate(LocalSigner(v))
     }
 
     /** ログイン方法の切替（LOCAL / NOSSKEY / NIP55 / NIP46 / NIP07）。 */
-    fun use(signer: Signer) { current = signer }
+    fun use(signer: Signer) { activate(signer) }
 
-    /** [#39] 外部署名(NIP-55/46)から、保持している vault のローカル署名へ戻す。 */
-    fun useLocal() { current = LocalSigner(vault) }
+    /** 外部署名(NIP-55/46)から、保持している vault のローカル署名へ戻す。 */
+    fun useLocal() { activate(LocalSigner(vault)) }
 
-    /**
-     * 現在の vault に秘密鍵を取り込み、ローカル署名へ切替える（nsec ログイン）。
-     * 公開鍵が変わるので LocalSigner を作り直す。
-     */
+    /** 現在の vault に秘密鍵を取り込み、ローカル署名へ切替える（nsec ログイン）。 */
     fun importPrivateKey(privateKey: ByteArray) {
         vault.importPrivateKey(privateKey)
-        current = LocalSigner(vault)
+        activate(LocalSigner(vault))
     }
 
-    /** 現在の vault で新規鍵を生成し、ローカル署名へ切替える。 */
+    /** ユーザーが明示的に選んだときだけ新規鍵を生成し、ローカル署名へ切替える。 */
     fun generateNewKey(): ByteArray {
         val k = vault.generate()
-        current = LocalSigner(vault)
+        activate(LocalSigner(vault))
         return k
     }
+
+    /**
+     * ログアウト（未ログイン状態へ戻す）。vault のローカル鍵も破棄する
+     * （残すと次回起動の useVault が復元してゲートを素通りしてしまうため）。
+     * 呼び出し側は外部セッション(NIP-55/46/Nosskey)の破棄も併せて行うこと。
+     */
+    fun logout() {
+        vault.clear()
+        activate(NoSigner)
+    }
+}
+
+/** 未ログインを表す署名者。identity/署名の使用は例外（UI は method==NONE で判定して使わない）。 */
+private object NoSigner : Signer {
+    override val method = SignerMethod.NONE
+    override val capabilities = emptySet<SignerCap>()
+    override suspend fun publicKeyHex(): String = error("未ログインです")
+    override suspend fun sign(unsigned: UnsignedEvent): NostrEvent = error("未ログインです")
+    override suspend fun nip44Encrypt(peerPubkeyHex: String, plaintext: String): String = error("未ログインです")
+    override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String = error("未ログインです")
 }
