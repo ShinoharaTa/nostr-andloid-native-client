@@ -2218,6 +2218,21 @@ class EventRepository(
             if (it.read) ensureRelay(it.url)
         }
         relayList.value = entries
+        // [#default-purge] 自分の NIP-65 が取れたら、ブートストラップ用 default リレーは用済み。
+        // 一覧から削除し接続も閉じる（同じ URL が NIP-65 にあれば upsert で nip65 へ昇格済みなので対象外）。
+        // read できるリレーが1つも無いリストの場合だけは、接続手段を失わないよう default を残す。
+        if (entries.any { it.read }) {
+            val keep = entries.map { it.url }.toSet()
+            q.allRelays().executeAsList()
+                .filter { it.source == "default" && normalizeRelayUrl(it.url) !in keep }
+                .forEach { row ->
+                    val u = normalizeRelayUrl(row.url)
+                    q.deleteRelay(row.url)
+                    scope.launch(relayDispatcher) {
+                        relays.remove(u)?.let { it.stop(); refreshRelayConns() }
+                    }
+                }
+        }
     }
 
     /** #t/#e/#p をタグ索引へ（ハッシュタグ等のカラム検索用）。't' は小文字化。 */
