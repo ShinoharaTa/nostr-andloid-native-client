@@ -291,6 +291,11 @@ private fun MediaSettings() {
         DeckButton("追加", onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
     }
 
+    // 候補（おすすめ）：NIP-96 メディアサーバーをワンタップで追加。登録済みは非表示。
+    Spacer(Modifier.size(DeckSpace.Md))
+    val registeredMedia = servers.map { normalizePresetUrl(it.url) }.toSet()
+    PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it) })
+
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
@@ -1089,6 +1094,11 @@ private fun RelaySettings() {
         Spacer(Modifier.size(DeckSpace.Sm))
         DeckButton("追加", onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
     }
+
+    // 候補（おすすめ）：著名な公開リレーをワンタップで追加。登録済みは非表示。
+    Spacer(Modifier.size(DeckSpace.Md))
+    val registeredRelays = relays.map { normalizePresetUrl(it.url) }.toSet()
+    PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
 
     Spacer(Modifier.size(DeckSpace.Md))
     // 保存 = kind:10002 をネットワークへ公開する外向き操作なので確認を挟む。
