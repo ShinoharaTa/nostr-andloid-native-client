@@ -787,9 +787,27 @@ class EventRepository(
         }.flowOn(Dispatchers.Default)
     }
 
+    /**
+     * [#80] 上限付きの簡易 LRU（アクセス順）。フィードの StateFlow キャッシュは「直近の値」
+     * ごと保持し続けるため、無制限だとプロフィール閲覧等でフィルタの数だけ NoteUi リストが
+     * 溜まり続けて OOM に至る。上限超過時は最も古くアクセスされたものを捨てる
+     * （捨てても再訪時に DB から再構築されるだけ。WhileSubscribed なので購読中の上流は
+     * 参照を握る UI 側が生かしており、退避は表示に影響しない）。
+     */
+    private class LruCache<K, V>(private val cap: Int) {
+        private val map = LinkedHashMap<K, V>()  // mutableMapOf と同じ挿入順。触れたら入れ直して末尾へ
+        fun getOrPut(key: K, create: () -> V): V {
+            map.remove(key)?.let { map[key] = it; return it }
+            val v = create()
+            map[key] = v
+            if (map.size > cap) map.remove(map.keys.first())
+            return v
+        }
+    }
+
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。
-     *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]）。 */
-    private val columnFeedCache = mutableMapOf<ReqFilter, StateFlow<List<NoteUi>>>()
+     *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]、上限つき #80）。 */
+    private val columnFeedCache = LruCache<ReqFilter, StateFlow<List<NoteUi>>>(32)
     fun columnFeed(filter: ReqFilter): StateFlow<List<NoteUi>> =
         columnFeedCache.getOrPut(filter) {
             buildColumnFeed(filter).stateIn(scope, feedSharing, emptyList())
@@ -891,7 +909,7 @@ class EventRepository(
         }
 
     /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ・集約リアクション付き）で流す。 */
-    private val channelFeedCache = mutableMapOf<String, StateFlow<List<ChannelMessage>>>()
+    private val channelFeedCache = LruCache<String, StateFlow<List<ChannelMessage>>>(12)  // 上限つき(#80)
     fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
         channelFeedCache.getOrPut(channelId) {
             combine(
@@ -2645,7 +2663,11 @@ class EventRepository(
                 else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
             }
         }.getOrNull()
-        ogpMutex.withLock { ogpCache[url] = data }
+        ogpMutex.withLock {
+            ogpCache[url] = data
+            // [#80] TL に流れた URL の数だけ無制限に増えるので上限を設ける（挿入順で最古を破棄）。
+            if (ogpCache.size > 256) ogpCache.remove(ogpCache.keys.first())
+        }
         return data
     }
 
