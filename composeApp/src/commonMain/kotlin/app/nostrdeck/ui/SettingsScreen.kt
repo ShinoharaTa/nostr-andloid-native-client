@@ -244,7 +244,8 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
         Spacer(Modifier.size(DeckSpace.Md))
         // 一覧系（自前 LazyColumn を持つ）以外は、セクション全体をスクロール可能にする。
         // 「ログイン方法」等のフォームが画面に収まらず操作できない問題の解消（全セクション既定でスクロール）。
-        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute", "media", "dmrelays")
+        // dmrelays は #74 で LazyColumn → Column(forEach) にしたため、既定スクロール側に移した。
+        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute", "media")
         val contentMod = Modifier.weight(1f).fillMaxWidth()
             .let { if (selfScroll) it else it.verticalScroll(rememberScrollState()) }
         Column(contentMod) {
@@ -470,8 +471,8 @@ private fun DmRelaySettings() {
             DeckButton("現在の受信リレーから作成", onClick = { scope.launch { repo.publishDmRelays(reads) } })
         }
     } else {
-        LazyColumn(Modifier.fillMaxWidth()) {
-            items(relays, key = { it }) { url ->
+        Column(Modifier.fillMaxWidth()) {
+            relays.forEach { url ->
                 Row(
                     Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm),
                     verticalAlignment = Alignment.CenterVertically,
@@ -483,6 +484,43 @@ private fun DmRelaySettings() {
                 }
                 HorizontalDivider(color = DeckColors.Border)
             }
+        }
+    }
+
+    // [#74] 候補から追加: フォロー中の kind:10050 を集計して「実際に DM 受信に使われている」
+    // リレーを提示する（リレー設定と同じ折りたたみ体裁）。静的フォールバックは置かない
+    // （DM リレーは AUTH 等の適性が要り、未検証リストは危険なため）。
+    var showRecs by remember { mutableStateOf(false) }
+    var recs by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
+    var recsLoading by remember { mutableStateOf(false) }
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton(
+        if (showRecs) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        onClick = {
+            showRecs = !showRecs
+            if (showRecs && recs == null && !recsLoading) {
+                recsLoading = true
+                scope.launch {
+                    recs = runCatching { repo.fetchDmRelayRecommendations() }.getOrDefault(emptyList())
+                    recsLoading = false
+                }
+            }
+        },
+    )
+    if (showRecs) {
+        Spacer(Modifier.size(DeckSpace.Sm))
+        val registered = relays.map { normalizePresetUrl(it) }.toSet()
+        when {
+            recsLoading -> Text("フォロー中のDMリレー(kind:10050)を集計中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+            !recs.isNullOrEmpty() -> RecommendedRelayChips(
+                recs!!, registered,
+                onAdd = { url -> scope.launch { repo.publishDmRelays((relays + url).distinct()) } },
+                title = "フォロー中がDM受信に使っているリレー",
+            )
+            else -> Text(
+                "集計できませんでした（フォローが無い・kind:10050 を公開している人がいない等）。",
+                color = DeckColors.Text3, fontSize = DeckType.Label,
+            )
         }
     }
 }

@@ -2209,6 +2209,37 @@ class EventRepository(
             .map { it.key to it.value }
     }
 
+    /**
+     * [#74] 「フォロー中が DM 受信に使っているリレー」を返す（url → 使用人数、多い順）。
+     * フォロー先の kind:10050 を接続中リレー＋インデクサへ一括要求し、数秒集めて集計する。
+     * DM リレーには適性（NIP-42 AUTH・gift wrap 保持）が要るため、静的リストではなく
+     * 実際に DM 受信に使われているリレーを提示する（ingest の updateDmRelayList が
+     * 全 pubkey の 10050 を保持しているのでそれを集計する）。
+     */
+    suspend fun fetchDmRelayRecommendations(): List<Pair<String, Int>> {
+        val authors = follows.value.take(300)  // REQ の肥大化を避けて直近300人まで
+        if (authors.isEmpty()) return emptyList()
+        val subId = "recs_10050"
+        subscribeAll(subId, Filter(kinds = listOf(10050), authors = authors))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(10050), authors = authors))
+        try {
+            delay(3500)
+        } finally {
+            // 画面離脱等でキャンセルされても REQ を残さない（fetchRelayRecommendations と同じ）。
+            unsubscribeAll(subId)
+            unsubscribeAll("${subId}_idx")
+        }
+        val followSet = authors.toSet()
+        val registered = myPubkey?.let { dmRelaysByAuthor.value[it] }.orEmpty().toSet()
+        return dmRelaysByAuthor.value.filterKeys { it in followSet && it != myPubkey }
+            .values.flatMap { it.distinct() }
+            .groupingBy { it }.eachCount()
+            .filterKeys { it !in registered }
+            .entries.sortedByDescending { it.value }
+            .take(12)
+            .map { it.key to it.value }
+    }
+
     private fun updateRelayList(e: NostrEvent) {
         if (e.pubkey != myPubkey) return
         if (e.createdAt < relayListAt) return
