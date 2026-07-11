@@ -384,11 +384,13 @@ JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
 
 -- [M9-thread] スレッド構成イベント: 指定 id 群そのもの + それらを e タグで参照する kind:1。
+-- [#84] 参照側は kind:1 に限定する。絞らないと同じ投稿を e タグ参照する kind:7(リアクション)や
+-- kind:6(リポスト)等が「返信」としてスレッドに混入する（購読側 Filter は kinds=[1] 済み）。
 threadEvents:
 SELECT DISTINCT event.* FROM event
 LEFT JOIN event_tag ON event.id = event_tag.event_id
 WHERE event.id IN :ids
-   OR (event_tag.tag = 'e' AND event_tag.value IN :ids)
+   OR (event_tag.tag = 'e' AND event_tag.value IN :ids AND event.kind = 1)
 ORDER BY event.created_at ASC;
 
 deleteEventById:
