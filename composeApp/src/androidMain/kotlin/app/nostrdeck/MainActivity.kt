@@ -3,6 +3,7 @@ package app.nostrdeck
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -33,6 +34,7 @@ import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.crossfade
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +50,12 @@ private val DEFAULT_RELAYS = listOf(
 
 class MainActivity : ComponentActivity() {
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // [#78] 未捕捉例外でアプリごと落とさない防御の底。リレーIO等の非同期例外はログに留める
+    // （SupervisorJob は兄弟キャンセルを防ぐだけで、未捕捉例外はプロセスを殺すため必須）。
+    private val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            CoroutineExceptionHandler { _, t -> Log.e("Nostrism", "uncaught in appScope", t) }
+    )
     private lateinit var repository: EventRepository
 
     // フォアグラウンド中にネットワークが復帰したら、バックオフ待機中のリレーを即再接続させる。
