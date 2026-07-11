@@ -1462,9 +1462,13 @@ class EventRepository(
         val storedContent =
             if (signed.kind == 7) (if (signed.content == "+" || signed.content.isEmpty()) "❤️" else signed.content)
             else signed.content
-        q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, storedContent, tagsToJson(signed.tags), signed.sig)
-        indexTags(signed)
-        q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
+        // 本体とタグ索引を原子的に書く。別々だと索引前の瞬間を読んだクエリが
+        // 「e タグの無い kind:7」を観測してしまう(#78)。
+        q.transaction {
+            q.insertEvent(signed.id, signed.pubkey, signed.kind.toLong(), signed.createdAt, storedContent, tagsToJson(signed.tags), signed.sig)
+            indexTags(signed)
+            q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
+        }
         // NIP-65 outbox: write(Outbox) リレー ∪ 接続中(Inbox)リレーへ配信する。
         publishTo(payload)
         // TODO: handle OK/NIP-20, retry from publish_queue

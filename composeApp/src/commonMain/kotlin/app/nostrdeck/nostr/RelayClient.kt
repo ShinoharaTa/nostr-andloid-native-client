@@ -82,7 +82,12 @@ class RelayClient(
         val sender = scope.launch {
             try {
                 while (true) session.send(Frame.Text(outgoing.receive()))
-            } catch (_: ClosedReceiveChannelException) {
+            } catch (t: CancellationException) {
+                throw t
+            } catch (_: Throwable) {
+                // 送信失敗（切断直後の send 等）。ここで例外を漏らすと appScope 直下の
+                // 未捕捉例外としてアプリごと落ちる(#78 実機クラッシュの正体)。受信側が
+                // 切断を検知して外の再接続ループが復旧するので、握りつぶして良い。
             }
         }
         try {
