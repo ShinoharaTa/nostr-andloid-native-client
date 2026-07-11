@@ -365,11 +365,16 @@ JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e' AND et.value = ? AND e.content = ? LIMIT 1;
 
 -- [M16] 自分の全 kind:7（TL に「自分が◯◯にリアクション」を混ぜる用）。新しい順。
+-- スカラサブクエリで target_id を取ると、e タグ未索引の瞬間（insertEvent と indexTags の
+-- 間に読まれた場合）や a タグのみのリアクションで NULL になるが、SQLDelight は NOT NULL と
+-- 誤推論するため生成 mapper の `!!` で NPE クラッシュする(#78)。JOIN にして e タグの無い行を
+-- 構造的に除外する（索引が入った時点で Flow が再発火するので取りこぼしは一瞬で解消する）。
 myReactionsAll:
-SELECT e.id, e.content, e.created_at, e.tags_json,
-  (SELECT et2.value FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e' ORDER BY rowid DESC LIMIT 1) AS target_id
+SELECT e.id, e.content, e.created_at, e.tags_json, et.value AS target_id
 FROM event e
+JOIN event_tag et ON et.event_id = e.id AND et.tag = 'e'
 WHERE e.kind = 7 AND e.pubkey = ?
+  AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e')
 ORDER BY e.created_at DESC LIMIT 100;
 
 -- 自分が各ノートに付けたリアクションの内容（絵文字表示用）。note_id→content/tags。

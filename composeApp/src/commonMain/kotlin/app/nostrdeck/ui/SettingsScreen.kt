@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -57,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.hexToBytes
+import app.nostrdeck.crypto.toHex
 import app.nostrdeck.model.AuthPolicy
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
@@ -1311,6 +1314,8 @@ private fun LocalSignerLogin() {
     // 取り込みは検証済み hex を保持、生成は true で確認待ち。
     var pendingImportHex by remember { mutableStateOf<String?>(null) }
     var confirmGenerate by remember { mutableStateOf(false) }
+    // [#nsec-reveal] 保管中の秘密鍵のバックアップ表示（警告→表示の2段階モーダル）。
+    var showNsec by remember { mutableStateOf(false) }
 
     // publicKeyHex() は suspend。refresh をキーに収集して npub を求める。
     val npub by produceState<String?>(null, refresh) {
@@ -1327,8 +1332,13 @@ private fun LocalSignerLogin() {
     if (SignerProvider.current().method == SignerMethod.LOCAL) {
         Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
         Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Spacer(Modifier.size(DeckSpace.Sm))
+        // [#nsec-reveal] 端末に保管中の nsec のバックアップ用表示。生成直後にしか出さないと
+        // 控え損ねたユーザーが詰むので、ローカル鍵ログイン中はいつでも確認できるようにする。
+        DeckTextButton("秘密鍵 (nsec) を表示…", color = DeckColors.Warn, onClick = { showNsec = true })
         Spacer(Modifier.size(DeckSpace.Md))
     }
+    if (showNsec) NsecRevealDialog(onDismiss = { showNsec = false })
     DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
@@ -1419,4 +1429,70 @@ private fun KeySwitchConfirm(title: String, onConfirm: () -> Unit, onDismiss: ()
         onConfirm = onConfirm,
         onDismiss = onDismiss,
     )
+}
+
+/**
+ * [#nsec-reveal] 保管中の秘密鍵(nsec)のバックアップ表示モーダル。
+ * いきなり表示せず、①覗き見・スクショへの注意喚起 → ②表示＋コピー の2段階にする。
+ * ダイアログを閉じる（onDismiss）と表示状態も破棄される。
+ */
+@Composable
+private fun NsecRevealDialog(onDismiss: () -> Unit) {
+    // 通常コピーだと OS のクリップボードプレビューに平文が出るので機密フラグ付きでコピーする。
+    val copySensitive = rememberSensitiveCopy()
+    var revealed by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    // vault から都度読むのは①で確認した後だけ（不要な取り出しを避ける）。
+    val nsec = remember(revealed) {
+        if (!revealed) null
+        else runCatching { Nip19.hexToNsec(SignerProvider.vault().privateKey().toHex()) }.getOrNull()
+    }
+
+    if (!revealed) {
+        // ① 表示前の注意喚起。
+        DeckConfirmDialog(
+            title = "秘密鍵を表示します",
+            text = "秘密鍵 (nsec) を知っている人は、あなたのアカウントを完全に操作できます。" +
+                "周囲からの覗き見（ショルダーハッキング）に注意し、" +
+                "スクリーンショット・画面録画・画面共有に写り込まない状態で表示してください。",
+            confirmLabel = "表示する", destructive = true,
+            onConfirm = { revealed = true },
+            onDismiss = onDismiss,
+        )
+    } else {
+        // ② nsec の表示とクリップボードへのコピー。
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = DeckColors.Surface,
+            shape = RoundedCornerShape(DeckRadius.Lg),
+            title = { Text("秘密鍵 (nsec)", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+            text = {
+                Column {
+                    Text(
+                        nsec ?: "秘密鍵を取得できませんでした。",
+                        color = if (nsec != null) DeckColors.Text else DeckColors.Warn,
+                        fontSize = DeckType.Caption,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = DeckType.LineTitle,
+                    )
+                    Spacer(Modifier.size(DeckSpace.Md))
+                    Text(
+                        "パスワードマネージャーなど安全な場所に控えてください。" +
+                            "コピーした場合、クリップボードの履歴や同期にも残ることがあります。",
+                        color = DeckColors.Text3, fontSize = DeckType.Label,
+                    )
+                }
+            },
+            confirmButton = {
+                if (nsec != null) {
+                    DeckTextButton(
+                        if (copied) "コピーしました" else "コピー",
+                        color = if (copied) DeckColors.Text3 else DeckColors.Text,
+                        onClick = { copySensitive(nsec); copied = true },
+                    )
+                }
+            },
+            dismissButton = { DeckTextButton("閉じる", color = DeckColors.Text3, onClick = onDismiss) },
+        )
+    }
 }
