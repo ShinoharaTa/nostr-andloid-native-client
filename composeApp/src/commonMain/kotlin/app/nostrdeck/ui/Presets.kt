@@ -133,10 +133,11 @@ internal fun RecommendedRelayChips(
     recs: List<Pair<String, Int>>,
     registered: Set<String>,
     onAdd: (String) -> Unit,
+    title: String = "フォロー中でよく使われているリレー",
 ) {
     val remaining = recs.filter { normalizePresetUrl(it.first) !in registered }
     if (remaining.isEmpty()) return
-    Text("フォロー中でよく使われているリレー", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(title, color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     FlowRow(
         Modifier.fillMaxWidth(),

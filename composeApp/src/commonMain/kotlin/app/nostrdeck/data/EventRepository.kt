@@ -759,7 +759,12 @@ class EventRepository(
                     else -> false
                 }
             }
-            (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) } + myReactions)
+            // [#83] 「自分が◯◯にリアクション」は、対象がフォロー中の本文として既に TL に
+            // 流れている場合は混ぜない（コピー＋元投稿が2連続で並ぶ二重表示になるため）。
+            // フォロー外の投稿への♡だけを混ぜて「TL に無いものを掘り起こす」役割に絞る。
+            val noteIds = notes.map { it.event.id }.toSet()
+            val myRx = myReactions.filterNot { it is FeedEntry.MyReaction && it.target.event.id in noteIds }
+            (notes.map { FeedEntry.Post(it) } + notices.map { FeedEntry.Notice(it) } + myRx)
                 .sortedByDescending { it.sortAt }
         }.flowOn(Dispatchers.Default)
 
@@ -787,9 +792,27 @@ class EventRepository(
         }.flowOn(Dispatchers.Default)
     }
 
+    /**
+     * [#80] 上限付きの簡易 LRU（アクセス順）。フィードの StateFlow キャッシュは「直近の値」
+     * ごと保持し続けるため、無制限だとプロフィール閲覧等でフィルタの数だけ NoteUi リストが
+     * 溜まり続けて OOM に至る。上限超過時は最も古くアクセスされたものを捨てる
+     * （捨てても再訪時に DB から再構築されるだけ。WhileSubscribed なので購読中の上流は
+     * 参照を握る UI 側が生かしており、退避は表示に影響しない）。
+     */
+    private class LruCache<K, V>(private val cap: Int) {
+        private val map = LinkedHashMap<K, V>()  // mutableMapOf と同じ挿入順。触れたら入れ直して末尾へ
+        fun getOrPut(key: K, create: () -> V): V {
+            map.remove(key)?.let { map[key] = it; return it }
+            val v = create()
+            map[key] = v
+            if (map.size > cap) map.remove(map.keys.first())
+            return v
+        }
+    }
+
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。
-     *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]）。 */
-    private val columnFeedCache = mutableMapOf<ReqFilter, StateFlow<List<NoteUi>>>()
+     *  遷移で空に戻らないよう filter ごとに StateFlow をキャッシュ（[feedSharing]、上限つき #80）。 */
+    private val columnFeedCache = LruCache<ReqFilter, StateFlow<List<NoteUi>>>(32)
     fun columnFeed(filter: ReqFilter): StateFlow<List<NoteUi>> =
         columnFeedCache.getOrPut(filter) {
             buildColumnFeed(filter).stateIn(scope, feedSharing, emptyList())
@@ -891,7 +914,7 @@ class EventRepository(
         }
 
     /** チャンネルの kind:42 メッセージを ChannelMessage（時系列昇順・連投まとめ・集約リアクション付き）で流す。 */
-    private val channelFeedCache = mutableMapOf<String, StateFlow<List<ChannelMessage>>>()
+    private val channelFeedCache = LruCache<String, StateFlow<List<ChannelMessage>>>(12)  // 上限つき(#80)
     fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
         channelFeedCache.getOrPut(channelId) {
             combine(
@@ -1125,21 +1148,26 @@ class EventRepository(
         return out
     }
 
-    /** NIP-10: 返信先（reply マーカー → root マーカー → 位置で末尾の e）。 */
+    /**
+     * NIP-10: 返信先（reply マーカー → root マーカー → 位置で末尾の e）。
+     * 位置ルールへのフォールバックでは "mention" マーカーの e を除外する。mention は
+     * 引用参照であって返信ではない（俳句Bot 等は content の nevent と mention e タグを
+     * 併記しており、返信扱いすると同じイベントが引用カードと返信文脈で二重表示される）。
+     */
     private fun replyParentOf(tags: List<List<String>>): String? {
         val es = tags.filter { it.size >= 2 && it[0] == "e" }
         if (es.isEmpty()) return null
         es.firstOrNull { it.size >= 4 && it[3] == "reply" }?.let { return it[1] }
         es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
-        return es.last()[1]
+        return es.lastOrNull { it.size < 4 || it[3] != "mention" }?.get(1)
     }
 
-    /** NIP-10: root（root マーカー → 位置で先頭の e）。 */
+    /** NIP-10: root（root マーカー → 位置で先頭の e）。mention は返信系ではないので除外。 */
     private fun rootOf(tags: List<List<String>>): String? {
         val es = tags.filter { it.size >= 2 && it[0] == "e" }
         if (es.isEmpty()) return null
         es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
-        return es.first()[1]
+        return es.firstOrNull { it.size < 4 || it[3] != "mention" }?.get(1)
     }
 
     /** [M10] 自分の♡/リポスト/リアクション状態を NoteUi に反映（ボタンのハイライト・絵文字表示用）。 */
@@ -2209,6 +2237,37 @@ class EventRepository(
             .map { it.key to it.value }
     }
 
+    /**
+     * [#74] 「フォロー中が DM 受信に使っているリレー」を返す（url → 使用人数、多い順）。
+     * フォロー先の kind:10050 を接続中リレー＋インデクサへ一括要求し、数秒集めて集計する。
+     * DM リレーには適性（NIP-42 AUTH・gift wrap 保持）が要るため、静的リストではなく
+     * 実際に DM 受信に使われているリレーを提示する（ingest の updateDmRelayList が
+     * 全 pubkey の 10050 を保持しているのでそれを集計する）。
+     */
+    suspend fun fetchDmRelayRecommendations(): List<Pair<String, Int>> {
+        val authors = follows.value.take(300)  // REQ の肥大化を避けて直近300人まで
+        if (authors.isEmpty()) return emptyList()
+        val subId = "recs_10050"
+        subscribeAll(subId, Filter(kinds = listOf(10050), authors = authors))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(10050), authors = authors))
+        try {
+            delay(3500)
+        } finally {
+            // 画面離脱等でキャンセルされても REQ を残さない（fetchRelayRecommendations と同じ）。
+            unsubscribeAll(subId)
+            unsubscribeAll("${subId}_idx")
+        }
+        val followSet = authors.toSet()
+        val registered = myPubkey?.let { dmRelaysByAuthor.value[it] }.orEmpty().toSet()
+        return dmRelaysByAuthor.value.filterKeys { it in followSet && it != myPubkey }
+            .values.flatMap { it.distinct() }
+            .groupingBy { it }.eachCount()
+            .filterKeys { it !in registered }
+            .entries.sortedByDescending { it.value }
+            .take(12)
+            .map { it.key to it.value }
+    }
+
     private fun updateRelayList(e: NostrEvent) {
         if (e.pubkey != myPubkey) return
         if (e.createdAt < relayListAt) return
@@ -2335,7 +2394,10 @@ class EventRepository(
                 val tags = parseTags(row.tags_json)
                 val eTag = tags.firstOrNull { it.size >= 2 && it[0] == "e" }
                 val origId = eTag?.getOrNull(1)
-                val original = origId?.let { resolveNoteUi(it, byPubkey) }
+                // 元ノートも通常表示と同じく引用/返信を解決する（俳句bot 等の nevent 引用が
+                // リポスト経由だと生リンクのまま残っていた）。
+                val origRow = origId?.let { q.eventById(it).executeAsOneOrNull() }
+                val original = origRow?.let { withQuoteAndReply(toNoteUi(it, byPubkey[it.pubkey]), it, byPubkey) }
                     ?: parseEmbeddedEvent(row.content)?.let { noteUiFromEvent(it, byPubkey) }
                 if (original == null) {
                     // 元ノートが未取得ならリポストを捨てず、リレーヒント(e タグ3要素目)付きで取得を促す。
@@ -2378,7 +2440,11 @@ class EventRepository(
         // インライン参照を解決してテキストを削った場合のみ text を差し替える。未解決なら元の base.text を維持
         // （null のままにして event.content 表示に委ねる＝挙動を変えない）。
         val newText = if (inlineQuoted != null) cleaned else base.text
-        return base.copy(text = newText, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
+        // マーカー無しの旧式引用（e タグ＋本文 nevent 併記）では返信親と引用先が同じ id になる。
+        // 引用カードで表示済みのものを返信文脈でも出すと二重表示になるので抑止する。
+        val replyParent = resolveReplyParent(row, byPubkey)
+            ?.takeIf { it.event.id != quoted?.event?.id }
+        return base.copy(text = newText, quoted = quoted, replyParent = replyParent)
     }
 
     /**
@@ -2614,7 +2680,11 @@ class EventRepository(
                 else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
             }
         }.getOrNull()
-        ogpMutex.withLock { ogpCache[url] = data }
+        ogpMutex.withLock {
+            ogpCache[url] = data
+            // [#80] TL に流れた URL の数だけ無制限に増えるので上限を設ける（挿入順で最古を破棄）。
+            if (ogpCache.size > 256) ogpCache.remove(ogpCache.keys.first())
+        }
         return data
     }
 
