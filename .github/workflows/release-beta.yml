@@ -21,7 +21,11 @@ concurrency:
 
 env:
   BASE_VERSION: "0.2.0"
-  PLAY_TRACK: "beta"  # オープンテスト。クローズド/内部にしたい場合は alpha / internal
+  # Google Group テスターのクローズドテストへ配信する。
+  # Play Console 既定の「クローズドテスト」トラックの API 識別子は "alpha"。
+  # トラックを自作して名前を付けた場合はその表示名をそのまま指定する
+  # （オープンテスト="beta" / 内部テスト="internal"）。
+  PLAY_TRACK: "alpha"
 
 jobs:
   release:
