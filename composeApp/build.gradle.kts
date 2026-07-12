@@ -86,8 +86,10 @@ android {
         applicationId = "net.shino3.nostrism"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI(ベータ自動リリース)は -PversionCode/-PversionName で上書きする
+        // （versionCode は main のコミット数由来で単調増加）。ローカルは既定値のまま。
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
