@@ -1148,21 +1148,26 @@ class EventRepository(
         return out
     }
 
-    /** NIP-10: 返信先（reply マーカー → root マーカー → 位置で末尾の e）。 */
+    /**
+     * NIP-10: 返信先（reply マーカー → root マーカー → 位置で末尾の e）。
+     * 位置ルールへのフォールバックでは "mention" マーカーの e を除外する。mention は
+     * 引用参照であって返信ではない（俳句Bot 等は content の nevent と mention e タグを
+     * 併記しており、返信扱いすると同じイベントが引用カードと返信文脈で二重表示される）。
+     */
     private fun replyParentOf(tags: List<List<String>>): String? {
         val es = tags.filter { it.size >= 2 && it[0] == "e" }
         if (es.isEmpty()) return null
         es.firstOrNull { it.size >= 4 && it[3] == "reply" }?.let { return it[1] }
         es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
-        return es.last()[1]
+        return es.lastOrNull { it.size < 4 || it[3] != "mention" }?.get(1)
     }
 
-    /** NIP-10: root（root マーカー → 位置で先頭の e）。 */
+    /** NIP-10: root（root マーカー → 位置で先頭の e）。mention は返信系ではないので除外。 */
     private fun rootOf(tags: List<List<String>>): String? {
         val es = tags.filter { it.size >= 2 && it[0] == "e" }
         if (es.isEmpty()) return null
         es.firstOrNull { it.size >= 4 && it[3] == "root" }?.let { return it[1] }
-        return es.first()[1]
+        return es.firstOrNull { it.size < 4 || it[3] != "mention" }?.get(1)
     }
 
     /** [M10] 自分の♡/リポスト/リアクション状態を NoteUi に反映（ボタンのハイライト・絵文字表示用）。 */
@@ -2389,7 +2394,10 @@ class EventRepository(
                 val tags = parseTags(row.tags_json)
                 val eTag = tags.firstOrNull { it.size >= 2 && it[0] == "e" }
                 val origId = eTag?.getOrNull(1)
-                val original = origId?.let { resolveNoteUi(it, byPubkey) }
+                // 元ノートも通常表示と同じく引用/返信を解決する（俳句bot 等の nevent 引用が
+                // リポスト経由だと生リンクのまま残っていた）。
+                val origRow = origId?.let { q.eventById(it).executeAsOneOrNull() }
+                val original = origRow?.let { withQuoteAndReply(toNoteUi(it, byPubkey[it.pubkey]), it, byPubkey) }
                     ?: parseEmbeddedEvent(row.content)?.let { noteUiFromEvent(it, byPubkey) }
                 if (original == null) {
                     // 元ノートが未取得ならリポストを捨てず、リレーヒント(e タグ3要素目)付きで取得を促す。
@@ -2432,7 +2440,11 @@ class EventRepository(
         // インライン参照を解決してテキストを削った場合のみ text を差し替える。未解決なら元の base.text を維持
         // （null のままにして event.content 表示に委ねる＝挙動を変えない）。
         val newText = if (inlineQuoted != null) cleaned else base.text
-        return base.copy(text = newText, quoted = quoted, replyParent = resolveReplyParent(row, byPubkey))
+        // マーカー無しの旧式引用（e タグ＋本文 nevent 併記）では返信親と引用先が同じ id になる。
+        // 引用カードで表示済みのものを返信文脈でも出すと二重表示になるので抑止する。
+        val replyParent = resolveReplyParent(row, byPubkey)
+            ?.takeIf { it.event.id != quoted?.event?.id }
+        return base.copy(text = newText, quoted = quoted, replyParent = replyParent)
     }
 
     /**
