@@ -79,7 +79,9 @@ jobs:
           -PversionName=${{ steps.ver.outputs.name }}
 
       - name: Authenticate to Google Cloud (WIF)
-        # JSON 鍵なしのキーレス認証。ここで張った ADC を次の upload ステップが使う。
+        # JSON 鍵なしのキーレス認証。生成される external_account 形式の
+        # クレデンシャルファイルを upload ステップへパスで渡す。
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
@@ -88,6 +90,10 @@ jobs:
       - name: Upload to Play Store (closed testing)
         uses: r0adkll/upload-google-play@v1
         with:
+          # upload-google-play は入力なしの ADC 自動検出に未対応（無指定だと
+          # 文字列 reject が握り潰されて "Unknown error occurred." になる）。
+          # WIF クレデンシャルのパスを明示すれば external_account として読める。
+          serviceAccountJson: ${{ steps.auth.outputs.credentials_file_path }}
           packageName: net.shino3.nostrism
           releaseFiles: composeApp/build/outputs/bundle/release/composeApp-release.aab
           track: ${{ env.PLAY_TRACK }}
