@@ -1,0 +1,99 @@
+# main へのマージで Play Store クローズドテストへ自動リリースする。
+#
+# Play API の認証は Workload Identity Federation（キーレス・推奨方式）。
+# サービスアカウントの JSON 鍵はダウンロードせず、GitHub OIDC トークンで直接認証する。
+#
+# 必要な GitHub Secrets（Settings → Secrets and variables → Actions）:
+#   UPLOAD_KEYSTORE_BASE64   … upload-keystore.jks を base64 化したもの
+#   KEYSTORE_STORE_PASSWORD  … keystore.properties の storePassword
+#   KEYSTORE_KEY_ALIAS       … keystore.properties の keyAlias
+#   KEYSTORE_KEY_PASSWORD    … keystore.properties の keyPassword
+#   GCP_WIF_PROVIDER         … WIF プロバイダのリソース名
+#                              (projects/<番号>/locations/global/workloadIdentityPools/<pool>/providers/<provider>)
+#   GCP_PLAY_SA_EMAIL        … Play Console に権限付与したサービスアカウントのメール
+#
+# versionCode は main のコミット数（単調増加）。versionName は BASE_VERSION-beta.<versionCode>。
+name: Release Beta
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}  # 手動実行（再アップロード等）
+
+permissions:
+  contents: read
+  id-token: write  # WIF: GitHub OIDC トークンの発行に必要
+
+concurrency:
+  group: release-beta
+  cancel-in-progress: false  # アップロード中の打ち切りは中途半端になるので直列化のみ
+
+env:
+  BASE_VERSION: "0.2.0"
+  # Google Group テスターのクローズドテストへ配信する。
+  # Play Console 既定の「クローズドテスト」トラックの API 識別子は "alpha"。
+  # トラックを自作して名前を付けた場合はその表示名をそのまま指定する
+  # （オープンテスト="beta" / 内部テスト="internal"）。
+  PLAY_TRACK: "alpha"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # versionCode をコミット数から導出するため全履歴
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore signing credentials
+        # 署名鍵はリポジトリに含めない(.gitignore)。Secrets から実行時にだけ復元する。
+        run: |
+          echo "${{ secrets.UPLOAD_KEYSTORE_BASE64 }}" | base64 -d > upload-keystore.jks
+          cat > keystore.properties <<EOF
+          storeFile=$GITHUB_WORKSPACE/upload-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          keyAlias=${{ secrets.KEYSTORE_KEY_ALIAS }}
+          keyPassword=${{ secrets.KEYSTORE_KEY_PASSWORD }}
+          EOF
+
+      - name: Compute version
+        id: ver
+        run: |
+          VC=$(git rev-list --count HEAD)
+          VN="${BASE_VERSION}-beta.${VC}"
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+          echo "name=$VN" >> "$GITHUB_OUTPUT"
+          echo "versionCode=$VC versionName=$VN"
+
+      - name: Build signed AAB
+        run: >
+          ./gradlew :composeApp:bundleRelease
+          -PversionCode=${{ steps.ver.outputs.code }}
+          -PversionName=${{ steps.ver.outputs.name }}
+
+      - name: Authenticate to Google Cloud (WIF)
+        # JSON 鍵なしのキーレス認証。ここで張った ADC を次の upload ステップが使う。
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAY_SA_EMAIL }}
+
+      - name: Upload to Play Store (closed testing)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          packageName: net.shino3.nostrism
+          releaseFiles: composeApp/build/outputs/bundle/release/composeApp-release.aab
+          track: ${{ env.PLAY_TRACK }}
+          status: completed
+          releaseName: ${{ steps.ver.outputs.name }}
+
+      - name: Cleanup signing credentials
+        if: always()
+        run: rm -f upload-keystore.jks keystore.properties
