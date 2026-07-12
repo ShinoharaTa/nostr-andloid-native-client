@@ -1,11 +1,16 @@
-# main へのマージで Play Store ベータ(オープンテスト)へ自動リリースする。
+# main へのマージで Play Store クローズドテストへ自動リリースする。
+#
+# Play API の認証は Workload Identity Federation（キーレス・推奨方式）。
+# サービスアカウントの JSON 鍵はダウンロードせず、GitHub OIDC トークンで直接認証する。
 #
 # 必要な GitHub Secrets（Settings → Secrets and variables → Actions）:
 #   UPLOAD_KEYSTORE_BASE64   … upload-keystore.jks を base64 化したもの
 #   KEYSTORE_STORE_PASSWORD  … keystore.properties の storePassword
 #   KEYSTORE_KEY_ALIAS       … keystore.properties の keyAlias
 #   KEYSTORE_KEY_PASSWORD    … keystore.properties の keyPassword
-#   PLAY_SERVICE_ACCOUNT_JSON… Play Console にリンクした GCP サービスアカウントの JSON キー
+#   GCP_WIF_PROVIDER         … WIF プロバイダのリソース名
+#                              (projects/<番号>/locations/global/workloadIdentityPools/<pool>/providers/<provider>)
+#   GCP_PLAY_SA_EMAIL        … Play Console に権限付与したサービスアカウントのメール
 #
 # versionCode は main のコミット数（単調増加）。versionName は BASE_VERSION-beta.<versionCode>。
 name: Release Beta
@@ -14,6 +19,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch: {}  # 手動実行（再アップロード等）
+
+permissions:
+  contents: read
+  id-token: write  # WIF: GitHub OIDC トークンの発行に必要
 
 concurrency:
   group: release-beta
@@ -69,10 +78,16 @@ jobs:
           -PversionCode=${{ steps.ver.outputs.code }}
           -PversionName=${{ steps.ver.outputs.name }}
 
-      - name: Upload to Play Store (beta)
+      - name: Authenticate to Google Cloud (WIF)
+        # JSON 鍵なしのキーレス認証。ここで張った ADC を次の upload ステップが使う。
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAY_SA_EMAIL }}
+
+      - name: Upload to Play Store (closed testing)
         uses: r0adkll/upload-google-play@v1
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: net.shino3.nostrism
           releaseFiles: composeApp/build/outputs/bundle/release/composeApp-release.aab
           track: ${{ env.PLAY_TRACK }}
