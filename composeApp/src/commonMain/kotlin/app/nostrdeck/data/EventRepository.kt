@@ -79,6 +79,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -137,6 +138,17 @@ class EventRepository(
 
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
     private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
+
+    /**
+     * [#96] ユーザーリスト（フォロー中/フォロワー一覧）用の共有プロフィールマップ。
+     * 一覧表示直後は kind:0 が数百件届く。行ごとに DB クエリ listener を張ると
+     * profile テーブル変更のたびに全行が再クエリ→UI 更新の嵐になるため、
+     * 全体テーブルの1本を 400ms サンプリングして「まとめて」流す。
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    fun profilesMapSampled(): Flow<Map<String, app.nostrdeck.db.Profile>> =
+        profilesFlow.sample(400).map { list -> list.associateBy { it.pubkey } }
+            .flowOn(Dispatchers.Default)
 
     // [M10] リアクション数/リプライ数/リポスト数の集約はタイムライン表示に不要（数字は出さない）。
     // 集計クエリ(reactionsForTargets/engagementForTargets)は購読/DBを無駄に使うため使用しない。

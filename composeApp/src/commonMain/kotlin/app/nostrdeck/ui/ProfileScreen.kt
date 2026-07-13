@@ -24,8 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -365,6 +369,7 @@ private fun ProfileHeaderCard(
     var moreMenu by remember { mutableStateOf(false) }
     var confirmMute by remember { mutableStateOf(false) }
     var showReport by remember { mutableStateOf(false) }
+    var showZap by remember { mutableStateOf(false) }
     val muted = social?.muted == true
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
         // --- バナー（kind:0 banner）の上にアバターを重ねる ---
@@ -386,21 +391,40 @@ private fun ProfileHeaderCard(
                 Modifier.align(Alignment.BottomEnd).padding(end = DeckSpace.Lg, bottom = DeckSpace.Xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (isMe) {
-                    DeckGhostButton("編集", onClick = onEdit)
-                } else {
-                    // [#95] …メニュー: ミュート/ミュート解除・通報。
-                    Box {
-                        Box(
-                            Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape).clickable { moreMenu = true },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Outlined.MoreHoriz, "メニュー",
-                                tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconMd),
-                            )
+                // [#zap] プロフィール Zap: lud16 がある他人にだけ表示（e タグ無しのユーザー宛 Zap）。
+                if (!isMe && !profile?.lud16.isNullOrBlank()) {
+                    CircleIconButton(Icons.Outlined.Bolt, "Zap", tint = DeckColors.Zap) { showZap = true }
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                }
+                // [#95/#99] …メニュー: 共有用コピー（自分にも有用）＋ 他人にはミュート/通報。
+                Box {
+                    CircleIconButton(Icons.Outlined.MoreHoriz, "メニュー") { moreMenu = true }
+                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                        // nprofile は対象の NIP-65 リレー（受信済みキャッシュ・最大3件）をヒントに含める。
+                        val nprofile = {
+                            runCatching {
+                                Nip19.hexToNprofile(pubkey, repo?.nip65RelaysOf(pubkey).orEmpty())
+                            }.getOrNull()
                         }
-                        DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("nprofile をコピー") },
+                            onClick = {
+                                moreMenu = false
+                                nprofile()?.let { clipboard.setText(AnnotatedString(it)); toast("nprofile をコピーしました") }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("リンクをコピー（njump）") },
+                            onClick = {
+                                moreMenu = false
+                                val bech = nprofile() ?: runCatching { Nip19.hexToNpub(pubkey) }.getOrNull()
+                                bech?.let {
+                                    clipboard.setText(AnnotatedString("https://njump.me/$it"))
+                                    toast("リンクをコピーしました")
+                                }
+                            },
+                        )
+                        if (!isMe) {
                             DropdownMenuItem(
                                 text = { Text(if (muted) "ミュートを解除" else "ミュート") },
                                 onClick = { moreMenu = false; confirmMute = true },
@@ -411,9 +435,9 @@ private fun ProfileHeaderCard(
                             )
                         }
                     }
-                    Spacer(Modifier.width(DeckSpace.Xs))
-                    FollowButton(following, onFollowToggle)
                 }
+                Spacer(Modifier.width(DeckSpace.Xs))
+                if (isMe) DeckGhostButton("編集", onClick = onEdit) else FollowButton(following, onFollowToggle)
             }
         }
         // --- テキスト情報 ---
@@ -440,45 +464,19 @@ private fun ProfileHeaderCard(
                 Spacer(Modifier.height(DeckSpace.Xs))
                 Nip05Handle(pubkey, it, fontSize = DeckType.Sub)
             }
-            // [#99] npub タップでコピーメニュー（npub / nprofile / njump リンク）。
+            // [#99] npub は表示専用にし、横の明示的なコピーボタンで即コピーする
+            // （テキストタップでメニューが出るのは発見性・誤タップの点で不親切）。
+            // nprofile / njump リンクのコピーは…メニュー側に置く。
             npub?.let { bech ->
                 Spacer(Modifier.height(DeckSpace.Xs))
-                var copyMenu by remember { mutableStateOf(false) }
-                Box {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         bech.take(20) + "…" + bech.takeLast(6),
                         color = DeckColors.Text3, fontSize = DeckType.Label,
-                        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).clickable { copyMenu = true },
                     )
-                    DropdownMenu(expanded = copyMenu, onDismissRequest = { copyMenu = false }) {
-                        // nprofile は対象の NIP-65 リレー（受信済みキャッシュ・最大3件）をヒントに含める。
-                        val nprofile = {
-                            runCatching {
-                                Nip19.hexToNprofile(pubkey, repo?.nip65RelaysOf(pubkey).orEmpty())
-                            }.getOrNull()
-                        }
-                        DropdownMenuItem(
-                            text = { Text("npub をコピー") },
-                            onClick = {
-                                copyMenu = false
-                                clipboard.setText(AnnotatedString(bech)); toast("npub をコピーしました")
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("nprofile をコピー") },
-                            onClick = {
-                                copyMenu = false
-                                nprofile()?.let { clipboard.setText(AnnotatedString(it)); toast("nprofile をコピーしました") }
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("リンクをコピー（njump）") },
-                            onClick = {
-                                copyMenu = false
-                                clipboard.setText(AnnotatedString("https://njump.me/${nprofile() ?: bech}"))
-                                toast("リンクをコピーしました")
-                            },
-                        )
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    CircleIconButton(Icons.Outlined.ContentCopy, "npub をコピー", tint = DeckColors.Text3) {
+                        clipboard.setText(AnnotatedString(bech)); toast("npub をコピーしました")
                     }
                 }
             }
@@ -547,6 +545,15 @@ private fun ProfileHeaderCard(
     }
 
     // [#95] ユーザー通報（NIP-56 kind:1984、p タグのみ）。投稿の通報 UI を再利用する。
+    // [#zap] プロフィール Zap（e タグ無し）。lud16 がある場合のみ⚡ボタンから開く。
+    if (showZap) {
+        ProfileZapSheet(
+            pubkey = pubkey,
+            name = profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10),
+            lud16 = profile?.lud16.orEmpty(),
+            onDismiss = { showZap = false },
+        )
+    }
     if (showReport) {
         ReportDialog(
             title = "このユーザーを通報",
@@ -560,6 +567,23 @@ private fun ProfileHeaderCard(
 }
 
 /** [#95/#98] 名前の横に出す控えめなチップ（「フォローされています」「ミュート中」）。 */
+@Composable
+private fun CircleIconButton(
+    icon: ImageVector, desc: String,
+    tint: Color = DeckColors.Text2,
+    onClick: () -> Unit,
+) {
+    // 丸い小さなアイコンボタン。素のアイコンだと押せることが伝わらないため、
+    // ゴーストボタンと同じ面材(Surface2)を敷いて「ボタン」に見せる。
+    Box(
+        Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
+            .background(DeckColors.Surface2).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, desc, tint = tint, modifier = Modifier.size(DeckDimens.IconMd))
+    }
+}
+
 @Composable
 private fun ProfileBadge(label: String) {
     Text(
@@ -660,10 +684,19 @@ private fun UserListScreen(
             pubkeys.isEmpty() -> Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
                 Text("見つかりませんでした", color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(pubkeys, key = { it }) { pk ->
-                    UserListRow(pk, onClick = { onOpen(pk) })
-                    HorizontalDivider(color = DeckColors.Border)
+            else -> {
+                // [#96-perf] 行ごとに DB クエリ listener を張ると、kind:0 が届くたびに
+                // 全行分の再クエリ＋再構成が走って数百件で破綻する。共有マップ1本を
+                // 400ms サンプリングで読み、変化のあった行だけ再構成させる（key + 値の等価判定）。
+                val repo = LocalRepository.current
+                val profiles by remember(repo) {
+                    repo?.profilesMapSampled() ?: kotlinx.coroutines.flow.flowOf(emptyMap())
+                }.collectAsState(emptyMap())
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(pubkeys, key = { it }) { pk ->
+                        UserListRow(pk, profiles[pk], onClick = { onOpen(pk) })
+                        HorizontalDivider(color = DeckColors.Border)
+                    }
                 }
             }
         }
@@ -672,17 +705,16 @@ private fun UserListScreen(
 
 /** ユーザーリストの1行。プロフィール未取得なら表示されたときに kind:0 を要求する。 */
 @Composable
-private fun UserListRow(pubkey: String, onClick: () -> Unit) {
+private fun UserListRow(pubkey: String, profile: app.nostrdeck.db.Profile?, onClick: () -> Unit) {
     val repo = LocalRepository.current
-    val profile = repo?.let { remember(pubkey) { it.profileFlow(pubkey) } }?.collectAsState(null)?.value
     // 可視化されたタイミングで取得を促す（バッチ REQ に乗るので大量でも先頭から順に埋まる）。
-    androidx.compose.runtime.LaunchedEffect(pubkey) { repo?.loadProfile(pubkey) }
+    androidx.compose.runtime.LaunchedEffect(pubkey) { if (profile == null) repo?.loadProfile(pubkey) }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
             .padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(profile?.name ?: pubkey, profile?.pictureUrl, size = 40.dp)
+        Avatar(profile?.name ?: pubkey, profile?.picture_url, size = 40.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             Text(
