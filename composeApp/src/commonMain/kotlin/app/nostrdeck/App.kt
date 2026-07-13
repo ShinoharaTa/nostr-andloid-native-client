@@ -12,6 +12,8 @@ import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.ExternalIntent
+import app.nostrdeck.state.ExternalIntents
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
 import app.nostrdeck.ui.LocalNoteNav
@@ -19,6 +21,7 @@ import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
 import app.nostrdeck.ui.LoginGate
 import app.nostrdeck.ui.NoteNav
+import kotlinx.coroutines.flow.combine
 
 /**
  * アプリのルート（Android/iOS 共通の入口）。
@@ -53,6 +56,31 @@ fun App(repository: EventRepository? = null) {
         LaunchedEffect(loggedIn) {
             if (loggedIn && !wasLoggedIn) repository?.reloadForNewIdentity()
             wasLoggedIn = loggedIn
+        }
+        // [#100][#101] 外部 Intent（共有/ディープリンク）の消費。未ログイン中は値を保持したまま
+        // 待ち、ログイン成立（session=true）で combine が再発火して処理される。
+        LaunchedEffect(state, repository) {
+            combine(ExternalIntents.pending, SignerProvider.session) { intent, session -> intent to session }
+                .collect { (intent, session) ->
+                    if (intent == null || !session) return@collect
+                    when (intent) {
+                        is ExternalIntent.ShareText -> {
+                            // 共有テキストをコンポーザー初期値に。返信/引用モードの残骸はクリア。
+                            state.replyTo = null
+                            state.quoting = null
+                            state.composeInitialText = intent.text
+                            state.showCompose = true
+                        }
+                        is ExternalIntent.OpenProfile -> state.openProfile(intent.pubkeyHex)
+                        is ExternalIntent.OpenEvent -> {
+                            // 未取得でも requestEvent で取得を促してからスレッドを開く
+                            // （ThreadDetail 側も未キャッシュ分は自前で解決を試みる）。
+                            repository?.requestEvent(intent.id, intent.relays)
+                            state.openThreadDetail(intent.id)
+                        }
+                    }
+                    ExternalIntents.consume()
+                }
         }
         CompositionLocalProvider(
             LocalRepository provides repository,

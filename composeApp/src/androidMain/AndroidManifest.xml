@@ -21,14 +21,30 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <!-- フォルダブル/大画面対応: リサイズ可能にして折り↔展開で幅が変わるようにする -->
+        <!-- [#100][#101] singleTask: 共有/ディープリンクで既存タスクを再利用し、
+             起動中は onNewIntent に Intent が届くようにする（多重起動を防ぐ）。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- [#100] 共有ターゲット: 他アプリの共有シートからテキストを受け取り投稿コンポーザーへ -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- [#101] nostr: ディープリンク（npub/nprofile/note/nevent） -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nostr" />
             </intent-filter>
         </activity>
     </application>

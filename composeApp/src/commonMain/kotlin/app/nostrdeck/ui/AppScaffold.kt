@@ -93,9 +93,13 @@ fun AppScaffold(state: DeckState) {
 
         if (state.showCompose) {
             ComposeSheet(
-                onDismiss = { state.showCompose = false; state.replyTo = null; state.quoting = null },
+                onDismiss = {
+                    state.showCompose = false; state.replyTo = null; state.quoting = null
+                    state.composeInitialText = null  // [#100] 共有初期値は一度きり
+                },
                 replyTo = state.replyTo,
                 quoting = state.quoting,
+                initialText = state.composeInitialText,
             )
         }
 

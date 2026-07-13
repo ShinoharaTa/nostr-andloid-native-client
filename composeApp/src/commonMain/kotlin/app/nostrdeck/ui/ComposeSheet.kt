@@ -101,11 +101,20 @@ import kotlinx.coroutines.sync.withPermit
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: NostrEvent? = null) {
+fun ComposeSheet(
+    onDismiss: () -> Unit,
+    replyTo: NostrEvent? = null,
+    quoting: NostrEvent? = null,
+    // [#100] 共有ターゲット等からの初期本文（非null なら下書き復元より優先）。
+    initialText: String? = null,
+) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
-    var field by remember { mutableStateOf(TextFieldValue("")) }
+    var field by remember {
+        val init = initialText.orEmpty()
+        mutableStateOf(TextFieldValue(init, selection = TextRange(init.length)))
+    }
     val text = field.text
     var showEmojiPicker by remember { mutableStateOf(false) }
     // [#5] NIP-36 センシティブ投稿トグル。ON で content-warning を付けて投稿。

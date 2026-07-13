@@ -1642,8 +1642,9 @@ class EventRepository(
     /**
      * イベント id の取得を要求する。[hints] があれば、そのリレー（未接続なら上限内で一時接続）
      * にも REQ が届くようにする。接続済み/ヒント無しなら従来どおり接続中リレーへ問い合わせる。
+     * [#101] nostr:nevent1… ディープリンク（リレーヒント付き）からも呼ぶため公開。
      */
-    private fun requestEvent(id: String, hints: List<String> = emptyList()) {
+    fun requestEvent(id: String, hints: List<String> = emptyList()) {
         if (hints.isNotEmpty()) {
             scope.launch(relayDispatcher) {
                 for (raw in hints) {
