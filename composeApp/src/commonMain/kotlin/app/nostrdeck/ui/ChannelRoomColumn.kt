@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -515,9 +516,12 @@ private fun Composer(
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg)) }
         Spacer(Modifier.width(DeckSpace.Xs))
+        // 入力欄の丸枠。プレースホルダーと BasicTextField の行高差で空↔入力時に枠が
+        // 伸縮しないよう、最小高（タップ領域 Sm 相当）を確保して安定させる（#106）。
         Box(
-            Modifier.weight(1f).clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
-                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            Modifier.weight(1f).heightIn(min = DeckDimens.TouchTargetSm)
+                .clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
+                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {

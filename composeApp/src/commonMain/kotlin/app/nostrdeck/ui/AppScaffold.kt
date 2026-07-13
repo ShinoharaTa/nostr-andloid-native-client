@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -47,7 +48,14 @@ import app.nostrdeck.theme.DeckSpace
  */
 @Composable
 fun AppScaffold(state: DeckState) {
-    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
+    // systemBars を padding で消費したら、その分を子孫の insets 計算からも差し引く（consume）。
+    // これをしないと、子の imePadding が「画面下端からの IME 全高（ナビバー領域込み）」を
+    // 使ってしまい、既に効いているナビバー padding と二重になって入力欄が中途半端に浮く（#106）。
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .consumeWindowInsets(WindowInsets.systemBars),
+    ) {
         val isCompact = maxWidth.value < COMPACT_BREAKPOINT_DP
 
         // Android 戻る: まず全幅詳細(プロフィール/スレッド)を閉じ、無ければ宛先ごとの処理。
