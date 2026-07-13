@@ -341,9 +341,12 @@ private fun ContentWarningFold(reason: String, onReveal: () -> Unit) {
     }
 }
 
-/** [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。 */
+/**
+ * [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。
+ * [#95] プロフィールからのユーザー通報でも再利用する（[title] で見出しを差し替え）。
+ */
 @Composable
-private fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String = "この投稿を通報") {
     val reasons = listOf(
         "illegal" to "違法・児童の安全に関わる",
         "nudity" to "性的・ヌード",
@@ -356,7 +359,7 @@ private fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { Text("この投稿を通報", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
         text = {
             Column {
                 Text("理由を選んでください（NIP-56 で報告します）", color = DeckColors.Text3, fontSize = DeckType.Label)
