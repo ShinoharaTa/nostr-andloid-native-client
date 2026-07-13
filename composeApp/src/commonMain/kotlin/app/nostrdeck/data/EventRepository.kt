@@ -79,6 +79,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -137,6 +138,17 @@ class EventRepository(
 
     /** 解決済みプロフィール（pubkey→Profile 行）。各フィードと combine して名前/アバターを反映。 */
     private val profilesFlow = q.allProfiles().asFlow().mapToList(Dispatchers.Default)
+
+    /**
+     * [#96] ユーザーリスト（フォロー中/フォロワー一覧）用の共有プロフィールマップ。
+     * 一覧表示直後は kind:0 が数百件届く。行ごとに DB クエリ listener を張ると
+     * profile テーブル変更のたびに全行が再クエリ→UI 更新の嵐になるため、
+     * 全体テーブルの1本を 400ms サンプリングして「まとめて」流す。
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    fun profilesMapSampled(): Flow<Map<String, app.nostrdeck.db.Profile>> =
+        profilesFlow.sample(400).map { list -> list.associateBy { it.pubkey } }
+            .flowOn(Dispatchers.Default)
 
     // [M10] リアクション数/リプライ数/リポスト数の集約はタイムライン表示に不要（数字は出さない）。
     // 集計クエリ(reactionsForTargets/engagementForTargets)は購読/DBを無駄に使うため使用しない。
@@ -918,7 +930,9 @@ class EventRepository(
     fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
         channelFeedCache.getOrPut(channelId) {
             combine(
-                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
+                // クエリは新しい順（LIMIT を最新側から効かせる #110）。表示は昇順なので反転する。
+                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default)
+                    .map { it.asReversed() },
                 profilesFlow, myPubkeyFlow, channelReactionsFlow(channelId),
             ) { rows, profiles, me, reactions ->
                 val byPk = profiles.associateBy { it.pubkey }
@@ -950,6 +964,8 @@ class EventRepository(
     /**
      * 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。
      * [replyTo] があれば NIP-10 の返信（reply マーカー付き #e ＋ 相手 #p）も添える。
+     * [#109] 通常投稿と同様、本文中の :shortcode: は NIP-30 emoji タグに、
+     * nostr:npub… メンションは p タグにして送る。
      */
     suspend fun publishChannelMessage(channelId: String, text: String, replyTo: NostrEvent? = null) {
         if (text.isBlank()) return
@@ -961,6 +977,11 @@ class EventRepository(
                 add(listOf("p", replyTo.pubkey, hint))
             }
             addAll(hashtagsIn(text).map { listOf("t", it) })
+            addAll(emojiTagsIn(text))
+            // メンション先へ p タグ（返信相手と重複したら付けない）。
+            mentionPubkeysIn(text).forEach { pk ->
+                if (pk != replyTo?.pubkey) add(listOf("p", pk))
+            }
         }
         publishSigned(UnsignedEvent(kind = 42, content = text, tags = tags))
     }
@@ -1368,6 +1389,11 @@ class EventRepository(
         publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = tags))
     }
 
+    /** [#95] NIP-56 ユーザー通報。対象イベントの無い通報は p タグにレポートタイプを付す。 */
+    suspend fun reportUser(pubkey: String, type: String, reason: String = "") {
+        publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = listOf(listOf("p", pubkey, type))))
+    }
+
     /** リアクションピッカーの「最近」用に、飛ばした絵文字を記録（"+"/空は対象外）。 */
     private fun recordUsedEmoji(content: String, imageUrl: String?) {
         if (content == "+" || content.isEmpty()) return
@@ -1577,6 +1603,12 @@ class EventRepository(
         return codes.mapNotNull { code -> known[code]?.let { url -> listOf("emoji", code, url) } }
     }
 
+    /** [#109] 本文中の `nostr:npub1…` メンションを hex pubkey へ復号（重複除去・復号失敗は無視）。 */
+    private fun mentionPubkeysIn(content: String): List<String> =
+        NPUB_MENTION_REGEX.findAll(content)
+            .mapNotNull { m -> runCatching { Nip19.npubToHex(m.value.substringAfter("nostr:", m.value)) }.getOrNull() }
+            .distinct().toList()
+
     // ---- kind:0 バッチ解決 ----
     private val authorRequests = Channel<String>(Channel.UNLIMITED)
 
@@ -1625,8 +1657,9 @@ class EventRepository(
     /**
      * イベント id の取得を要求する。[hints] があれば、そのリレー（未接続なら上限内で一時接続）
      * にも REQ が届くようにする。接続済み/ヒント無しなら従来どおり接続中リレーへ問い合わせる。
+     * [#101] nostr:nevent1… ディープリンク（リレーヒント付き）からも呼ぶため公開。
      */
-    private fun requestEvent(id: String, hints: List<String> = emptyList()) {
+    fun requestEvent(id: String, hints: List<String> = emptyList()) {
         if (hints.isNotEmpty()) {
             scope.launch(relayDispatcher) {
                 for (raw in hints) {
@@ -1827,7 +1860,7 @@ class EventRepository(
                 rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
             0 -> upsertProfile(e)
-            3 -> updateFollows(e)
+            3 -> { updateFollows(e); captureContacts(e) }  // 自分のフォロー更新＋全 pubkey の集計[#96/#97/#98]
             10002 -> { captureNip65(e); updateRelayList(e) }
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
@@ -2032,6 +2065,22 @@ class EventRepository(
         return publishMuteList(merged)
     }
 
+    /** [#94/#95] 自分がミュート中のユーザー pubkey 集合（公開/非公開の別を問わない）。 */
+    fun mutedUsersFlow(): Flow<Set<String>> =
+        muteFlow.map { m -> m?.entries?.filter { it.category == MuteCategory.USER }?.map { it.value }?.toSet() ?: emptySet() }
+
+    /**
+     * [#94/#95] 指定ユーザーのミュートを解除する（公開/非公開の両方の USER エントリを除いて再発行）。
+     * 戻り値: 発行できたか（未ミュート/NIP-44 ロック中/失敗は false）。
+     */
+    suspend fun unmuteUser(pubkey: String): Boolean {
+        val current = muteFlow.value ?: return false
+        if (current.nip44Locked) return false                    // 編集不可（NIP-44 ロック中）
+        val filtered = current.entries.filterNot { it.category == MuteCategory.USER && it.value == pubkey }
+        if (filtered.size == current.entries.size) return false  // ミュートしていない
+        return publishMuteList(filtered)
+    }
+
     /** [#4] 自分のミュートワード一覧（NIP-51 kind:10000 の private "word"）。 */
     fun muteWordsFlow(): Flow<List<String>> =
         muteFlow.map { m -> m?.entries?.filter { it.category == MuteCategory.WORD }?.map { it.value } ?: emptyList() }
@@ -2186,6 +2235,89 @@ class EventRepository(
         followsAt = e.createdAt
         follows.value = e.tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
     }
+
+    // ---- [#96/#97/#98] ソーシャルグラフ（任意 pubkey の kind:3 集計） ----
+
+    /** 全 pubkey の kind:3 をメモリに集計（pubkey → 最新の created_at と p タグ）。DB には入れない。 */
+    // [#80-OOM] kind:3 は1通で数百〜数千の p タグを持つ巨大イベント。届いた全員分の
+    // 全リストを保持すると、フォロワー集計（kind:3 を最大500通引き込む）で 100MB 級に
+    // 膨らみ heap(256MB) が枯渇する。全リストは「明示的に要求した対象（閲覧中の
+    // プロフィール）」だけ LRU（最大8人）で保持し、フォロワー集計には真偽値しか積まない。
+    private val contactsByAuthor = MutableStateFlow<Map<String, Pair<Long, List<String>>>>(emptyMap())
+    private val contactsInterest = ArrayDeque<String>()  // 全リスト保持を許可した pubkey（挿入順・最大8）
+
+    /** 進行中のフォロワー集計（target → 発行者 → (createdAt, 対象を含むか)）。フェッチ中のみ登録。 */
+    private val followerScans = mutableMapOf<String, MutableMap<String, Pair<Long, Boolean>>>()
+
+    /** kind:3 の取り込み。発行者ごと最新版のみ・保持は要求済み対象と進行中集計に限定。 */
+    private fun captureContacts(e: NostrEvent) {
+        if (e.pubkey in contactsInterest) {
+            val prev = contactsByAuthor.value[e.pubkey]
+            if (prev == null || prev.first < e.createdAt) {
+                val ps = e.tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
+                contactsByAuthor.value = contactsByAuthor.value + (e.pubkey to (e.createdAt to ps))
+            }
+        }
+        // 進行中のフォロワー集計へは「対象を含むかどうか」だけ記録（リスト本体は保持しない）。
+        followerScans.forEach { (target, seen) ->
+            val prev = seen[e.pubkey]
+            if (prev == null || prev.first < e.createdAt) {
+                seen[e.pubkey] = e.createdAt to e.tags.any { it.size >= 2 && it[0] == "p" && it[1] == target }
+            }
+        }
+    }
+
+    /**
+     * [#96/#98] 対象ユーザーのフォロー先（kind:3 の p タグ）。
+     * 呼び出し時に接続中リレー＋インデクサへ単発 REQ を投げ、届き次第 flow が更新される。
+     * 自分は publish の楽観反映も追う既存 [follows] をそのまま返す。
+     */
+    fun followsOf(pubkey: String): Flow<List<String>> {
+        if (pubkey == myPubkey) return follows
+        requestContactsOf(pubkey)
+        return contactsByAuthor.map { it[pubkey]?.second.orEmpty() }
+    }
+
+    /** 対象の kind:3 を単発 REQ し、全リスト保持の許可（LRU 最大8）を与える。 */
+    private fun requestContactsOf(pubkey: String) {
+        if (pubkey in contactsInterest) return  // 取得済み（更新は通常の受信で追える範囲でよい）
+        contactsInterest.addLast(pubkey)
+        if (contactsInterest.size > 8) {
+            val evicted = contactsInterest.removeFirst()
+            contactsByAuthor.value = contactsByAuthor.value - evicted
+        }
+        val subId = "contacts_of_${pubkey.take(12)}"
+        subscribeAll(subId, Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1))
+        scope.launch { delay(6000); unsubscribeAll(subId); unsubscribeAll("${subId}_idx") }
+    }
+
+    /**
+     * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを収集する（リレーで観測できた範囲のみ・全数ではない）。
+     * 接続中リレー＋インデクサへ REQ し数秒集計。同一発行者は最新の kind:3 だけ採用し、
+     * 最新リストに対象が含まれない発行者は除外する（アンフォロー検出）。
+     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由 #80-OOM）。
+     */
+    suspend fun fetchFollowersOf(pubkey: String): List<String> {
+        val subId = "followers_of_${pubkey.take(12)}"
+        val seen = mutableMapOf<String, Pair<Long, Boolean>>()
+        followerScans[pubkey] = seen
+        subscribeAll(subId, Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
+        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
+        try {
+            delay(3500)
+        } finally {
+            // 画面離脱等でキャンセルされても REQ と集計テーブルを残さない。
+            followerScans.remove(pubkey)
+            unsubscribeAll(subId)
+            unsubscribeAll("${subId}_idx")
+        }
+        return seen.filterValues { it.second }.keys.toList()
+    }
+
+    /** [#99] 対象ユーザーの NIP-65 リレー（受信済みキャッシュから最大 [max] 件）。nprofile のリレーヒント用。 */
+    fun nip65RelaysOf(pubkey: String, max: Int = 3): List<String> =
+        nip65ByAuthor[pubkey]?.second?.take(max).orEmpty()
 
     /**
      * 自分の kind:10002（NIP-65）から `r` タグを取り出してリレーリストへ。

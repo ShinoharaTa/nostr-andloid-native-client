@@ -1,13 +1,18 @@
 package app.nostrdeck
 
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.state.ExternalIntent
+import app.nostrdeck.state.ExternalIntents
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.AndroidExternalSigner
@@ -118,6 +123,54 @@ class MainActivity : ComponentActivity() {
         repository = EventRepository(db, appScope, DEFAULT_RELAYS).apply { start() }
 
         setContent { App(repository) }
+
+        // [#100][#101] 起動 Intent（共有/ディープリンク）を処理。
+        // 再生成（回転/プロセス復元）では再処理しない（savedInstanceState で判定）。
+        if (savedInstanceState == null) handleExternalIntent(intent)
+    }
+
+    // [#100][#101] singleTask で起動中に共有/ディープリンクが届いたときの入口。
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleExternalIntent(intent)
+    }
+
+    /**
+     * [#100][#101] 外部 Intent を解析して ExternalIntents に流す。
+     * 消費（コンポーザー起動/画面遷移）はログイン状態を見られる App 側で行う。
+     */
+    private fun handleExternalIntent(intent: Intent?) {
+        when (intent?.action) {
+            // [#100] 共有ターゲット: EXTRA_TEXT（+あれば EXTRA_SUBJECT を先頭行に）を投稿初期値へ。
+            Intent.ACTION_SEND -> {
+                if (intent.type?.startsWith("text/") != true) return
+                val body = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+                val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+                val text = listOf(subject, body).filter { it.isNotBlank() }.joinToString("\n")
+                if (text.isNotBlank()) ExternalIntents.post(ExternalIntent.ShareText(text))
+            }
+            // [#101] nostr: ディープリンク（nostr:npub1… / nostr://npub1… の両形式を許容）。
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data ?: return
+                if (uri.scheme != "nostr") return
+                val bech = uri.schemeSpecificPart.orEmpty().removePrefix("//").trim()
+                val external = when {
+                    bech.startsWith("npub1") || bech.startsWith("nprofile1") ->
+                        Nip19.mentionBechToHex(bech)?.let { ExternalIntent.OpenProfile(it) }
+                    bech.startsWith("note1") || bech.startsWith("nevent1") ->
+                        Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
+                            ExternalIntent.OpenEvent(id, relays)
+                        }
+                    else -> null
+                }
+                if (external != null) {
+                    ExternalIntents.post(external)
+                } else {
+                    // naddr 等の未対応タイプ、または壊れた bech32。
+                    Toast.makeText(this, "未対応のリンク形式です", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     override fun onStart() {

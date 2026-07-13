@@ -45,13 +45,29 @@ private val ZAP_PRESETS = listOf(21L, 100L, 500L, 1000L, 5000L, 10000L)
  * 送信は「invoice を取得 → `lightning:` URI で外部ウォレットを起動」。ウォレット側で支払う。
  * lud16 が無い相手には呼び出し側で出さない（⚡自体を非表示）。
  */
+@Composable
+fun ZapSheet(note: NoteUi, onDismiss: () -> Unit) = ZapSheetImpl(
+    recipientPubkey = note.event.pubkey, recipientName = note.author.name,
+    lud16 = note.author.lud16.orEmpty(), eventId = note.event.id, targetKind = note.event.kind,
+    onDismiss = onDismiss,
+)
+
+/** プロフィールからの Zap（e タグ無し＝ユーザー宛。NIP-57 のプロフィール Zap）。 */
+@Composable
+fun ProfileZapSheet(pubkey: String, name: String, lud16: String, onDismiss: () -> Unit) = ZapSheetImpl(
+    recipientPubkey = pubkey, recipientName = name, lud16 = lud16,
+    eventId = null, targetKind = null, onDismiss = onDismiss,
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ZapSheet(note: NoteUi, onDismiss: () -> Unit) {
+private fun ZapSheetImpl(
+    recipientPubkey: String, recipientName: String, lud16: String,
+    eventId: String?, targetKind: Int?, onDismiss: () -> Unit,
+) {
     val repo = LocalRepository.current
     val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
-    val lud16 = note.author.lud16.orEmpty()
 
     var amount by remember { mutableStateOf(100L) }
     var custom by remember { mutableStateOf("") }
@@ -69,7 +85,7 @@ fun ZapSheet(note: NoteUi, onDismiss: () -> Unit) {
             Text("⚡ Zap", color = DeckColors.Text, fontSize = DeckType.Display, fontWeight = DeckWeight.Strong)
             Spacer(Modifier.size(DeckSpace.Xs))
             Text(
-                "${note.author.name} へ投げ銭します。金額を選び、ウォレットで支払ってください。",
+                "$recipientName へ投げ銭します。金額を選び、ウォレットで支払ってください。",
                 color = DeckColors.Text3, fontSize = DeckType.Label,
             )
             Spacer(Modifier.size(DeckSpace.Md))
@@ -118,9 +134,9 @@ fun ZapSheet(note: NoteUi, onDismiss: () -> Unit) {
                         busy = true; error = null
                         scope.launch {
                             val invoice = repo?.requestZapInvoice(
-                                recipientPubkey = note.event.pubkey, lud16 = lud16,
+                                recipientPubkey = recipientPubkey, lud16 = lud16,
                                 amountSats = effectiveAmount, comment = comment,
-                                eventId = note.event.id, targetKind = note.event.kind,
+                                eventId = eventId, targetKind = targetKind,
                             )
                             busy = false
                             if (invoice.isNullOrBlank()) {

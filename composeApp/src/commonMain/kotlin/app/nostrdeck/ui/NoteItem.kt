@@ -104,6 +104,11 @@ fun NoteItem(
   var showReactionPicker by remember { mutableStateOf(false) }
   // ファボ/リアクションの取り消しは kind:5（削除イベント）の発行を伴うため、確認を挟む。
   var confirmUnreact by remember { mutableStateOf(false) }
+  // [#93] フォロー解除は kind:3（フォローリスト）の再発行を伴うため、確認を挟む。
+  var confirmUnfollow by remember { mutableStateOf(false) }
+  // [#94] ミュートは表示への影響が大きいため、確認してから実行する。
+  var confirmMute by remember { mutableStateOf(false) }
+  val toast = rememberToaster()
   // [#6] NIP-56 通報ダイアログ。
   var showReport by remember { mutableStateOf(false) }
   // [#5] NIP-36 コンテンツ警告: 既定は折りたたみ、タップで開く。
@@ -224,6 +229,20 @@ fun NoteItem(
                     val isMine = note.event.pubkey == me
                     DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                         // --- 操作系 ---
+                        // [#93] 他人の投稿はフォロー状態に応じてトグル表示。フォローは即実行、
+                        // 解除は kind:3 の再発行で破壊的なため確認ダイアログを挟む。
+                        if (!isMine) {
+                            val isFollowing by (repo?.isFollowingFlow(note.event.pubkey)?.collectAsState(false)
+                                ?: remember { mutableStateOf(false) })
+                            DropdownMenuItem(
+                                text = { Text(if (isFollowing) "フォロー解除" else "フォロー") },
+                                onClick = {
+                                    moreMenu = false
+                                    if (isFollowing) confirmUnfollow = true
+                                    else scope.launch { repo?.follow(note.event.pubkey) }
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(if (isBookmarked) "ブックマークを解除" else "ブックマーク") },
                             onClick = { moreMenu = false; scope.launch { repo?.toggleBookmark(note.event.id) } },
@@ -235,9 +254,21 @@ fun NoteItem(
                                 onClick = { moreMenu = false; scope.launch { repo?.togglePinned(note.event.id) } },
                             )
                         } else {
+                            // [#94] ミュート済みなら「ミュートを解除」に切替。ミュートは確認してから実行する。
+                            val mutedUsers by (repo?.mutedUsersFlow()?.collectAsState(emptySet())
+                                ?: remember { mutableStateOf(emptySet<String>()) })
+                            val isMuted = note.event.pubkey in mutedUsers
                             DropdownMenuItem(
-                                text = { Text("このユーザーをミュート") },
-                                onClick = { moreMenu = false; scope.launch { repo?.muteUserPrivate(note.event.pubkey) } },
+                                text = { Text(if (isMuted) "ミュートを解除" else "このユーザーをミュート") },
+                                onClick = {
+                                    moreMenu = false
+                                    if (isMuted) scope.launch {
+                                        toast(
+                                            if (repo?.unmuteUser(note.event.pubkey) == true) "ミュートを解除しました"
+                                            else "ミュートリストが変更できません（ロック中の可能性）"
+                                        )
+                                    } else confirmMute = true
+                                },
                             )
                             DropdownMenuItem(
                                 text = { Text("通報", color = DeckColors.Warn) },
@@ -297,6 +328,36 @@ fun NoteItem(
       )
   }
 
+  // [#93] フォロー解除の確認。kind:3（フォローリスト）を再発行するため一旦止める。
+  if (confirmUnfollow) {
+      DeckConfirmDialog(
+          title = "フォローを解除しますか？",
+          text = "${note.author.name} のフォローを解除します。",
+          confirmLabel = "解除する", destructive = true,
+          onConfirm = { confirmUnfollow = false; scope.launch { repo?.unfollow(note.event.pubkey) } },
+          onDismiss = { confirmUnfollow = false },
+      )
+  }
+
+  // [#94] ミュートの確認。実行結果はトーストで知らせる。
+  if (confirmMute) {
+      DeckConfirmDialog(
+          title = "このユーザーをミュートしますか？",
+          text = "この人の投稿と通知を表示しなくなります。設定 → ミュート でいつでも解除できます。",
+          confirmLabel = "ミュート", destructive = true,
+          onConfirm = {
+              confirmMute = false
+              scope.launch {
+                  toast(
+                      if (repo?.muteUserPrivate(note.event.pubkey) == true) "ミュートしました"
+                      else "ミュートリストが変更できません（ロック中の可能性）"
+                  )
+              }
+          },
+          onDismiss = { confirmMute = false },
+      )
+  }
+
   // [M13] Zap: NIP-57 で invoice を作り、lightning: URI で外部ウォレットへ。⚡は lud16 がある時だけ表示。
   if (showZap) {
       ZapSheet(note, onDismiss = { showZap = false })
@@ -341,9 +402,12 @@ private fun ContentWarningFold(reason: String, onReveal: () -> Unit) {
     }
 }
 
-/** [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。 */
+/**
+ * [#6] 通報の理由ピッカー。NIP-56 のレポートタイプを選ぶ。児童の安全は「違法」を使う。
+ * [#95] プロフィールからのユーザー通報でも再利用する（[title] で見出しを差し替え）。
+ */
 @Composable
-private fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String = "この投稿を通報") {
     val reasons = listOf(
         "illegal" to "違法・児童の安全に関わる",
         "nudity" to "性的・ヌード",
@@ -356,7 +420,7 @@ private fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { Text("この投稿を通報", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
         text = {
             Column {
                 Text("理由を選んでください（NIP-56 で報告します）", color = DeckColors.Text3, fontSize = DeckType.Label)

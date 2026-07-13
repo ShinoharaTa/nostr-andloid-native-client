@@ -52,6 +52,22 @@ object Nip19 {
     }
 
     /**
+     * [#99] 公開鍵（+ 任意のリレーヒント）→ nprofile(bech32)（NIP-19 TLV）。
+     *  - type=0 special : 32byte pubkey（必須）
+     *  - type=1 relay   : リレー URL（ASCII, 複数可）
+     */
+    fun hexToNprofile(pubkey: String, relays: List<String> = emptyList()): String {
+        val tlv = ArrayList<Byte>()
+        fun put(type: Int, value: ByteArray) {
+            tlv.add(type.toByte()); tlv.add(value.size.toByte()); value.forEach { tlv.add(it) }
+        }
+        put(0, pubkey.hexToBytes())
+        relays.forEach { put(1, it.encodeToByteArray()) }
+        val five = Bech32.convertBits(tlv.toByteArray(), 8, 5, true)
+        return Bech32.encode("nprofile", five)
+    }
+
+    /**
      * note(32byte 単発) / nevent(TLV) の bech32 → 64文字 hex イベント id。
      * 解析できなければ null（チェックサム不正・未対応 hrp など）。
      *  - note   : 32byte の event id をそのまま hex 化。

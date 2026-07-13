@@ -226,12 +226,16 @@ VALUES (?, ?, ?, ?, ?, ?);
 touchChannelActivity:
 UPDATE channel SET last_message_at = ? WHERE id = ? AND last_message_at < ?;
 
--- 特定チャンネルの kind:42 メッセージ（#e=チャンネルid）を時系列昇順で。
+-- 特定チャンネルの kind:42 メッセージ（#e=チャンネルid）を新しい順で LIMIT。
+-- [#110] LIMIT は「最新側」から効かせる。ASC+LIMIT だと最古 N 件に張り付き、
+-- 蓄積が LIMIT を超えた時点で新着（自分の投稿含む）が結果に入らなくなる。
+-- 表示用の昇順への反転は Kotlin 側で行う（SQL のサブクエリ包みは SQLDelight が
+-- 外側の列を event. 修飾で生成してしまい実行時エラーになるため使わない）。
 messagesByChannel:
 SELECT event.* FROM event
 JOIN event_tag ON event.id = event_tag.event_id
 WHERE event.kind = 42 AND event_tag.tag = 'e' AND event_tag.value = ?
-ORDER BY event.created_at ASC LIMIT ?;
+ORDER BY event.created_at DESC LIMIT ?;
 
 -- 特定チャンネルのメッセージ(kind:42)を対象にした kind:7 リアクションだけを取得。
 -- 対象を「このチャンネルの kind:42 の id」に限定して、全 kind:7 の走査を避ける。

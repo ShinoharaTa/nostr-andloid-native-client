@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
@@ -29,9 +31,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
@@ -70,9 +75,21 @@ fun AppScaffold(state: DeckState) {
         }
 
         if (isCompact) {
+            // Compact では内容の下に BottomBar が居るので、内容の下端は「画面下端」ではなく
+            // 「BottomBar の上端」。子（チャット入力欄）の imePadding は画面下端基準の IME 全高を
+            // 使うため、そのままだと BottomBar の高さぶん過剰に浮く。BottomBar の高さを bottom
+            // インセットとして consume し、子の imePadding が正味（IME − BottomBar − navbar）だけ
+            // 効くようにする。root で systemBars(navbar) は consume 済みなので、ここは BottomBar 分。
+            var bottomBarHeight by remember { mutableStateOf(0.dp) }
+            val density = LocalDensity.current
             Column(Modifier.fillMaxSize()) {
-                ContentWithCompose(state, isCompact = true, Modifier.weight(1f))
-                BottomBar(state)
+                ContentWithCompose(
+                    state, isCompact = true,
+                    Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bottomBarHeight)),
+                )
+                Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
+                    BottomBar(state)
+                }
             }
         } else {
             Row(Modifier.fillMaxSize()) {
@@ -93,9 +110,13 @@ fun AppScaffold(state: DeckState) {
 
         if (state.showCompose) {
             ComposeSheet(
-                onDismiss = { state.showCompose = false; state.replyTo = null; state.quoting = null },
+                onDismiss = {
+                    state.showCompose = false; state.replyTo = null; state.quoting = null
+                    state.composeInitialText = null  // [#100] 共有初期値は一度きり
+                },
                 replyTo = state.replyTo,
                 quoting = state.quoting,
+                initialText = state.composeInitialText,
             )
         }
 

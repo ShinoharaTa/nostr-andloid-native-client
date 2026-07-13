@@ -101,11 +101,20 @@ import kotlinx.coroutines.sync.withPermit
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ComposeSheet(onDismiss: () -> Unit, replyTo: NostrEvent? = null, quoting: NostrEvent? = null) {
+fun ComposeSheet(
+    onDismiss: () -> Unit,
+    replyTo: NostrEvent? = null,
+    quoting: NostrEvent? = null,
+    // [#100] 共有ターゲット等からの初期本文（非null なら下書き復元より優先）。
+    initialText: String? = null,
+) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
-    var field by remember { mutableStateOf(TextFieldValue("")) }
+    var field by remember {
+        val init = initialText.orEmpty()
+        mutableStateOf(TextFieldValue(init, selection = TextRange(init.length)))
+    }
     val text = field.text
     var showEmojiPicker by remember { mutableStateOf(false) }
     // [#5] NIP-36 センシティブ投稿トグル。ON で content-warning を付けて投稿。
@@ -533,9 +542,9 @@ private fun BodyField(
     }
 }
 
-/** 絵文字候補チップ（カスタム絵文字の画像 + :shortcode:）。タップで本文へ挿入。 */
+/** 絵文字候補チップ（カスタム絵文字の画像 + :shortcode:）。タップで本文へ挿入。チャット Composer と共用。 */
 @Composable
-private fun EmojiSuggestChip(emoji: app.nostrdeck.model.CustomEmoji, onClick: () -> Unit) {
+internal fun EmojiSuggestChip(emoji: app.nostrdeck.model.CustomEmoji, onClick: () -> Unit) {
     Row(
         Modifier.clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
             .clickable(onClick = onClick).padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
@@ -679,9 +688,9 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
     }
 }
 
-/** メンション候補1行（アバター + 表示名 + nip05）。タップで本文へ挿入。 */
+/** メンション候補1行（アバター + 表示名 + nip05）。タップで本文へ挿入。チャット Composer と共用。 */
 @Composable
-private fun MentionRow(profile: Profile, onClick: () -> Unit) {
+internal fun MentionRow(profile: Profile, onClick: () -> Unit) {
     val name = profile.name.takeIf { it.isNotBlank() }
         ?: runCatching { Nip19.hexToNpub(profile.pubkey).take(12) + "…" }.getOrDefault(profile.pubkey.take(12))
     Row(
@@ -717,8 +726,8 @@ private fun TagChip(tag: String, onClick: () -> Unit) {
     )
 }
 
-/** カーソル位置に文字列を挿入し、カーソルを挿入後の末尾へ移す。 */
-private fun insertAtCursor(field: TextFieldValue, s: String): TextFieldValue {
+/** カーソル位置に文字列を挿入し、カーソルを挿入後の末尾へ移す。チャット Composer と共用。 */
+internal fun insertAtCursor(field: TextFieldValue, s: String): TextFieldValue {
     val cur = field.selection.start.coerceIn(0, field.text.length)
     val newText = field.text.substring(0, cur) + s + field.text.substring(cur)
     return field.copy(text = newText, selection = TextRange(cur + s.length))
@@ -747,10 +756,10 @@ private fun appendHashtag(field: TextFieldValue, tag: String): TextFieldValue {
 private fun completeHashtag(field: TextFieldValue, tag: String): TextFieldValue =
     replaceTokenBeforeCursor(field, '#', "#$tag ")
 
-/** 入力中の "@…" を "nostr:<npub> " で置き換える（メンション補完・カーソル直前）。 */
-private fun completeMention(field: TextFieldValue, npub: String): TextFieldValue =
+/** 入力中の "@…" を "nostr:<npub> " で置き換える（メンション補完・カーソル直前）。チャット Composer と共用。 */
+internal fun completeMention(field: TextFieldValue, npub: String): TextFieldValue =
     replaceTokenBeforeCursor(field, '@', "nostr:$npub ")
 
-/** 入力中の ":…" を ":shortcode: " で置き換える（カスタム絵文字補完・カーソル直前）。 */
-private fun insertEmojiShortcode(field: TextFieldValue, shortcode: String): TextFieldValue =
+/** 入力中の ":…" を ":shortcode: " で置き換える（カスタム絵文字補完・カーソル直前）。チャット Composer と共用。 */
+internal fun insertEmojiShortcode(field: TextFieldValue, shortcode: String): TextFieldValue =
     replaceTokenBeforeCursor(field, ':', ":$shortcode: ")
