@@ -12,6 +12,10 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # 表示バージョンとビルド番号。TestFlight は build 番号の単調増加が必須なので、
+    # アップロード時に scripts/testflight.sh が -PbuildNumber 相当で CURRENT_PROJECT_VERSION を上書きする。
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 targets:
   iosApp:
@@ -24,8 +28,11 @@ targets:
       properties:
         CFBundleDisplayName: $(APP_NAME)
         CFBundleName: $(APP_NAME)
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # 暗号の輸出コンプライアンス: 標準TLSと Nostr 署名(secp256k1)のみで独自暗号は持たない。
+        # false にすると TestFlight アップロード毎の輸出コンプライアンス質問を省ける（法的宣言）。
+        ITSAppUsesNonExemptEncryption: false
         # Compose Multiplatform 必須: 未指定だと PlistSanityCheck が例外を投げてクラッシュする
         # （ProMotion 120Hz を有効化するためのフラグ）。
         CADisableMinimumFrameDurationOnPhone: true
