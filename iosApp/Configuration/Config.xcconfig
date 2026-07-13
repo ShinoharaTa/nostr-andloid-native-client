@@ -1,0 +1,8 @@
+// iosApp のビルド設定（xcodegen が各ターゲットへ流し込む）。
+// 実機ビルド時は TEAM_ID に Apple Developer のチームID（10桁）を入れる。
+// 例: TEAM_ID = ABCDE12345
+// シミュレータのみなら TEAM_ID は空でよい（署名不要）。
+
+APP_NAME = Nostrism
+BUNDLE_ID = net.shino3.nostrism
+TEAM_ID =
