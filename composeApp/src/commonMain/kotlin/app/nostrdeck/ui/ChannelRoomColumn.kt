@@ -383,7 +383,11 @@ private fun Bubble(
     val hasActions = onReply != null || onReact != null
     var menu by remember { mutableStateOf(false) }
     // 本文の nostr:npub… は @表示名（解決できれば）に、その他 nostr: 参照は ↗… に短縮。
-    val annotated = remember(m.event.content, names) { noteAnnotated(m.event.content, { names[it] }) }
+    // 自分の吹き出しは明色地なので、メンション/リンク色を暗色にして埋もれさせない（区別はウェイト）。
+    val linkColor = if (m.isMine) DeckColors.Bg else DeckColors.Accent
+    val annotated = remember(m.event.content, names, linkColor) {
+        noteAnnotated(m.event.content, { names[it] }, linkColor = linkColor)
+    }
     Box(modifier) {
         Text(
             annotated,
@@ -513,7 +517,8 @@ private fun Composer(
     }
     Row(
         Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+        // 複数行入力で枠が縦に伸びたとき、絵文字/送信ボタンは下端に沿わせる（チャットの定番）。
+        verticalAlignment = Alignment.Bottom,
     ) {
         // 絵文字ピッカー（Unicode + 自分のカスタム絵文字）。カーソル位置に挿入。
         Box(
@@ -523,20 +528,23 @@ private fun Composer(
         Spacer(Modifier.width(DeckSpace.Xs))
         // 入力欄の丸枠。プレースホルダーと BasicTextField の行高差で空↔入力時に枠が
         // 伸縮しないよう、最小高（タップ領域 Sm 相当）を確保して安定させる（#106）。
+        // 角丸は Full(=999,ピル)だと複数行で左右が半円になり不格好なので、複数行でも
+        // 破綻しない固定 Lg。本文サイズに合わせて可読性を上げ、伸び過ぎは maxLines で抑える。
         Box(
             Modifier.weight(1f).heightIn(min = DeckDimens.TouchTargetSm)
-                .clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
-                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                .clip(RoundedCornerShape(DeckRadius.Lg)).background(DeckColors.Surface2)
+                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {
-                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Body)
             }
             BasicTextField(
                 value = field,
                 onValueChange = { field = it },
-                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Caption),
+                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Body),
                 cursorBrush = SolidColor(DeckColors.Accent),
+                maxLines = 6,
                 modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChanged(it.isFocused) },
             )
         }
