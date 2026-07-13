@@ -918,7 +918,9 @@ class EventRepository(
     fun channelMessagesFeed(channelId: String): StateFlow<List<ChannelMessage>> =
         channelFeedCache.getOrPut(channelId) {
             combine(
-                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default),
+                // クエリは新しい順（LIMIT を最新側から効かせる #110）。表示は昇順なので反転する。
+                q.messagesByChannel(channelId, 300L).asFlow().mapToList(Dispatchers.Default)
+                    .map { it.asReversed() },
                 profilesFlow, myPubkeyFlow, channelReactionsFlow(channelId),
             ) { rows, profiles, me, reactions ->
                 val byPk = profiles.associateBy { it.pubkey }
