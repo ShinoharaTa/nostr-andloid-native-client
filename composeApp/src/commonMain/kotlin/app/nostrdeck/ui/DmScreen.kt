@@ -103,6 +103,8 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
                     onClose = if (isCompact) null else ({ state.dmThread = null }),
                     onBack = if (isCompact) ({ state.dmThread = null }) else null,
+                    // DM(1:1) は自分＝右寄せ・明色バブル（iMessage流）を維持。
+                    mineOnRight = true,
                 )
             }
         },

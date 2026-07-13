@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -51,6 +52,8 @@ fun CollapsibleText(
     modifier: Modifier = Modifier,
     collapsedMaxLines: Int = 8,
     emojis: Map<String, String> = emptyMap(),
+    color: Color = DeckColors.Text,
+    linkColor: Color = DeckColors.Accent,
 ) {
     var expanded by remember { mutableStateOf(false) }
     // 折りたたみ時に溢れたか。初回(折りたたみ)レイアウトで判定する。
@@ -60,7 +63,9 @@ fun CollapsibleText(
     // nav があれば @→プロフィール/#→カラム/note→スレッド をタップで開ける。
     val names = LocalProfileNames.current
     val nav = LocalNoteNav.current
-    val annotated = remember(text, names, emojis, nav) { noteAnnotated(text, { names[it] }, emojis, nav) }
+    val annotated = remember(text, names, emojis, nav, linkColor) {
+        noteAnnotated(text, { names[it] }, emojis, nav, linkColor = linkColor)
+    }
     // NIP-30 カスタム絵文字のインライン描画（shortcode→画像）。
     val ctx = LocalPlatformContext.current
     val inline = remember(emojis) {
@@ -81,7 +86,7 @@ fun CollapsibleText(
     Column(modifier) {
         Text(
             annotated,
-            color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = 20.sp,
+            color = color, fontSize = DeckType.Body, lineHeight = 20.sp,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
             inlineContent = inline,

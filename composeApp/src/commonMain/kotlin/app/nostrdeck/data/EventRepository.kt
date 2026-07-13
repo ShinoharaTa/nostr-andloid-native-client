@@ -28,6 +28,7 @@ import io.ktor.util.encodeBase64
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.nostrdeck.ui.extractMedia
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -2666,21 +2667,7 @@ class EventRepository(
         )
     }.getOrNull()
 
-    private val imageUrlRegex =
-        Regex("""https?://\S+?\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
-
-    /** content から画像URLを抽出し、本文からは除去した (表示本文, 画像URL一覧) を返す。 */
-    private fun extractMedia(content: String): Pair<String?, List<String>> {
-        val urls = imageUrlRegex.findAll(content).map { it.value }.toList()
-        if (urls.isEmpty()) return null to emptyList()
-        var text = content
-        urls.forEach { text = text.replace(it, "") }
-        // URL 除去で生じた余分な空白/空行を整理。
-        text = text.replace(Regex("""[ \t]{2,}"""), " ")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
-        return text.ifBlank { null } to urls.distinct()
-    }
+    // 画像抽出は UI と共通実装（app.nostrdeck.ui.extractMedia）を使う。
 
     private fun tagsToJson(tags: List<List<String>>): String = buildJsonArray {
         tags.forEach { tag -> add(buildJsonArray { tag.forEach { add(it) } }) }

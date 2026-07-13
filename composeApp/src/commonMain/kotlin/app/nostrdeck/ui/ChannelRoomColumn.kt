@@ -136,6 +136,8 @@ fun ChannelRoomColumn(
     names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
     onReact: ((NostrEvent, String, String?) -> Unit)? = null,
+    // 自分の投稿を右寄せ・明色バブルにするか。DM(1:1)は true（iMessage流）、パブチャは false（全左＝Slack流）。
+    mineOnRight: Boolean = false,
 ) {
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
@@ -187,6 +189,7 @@ fun ChannelRoomColumn(
                         m,
                         parent = replyParentId(m)?.let { byId[it] },
                         names = names,
+                        mineOnRight = mineOnRight,
                         onReply = if (onSend != null) ({ replyingTo = m; if (deckMode) showComposeModal = true }) else null,
                         onReact = if (onReact != null) ({ pickerFor = m }) else null,
                     )
@@ -274,16 +277,22 @@ private fun MessageBubble(
     names: Map<String, String>,
     onReply: (() -> Unit)?,
     onReact: (() -> Unit)?,
+    mineOnRight: Boolean = false,
 ) {
+    // [#dm-idiom] DM(1:1) は自分＝右寄せ・明色バブル（iMessage流）。パブチャは全員左寄せで統一し、
+    // 自分の投稿は色反転の白ではなく少し明るいダークサーフェスで区別する（Slack/Discord流・Bubble 側）。
+    val mineRight = mineOnRight && m.isMine
     Row(
         Modifier.fillMaxWidth().padding(top = if (m.continuation) 1.dp else 8.dp),
-        horizontalArrangement = if (m.isMine) Arrangement.End else Arrangement.Start,
+        horizontalArrangement = if (mineRight) Arrangement.End else Arrangement.Start,
     ) {
-        if (!m.isMine) AvatarSlot(m)
-        // 吹き出し列は画面幅の 78% までに制限（表示名や本文が長くても崩れない）。
+        if (!mineRight) AvatarSlot(m)
+        // 吹き出し列は画面幅の 78% までに制限（左寄せ時は画像/カードを列幅いっぱいに、
+        // 右寄せ(DM自分)時は内容幅で右に寄せる）。
         Column(
-            horizontalAlignment = if (m.isMine) Alignment.End else Alignment.Start,
-            modifier = Modifier.fillMaxWidth(0.78f).wrapContentWidth(if (m.isMine) Alignment.End else Alignment.Start),
+            horizontalAlignment = if (mineRight) Alignment.End else Alignment.Start,
+            modifier = if (mineRight) Modifier.fillMaxWidth(0.78f).wrapContentWidth(Alignment.End)
+            else Modifier.fillMaxWidth(0.78f),
         ) {
             if (!m.continuation) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -299,14 +308,14 @@ private fun MessageBubble(
             }
             // 返信なら、返信元を一行引用で示す（誰への返信か分かるように）。
             if (parent != null) ReplyQuote(parent, m.isMine)
-            // [#107][#108] 吹き出しの横に常設のリプライ/リアクションアイコン（長押しメニューの近道）。
-            // 自分のメッセージは左側、相手のメッセージは右側に出す（吹き出しの外側）。
-            Row(verticalAlignment = Alignment.Bottom) {
-                if (m.isMine) {
+            // [#107][#108] 吹き出しの外に常設のリプライ/リアクションアイコン（長押しメニューの近道）。
+            // 左寄せは吹き出しの右、右寄せ(DM自分)は吹き出しの左に置く（画面端側に寄せない）。
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                if (mineRight) {
                     MessageActions(onReply = onReply, onReact = onReact)
-                    Bubble(m, names = names, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
+                    Bubble(m, names = names, mineOnRight = mineOnRight, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
                 } else {
-                    Bubble(m, names = names, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
+                    Bubble(m, names = names, mineOnRight = mineOnRight, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
                     MessageActions(onReply = onReply, onReact = onReact)
                 }
             }
@@ -315,7 +324,7 @@ private fun MessageBubble(
                 ReactionRow(m.reactions, modifier = Modifier.padding(top = DeckSpace.Xs))
             }
         }
-        if (m.isMine) AvatarSlot(m)
+        if (mineRight) AvatarSlot(m)
     }
 }
 
@@ -361,9 +370,17 @@ private fun ReplyQuote(parent: ChannelMessage, mine: Boolean) {
 
 @Composable
 private fun AvatarSlot(m: ChannelMessage) {
+    // アイコンサイズ/上パディングはタイムライン(NoteItem)と揃える。連投(continuation)は
+    // アイコン非表示だが、幅はアイコンと同じだけ確保して本文の左端がズレないようにする(#3)。
     Box(Modifier.padding(horizontal = DeckSpace.Sm)) {
-        if (!m.continuation) Avatar(m.author.name, m.author.pictureUrl, Modifier.size(30.dp))
-        else Spacer(Modifier.size(DeckSpace.Xl))
+        if (!m.continuation) {
+            Avatar(
+                m.author.name, m.author.pictureUrl,
+                Modifier.padding(top = DeckSpace.Xs), size = DeckDimens.AvatarSize,
+            )
+        } else {
+            Spacer(Modifier.size(DeckDimens.AvatarSize))
+        }
     }
 }
 
@@ -375,45 +392,72 @@ private fun Bubble(
     onReply: (() -> Unit)?,
     onReact: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    mineOnRight: Boolean = false,
 ) {
-    // グラデーション禁止。自分=明色べた塗り＋暗色文字、相手=暗色サーフェス＋明色文字。
-    val shape = if (m.isMine) RoundedCornerShape(DeckRadius.Md, DeckRadius.Sm, DeckRadius.Md, DeckRadius.Md)
+    // グラデ禁止・モノクロ。
+    //  - DM 自分(mineRight): 明色べた塗り(Accent)＋暗色文字（iMessage流）。角は右上を少し詰める。
+    //  - それ以外: 相手=Surface2 / パブチャ自分=少し明るい Surface3。文字は明色。
+    val mineRight = mineOnRight && m.isMine
+    val shape = if (mineRight) RoundedCornerShape(DeckRadius.Md, DeckRadius.Sm, DeckRadius.Md, DeckRadius.Md)
     else RoundedCornerShape(DeckRadius.Sm, DeckRadius.Md, DeckRadius.Md, DeckRadius.Md)
-    val bgColor = if (m.isMine) DeckColors.Accent else DeckColors.Surface2
+    val bgColor = when {
+        mineRight -> DeckColors.Accent
+        m.isMine -> DeckColors.Surface3
+        else -> DeckColors.Surface2
+    }
+    val textColor = if (mineRight) DeckColors.Bg else DeckColors.Text
+    val linkColor = if (mineRight) DeckColors.Bg else DeckColors.Accent
     val hasActions = onReply != null || onReact != null
     var menu by remember { mutableStateOf(false) }
-    // 本文の nostr:npub… は @表示名（解決できれば）に、その他 nostr: 参照は ↗… に短縮。
-    // 自分の吹き出しは明色地なので、メンション/リンク色を暗色にして埋もれさせない（区別はウェイト）。
-    val linkColor = if (m.isMine) DeckColors.Bg else DeckColors.Accent
-    val annotated = remember(m.event.content, names, linkColor) {
-        noteAnnotated(m.event.content, { names[it] }, linkColor = linkColor)
+    // タイムライン(NoteItem)と同じコンテンツ処理:
+    //  - 画像URLは本文から除去し、吹き出しの下にサムネ([NoteImages])で表示（LINE/WhatsApp 風）
+    //  - :shortcode: はインライン画像、@メンション/#タグ/リンクは装飾（[CollapsibleText]→[noteAnnotated]）
+    //  - YouTube/Spotify/OGP/動画は吹き出しの下にカード([LinkEmbeds])
+    // extractMedia は「画像URLがある時だけ除去後テキスト」を返し、画像が無ければ first=null（＝本文そのまま）。
+    // なので画像なし時は原文を、画像あり時は除去後テキスト（画像のみ投稿なら null＝吹き出し無し）を使う。
+    val media = remember(m.event.content) { extractMedia(m.event.content) }
+    val images = media.second
+    val bodyText = media.first ?: m.event.content.takeIf { images.isEmpty() }
+    val emojis = remember(m.event.tags) {
+        m.event.tags.filter { it.size >= 3 && it[0] == "emoji" }.associate { it[1] to it[2] }
     }
-    Box(modifier) {
-        Text(
-            annotated,
-            color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
-            fontSize = DeckType.Body,
-            modifier = Modifier.clip(shape).background(bgColor)
-                .combinedClickable(enabled = hasActions, onClick = {}, onLongClick = { menu = true })
-                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
-        )
-        // 長押しメニュー: リアクション / リプライ。
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            if (onReact != null) {
-                DropdownMenuItem(
-                    text = { Text("リアクション") },
-                    leadingIcon = { Icon(Icons.Outlined.AddReaction, null, modifier = Modifier.size(18.dp)) },
-                    onClick = { menu = false; onReact() },
-                )
-            }
-            if (onReply != null) {
-                DropdownMenuItem(
-                    text = { Text("リプライ") },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Reply, null, modifier = Modifier.size(18.dp)) },
-                    onClick = { menu = false; onReply() },
-                )
+    Column(modifier) {
+        // 本文（画像URL除去済み）。画像のみの投稿（本文が空）では吹き出しを出さず画像だけにする。
+        if (bodyText != null) {
+            Box {
+                Box(
+                    Modifier.clip(shape).background(bgColor)
+                        .combinedClickable(enabled = hasActions, onClick = {}, onLongClick = { menu = true })
+                        .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                ) {
+                    CollapsibleText(bodyText, emojis = emojis, color = textColor, linkColor = linkColor)
+                }
+                // 長押しメニュー: リアクション / リプライ。
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (onReact != null) {
+                        DropdownMenuItem(
+                            text = { Text("リアクション") },
+                            leadingIcon = { Icon(Icons.Outlined.AddReaction, null, modifier = Modifier.size(18.dp)) },
+                            onClick = { menu = false; onReact() },
+                        )
+                    }
+                    if (onReply != null) {
+                        DropdownMenuItem(
+                            text = { Text("リプライ") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Reply, null, modifier = Modifier.size(18.dp)) },
+                            onClick = { menu = false; onReply() },
+                        )
+                    }
+                }
             }
         }
+        // 画像（吹き出しの下）。1枚/グリッド/カルーセルは NoteImages が出し分ける。
+        if (images.isNotEmpty()) {
+            Spacer(Modifier.size(DeckSpace.Xs))
+            NoteImages(images)
+        }
+        // リンク埋め込み（吹き出しの下）。埋め込み対象が無ければ何も描かない。
+        LinkEmbeds(m.event.content, Modifier.padding(top = DeckSpace.Xs))
     }
 }
 

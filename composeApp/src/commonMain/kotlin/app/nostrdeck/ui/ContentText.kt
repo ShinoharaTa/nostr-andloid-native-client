@@ -132,6 +132,26 @@ private fun shortcodeEnd(s: String, start: Int): Int {
     return if (j < s.length && s[j] == ':' && j > start + 1) j else -1
 }
 
+/** 本文中の画像URL（jpg/png/gif/webp）。表示時は本文から除去し [NoteImages] で下に出す。 */
+val imageUrlRegex =
+    Regex("""https?://\S+?\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+
+/**
+ * content から画像URLを抽出し、本文からは除去した (表示本文, 画像URL一覧) を返す。
+ * タイムラインもチャットの吹き出しも共通で使う（画像は本文の外＝下にカード表示する）。
+ */
+fun extractMedia(content: String): Pair<String?, List<String>> {
+    val urls = imageUrlRegex.findAll(content).map { it.value }.toList()
+    if (urls.isEmpty()) return null to emptyList()
+    var text = content
+    urls.forEach { text = text.replace(it, "") }
+    // URL 除去で生じた余分な空白/空行を整理。
+    text = text.replace(Regex("""[ \t]{2,}"""), " ")
+        .replace(Regex("""\n{3,}"""), "\n\n")
+        .trim()
+    return text.ifBlank { null } to urls.distinct()
+}
+
 private fun mentionLabel(bech: String, resolveName: ((String) -> String?)?): String {
     // npub は hex に復号して表示名を引く。解決できれば @name、無ければ短縮 npub。
     if (bech.startsWith("npub1")) {
