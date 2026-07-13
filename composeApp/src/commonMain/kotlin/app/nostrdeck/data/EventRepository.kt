@@ -964,6 +964,8 @@ class EventRepository(
     /**
      * 指定チャンネルへ kind:42 メッセージを投稿（NIP-28）。ルート #e にチャンネルid を付ける。
      * [replyTo] があれば NIP-10 の返信（reply マーカー付き #e ＋ 相手 #p）も添える。
+     * [#109] 通常投稿と同様、本文中の :shortcode: は NIP-30 emoji タグに、
+     * nostr:npub… メンションは p タグにして送る。
      */
     suspend fun publishChannelMessage(channelId: String, text: String, replyTo: NostrEvent? = null) {
         if (text.isBlank()) return
@@ -975,6 +977,11 @@ class EventRepository(
                 add(listOf("p", replyTo.pubkey, hint))
             }
             addAll(hashtagsIn(text).map { listOf("t", it) })
+            addAll(emojiTagsIn(text))
+            // メンション先へ p タグ（返信相手と重複したら付けない）。
+            mentionPubkeysIn(text).forEach { pk ->
+                if (pk != replyTo?.pubkey) add(listOf("p", pk))
+            }
         }
         publishSigned(UnsignedEvent(kind = 42, content = text, tags = tags))
     }
@@ -1595,6 +1602,12 @@ class EventRepository(
         val known = q.allCustomEmojis().executeAsList().associate { it.shortcode to it.image_url }
         return codes.mapNotNull { code -> known[code]?.let { url -> listOf("emoji", code, url) } }
     }
+
+    /** [#109] 本文中の `nostr:npub1…` メンションを hex pubkey へ復号（重複除去・復号失敗は無視）。 */
+    private fun mentionPubkeysIn(content: String): List<String> =
+        NPUB_MENTION_REGEX.findAll(content)
+            .mapNotNull { m -> runCatching { Nip19.npubToHex(m.value.substringAfter("nostr:", m.value)) }.getOrNull() }
+            .distinct().toList()
 
     // ---- kind:0 バッチ解決 ----
     private val authorRequests = Channel<String>(Channel.UNLIMITED)

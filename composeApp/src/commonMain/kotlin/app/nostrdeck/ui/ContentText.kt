@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -22,14 +23,18 @@ import app.nostrdeck.theme.DeckWeight
  *
  * [nav] を渡すと @メンション→プロフィール / #タグ→ハッシュタグカラム / note・nevent→スレッド を
  * タップで開けるクリック可能リンクにする（null なら強調表示のみ＝プレビュー用途）。
+ *
+ * [linkColor] はメンション/リンク/ハッシュタグの色。既定は明色 [DeckColors.Accent]（暗色地の吹き出し用）。
+ * 自分の吹き出し（明色地）では暗色を渡し、白地に白文字で埋もれないようにする。区別はウェイトで付く。
  */
 fun noteAnnotated(
     text: String,
     resolveName: ((String) -> String?)? = null,
     emojis: Map<String, String> = emptyMap(),
     nav: NoteNav? = null,
+    linkColor: Color = DeckColors.Accent,
 ): AnnotatedString = buildAnnotatedString {
-    val accent = SpanStyle(color = DeckColors.Accent, fontWeight = DeckWeight.Link)
+    val accent = SpanStyle(color = linkColor, fontWeight = DeckWeight.Link)
     val linkStyles = TextLinkStyles(style = accent)
 
     // クリック可能リンク（クリックハンドラ付き）。nav 無し/解決失敗時は強調表示にフォールバック。
