@@ -2037,12 +2037,12 @@ class EventRepository(
         return publishMuteList(merged)
     }
 
-    /** [#95] 自分がミュート中のユーザー pubkey 集合（公開/非公開の別を問わない）。 */
+    /** [#94/#95] 自分がミュート中のユーザー pubkey 集合（公開/非公開の別を問わない）。 */
     fun mutedUsersFlow(): Flow<Set<String>> =
         muteFlow.map { m -> m?.entries?.filter { it.category == MuteCategory.USER }?.map { it.value }?.toSet() ?: emptySet() }
 
     /**
-     * [#95] 指定ユーザーのミュートを解除する（公開/非公開の両フラグを落として再発行）。
+     * [#94/#95] 指定ユーザーのミュートを解除する（公開/非公開の両方の USER エントリを除いて再発行）。
      * 戻り値: 発行できたか（未ミュート/NIP-44 ロック中/失敗は false）。
      */
     suspend fun unmuteUser(pubkey: String): Boolean {
