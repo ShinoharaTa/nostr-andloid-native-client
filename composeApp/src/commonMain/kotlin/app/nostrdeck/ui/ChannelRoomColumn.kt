@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -160,11 +163,16 @@ fun ChannelRoomColumn(
     var inputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    // [#106] IME 対応は Activity の windowSoftInputMode=adjustResize によるウィンドウ
-    // リサイズに任せる（下端の Composer が自然にキーボード直上へ来る）。ここで imePadding を
-    // 足すと、リサイズ済みのウィンドウに更に IME 分の余白が乗って二重になり、入力欄が
-    // キーボードのはるか上へ浮いてしまう。
-    Column(modifier.background(DeckColors.Surface)) {
+    // [#106] edge-to-edge では IME はウィンドウをリサイズせず inset で届くので、下端の
+    // Composer を追従させるには imePadding が要る。ただし親 AppScaffold が既に systemBars
+    // （navbar 含む）を padding 済みで、imePadding の値は「画面下端からの IME 全高＝navbar
+    // 領域込み」のため、そのまま足すと navbar 分が二重になって入力欄が浮く。
+    // navigationBars を先に consume してから imePadding すると、正味の「IME 全高 − navbar」
+    // だけが効いて入力欄がキーボード直上へ来る（デッキ固定カラムは常設入力欄が無いので不要）。
+    Column(
+        modifier.background(DeckColors.Surface)
+            .then(if (!deckMode) Modifier.consumeWindowInsets(WindowInsets.navigationBars).imePadding() else Modifier),
+    ) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
