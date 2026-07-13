@@ -18,3 +18,11 @@ xcuserdata/
 keystore.properties
 *.jks
 *.keystore
+
+# iOS / Xcode
+iosApp/build/
+iosApp/**/xcuserdata/
+iosApp/**/*.xcuserstate
+iosApp/DerivedData/
+iosApp/Pods/
+**/.DS_Store

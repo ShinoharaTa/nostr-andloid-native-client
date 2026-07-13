@@ -1,5 +1,8 @@
 package app.nostrdeck
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -8,12 +11,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.ExternalIntent
 import app.nostrdeck.state.ExternalIntents
+import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
 import app.nostrdeck.ui.LocalNoteNav
@@ -87,8 +92,12 @@ fun App(repository: EventRepository? = null) {
             LocalProfileNames provides names,
             LocalNoteNav provides noteNav,
         ) {
-            // 実データ運用（repository あり）で未ログインならゲート。SampleData プレビュー時は素通し。
-            if (repository != null && !loggedIn) LoginGate() else AppScaffold(state)
+            // システムバー裏まで暗色で塗る（iOS はウィンドウ既定が白でステータスバー裏が白帯に
+            // なるため）。子は systemBars 分を padding するので、この背景が最上端まで敷かれる。
+            Box(Modifier.fillMaxSize().background(DeckColors.Bg)) {
+                // 実データ運用（repository あり）で未ログインならゲート。SampleData プレビュー時は素通し。
+                if (repository != null && !loggedIn) LoginGate() else AppScaffold(state)
+            }
         }
     }
 }
