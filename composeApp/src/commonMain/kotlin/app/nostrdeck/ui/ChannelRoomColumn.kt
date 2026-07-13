@@ -160,9 +160,11 @@ fun ChannelRoomColumn(
     var inputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    // [#106] 専用画面は下部に常設 Composer があるので、キーボード分だけ全体を詰めて
-    // 入力欄が IME に隠れないようにする（デッキ固定カラムは常設入力欄が無いので不要）。
-    Column(modifier.background(DeckColors.Surface).then(if (!deckMode) Modifier.imePadding() else Modifier)) {
+    // [#106] IME 対応は Activity の windowSoftInputMode=adjustResize によるウィンドウ
+    // リサイズに任せる（下端の Composer が自然にキーボード直上へ来る）。ここで imePadding を
+    // 足すと、リサイズ済みのウィンドウに更に IME 分の余白が乗って二重になり、入力欄が
+    // キーボードのはるか上へ浮いてしまう。
+    Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
