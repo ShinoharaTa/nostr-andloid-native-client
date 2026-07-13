@@ -41,12 +41,16 @@ EXPORT_DIR="build/export"
 rm -rf "$ARCHIVE" "$EXPORT_DIR"
 
 echo "==> archiving (Release)…"
+# 認証キーは archive にも渡す（Xcode に Apple ID 未ログインでも自動プロビジョニングが通るように）。
 xcodebuild -project iosApp.xcodeproj -scheme iosApp -configuration Release \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   -allowProvisioningUpdates \
+  -authenticationKeyPath "$ASC_KEY_PATH" \
+  -authenticationKeyID "$ASC_KEY_ID" \
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
   archive
 
 # ExportOptions は変数展開できないので teamID を埋めて生成する。
