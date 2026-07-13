@@ -99,6 +99,9 @@ class KeychainKeyVault(
         return k
     }
 
+    /** 保管中の鍵を破棄（ログアウト #69）。未設定なら何もしない（SecItemDelete は not found を無視）。 */
+    override fun clear() = deleteItem()
+
     private fun readData(): ByteArray? = memScoped {
         val query = cfDictionaryOf(
             kSecClass to kSecClassGenericPassword,

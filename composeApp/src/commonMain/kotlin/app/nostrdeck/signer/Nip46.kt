@@ -13,6 +13,7 @@ import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import fr.acinq.secp256k1.Secp256k1
+import kotlin.concurrent.Volatile  // JVM/Native 共通の @Volatile（iOS ビルド対応 #18）
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
