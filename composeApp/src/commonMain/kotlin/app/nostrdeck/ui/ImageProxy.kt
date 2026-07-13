@@ -29,9 +29,12 @@ object ImageProxy {
      * 既にプロキシ拒否と分かっているホストは、プロキシを介さず元 URL を返す。
      */
     fun proxied(url: String, width: Int = 600, quality: Int = 75, animated: Boolean = false): String {
-        if (url.isBlank()) return url
-        if (hostOf(url) in blockedHosts) return url
-        val enc = url.encodeURLParameter()
+        // kind:0 の picture/banner URL には前後空白が混ざることがある（例: yabu.me のアイコン）。
+        // そのままだと wsrv が空白込み URL を取得できず画像が出ないため、必ず trim する。
+        val clean = url.trim()
+        if (clean.isBlank()) return clean
+        if (hostOf(clean) in blockedHosts) return clean
+        val enc = clean.encodeURLParameter()
         // we = 拡大しない（元が小さければそのまま）
         val frames = if (animated) "&n=-1" else ""
         return "$HOST?url=$enc&w=$width&output=webp&q=$quality&we$frames"
