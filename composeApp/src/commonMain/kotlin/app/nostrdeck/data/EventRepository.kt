@@ -2223,14 +2223,32 @@ class EventRepository(
     // ---- [#96/#97/#98] ソーシャルグラフ（任意 pubkey の kind:3 集計） ----
 
     /** 全 pubkey の kind:3 をメモリに集計（pubkey → 最新の created_at と p タグ）。DB には入れない。 */
+    // [#80-OOM] kind:3 は1通で数百〜数千の p タグを持つ巨大イベント。届いた全員分の
+    // 全リストを保持すると、フォロワー集計（kind:3 を最大500通引き込む）で 100MB 級に
+    // 膨らみ heap(256MB) が枯渇する。全リストは「明示的に要求した対象（閲覧中の
+    // プロフィール）」だけ LRU（最大8人）で保持し、フォロワー集計には真偽値しか積まない。
     private val contactsByAuthor = MutableStateFlow<Map<String, Pair<Long, List<String>>>>(emptyMap())
+    private val contactsInterest = ArrayDeque<String>()  // 全リスト保持を許可した pubkey（挿入順・最大8）
 
-    /** kind:3 の取り込み。captureNip65 と同じ方式で、発行者ごと最新版のみ保持（古い版は無視）。 */
+    /** 進行中のフォロワー集計（target → 発行者 → (createdAt, 対象を含むか)）。フェッチ中のみ登録。 */
+    private val followerScans = mutableMapOf<String, MutableMap<String, Pair<Long, Boolean>>>()
+
+    /** kind:3 の取り込み。発行者ごと最新版のみ・保持は要求済み対象と進行中集計に限定。 */
     private fun captureContacts(e: NostrEvent) {
-        val prev = contactsByAuthor.value[e.pubkey]
-        if (prev != null && prev.first >= e.createdAt) return
-        val ps = e.tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
-        contactsByAuthor.value = contactsByAuthor.value + (e.pubkey to (e.createdAt to ps))
+        if (e.pubkey in contactsInterest) {
+            val prev = contactsByAuthor.value[e.pubkey]
+            if (prev == null || prev.first < e.createdAt) {
+                val ps = e.tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
+                contactsByAuthor.value = contactsByAuthor.value + (e.pubkey to (e.createdAt to ps))
+            }
+        }
+        // 進行中のフォロワー集計へは「対象を含むかどうか」だけ記録（リスト本体は保持しない）。
+        followerScans.forEach { (target, seen) ->
+            val prev = seen[e.pubkey]
+            if (prev == null || prev.first < e.createdAt) {
+                seen[e.pubkey] = e.createdAt to e.tags.any { it.size >= 2 && it[0] == "p" && it[1] == target }
+            }
+        }
     }
 
     /**
@@ -2244,9 +2262,14 @@ class EventRepository(
         return contactsByAuthor.map { it[pubkey]?.second.orEmpty() }
     }
 
-    /** 対象の kind:3 を接続中リレー＋インデクサへ単発 REQ（fetchDmRelaysFor と同じ取得パターン）。 */
+    /** 対象の kind:3 を単発 REQ し、全リスト保持の許可（LRU 最大8）を与える。 */
     private fun requestContactsOf(pubkey: String) {
-        if (contactsByAuthor.value.containsKey(pubkey)) return  // 取得済み（更新は通常の受信で追える範囲でよい）
+        if (pubkey in contactsInterest) return  // 取得済み（更新は通常の受信で追える範囲でよい）
+        contactsInterest.addLast(pubkey)
+        if (contactsInterest.size > 8) {
+            val evicted = contactsInterest.removeFirst()
+            contactsByAuthor.value = contactsByAuthor.value - evicted
+        }
         val subId = "contacts_of_${pubkey.take(12)}"
         subscribeAll(subId, Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1))
         subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1))
@@ -2255,21 +2278,25 @@ class EventRepository(
 
     /**
      * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを収集する（リレーで観測できた範囲のみ・全数ではない）。
-     * 接続中リレー＋インデクサへ REQ し数秒集計。同一発行者は最新の kind:3 だけ採用し（[captureContacts]）、
+     * 接続中リレー＋インデクサへ REQ し数秒集計。同一発行者は最新の kind:3 だけ採用し、
      * 最新リストに対象が含まれない発行者は除外する（アンフォロー検出）。
+     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由 #80-OOM）。
      */
     suspend fun fetchFollowersOf(pubkey: String): List<String> {
         val subId = "followers_of_${pubkey.take(12)}"
+        val seen = mutableMapOf<String, Pair<Long, Boolean>>()
+        followerScans[pubkey] = seen
         subscribeAll(subId, Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
         subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
         try {
             delay(3500)
         } finally {
-            // 画面離脱等でキャンセルされても REQ を残さない（fetchRelayRecommendations と同じ）。
+            // 画面離脱等でキャンセルされても REQ と集計テーブルを残さない。
+            followerScans.remove(pubkey)
             unsubscribeAll(subId)
             unsubscribeAll("${subId}_idx")
         }
-        return contactsByAuthor.value.filterValues { pubkey in it.second }.keys.toList()
+        return seen.filterValues { it.second }.keys.toList()
     }
 
     /** [#99] 対象ユーザーの NIP-65 リレー（受信済みキャッシュから最大 [max] 件）。nprofile のリレーヒント用。 */
