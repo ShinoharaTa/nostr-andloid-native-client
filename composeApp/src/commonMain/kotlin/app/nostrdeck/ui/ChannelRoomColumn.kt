@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -50,9 +53,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
@@ -154,7 +159,9 @@ fun ChannelRoomColumn(
     var inputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    Column(modifier.background(DeckColors.Surface)) {
+    // [#106] 専用画面は下部に常設 Composer があるので、キーボード分だけ全体を詰めて
+    // 入力欄が IME に隠れないようにする（デッキ固定カラムは常設入力欄が無いので不要）。
+    Column(modifier.background(DeckColors.Surface).then(if (!deckMode) Modifier.imePadding() else Modifier)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
@@ -221,6 +228,7 @@ fun ChannelRoomColumn(
         androidx.compose.ui.window.Dialog(onDismissRequest = { showComposeModal = false; replyingTo = null }) {
             Column(
                 Modifier.fillMaxWidth()
+                    .imePadding()  // [#106] フローティングキーボードでも入力欄が隠れないように
                     .clip(RoundedCornerShape(DeckRadius.Md))
                     .background(DeckColors.Surface)
                     .padding(vertical = DeckSpace.Sm),
@@ -285,13 +293,46 @@ private fun MessageBubble(
             }
             // 返信なら、返信元を一行引用で示す（誰への返信か分かるように）。
             if (parent != null) ReplyQuote(parent, m.isMine)
-            Bubble(m, names = names, onReply = onReply, onReact = onReact)
+            // [#107][#108] 吹き出しの横に常設のリプライ/リアクションアイコン（長押しメニューの近道）。
+            // 自分のメッセージは左側、相手のメッセージは右側に出す（吹き出しの外側）。
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (m.isMine) {
+                    MessageActions(onReply = onReply, onReact = onReact)
+                    Bubble(m, names = names, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
+                } else {
+                    Bubble(m, names = names, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
+                    MessageActions(onReply = onReply, onReact = onReact)
+                }
+            }
             // Slack 風の集約リアクション（絵文字 + 件数）。
             if (m.reactions.isNotEmpty()) {
                 ReactionRow(m.reactions, modifier = Modifier.padding(top = DeckSpace.Xs))
             }
         }
         if (m.isMine) AvatarSlot(m)
+    }
+}
+
+/**
+ * [#107][#108] メッセージ横の常設アクション（リプライ/リアクション）。
+ * デッキの狭いカラムでも邪魔にならないよう IconSm + Text3 で控えめに。
+ */
+@Composable
+private fun MessageActions(onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
+    if (onReply == null && onReact == null) return
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 2.dp)) {
+        if (onReply != null) {
+            Box(
+                Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReply),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.AutoMirrored.Outlined.Reply, "リプライ", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+        }
+        if (onReact != null) {
+            Box(
+                Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReact),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.AddReaction, "リアクション", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+        }
     }
 }
 
@@ -322,7 +363,13 @@ private fun AvatarSlot(m: ChannelMessage) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: ChannelMessage, names: Map<String, String>, onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
+private fun Bubble(
+    m: ChannelMessage,
+    names: Map<String, String>,
+    onReply: (() -> Unit)?,
+    onReact: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     // グラデーション禁止。自分=明色べた塗り＋暗色文字、相手=暗色サーフェス＋明色文字。
     val shape = if (m.isMine) RoundedCornerShape(DeckRadius.Md, DeckRadius.Sm, DeckRadius.Md, DeckRadius.Md)
     else RoundedCornerShape(DeckRadius.Sm, DeckRadius.Md, DeckRadius.Md, DeckRadius.Md)
@@ -331,7 +378,7 @@ private fun Bubble(m: ChannelMessage, names: Map<String, String>, onReply: (() -
     var menu by remember { mutableStateOf(false) }
     // 本文の nostr:npub… は @表示名（解決できれば）に、その他 nostr: 参照は ↗… に短縮。
     val annotated = remember(m.event.content, names) { noteAnnotated(m.event.content, { names[it] }) }
-    Box {
+    Box(modifier) {
         Text(
             annotated,
             color = if (m.isMine) DeckColors.Bg else DeckColors.Text,
@@ -372,6 +419,13 @@ private fun relativeTime(createdAt: Long): String {
     }
 }
 
+/**
+ * チャット用入力欄。[#109] 通常投稿の Composer と同じ規則で、
+ *  - 絵文字ボタン → ピッカーでカーソル位置に挿入（カスタムは ":shortcode:"、送信時に NIP-30 emoji タグ化）
+ *  - カーソル直前の "@…" でメンション補完（選択で nostr:npub 挿入、送信時に p タグ化）
+ *  - カーソル直前の ":…" でカスタム絵文字のインライン補完
+ * 補完 UI・挿入ヘルパーは ComposeSheet と共用（MentionRow / EmojiSuggestChip / insertAtCursor 等）。
+ */
 @Composable
 private fun Composer(
     replyingTo: ChannelMessage?,
@@ -379,11 +433,40 @@ private fun Composer(
     onSend: (String) -> Unit,
     onFocusChanged: (Boolean) -> Unit = {},
 ) {
-    var text by remember { mutableStateOf("") }
+    val repo = LocalRepository.current
+    // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
+    var field by remember { mutableStateOf(TextFieldValue("")) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val text = field.text
     val canSend = text.isNotBlank()
     val send = {
-        if (text.isNotBlank()) { onSend(text.trim()); text = "" }
+        if (text.isNotBlank()) { onSend(text.trim()); field = TextFieldValue("") }
     }
+
+    // 補完はカーソル直前のトークンに対して行う（ComposeSheet と同じ規則）。
+    val before = text.substring(0, field.selection.start.coerceIn(0, text.length))
+    val activeMention: String? = run {
+        val idx = before.lastIndexOf('@')
+        if (idx < 0) return@run null
+        if (idx > 0 && !before[idx - 1].isWhitespace()) return@run null
+        val frag = before.substring(idx + 1)
+        if (frag.isNotEmpty() && frag.all { it.isLetterOrDigit() || it == '_' || it == '.' }) frag else null
+    }
+    val mentionCandidates = remember(activeMention) {
+        if (activeMention != null) repo?.searchProfiles(activeMention, limit = 4).orEmpty() else emptyList()
+    }
+    val customEmojis = repo?.customEmojisFlow()?.collectAsState(emptyList())?.value ?: emptyList()
+    val activeEmoji: String? = run {
+        val idx = before.lastIndexOf(':')
+        if (idx < 0) return@run null
+        if (idx > 0 && !before[idx - 1].isWhitespace()) return@run null   // http:// 等を誤検出しない
+        val frag = before.substring(idx + 1)
+        if (frag.isNotEmpty() && frag.all { it.isLetterOrDigit() || it == '_' || it == '+' || it == '-' }) frag else null
+    }
+    val emojiCandidates = if (activeEmoji != null) {
+        customEmojis.filter { it.shortcode.startsWith(activeEmoji, ignoreCase = true) }.take(8)
+    } else emptyList()
+
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
     // 返信中バナー（誰に返信しているか＋取り消し）。
     if (replyingTo != null) {
@@ -405,10 +488,33 @@ private fun Composer(
             ) { Icon(Icons.Outlined.Close, "返信をやめる", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
         }
     }
+    // [#109] 入力中の候補（入力欄の直上）。絵文字 > メンション の優先で1種のみ出す。
+    if (emojiCandidates.isNotEmpty()) {
+        LazyRow(
+            Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(emojiCandidates, key = { it.shortcode }) { e ->
+                EmojiSuggestChip(e) { field = insertEmojiShortcode(field, e.shortcode) }
+            }
+        }
+    } else if (mentionCandidates.isNotEmpty()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md)) {
+            mentionCandidates.forEach { p ->
+                MentionRow(p) { field = completeMention(field, Nip19.hexToNpub(p.pubkey)) }
+            }
+        }
+    }
     Row(
         Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 絵文字ピッカー（Unicode + 自分のカスタム絵文字）。カーソル位置に挿入。
+        Box(
+            Modifier.size(DeckDimens.TouchTargetXs).clip(CircleShape).clickable { showEmojiPicker = true },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg)) }
+        Spacer(Modifier.width(DeckSpace.Xs))
         Box(
             Modifier.weight(1f).clip(RoundedCornerShape(DeckRadius.Full)).background(DeckColors.Surface2)
                 .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
@@ -418,8 +524,8 @@ private fun Composer(
                 Text("メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
             BasicTextField(
-                value = text,
-                onValueChange = { text = it },
+                value = field,
+                onValueChange = { field = it },
                 textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Caption),
                 cursorBrush = SolidColor(DeckColors.Accent),
                 modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChanged(it.isFocused) },
@@ -438,6 +544,15 @@ private fun Composer(
             )
         }
     }
+    }
+
+    // 絵文字ピッカー（リアクションと同じ UI）。選択したものをカーソル位置へ挿入する。
+    // Unicode はその文字を、カスタムは ":shortcode:"（送信時に NIP-30 emoji タグ化）を挿入。
+    if (showEmojiPicker) {
+        ReactionPickerSheet(
+            onPick = { content, _ -> field = insertAtCursor(field, if (content.endsWith(":")) "$content " else content) },
+            onDismiss = { showEmojiPicker = false },
+        )
     }
 }
 
