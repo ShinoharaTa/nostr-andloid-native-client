@@ -1,7 +1,11 @@
-# main へのマージで Play Store クローズドテストへ自動リリースする。
+# Play Store クローズドテストへリリースする。**自動トリガーは無し**（main push では走らない）。
+# リリースは AI(Claude/Cursor) または人が `workflow_dispatch` で明示実行する。手順は docs/RELEASING.md。
 #
 # Play API の認証は Workload Identity Federation（キーレス・推奨方式）。
 # サービスアカウントの JSON 鍵はダウンロードせず、GitHub OIDC トークンで直接認証する。
+#
+# リリースノート（テスターに表示される「新機能」）は distribution/whatsnew/whatsnew-<lang> から読む。
+# 実行前にそのファイルを更新してコミットしておくこと（AI がリリース内容を書く場所）。
 #
 # 必要な GitHub Secrets（Settings → Secrets and variables → Actions）:
 #   UPLOAD_KEYSTORE_BASE64   … upload-keystore.jks を base64 化したもの
@@ -12,13 +16,25 @@
 #                              (projects/<番号>/locations/global/workloadIdentityPools/<pool>/providers/<provider>)
 #   GCP_PLAY_SA_EMAIL        … Play Console に権限付与したサービスアカウントのメール
 #
-# versionCode は main のコミット数（単調増加）。versionName は BASE_VERSION-beta.<versionCode>。
+# versionCode は実行 ref のコミット数（単調増加。履歴 rewrite は厳禁）。
+# versionName は入力があればそれ、無ければ BASE_VERSION-beta.<versionCode>。
 name: Release Beta
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}  # 手動実行（再アップロード等）
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play トラック (alpha=クローズド / internal=内部 / beta=オープン / production=製品版)"
+        required: false
+        default: "alpha"
+      version_name:
+        description: "versionName 上書き（空なら BASE_VERSION-beta.<コミット数>）"
+        required: false
+        default: ""
+      status:
+        description: "リリース状態 (completed=即公開 / draft=下書き / inProgress=段階公開)"
+        required: false
+        default: "completed"
 
 permissions:
   contents: read
@@ -30,11 +46,6 @@ concurrency:
 
 env:
   BASE_VERSION: "0.2.0"
-  # Google Group テスターのクローズドテストへ配信する。
-  # Play Console 既定の「クローズドテスト」トラックの API 識別子は "alpha"。
-  # トラックを自作して名前を付けた場合はその表示名をそのまま指定する
-  # （オープンテスト="beta" / 内部テスト="internal"）。
-  PLAY_TRACK: "alpha"
 
 jobs:
   release:
@@ -67,10 +78,11 @@ jobs:
         id: ver
         run: |
           VC=$(git rev-list --count HEAD)
-          VN="${BASE_VERSION}-beta.${VC}"
+          VN="${{ inputs.version_name }}"
+          if [ -z "$VN" ]; then VN="${BASE_VERSION}-beta.${VC}"; fi
           echo "code=$VC" >> "$GITHUB_OUTPUT"
           echo "name=$VN" >> "$GITHUB_OUTPUT"
-          echo "versionCode=$VC versionName=$VN"
+          echo "versionCode=$VC versionName=$VN track=${{ inputs.track }} status=${{ inputs.status }}"
 
       - name: Build signed AAB
         run: >
@@ -87,7 +99,7 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_PLAY_SA_EMAIL }}
 
-      - name: Upload to Play Store (closed testing)
+      - name: Upload to Play Store
         uses: r0adkll/upload-google-play@v1
         with:
           # upload-google-play は入力なしの ADC 自動検出に未対応（無指定だと
@@ -96,9 +108,12 @@ jobs:
           serviceAccountJson: ${{ steps.auth.outputs.credentials_file_path }}
           packageName: net.shino3.nostrism
           releaseFiles: composeApp/build/outputs/bundle/release/composeApp-release.aab
-          track: ${{ env.PLAY_TRACK }}
-          status: completed
+          track: ${{ inputs.track }}
+          status: ${{ inputs.status }}
           releaseName: ${{ steps.ver.outputs.name }}
+          # テスターに表示されるリリースノート。distribution/whatsnew/whatsnew-<lang>（<500字/言語）。
+          # 言語コードは Play ストア掲載情報にある言語と一致させること（例 ja-JP / en-US）。
+          whatsNewDirectory: distribution/whatsnew
 
       - name: Cleanup signing credentials
         if: always()
