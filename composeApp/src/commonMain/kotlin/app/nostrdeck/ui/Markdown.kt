@@ -32,7 +32,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import app.nostrdeck.crypto.Nip19
+import kotlinx.coroutines.launch
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
@@ -67,12 +72,18 @@ private sealed interface MdBlock {
     data class Image(val url: String, val alt: String) : MdBlock
     /** [#124] 行単位の nostr:note1/nevent1 参照。Nosli 等の「まとめ」記事は本文がこの並びになる。 */
     data class NoteRef(val id: String, val relays: List<String>) : MdBlock
+    /** [#124] 行単位の nostr:naddr1 参照（記事→記事のリンク等）。解決してから埋め込む。 */
+    data class AddrRef(val addr: Nip19.AddrRef) : MdBlock
     data object Rule : MdBlock
 }
 
 private val imageLine = Regex("""^!\[([^\]]*)]\(([^)\s]+)[^)]*\)\s*$""")
 private val orderedItem = Regex("""^(\d+)[.)]\s+(.*)$""")
-private val noteRefLine = Regex("""^(?:nostr:)?((?:note|nevent)1[a-z0-9]+)\s*$""")
+// 行単位の参照。Nosli 等はバッククォートで包むことがあるので `…` も許容する。
+private val noteRefLine = Regex("""^`?(?:nostr:)?((?:note|nevent)1[a-z0-9]+)`?\s*$""")
+private val addrRefLine = Regex("""^`?(?:nostr:)?(naddr1[a-z0-9]+)`?\s*$""")
+// コードスパン/リンク先が nostr 参照そのものかの判定（リンク表示に切り替える）。
+private val nostrRefOnly = Regex("""^(?:nostr:)?((?:note|nevent|naddr)1[a-z0-9]+)$""")
 
 private fun parseBlocks(src: String): List<MdBlock> {
     val out = mutableListOf<MdBlock>()
@@ -109,6 +120,12 @@ private fun parseBlocks(src: String): List<MdBlock> {
                 val bech = noteRefLine.find(trimmed)!!.groupValues[1]
                 val ref = Nip19.eventBechToIdAndRelays(bech)
                 if (ref != null) { flushPara(); out.add(MdBlock.NoteRef(ref.first, ref.second)) }
+                else { if (para.isNotEmpty()) para.append('\n'); para.append(line) }
+            }
+            addrRefLine.matches(trimmed) -> {
+                val bech = addrRefLine.find(trimmed)!!.groupValues[1]
+                val addr = Nip19.naddrDecode(bech)
+                if (addr != null) { flushPara(); out.add(MdBlock.AddrRef(addr)) }
                 else { if (para.isNotEmpty()) para.append('\n'); para.append(line) }
             }
             trimmed.startsWith(">") -> {
@@ -176,9 +193,40 @@ private fun RenderBlock(b: MdBlock) {
         }
         is MdBlock.Image -> NoteImages(listOf(b.url))
         is MdBlock.NoteRef -> EmbeddedNoteRef(b.id, b.relays)
+        is MdBlock.AddrRef -> EmbeddedAddrRef(b.addr)
         MdBlock.Rule -> HorizontalDivider(
             color = DeckColors.Border, modifier = Modifier.padding(vertical = DeckSpace.Md),
         )
+    }
+}
+
+/**
+ * [#124] 行単位の naddr 参照。アドレス（kind+著者+dタグ）を event id に解決してから
+ * [EmbeddedNoteRef] で埋め込む。解決失敗（リレーに無い等）は淡色メッセージ。
+ */
+@Composable
+private fun EmbeddedAddrRef(addr: Nip19.AddrRef) {
+    val repo = LocalRepository.current ?: return
+    var resolved by remember(addr) { mutableStateOf<String?>(null) }
+    var failed by remember(addr) { mutableStateOf(false) }
+    LaunchedEffect(addr) {
+        val id = repo.resolveAddress(addr.kind, addr.pubkey, addr.dTag, addr.relays)
+        if (id != null) resolved = id else failed = true
+    }
+    val id = resolved
+    if (id != null) {
+        EmbeddedNoteRef(id, emptyList())
+    } else {
+        Box(
+            Modifier.padding(vertical = DeckSpace.Xs).fillMaxWidth()
+                .clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface2)
+                .padding(DeckSpace.Sm),
+        ) {
+            Text(
+                if (failed) "参照先を取得できませんでした (naddr)" else "参照を解決中…",
+                color = DeckColors.Text3, fontSize = DeckType.Caption,
+            )
+        }
     }
 }
 
@@ -241,7 +289,7 @@ private fun renderInline(text: String, linkColor: androidx.compose.ui.graphics.C
                 """|\*([^*\s][^*]*)\*""" +               // *italic*
                 """|`([^`]+)`""" +                        // `code`
                 """|(https?://[^\s)\]}>,、。」]+)""" +    // bare URL
-                """|(?:nostr:)?((?:note|nevent)1[a-z0-9]+)""",  // 段落中のノート参照（短縮表示）
+                """|(?:nostr:)?((?:note|nevent|naddr)1[a-z0-9]+)""",  // 段落中のノート/記事参照（短縮表示）
         )
         var idx = 0
         while (idx < rest.length) {
@@ -259,8 +307,19 @@ private fun renderInline(text: String, linkColor: androidx.compose.ui.graphics.C
                 g[3].isNotEmpty() -> { pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append(g[3]); pop() }
                 g[4].isNotEmpty() -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(g[4]); pop() }
                 g[5].isNotEmpty() -> {
-                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = androidx.compose.ui.graphics.Color(0x22FFFFFF)))
-                    append(g[5]); pop()
+                    // `nostr:naddr…` のようにコードで包まれた参照は、生の bech32 を出さず
+                    // 短縮リンクにする（タップでアプリ内遷移）。それ以外は従来どおり code 表示。
+                    val refMatch = nostrRefOnly.find(g[5])
+                    if (refMatch != null) {
+                        val bech = refMatch.groupValues[1]
+                        val s = length
+                        pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+                        append(bech.take(12) + "…"); pop()
+                        links.add(LinkSpan(s, length, "nostr:$bech"))
+                    } else {
+                        pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = androidx.compose.ui.graphics.Color(0x22FFFFFF)))
+                        append(g[5]); pop()
+                    }
                 }
                 g[6].isNotEmpty() -> {
                     val s = length
@@ -293,6 +352,8 @@ private fun InlineText(
     val (annotated, links) = remember(text) { renderInline(text, DeckColors.Accent) }
     val uriHandler = LocalUriHandler.current
     val nav = LocalNoteNav.current
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
     if (links.isEmpty()) {
         Text(annotated, color = color, fontSize = fontSize, fontWeight = fontWeight,
             lineHeight = fontSize * 1.55, modifier = modifier)
@@ -306,9 +367,22 @@ private fun InlineText(
             onClick = { offset ->
                 links.firstOrNull { offset in it.start until it.end }?.let { span ->
                     if (span.url.startsWith("nostr:")) {
-                        // ノート参照はアプリ内で開く（スレッド / kind:30023 なら記事ビューワー）。
-                        Nip19.eventBechToIdAndRelays(span.url.removePrefix("nostr:"))
-                            ?.let { (id, _) -> nav?.onEvent?.invoke(id) }
+                        // nostr 参照はアプリ内で開く（スレッド / kind:30023 なら記事ビューワー）。
+                        // [参考リンク](nostr:naddr1…) のような markdown リンク形式もここに来る。
+                        val bech = span.url.removePrefix("nostr:")
+                        if (bech.startsWith("naddr1")) {
+                            Nip19.naddrDecode(bech)?.let { a ->
+                                scope.launch {
+                                    repo?.resolveAddress(a.kind, a.pubkey, a.dTag, a.relays)
+                                        ?.let { id -> nav?.onEvent?.invoke(id) }
+                                }
+                            }
+                        } else {
+                            Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
+                                repo?.requestEvent(id, relays)  // 未取得でも先に取得を出しておく
+                                nav?.onEvent?.invoke(id)
+                            }
+                        }
                     } else {
                         runCatching { uriHandler.openUri(span.url) }
                     }

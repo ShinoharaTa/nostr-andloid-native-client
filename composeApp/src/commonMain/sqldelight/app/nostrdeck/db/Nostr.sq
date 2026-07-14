@@ -296,6 +296,10 @@ SELECT * FROM event WHERE id = ? LIMIT 1;
 eventsByIds:
 SELECT * FROM event WHERE id IN ?;
 
+-- [#124] naddr 解決: kind+著者の新しい順（d タグの照合は Kotlin 側で tags_json を見る）。
+eventsByKindAuthor:
+SELECT * FROM event WHERE kind = ? AND pubkey = ? ORDER BY created_at DESC LIMIT 20;
+
 -- [M12] NIP-17 DM: 復号済み kind:14 を保存し、会話ごと/全体で取り出す。
 -- 自分と :peer の間の会話（自分発 or 相手発で相手/自分宛）を古い順に。
 dmMessagesWith:

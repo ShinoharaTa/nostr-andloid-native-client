@@ -1663,6 +1663,55 @@ class EventRepository(
     private val hintRelays = mutableSetOf<String>()
 
     /**
+     * [#124] naddr（kind+著者+dタグ）を event id へ解決する。
+     * DB に既存ならそれを返し、無ければ接続中リレー + リレーヒントへ #d 付き REQ を投げて
+     * 取り込まれるのを最大 [timeoutMs] 待つ。見つからなければ null。
+     */
+    // [#124] resolveAddress 実行中の kind。addressable(3xxxx) は基本 whitelist 外なので、
+    // 解決の間だけ ingest が event テーブルへ保存できるようにする。
+    private val addressKindsWanted = mutableSetOf<Int>()
+
+    suspend fun resolveAddress(
+        kind: Int,
+        author: String,
+        dTag: String,
+        hints: List<String> = emptyList(),
+        timeoutMs: Long = 6000,
+    ): String? {
+        fun dbLookup(): String? = q.eventsByKindAuthor(kind.toLong(), author).executeAsList()
+            .firstOrNull { row ->
+                runCatching { parseTags(row.tags_json).any { it.size >= 2 && it[0] == "d" && it[1] == dTag } }
+                    .getOrDefault(false)
+            }?.id
+        dbLookup()?.let { return it }
+
+        // ヒントリレーへ一時接続（requestEvent と同じ規則・接続数上限つき）。
+        if (hints.isNotEmpty()) {
+            withContext(relayDispatcher) {
+                for (raw in hints) {
+                    val url = normalizeRelayUrl(raw)
+                    if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                    if (relays.containsKey(url)) continue
+                    if (hintRelays.size >= HINT_RELAY_CAP) break
+                    if (hintRelays.add(url)) ensureRelay(url)
+                }
+            }
+        }
+        val subId = "addr_${kind}_${author.take(8)}_${dTag.hashCode()}"
+        addressKindsWanted.add(kind)
+        subscribeAll(subId, Filter(kinds = listOf(kind), authors = listOf(author), dTags = listOf(dTag), limit = 1))
+        var found: String? = null
+        var waited = 0L
+        while (found == null && waited < timeoutMs) {
+            delay(300); waited += 300
+            found = dbLookup()
+        }
+        unsubscribeAll(subId)
+        addressKindsWanted.remove(kind)
+        return found
+    }
+
+    /**
      * イベント id の取得を要求する。[hints] があれば、そのリレー（未接続なら上限内で一時接続）
      * にも REQ が届くようにする。接続済み/ヒント無しなら従来どおり接続中リレーへ問い合わせる。
      * [#101] nostr:nevent1… ディープリンク（リレーヒント付き）からも呼ぶため公開。
@@ -1881,6 +1930,12 @@ class EventRepository(
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
             // [#124] NIP-23 長文記事。nevent 参照から記事ビューワーで開けるよう本体を保存する。
             30023 -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+            }
+            // [#124] naddr 解決中の addressable kind（3xxxx）だけ一時的に保存する。
+            else -> if (e.kind in 30000..39999 && e.kind in addressKindsWanted) {
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
                 indexTags(e)
                 requestProfile(e.pubkey)
