@@ -811,20 +811,19 @@ private fun DataSettings() {
     var confirm by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
 
-    // [#122] カラム構成の保存先。既定はローカルのみ。リレー(kind:30078/NIP-78)を有効にすると
-    // 保存のたびに発行し、他のクライアント/端末からも同じ構成を参照できる（単純な後勝ちで取込）。
+    // [#122] カラム構成のリレー保存。読み込みは常時（リレーに保存済みなら追従＝後勝ち）で、
+    // トグルは「この端末での変更をリレー(kind:30078/NIP-78)へ保存するか」だけを選ぶ。
     if (repo != null) {
         val syncRelay by repo.columnSyncRelayFlow().collectAsState()
-        Text("カラム構成の保存先", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
+        Text("カラム構成のリレー保存", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
-            "リレー保存を有効にすると、デッキのカラム構成を kind:30078（NIP-78）としてリレーにも保存し、" +
-                "他の端末・クライアントから参照できます。無効（既定）ならこの端末のみに保存します。\n" +
-                "有効にした時点でリレーに保存済みの構成があればまずそれを取り込みます" +
-                "（この端末の構成で他端末の構成を上書きしません）。無ければ現在の構成を保存します。",
+            "リレーに保存済みのカラム構成（kind:30078 / NIP-78）があれば常に取り込みます（新しい方が優先）。" +
+                "このトグルを有効にすると、この端末でのカラム変更もリレーへ保存され、" +
+                "他の端末・クライアントから参照できます。無効（既定）なら読み取り専用です。",
             color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
         )
-        SettingToggle("カラム構成をリレーにも保存（kind:30078）", syncRelay) { repo.setColumnSyncRelay(it) }
+        SettingToggle("この端末の変更をリレーに保存（kind:30078）", syncRelay) { repo.setColumnSyncRelay(it) }
         Spacer(Modifier.size(DeckSpace.Lg))
         HorizontalDivider(color = DeckColors.Border)
         Spacer(Modifier.size(DeckSpace.Lg))

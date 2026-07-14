@@ -643,12 +643,13 @@ class EventRepository(
         }
     }
 
-    // ---- [#122] カラム構成の保存先（ローカル / リレー=NIP-78 kind:30078）----
+    // ---- [#122] カラム構成のリレー保存（NIP-78 kind:30078）----
     //
-    // 完全同期ではなく「保存先の選択」。リレー保存を有効にすると、保存のたびに
-    // kind:30078（d = DECK_COLUMNS_D, content = カラム構成のJSON配列）を発行し、
-    // 起動時にリレー側が新しければ取り込む（単純な LWW・確認UIなし）。
-    // ローカルモード中は 30078 の発行・購読を一切行わない。
+    // ミュートリスト(kind:10000)と同じく「リレー上のリストは常に存在しうる」前提。
+    //  - 読み込み: 常時購読し、手元より新しい構成が届けば取り込む（単純な LWW・確認UIなし）。
+    //    後発端末は起動時点でリレー構成へ追従するため、有効化操作で他端末を初期化する事故が起きない。
+    //  - 書き込み: トグル（COLUMN_SYNC_RELAY）が ON の端末だけが、保存のたびに
+    //    kind:30078（d = DECK_COLUMNS_D, content = カラム構成のJSON配列）を発行する。
 
     /** 30078 の content に載せるカラム1件分。他クライアントからも読める素直な JSON。 */
     @Serializable
@@ -674,41 +675,24 @@ class EventRepository(
     fun remoteDeckColumnsFlow(): SharedFlow<List<ColumnSpec>> = remoteColumnsFlow
 
     /**
-     * 保存先を切り替える。有効化時は**先にリレーの既存 30078 を探し**、
-     *  - 手元より新しい構成があれば取り込む（発行しない）
-     *  - 見つからなければ現在の構成を種として発行する
-     * 即発行すると、後からトグルを入れた端末（初期構成のまま）が新しい created_at で
-     * リレーを上書きし、他端末の作り込んだ構成が LWW で初期化される事故になるため。
+     * 「この端末の変更をリレーに保存するか」を切り替える（読み込みは常時なので影響しない）。
+     * ON にした時点の構成も発行する。常時読み込みにより有効化前にリレー構成へ追従済みなので、
+     * ここでの発行が他端末の構成を巻き戻すことはない（リレーに無ければ種になる）。
      */
     fun setColumnSyncRelay(on: Boolean) {
         columnSyncRelayState.value = on
         putSettingAsync(COLUMN_SYNC_RELAY, if (on) "1" else "0")
-        if (on) {
-            subscribeDeckColumns()
-            scope.launch {
-                // updateDeckColumns が「手元より新しい 30078」を取り込むと deckColumnsAt が進む。
-                // 5秒待って進まなければ「リレーに新しい構成は無い」とみなし、自分の構成を発行する。
-                val before = deckColumnsAt
-                var waited = 0L
-                while (deckColumnsAt <= before && waited < 5_000) {
-                    delay(300); waited += 300
-                }
-                if (deckColumnsAt <= before && columnSyncRelayState.value) {
-                    publishDeckColumns(loadPinnedColumns())
-                }
-            }
-        } else {
-            unsubscribeColumn(DECK_COLUMNS_SUB)  // notifJobs の cancel と openColumns の除去も行う
-        }
+        if (on) scope.launch { publishDeckColumns(loadPinnedColumns()) }
     }
 
     private fun loadColumnSync() {
         deckColumnsAt = q.getSetting(DECK_COLUMNS_AT).executeAsOneOrNull()?.toLongOrNull() ?: 0L
         columnSyncRelayState.value = q.getSetting(COLUMN_SYNC_RELAY).executeAsOneOrNull() == "1"
-        if (columnSyncRelayState.value) subscribeDeckColumns()
+        // 読み込みはトグルに関係なく常時（ミュートリストと同じ扱い）。
+        subscribeDeckColumns()
     }
 
-    /** 自分の kind:30078（d=DECK_COLUMNS_D）を1件購読する（リレー保存モード時のみ）。 */
+    /** 自分の kind:30078（d=DECK_COLUMNS_D）を常時1件購読する。 */
     private fun subscribeDeckColumns() {
         if (!openColumns.add(DECK_COLUMNS_SUB)) return
         notifJobs[DECK_COLUMNS_SUB] = scope.launch {
@@ -740,7 +724,6 @@ class EventRepository(
      * 取り込みはローカル保存（pinned_column）+ [remoteColumnsFlow] への通知（UI 反映は App 側）。
      */
     private fun updateDeckColumns(e: NostrEvent) {
-        if (!columnSyncRelayState.value) return
         if (e.pubkey != myPubkey) return
         if (e.tags.none { it.size >= 2 && it[0] == "d" && it[1] == DECK_COLUMNS_D }) return
         if (e.createdAt <= deckColumnsAt) return
