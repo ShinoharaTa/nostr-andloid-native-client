@@ -30,6 +30,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import app.nostrdeck.crypto.Nip19
+import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -60,11 +65,14 @@ private sealed interface MdBlock {
     data class Code(val text: String) : MdBlock
     data class ListItem(val text: String, val ordered: Boolean, val index: Int) : MdBlock
     data class Image(val url: String, val alt: String) : MdBlock
+    /** [#124] 行単位の nostr:note1/nevent1 参照。Nosli 等の「まとめ」記事は本文がこの並びになる。 */
+    data class NoteRef(val id: String, val relays: List<String>) : MdBlock
     data object Rule : MdBlock
 }
 
 private val imageLine = Regex("""^!\[([^\]]*)]\(([^)\s]+)[^)]*\)\s*$""")
 private val orderedItem = Regex("""^(\d+)[.)]\s+(.*)$""")
+private val noteRefLine = Regex("""^(?:nostr:)?((?:note|nevent)1[a-z0-9]+)\s*$""")
 
 private fun parseBlocks(src: String): List<MdBlock> {
     val out = mutableListOf<MdBlock>()
@@ -95,6 +103,13 @@ private fun parseBlocks(src: String): List<MdBlock> {
                 flushPara()
                 val m = imageLine.find(trimmed)!!
                 out.add(MdBlock.Image(url = m.groupValues[2], alt = m.groupValues[1]))
+            }
+            noteRefLine.matches(trimmed) -> {
+                // 行全体がノート参照 → 埋め込みカード。デコード不能な bech32 は段落として素通し。
+                val bech = noteRefLine.find(trimmed)!!.groupValues[1]
+                val ref = Nip19.eventBechToIdAndRelays(bech)
+                if (ref != null) { flushPara(); out.add(MdBlock.NoteRef(ref.first, ref.second)) }
+                else { if (para.isNotEmpty()) para.append('\n'); para.append(line) }
             }
             trimmed.startsWith(">") -> {
                 flushPara()
@@ -160,9 +175,42 @@ private fun RenderBlock(b: MdBlock) {
             InlineText(b.text, fontSize = DeckType.Body)
         }
         is MdBlock.Image -> NoteImages(listOf(b.url))
+        is MdBlock.NoteRef -> EmbeddedNoteRef(b.id, b.relays)
         MdBlock.Rule -> HorizontalDivider(
             color = DeckColors.Border, modifier = Modifier.padding(vertical = DeckSpace.Md),
         )
+    }
+}
+
+/**
+ * [#124] 記事本文の nostr:note1/nevent1 参照を埋め込みノートカードで表示する。
+ * DB に無ければリレー（+ nevent のリレーヒント）へ取得を出し、解決までプレースホルダを出す。
+ * カードタップは QuotedNoteCard の導線（スレッド / 30023 なら記事）に乗る。
+ */
+@Composable
+private fun EmbeddedNoteRef(id: String, relays: List<String>) {
+    val repo = LocalRepository.current
+    if (repo == null) return
+    LaunchedEffect(id) { repo.requestEvent(id, relays) }
+    val event = remember(id) { repo.eventByIdFlow(id) }.collectAsState(null).value
+    Box(Modifier.padding(vertical = DeckSpace.Xs)) {
+        if (event == null) {
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
+                    .background(DeckColors.Surface2).padding(DeckSpace.Sm),
+            ) {
+                Text("ノートを読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+            }
+        } else {
+            val profile = repo.let { r -> remember(event.pubkey) { r.profileFlow(event.pubkey) } }
+                .collectAsState(null).value
+            QuotedNoteCard(
+                NoteUi(
+                    event = event,
+                    author = profile ?: Profile(pubkey = event.pubkey, name = event.pubkey.take(12), handle = ""),
+                ),
+            )
+        }
     }
 }
 
@@ -192,7 +240,8 @@ private fun renderInline(text: String, linkColor: androidx.compose.ui.graphics.C
                 """|\*\*([^*]+)\*\*""" +                 // **bold**
                 """|\*([^*\s][^*]*)\*""" +               // *italic*
                 """|`([^`]+)`""" +                        // `code`
-                """|(https?://[^\s)\]}>,、。」]+)""",     // bare URL
+                """|(https?://[^\s)\]}>,、。」]+)""" +    // bare URL
+                """|(?:nostr:)?((?:note|nevent)1[a-z0-9]+)""",  // 段落中のノート参照（短縮表示）
         )
         var idx = 0
         while (idx < rest.length) {
@@ -219,6 +268,13 @@ private fun renderInline(text: String, linkColor: androidx.compose.ui.graphics.C
                     append(g[6]); pop()
                     links.add(LinkSpan(s, length, g[6]))
                 }
+                g[7].isNotEmpty() -> {
+                    // ノート参照は全長 bech32 を出さず短縮表示。タップでスレッド/記事を開く（nostr: スキーム）。
+                    val s = length
+                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+                    append(g[7].take(12) + "…"); pop()
+                    links.add(LinkSpan(s, length, "nostr:${g[7]}"))
+                }
             }
             idx = m.range.last + 1
         }
@@ -236,6 +292,7 @@ private fun InlineText(
 ) {
     val (annotated, links) = remember(text) { renderInline(text, DeckColors.Accent) }
     val uriHandler = LocalUriHandler.current
+    val nav = LocalNoteNav.current
     if (links.isEmpty()) {
         Text(annotated, color = color, fontSize = fontSize, fontWeight = fontWeight,
             lineHeight = fontSize * 1.55, modifier = modifier)
@@ -247,8 +304,15 @@ private fun InlineText(
             ),
             modifier = modifier,
             onClick = { offset ->
-                links.firstOrNull { offset in it.start until it.end }
-                    ?.let { runCatching { uriHandler.openUri(it.url) } }
+                links.firstOrNull { offset in it.start until it.end }?.let { span ->
+                    if (span.url.startsWith("nostr:")) {
+                        // ノート参照はアプリ内で開く（スレッド / kind:30023 なら記事ビューワー）。
+                        Nip19.eventBechToIdAndRelays(span.url.removePrefix("nostr:"))
+                            ?.let { (id, _) -> nav?.onEvent?.invoke(id) }
+                    } else {
+                        runCatching { uriHandler.openUri(span.url) }
+                    }
+                }
             },
         )
     }
