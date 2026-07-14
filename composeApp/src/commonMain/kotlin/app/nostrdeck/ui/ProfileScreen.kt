@@ -748,6 +748,18 @@ fun ThreadDetail(state: DeckState, eventId: String) {
     }
     val entries = repo?.let { remember(eventId) { it.threadFeed(eventId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#124] 参照先が長文記事(kind:30023)なら、スレッドではなく記事ビューワーで開く。
+    // subscribeThread は ids 指定（kind 制限なし）なので 30023 本体も取得・保存される。
+    val rootEvent = repo?.let { remember(eventId) { it.eventByIdFlow(eventId) } }
+        ?.collectAsState(null)?.value
+    if (rootEvent?.kind == 30023) {
+        ArticleReader(
+            state, rootEvent,
+            // コメント = スレッド構築済みエントリから記事本体を除いた返信(kind:1)群。
+            comments = entries.filter { it.note.event.id != eventId },
+        )
+        return
+    }
     // 起点ノートへの Zap を購読して「リプライ風」に列挙。
     androidx.compose.runtime.LaunchedEffect(eventId) { repo?.subscribeZaps("${subId}_zaps", listOf(eventId)) }
     val zaps = repo?.let { remember(eventId) { it.zapsForNote(eventId) } }

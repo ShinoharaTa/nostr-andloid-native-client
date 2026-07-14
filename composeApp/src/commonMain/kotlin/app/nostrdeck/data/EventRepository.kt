@@ -2,6 +2,7 @@ package app.nostrdeck.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOneOrNull
 import app.nostrdeck.crypto.Bech32
 import app.nostrdeck.crypto.EventCrypto
 import app.nostrdeck.crypto.Nip01
@@ -1117,6 +1118,12 @@ class EventRepository(
         )
     }
 
+    /** [#124] 単一イベントの DB 監視（記事ビューワー等、id 参照の表示用）。未取得なら null を流す。 */
+    fun eventByIdFlow(id: String): Flow<NostrEvent?> =
+        q.eventById(id).asFlow().mapToOneOrNull(Dispatchers.Default).map { row ->
+            row?.let { NostrEvent(it.id, it.pubkey, it.kind.toInt(), it.created_at, it.content, parseTags(it.tags_json), it.sig) }
+        }
+
     /** スレッド表示（深さ付きで root→返信を並べる）。DB の差分に追従する。 */
     fun threadFeed(focusId: String): Flow<List<ThreadEntry>> {
         val ids = threadAnchorIds(focusId)
@@ -1872,6 +1879,12 @@ class EventRepository(
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
+            // [#124] NIP-23 長文記事。nevent 参照から記事ビューワーで開けるよう本体を保存する。
+            30023 -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+            }
         }
     }
 
