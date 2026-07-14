@@ -359,11 +359,14 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             LaunchedEffect(repo) { repo?.refreshChannels() }
             val channels = if (repo != null) remember { repo.channelsFlow() }.collectAsState(emptyList()).value
             else SampleData.channels
+            // [#129] 📌 = お気に入り（NIP-51 kind:10005・一覧上部固定）。デッキへの追加はルームヘッダーから。
+            val favorites = repo?.favoriteChannelIdsFlow()?.collectAsState()?.value.orEmpty().toSet()
+            val scope = rememberCoroutineScope()
             ChannelListColumn(
-                spec, channels, pinnedChannelIds(state), modifier, listState,
+                spec, channels, favorites, modifier, listState,
                 menu = menu,
                 onChannelClick = { ch -> state.openTransient(SampleData.roomColumnFor(ch), originId = spec.id) },
-                onPinChannel = { ch -> state.openTransient(SampleData.roomColumnFor(ch).copy(pinned = true)); state.pin("room_${ch.id}") },
+                onFavoriteChannel = { ch -> scope.launch { repo?.toggleChannelFavorite(ch.id) } },
             )
         }
         ColumnRenderer.ROOM -> {
@@ -400,8 +403,3 @@ private fun columnWidthDp(size: String?): androidx.compose.ui.unit.Dp = when (si
     "L" -> 460.dp
     else -> DeckDimens.ColumnWidth  // M（既定 340dp）
 }
-
-/** 現在ピン留め済みのチャンネル room の channelId 集合（一覧の📌表示用）。 */
-private fun pinnedChannelIds(state: DeckState): Set<String> =
-    state.columns.filter { it.pinned && it.kind == ColumnKind.CHANNEL_ROOM }
-        .mapNotNull { it.filter.channelId }.toSet()

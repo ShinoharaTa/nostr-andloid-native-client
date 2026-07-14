@@ -18,7 +18,6 @@ import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
@@ -136,9 +135,10 @@ fun ColumnHeader(
                 HeaderIconButton(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
                     tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
             }
-            if (pinned && onPin != null) {
-                HeaderIconButton(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
-            } else if (onClose != null) {
+            // [#129] pin と close は独立に表示する（パブリックチャットのルームヘッダー等、
+            // pin=デッキ追加 / ✕=選択解除の pane）。旧 DragIndicator プレースホルダは
+            // デッキカラムが ⋯ メニューへ移行した現在は到達しないため廃止。
+            if (onClose != null) {
                 HeaderIconButton(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
             }
         }

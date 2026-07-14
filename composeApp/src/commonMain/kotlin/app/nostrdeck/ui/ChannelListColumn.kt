@@ -24,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,21 +43,26 @@ import app.nostrdeck.theme.DeckWeight
 
 /**
  * CHANNEL_LIST レンダラー：NIP-28 チャンネル一覧（スレッド一覧）。
- * 行タップでルームを開き、📌でレールにピン留め。
+ * 行タップでルームを開き、📌でお気に入り（NIP-51 kind:10005）に登録＝一覧の上部に固定。
+ * ホームフィード（デッキ）への追加はルーム画面のヘッダーから行う（[#129] で分離）。
  */
 @Composable
 fun ChannelListColumn(
     spec: ColumnSpec,
     channels: List<Channel>,
-    pinnedChannelIds: Set<String>,
+    favoriteChannelIds: Set<String>,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     onPin: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onChannelClick: (Channel) -> Unit = {},
-    onPinChannel: (Channel) -> Unit = {},
+    onFavoriteChannel: (Channel) -> Unit = {},
 ) {
+    // お気に入りを上に（安定ソートなので各グループ内の並びは維持）。
+    val sorted = remember(channels, favoriteChannelIds) {
+        channels.sortedByDescending { it.id in favoriteChannelIds }
+    }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
@@ -65,9 +71,9 @@ fun ChannelListColumn(
         )
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            items(channels, key = { it.id }) { ch ->
-                ChannelRow(ch, ch.id in pinnedChannelIds,
-                    onClick = { onChannelClick(ch) }, onPin = { onPinChannel(ch) })
+            items(sorted, key = { it.id }) { ch ->
+                ChannelRow(ch, ch.id in favoriteChannelIds,
+                    onClick = { onChannelClick(ch) }, onPin = { onFavoriteChannel(ch) })
             }
         }
     }
@@ -124,7 +130,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 .clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onPin),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Outlined.PushPin, "ピン留め",
+            Icon(Icons.Outlined.PushPin, if (pinned) "お気に入り解除" else "お気に入り（上部固定）",
                 tint = if (pinned) DeckColors.Zap else DeckColors.Text3,
                 modifier = Modifier.size(DeckDimens.IconSm))
         }
