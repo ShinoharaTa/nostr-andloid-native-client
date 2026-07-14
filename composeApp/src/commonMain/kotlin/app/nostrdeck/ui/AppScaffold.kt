@@ -210,7 +210,9 @@ private fun DetailOverlay(state: DeckState, isCompact: Boolean) {
         is app.nostrdeck.state.DetailRoute.ProfileView ->
             ProfileScreen(state, isCompact, top.pubkey)
         is app.nostrdeck.state.DetailRoute.ThreadView ->
-            ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
+            // [#123] スレッドは返信ツリーのネストが深くなるため、単一フィード(520)より
+            // 広い 640 を取り、余裕のあるレイアウトにする。
+            ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }, maxWidthDp = 640) {
                 ThreadDetail(state, top.eventId)
             }
     }
