@@ -152,6 +152,16 @@ class DeckState(
     /** 一時カラムを固定（永続セットへ昇格）。SSOT は SQLDelight の pinned_column。 */
     fun pin(columnId: String) { replace(columnId) { it.copy(pinned = true) }; persistPinned() }
 
+    /**
+     * [#122] リレー(kind:30078)から取り込んだ構成で固定カラムを置き換える。
+     * 開いている一時カラムは維持し、保存コールバックは呼ばない（再発行ループ防止）。
+     */
+    fun applyPinnedColumns(specs: List<ColumnSpec>) {
+        val transients = columns.filter { !it.pinned && specs.none { s -> s.id == it.id } }
+        columns.clear()
+        columns.addAll(specs.sortedBy { it.order } + transients)
+    }
+
     /** 固定解除（一時カラムへ降格。開いたままだが閉じられるようになる）。 */
     fun unpin(columnId: String) { replace(columnId) { it.copy(pinned = false) }; persistPinned() }
 

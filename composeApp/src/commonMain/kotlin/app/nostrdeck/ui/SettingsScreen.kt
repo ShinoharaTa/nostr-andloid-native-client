@@ -811,6 +811,23 @@ private fun DataSettings() {
     var confirm by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
 
+    // [#122] カラム構成の保存先。既定はローカルのみ。リレー(kind:30078/NIP-78)を有効にすると
+    // 保存のたびに発行し、他のクライアント/端末からも同じ構成を参照できる（単純な後勝ちで取込）。
+    if (repo != null) {
+        val syncRelay by repo.columnSyncRelayFlow().collectAsState()
+        Text("カラム構成の保存先", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(
+            "リレー保存を有効にすると、デッキのカラム構成を kind:30078（NIP-78）としてリレーにも保存し、" +
+                "他の端末・クライアントから参照できます。無効（既定）ならこの端末のみに保存します。",
+            color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
+        )
+        SettingToggle("カラム構成をリレーにも保存（kind:30078）", syncRelay) { repo.setColumnSyncRelay(it) }
+        Spacer(Modifier.size(DeckSpace.Lg))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Lg))
+    }
+
     Text(
         "端末内に保存しているキャッシュ（タイムライン履歴・プロフィール・チャンネル・送信待ち）を" +
             "すべて消去し、リレーから取り直します。鍵・リレー設定・ハッシュタグ履歴は保持されます。",

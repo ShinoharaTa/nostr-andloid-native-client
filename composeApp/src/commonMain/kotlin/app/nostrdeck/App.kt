@@ -62,6 +62,10 @@ fun App(repository: EventRepository? = null) {
             if (loggedIn && !wasLoggedIn) repository?.reloadForNewIdentity()
             wasLoggedIn = loggedIn
         }
+        // [#122] リレー保存モードで取り込んだカラム構成を UI に反映（ローカル保存は Repository 側で済み）。
+        LaunchedEffect(state, repository) {
+            repository?.remoteDeckColumnsFlow()?.collect { specs -> state.applyPinnedColumns(specs) }
+        }
         // [#100][#101] 外部 Intent（共有/ディープリンク）の消費。未ログイン中は値を保持したまま
         // 待ち、ログイン成立（session=true）で combine が再発火して処理される。
         LaunchedEffect(state, repository) {
