@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -52,7 +54,14 @@ import app.nostrdeck.theme.DeckSpace
  */
 @Composable
 fun AppScaffold(state: DeckState) {
-    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
+    // 上端＋左右のみシステムバー分を確保する。下端インセット（ホームインジケータ帯）は
+    // ここで消費せず、Compact では BottomBar(NavigationBar) 自身に処理させて**バーを最下端まで
+    // 伸ばす**（アイコンはインジケータの上）。Expanded では下の Row で改めて下端を確保する。
+    // ※以前は systemBars 全体を消費していたため、BottomBar がインセット分だけ上に浮いていた。
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+    ) {
         val isCompact = maxWidth.value < COMPACT_BREAKPOINT_DP
 
         // Android 戻る: まず全幅詳細(プロフィール/スレッド)を閉じ、無ければ宛先ごとの処理。
@@ -92,7 +101,9 @@ fun AppScaffold(state: DeckState) {
                 }
             }
         } else {
-            Row(Modifier.fillMaxSize()) {
+            // Expanded は下部 BottomBar が無い（左 DeckRail）。ルートで下端を確保しなくなったぶん、
+            // ここで下端インセットを padding して内容がインジケータ帯に潜らないようにする（従来挙動を維持）。
+            Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state)
                 ContentWithCompose(state, isCompact = false, Modifier.weight(1f))
             }
@@ -240,7 +251,18 @@ private fun BottomBar(state: DeckState) {
     val repo = LocalRepository.current
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    NavigationBar {
+    // 元の M3 NavigationBar（既定高さ80dp・選択インジケータ）を維持する。変更点は2つだけ:
+    //  1) 色: containerColor=Bg + tonalElevation=0 → 左レール/セーフエリア裏と同色のモノクロに揃える
+    //     （M3 既定の surfaceContainer は紫みのグレーで段差＆色味が出ていた）。
+    //  2) 下端: プラットフォーム別インセット [bottomBarInsets]。Android は OS のナビゲーション
+    //     領域（セーフエリア）をそのまま確保する必要があり、iOS のみホームインジケータの
+    //     フル 34dp が過大なため 8dp に詰める。
+    //     ※以前ここでバー高さを 48dp に下げたのは誤診（実問題は下端余白）。80dp は元に戻した。
+    NavigationBar(
+        containerColor = DeckColors.Bg,
+        tonalElevation = 0.dp,
+        windowInsets = bottomBarInsets(),
+    ) {
         NavItem(state, NavDest.HOME, Icons.Outlined.Home, "ホーム")
         NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, "通知")
         NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "Chat")

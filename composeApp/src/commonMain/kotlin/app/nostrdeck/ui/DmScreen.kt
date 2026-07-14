@@ -99,7 +99,14 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     messages = messages,
                     names = names,
                     // 実データ時のみ送信可能（NIP-17 gift wrap を発行）。
-                    onSend = if (repo != null) ({ text, _ -> scope.launch { repo.sendDm(selected.pubkey, text) } }) else null,
+                    // 送信中の例外（暗号/リレー I/O 等）が rememberCoroutineScope で未捕捉のまま
+                    // 伝播するとアプリごと落ちうるので、ここで握ってログに留める（無音失敗に留める）。
+                    onSend = if (repo != null) ({ text, _ ->
+                        scope.launch {
+                            runCatching { repo.sendDm(selected.pubkey, text) }
+                                .onFailure { println("Nostrism sendDm failed: $it") }
+                        }
+                    }) else null,
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
                     onClose = if (isCompact) null else ({ state.dmThread = null }),
                     onBack = if (isCompact) ({ state.dmThread = null }) else null,
