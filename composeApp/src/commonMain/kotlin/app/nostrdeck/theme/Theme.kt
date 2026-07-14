@@ -1,9 +1,12 @@
 package app.nostrdeck.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,9 +108,32 @@ private val DarkScheme = darkColorScheme(
     outline      = DeckColors.Border,
 )
 
+/**
+ * 全 [androidx.compose.material3.Text] の行を「line box の中央」に揃える。
+ *
+ * Android は暗黙に includeFontPadding 相当で文字を詰めて中央寄せするが、iOS(Skia) は
+ * フォントの ascent/descent をそのまま使うため、行高指定の無いテキストが**下寄り**に描かれる
+ * （ボタン/バッジ/アバターのイニシャル等、固定高 Box の中央寄せで顕著）。
+ * [LineHeightStyle] の Center + Trim.Both を全テキストの既定にすることで、両 OS で
+ * グリフを line box 中央へ揃え、プラットフォーム差を実用上ならす。
+ * includeFontPadding は Android 専用で iOS に対応物が無いため、cross-platform なこの手段を採る。
+ */
+private val CenteredLineHeight = LineHeightStyle(
+    alignment = LineHeightStyle.Alignment.Center,
+    trim = LineHeightStyle.Trim.Both,
+)
+
 @Composable
 fun DeckTheme(content: @Composable () -> Unit) {
     // 現状はダーク固定（Nostr クライアントの定番）。将来ライト対応する場合はここで分岐。
     @Suppress("UNUSED_VARIABLE") val dark = isSystemInDarkTheme()
-    MaterialTheme(colorScheme = DarkScheme, content = content)
+    MaterialTheme(colorScheme = DarkScheme) {
+        // 各 Text() は fontSize/color を LocalTextStyle にマージして描くため、ここで
+        // lineHeightStyle を既定に載せておけば全呼び出し箇所へ波及する（呼び出し側改修不要）。
+        CompositionLocalProvider(
+            LocalTextStyle provides LocalTextStyle.current.copy(lineHeightStyle = CenteredLineHeight),
+        ) {
+            content()
+        }
+    }
 }
