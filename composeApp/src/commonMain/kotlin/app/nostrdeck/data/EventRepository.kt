@@ -673,13 +673,30 @@ class EventRepository(
     private val remoteColumnsFlow = MutableSharedFlow<List<ColumnSpec>>(replay = 1)
     fun remoteDeckColumnsFlow(): SharedFlow<List<ColumnSpec>> = remoteColumnsFlow
 
-    /** 保存先を切り替える。リレー有効化時は現在の構成を即発行し、最新の 30078 を購読する。 */
+    /**
+     * 保存先を切り替える。有効化時は**先にリレーの既存 30078 を探し**、
+     *  - 手元より新しい構成があれば取り込む（発行しない）
+     *  - 見つからなければ現在の構成を種として発行する
+     * 即発行すると、後からトグルを入れた端末（初期構成のまま）が新しい created_at で
+     * リレーを上書きし、他端末の作り込んだ構成が LWW で初期化される事故になるため。
+     */
     fun setColumnSyncRelay(on: Boolean) {
         columnSyncRelayState.value = on
         putSettingAsync(COLUMN_SYNC_RELAY, if (on) "1" else "0")
         if (on) {
-            scope.launch { publishDeckColumns(loadPinnedColumns()) }
             subscribeDeckColumns()
+            scope.launch {
+                // updateDeckColumns が「手元より新しい 30078」を取り込むと deckColumnsAt が進む。
+                // 5秒待って進まなければ「リレーに新しい構成は無い」とみなし、自分の構成を発行する。
+                val before = deckColumnsAt
+                var waited = 0L
+                while (deckColumnsAt <= before && waited < 5_000) {
+                    delay(300); waited += 300
+                }
+                if (deckColumnsAt <= before && columnSyncRelayState.value) {
+                    publishDeckColumns(loadPinnedColumns())
+                }
+            }
         } else {
             unsubscribeColumn(DECK_COLUMNS_SUB)  // notifJobs の cancel と openColumns の除去も行う
         }

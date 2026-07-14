@@ -819,7 +819,9 @@ private fun DataSettings() {
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
             "リレー保存を有効にすると、デッキのカラム構成を kind:30078（NIP-78）としてリレーにも保存し、" +
-                "他の端末・クライアントから参照できます。無効（既定）ならこの端末のみに保存します。",
+                "他の端末・クライアントから参照できます。無効（既定）ならこの端末のみに保存します。\n" +
+                "有効にした時点でリレーに保存済みの構成があればまずそれを取り込みます" +
+                "（この端末の構成で他端末の構成を上書きしません）。無ければ現在の構成を保存します。",
             color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
         )
         SettingToggle("カラム構成をリレーにも保存（kind:30078）", syncRelay) { repo.setColumnSyncRelay(it) }
