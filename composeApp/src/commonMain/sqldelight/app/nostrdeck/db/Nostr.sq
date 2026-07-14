@@ -170,6 +170,14 @@ WHERE kind = 1 AND pubkey IN ? AND created_at > ?
 ORDER BY created_at DESC
 LIMIT 300;
 
+-- [#134] プロフィール: 本人の投稿 + リポスト（kind:1/6/16）。
+-- 300件だとスクロール中の全件再構築でカクつくため 150 に抑える。
+feedAuthorsWithReposts:
+SELECT * FROM event
+WHERE kind IN (1, 6, 16) AND pubkey IN ? AND created_at > ?
+ORDER BY created_at DESC
+LIMIT 150;
+
 -- ============ pinned_column: ピン留めカラム（永続） ============
 -- レール/デッキの並びの source of truth（whiteboard「統合モデル」）。
 -- フィード/スレッド/チャンネルルームを区別なく ColumnSpec として保存。

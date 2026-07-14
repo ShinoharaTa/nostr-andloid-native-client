@@ -839,8 +839,10 @@ class EventRepository(
             .conflate()
             .map { (rows, profiles, meta) ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { row ->
-                    applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta)
+                // [#134] kind:6/16 の行（プロフィールの投稿+リポスト）も扱えるよう
+                // フォロー中と同じ変換に統一する（kind:1 は従来と同じ経路に落ちる）。
+                rows.mapNotNull { row ->
+                    toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) }
                 }
             }.flowOn(Dispatchers.Default)
 
@@ -1301,6 +1303,9 @@ class EventRepository(
 
     private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
         filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+        // [#134] プロフィール（投稿+リポスト）: kind:6/16 を含む要求は専用クエリで。
+        filter.authors.isNotEmpty() && filter.kinds.any { it == 6 || it == 16 } ->
+            q.feedAuthorsWithReposts(filter.authors, 0L)
         filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
         !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
         else -> q.recentNotes(300L)
