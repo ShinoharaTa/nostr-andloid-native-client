@@ -281,9 +281,10 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
-            // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
+            // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003) / チャンネルお気に入り(kind:10005)（NIP-51）。
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            subscribeAll("chatfavlist", Filter(kinds = listOf(10005), authors = listOf(me), limit = 1))
             // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
             // 10050 が届いたら updateDmRelayList が DM リレーへも追加購読する（broad は維持）。
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
@@ -548,6 +549,7 @@ class EventRepository(
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            subscribeAll("chatfavlist", Filter(kinds = listOf(10005), authors = listOf(me), limit = 1))
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
             subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
@@ -1866,6 +1868,7 @@ class EventRepository(
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
+            10005 -> updateChannelFavorites(e) // NIP-51 Public chats（チャンネルお気に入り）
             4 -> ingestLegacyDm(e)        // NIP-04 旧型DM（kind:4）を復号して kind:14 に統合保存
             1059 -> ingestGiftWrap(e)     // NIP-17 DM（gift wrap を復号して kind:14 保存）
             9735 -> ingestZapReceipt(e)   // NIP-57 Zap 受領（#e 集計・受信通知に使う）
@@ -2115,11 +2118,15 @@ class EventRepository(
     }
     private val bookmarkList = EIdList()
     private val pinnedList = EIdList()
+    // [#129] NIP-51 Public chats（kind:10005）。e タグ = お気に入りチャンネルの kind:40 id。
+    private val chatFavList = EIdList()
 
     /** 自分のブックマーク(kind:10003)の event id（追加順）。 */
     fun bookmarkIdsFlow(): StateFlow<List<String>> = bookmarkList.ids
     /** 自分の固定投稿(kind:10001)の event id（追加順）。 */
     fun pinnedIdsFlow(): StateFlow<List<String>> = pinnedList.ids
+    /** 自分のお気に入りチャンネル(kind:10005)の channel id（追加順）。一覧の上部固定に使う。 */
+    fun favoriteChannelIdsFlow(): StateFlow<List<String>> = chatFavList.ids
 
     /** 他ユーザーも含む固定投稿リスト（author→ordered event id）。プロフィール表示用。 */
     private val pinsByAuthor = MutableStateFlow<Map<String, List<String>>>(emptyMap())
@@ -2134,6 +2141,17 @@ class EventRepository(
         bookmarkList.other = other
         bookmarkList.ids.value = ids.distinct()
         if (ids.isNotEmpty()) subscribeAll("bookmark_items", Filter(ids = ids.distinct(), limit = ids.size))
+    }
+
+    /** [#129] kind:10005（Public chats）。チャンネル一覧はエンドポイント由来なので id の解決購読は不要。 */
+    private fun updateChannelFavorites(e: NostrEvent) {
+        if (e.pubkey != myPubkey || e.createdAt <= chatFavList.at) return
+        chatFavList.at = e.createdAt
+        chatFavList.content = e.content
+        val ids = ArrayList<String>(); val other = ArrayList<List<String>>()
+        e.tags.forEach { t -> if (t.size >= 2 && t[0] == "e") ids.add(t[1]) else other.add(t) }
+        chatFavList.other = other
+        chatFavList.ids.value = ids.distinct()
     }
 
     private fun updatePinnedList(e: NostrEvent) {
@@ -2163,6 +2181,14 @@ class EventRepository(
         val cur = bookmarkList.ids.value
         val was = eventId in cur
         publishEIdList(bookmarkList, 10003, if (was) cur - eventId else cur + eventId)
+        return !was
+    }
+
+    /** [#129] チャンネルお気に入りをトグル（NIP-51 kind:10005 の公開 e タグ）。戻り値=操作後にお気に入りか。 */
+    suspend fun toggleChannelFavorite(channelId: String): Boolean {
+        val cur = chatFavList.ids.value
+        val was = channelId in cur
+        publishEIdList(chatFavList, 10005, if (was) cur - channelId else cur + channelId)
         return !was
     }
 
