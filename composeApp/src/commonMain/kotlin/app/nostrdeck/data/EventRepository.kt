@@ -2410,27 +2410,51 @@ class EventRepository(
         scope.launch { delay(6000); unsubscribeAll(subId); unsubscribeAll("${subId}_idx") }
     }
 
+    /** ページング付きフォロワー集計の1ページ分。[hasMore]=true なら続きを取れる見込みがある。 */
+    data class FollowersPage(val followers: List<String>, val hasMore: Boolean)
+
+    // フォロワー集計の累積（対象1人分のみ保持）と続きカーソル（観測済み kind:3 の最古 created_at - 1）。
+    private var followerAccumTarget: String? = null
+    private var followerAccum = mutableMapOf<String, Pair<Long, Boolean>>()
+    private var followerCursor: Long? = null
+
     /**
-     * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを収集する（リレーで観測できた範囲のみ・全数ではない）。
-     * 接続中リレー＋インデクサへ REQ し数秒集計。同一発行者は最新の kind:3 だけ採用し、
-     * 最新リストに対象が含まれない発行者は除外する（アンフォロー検出）。
-     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由 #80-OOM）。
+     * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを1ページ分収集する
+     * （リレーで観測できた範囲のみ・全数ではない）。
+     * [#80-OOM 続報] kind:3 は1通で数百〜数千 p タグの巨大イベントで、全接続リレーに
+     * limit 500 で投げるとパース洪水だけで heap が枯渇する（プロフィールを開くと OOM）。
+     *  - 自動では実行しない（フォロワー一覧を開いた時のみ呼ぶ）
+     *  - インデクサリレーだけに投げる（全接続リレーへの重複 REQ をやめる）
+     *  - limit [pageSize] のページング（観測した created_at を until カーソルに続きを取る）
+     * 同一発行者は最新の kind:3 だけ採用し、対象を含まない発行者は除外（アンフォロー検出）。
+     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由）。
      */
-    suspend fun fetchFollowersOf(pubkey: String): List<String> {
-        val subId = "followers_of_${pubkey.take(12)}"
-        val seen = mutableMapOf<String, Pair<Long, Boolean>>()
+    suspend fun fetchFollowersPage(pubkey: String, reset: Boolean, pageSize: Int = 100): FollowersPage {
+        if (reset || followerAccumTarget != pubkey) {
+            followerAccumTarget = pubkey
+            followerAccum = mutableMapOf()
+            followerCursor = null
+        }
+        val seen = followerAccum
+        val before = seen.size
         followerScans[pubkey] = seen
-        subscribeAll(subId, Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
-        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
+        val subId = "followers_of_${pubkey.take(12)}"
+        subscribeTargeted(
+            subId, INDEXER_RELAYS.toSet(),
+            Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = pageSize, until = followerCursor),
+        )
         try {
-            delay(3500)
+            delay(2500)
         } finally {
             // 画面離脱等でキャンセルされても REQ と集計テーブルを残さない。
             followerScans.remove(pubkey)
             unsubscribeAll(subId)
-            unsubscribeAll("${subId}_idx")
         }
-        return seen.filterValues { it.second }.keys.toList()
+        followerCursor = seen.values.minOfOrNull { it.first }?.let { it - 1 }
+        return FollowersPage(
+            followers = seen.filterValues { it.second }.keys.toList(),
+            hasMore = seen.size > before,
+        )
     }
 
     /** [#99] 対象ユーザーの NIP-65 リレー（受信済みキャッシュから最大 [max] 件）。nprofile のリレーヒント用。 */
