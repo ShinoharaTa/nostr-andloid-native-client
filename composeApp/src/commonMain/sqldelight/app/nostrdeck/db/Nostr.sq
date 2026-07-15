@@ -170,6 +170,14 @@ WHERE kind = 1 AND pubkey IN ? AND created_at > ?
 ORDER BY created_at DESC
 LIMIT 300;
 
+-- [#134] プロフィール: 本人の投稿 + リポスト（kind:1/6/16）。
+-- 300件だとスクロール中の全件再構築でカクつくため 150 に抑える。
+feedAuthorsWithReposts:
+SELECT * FROM event
+WHERE kind IN (1, 6, 16) AND pubkey IN ? AND created_at > ?
+ORDER BY created_at DESC
+LIMIT 150;
+
 -- ============ pinned_column: ピン留めカラム（永続） ============
 -- レール/デッキの並びの source of truth（whiteboard「統合モデル」）。
 -- フィード/スレッド/チャンネルルームを区別なく ColumnSpec として保存。
@@ -295,6 +303,10 @@ SELECT * FROM event WHERE id = ? LIMIT 1;
 -- [M14] 複数 id 一括解決（ブックマーク/固定投稿の表示用。順序は Kotlin 側で id リストに合わせる）。
 eventsByIds:
 SELECT * FROM event WHERE id IN ?;
+
+-- [#124] naddr 解決: kind+著者の新しい順（d タグの照合は Kotlin 側で tags_json を見る）。
+eventsByKindAuthor:
+SELECT * FROM event WHERE kind = ? AND pubkey = ? ORDER BY created_at DESC LIMIT 20;
 
 -- [M12] NIP-17 DM: 復号済み kind:14 を保存し、会話ごと/全体で取り出す。
 -- 自分と :peer の間の会話（自分発 or 相手発で相手/自分宛）を古い順に。

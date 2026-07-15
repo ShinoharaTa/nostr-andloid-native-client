@@ -76,15 +76,16 @@ fun ChannelListColumn(
 @Composable
 private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin: () -> Unit) {
     Row(
-        // 行高は固定（AvatarSize + 上下Sm = 54dp）。説明の有無に関わらず全項目同じ高さ。
-        Modifier.fillMaxWidth().height(DeckDimens.AvatarSize + DeckSpace.Sm * 2)
+        // [#123] 行高は固定（AvatarSize + 上下Md = 62dp）。説明の有無に関わらず全項目同じ高さ。
+        // 以前は上下Sm(=54dp)でアイコン周りの余白が薄く、行とピンの誤タップが起きやすかった。
+        Modifier.fillMaxWidth().height(DeckDimens.AvatarSize + DeckSpace.Md * 2)
             .clickable(onClick = onClick).padding(horizontal = DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(DeckDimens.AvatarSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
             AvatarSquare(ch.name, ch.pictureUrl)
         }
-        Spacer(Modifier.width(DeckSpace.Sm))
+        Spacer(Modifier.width(DeckSpace.Md))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
@@ -116,9 +117,10 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 contentAlignment = Alignment.Center,
             ) { Text("${ch.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = FontWeight.Bold) }
         }
-        // 行内ピン（インライン補助操作・32dp 実タップ領域）。
+        // [#123] 行内ピン。行タップとの誤タップを防ぐため、タップ領域を 40dp(TouchTargetSm) に
+        // 広げ、本文との間隔も Sm に拡大して分離を明確にする。
         Box(
-            Modifier.padding(start = DeckSpace.Xs).size(DeckDimens.TouchTargetXs)
+            Modifier.padding(start = DeckSpace.Sm).size(DeckDimens.TouchTargetSm)
                 .clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onPin),
             contentAlignment = Alignment.Center,
         ) {

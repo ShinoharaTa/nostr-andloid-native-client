@@ -102,13 +102,14 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     androidx.compose.runtime.DisposableEffect(pubkey) {
         repo?.loadProfile(pubkey)
         val subId = "profile_overlay_$pubkey"
-        repo?.subscribeColumn(subId, ReqFilter(kinds = listOf(0, 1, 10002), authors = listOf(pubkey)))
+        // [#134] リポスト(kind:6/16)も購読して投稿タブに混ぜる。
+        repo?.subscribeColumn(subId, ReqFilter(kinds = listOf(0, 1, 6, 16, 10002), authors = listOf(pubkey)))
         onDispose { repo?.unsubscribeColumn(subId) }
     }
 
     val profile = repo?.let { remember(pubkey) { it.profileFlow(pubkey) } }?.collectAsState(null)?.value
     val following = repo?.let { remember(pubkey) { it.isFollowingFlow(pubkey) } }?.collectAsState(false)?.value ?: false
-    val notes = repo?.let { remember(pubkey) { it.columnFeed(ReqFilter(kinds = listOf(1), authors = listOf(pubkey))) } }
+    val notes = repo?.let { remember(pubkey) { it.columnFeed(ReqFilter(kinds = listOf(1, 6, 16), authors = listOf(pubkey))) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
 
     val pinnedNotes = repo?.let { remember(pubkey) { it.pinnedNotesFor(pubkey) } }
@@ -137,7 +138,8 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val tab = tabRaw
     val visible = remember(notes, tab) {
         when (tab) {
-            ProfileTab.POSTS -> notes.filter { !it.isReply }
+            // [#134] リポスト（repostedBy 非null）は元が返信でも「投稿」に出す（フォロー中と同じ扱い）。
+            ProfileTab.POSTS -> notes.filter { !it.isReply || it.repostedBy != null }
             ProfileTab.REPLIES -> notes
             ProfileTab.MEDIA -> notes.filter { it.images.isNotEmpty() }
         }
@@ -329,7 +331,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
             }
         }
     } else {
-        items(visible, key = { it.event.id }) { note ->
+        // [#134] セルフリポストで元投稿と id が衝突しないよう、リポストは rp_<リポストid> をキーに。
+        items(visible, key = { it.repostId?.let { rid -> "rp_$rid" } ?: it.event.id }) { note ->
             NoteItem(
                 note, onClick = { onNoteClick(note) },
                 onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
@@ -748,6 +751,18 @@ fun ThreadDetail(state: DeckState, eventId: String) {
     }
     val entries = repo?.let { remember(eventId) { it.threadFeed(eventId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#124] 参照先が長文記事(kind:30023)なら、スレッドではなく記事ビューワーで開く。
+    // subscribeThread は ids 指定（kind 制限なし）なので 30023 本体も取得・保存される。
+    val rootEvent = repo?.let { remember(eventId) { it.eventByIdFlow(eventId) } }
+        ?.collectAsState(null)?.value
+    if (rootEvent?.kind == 30023) {
+        ArticleReader(
+            state, rootEvent,
+            // コメント = スレッド構築済みエントリから記事本体を除いた返信(kind:1)群。
+            comments = entries.filter { it.note.event.id != eventId },
+        )
+        return
+    }
     // 起点ノートへの Zap を購読して「リプライ風」に列挙。
     androidx.compose.runtime.LaunchedEffect(eventId) { repo?.subscribeZaps("${subId}_zaps", listOf(eventId)) }
     val zaps = repo?.let { remember(eventId) { it.zapsForNote(eventId) } }
