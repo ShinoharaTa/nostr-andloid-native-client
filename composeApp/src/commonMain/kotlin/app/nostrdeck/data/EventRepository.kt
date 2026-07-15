@@ -641,6 +641,12 @@ class EventRepository(
             delay(8000)
             if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
         }
+        // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
+        // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
+        if (filter.words.isNotEmpty()) {
+            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = 100))
+            return
+        }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
@@ -649,6 +655,16 @@ class EventRepository(
             else -> subscribeAll(columnId, proto)
         }
     }
+
+    /**
+     * [#135] キーワード・タグフィードの REQ フィルタ群。
+     * 単語は NIP-50（1語=1フィルタ）・タグは #t（複数値=OR）で、同一 REQ 内の
+     * 複数フィルタ = リレー側 OR として届く（単語とタグで REQ の仕組みが違うため分ける）。
+     */
+    private fun ReqFilter.toSearchProtocols(limit: Int): Array<Filter> = buildList {
+        words.forEach { add(Filter(kinds = listOf(1), search = it, limit = limit)) }
+        if (hashtags.isNotEmpty()) add(Filter(kinds = listOf(1), hashtags = hashtags, limit = limit))
+    }.toTypedArray()
 
     // [#3] 過去方向の追い読み用の一発 REQ 連番。
     private var olderReqSeq = 0
@@ -662,6 +678,11 @@ class EventRepository(
         val proto = filter.toProtocol(limit = 100).copy(until = untilSec)
         val subId = "older-$columnId-${olderReqSeq++}"
         when {
+            // [#135] 複合検索: 条件フィルタ群に until を付けて NIP-50 リレーへ。
+            filter.words.isNotEmpty() -> subscribeTargeted(
+                subId, SEARCH_RELAYS.toSet(),
+                *filter.toSearchProtocols(limit = 100).map { it.copy(until = untilSec) }.toTypedArray(),
+            )
             !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
             else -> subscribeAll(subId, proto)
@@ -1308,15 +1329,38 @@ class EventRepository(
         q.transaction { ids.forEach { id -> q.deleteEventById(id); q.deleteTagsForEvent(id) } }
     }
 
-    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
-        filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
-        // [#134] プロフィール（投稿+リポスト）: kind:6/16 を含む要求は専用クエリで。
-        filter.authors.isNotEmpty() && filter.kinds.any { it == 6 || it == 16 } ->
-            q.feedAuthorsWithReposts(filter.authors, 0L)
-        filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
-        !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
-        else -> q.recentNotes(300L)
-    }.asFlow().mapToList(Dispatchers.Default)
+    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> {
+        // [#135] 複合検索: SQL では広めに取り、AND/OR の締めは Kotlin 側で行う。
+        if (filter.words.isNotEmpty()) return compositeSearchRows(filter)
+        return when {
+            filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+            // [#134] プロフィール（投稿+リポスト）: kind:6/16 を含む要求は専用クエリで。
+            filter.authors.isNotEmpty() && filter.kinds.any { it == 6 || it == 16 } ->
+                q.feedAuthorsWithReposts(filter.authors, 0L)
+            filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
+            !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
+            else -> q.recentNotes(300L)
+        }.asFlow().mapToList(Dispatchers.Default)
+    }
+
+    /**
+     * [#135] 複合検索のローカル読み出し。直近ノート + 指定著者のノートを母集合に、
+     * [matchesConditions] で AND/OR を適用する（検索リレーから届いた分もここに載る）。
+     */
+    private fun compositeSearchRows(filter: ReqFilter): Flow<List<Event>> =
+        q.recentNotes(600L).asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.filter { matchesConditions(filter, it) }.take(200) }
+            .flowOn(Dispatchers.Default)
+
+    /** [#135] キーワード・タグフィードの判定（OR）。単語=本文の部分一致（大文字小文字無視）/ タグ=t タグ。 */
+    private fun matchesConditions(filter: ReqFilter, row: Event): Boolean {
+        if (filter.words.any { row.content.contains(it, ignoreCase = true) }) return true
+        if (filter.hashtags.isEmpty()) return false
+        val tagValues = parseTags(row.tags_json)
+            .filter { it.size >= 2 && it[0] == "t" }
+            .map { it[1].lowercase() }.toSet()
+        return filter.hashtags.any { it.lowercase() in tagValues }
+    }
 
     private fun ReqFilter.toProtocol(limit: Int) = Filter(
         authors = authors.ifEmpty { null },

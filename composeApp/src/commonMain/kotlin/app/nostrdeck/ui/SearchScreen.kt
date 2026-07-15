@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,13 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,15 +34,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.data.EventRepository
-import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.ReqFilter
-import app.nostrdeck.model.build
+import app.nostrdeck.model.buildSearchColumn
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
@@ -48,48 +53,97 @@ import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 
 /**
- * [#27] 検索タブ。「履歴」と「検索結果TL」の2カラム構成（コンパクトは1カラム切替）。
- * 結果からそのまま **Deck にカラムとして追加** できる。カラム追加(＋)からの導線も従来どおり残す。
+ * [#27][#135] 検索タブ。「履歴」と「検索結果TL」の2カラム構成（コンパクトは1カラム切替）。
+ * 単語・#タグを複数積むと、それらの投稿が **OR で1つのフィード** に並ぶ
+ * （役割が近い単語/タグを1カラムに集約する使い方。例: rally #wrc #rally）。
+ * 結果はそのまま **Deck にカラムとして追加** できる。
  */
 @Composable
 fun SearchScreen(state: DeckState, isCompact: Boolean) {
     val repo = LocalRepository.current
     var query by rememberSaveable { mutableStateOf("") }
-    var active by rememberSaveable { mutableStateOf("") }   // 実行中の検索語
+    // 条件トークン（"#〜"=タグ / それ以外=単語）。表示もそのまま使う。
+    val tokens = rememberSaveable(saver = androidx.compose.runtime.saveable.listSaver(
+        save = { it.toList() },
+        restore = { it.toMutableStateList() },
+    )) { mutableListOf<String>().toMutableStateList() }
+    var searchSeq by rememberSaveable { mutableStateOf(0) }
+    var running by rememberSaveable { mutableStateOf(false) }
     val history by (repo?.searchHistoryFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
 
-    fun run(term: String) {
-        val t = term.trim()
-        if (t.isEmpty()) return
-        query = t; active = t
-        repo?.addSearchHistory(t)
+    fun addToken(raw: String) {
+        // 空白区切りの一括入力（"rally #wrc"）もまとめて受け付ける。
+        raw.split(Regex("""\s+""")).map { it.trim() }.filter { it.isNotEmpty() }.forEach { t ->
+            if (t !in tokens) tokens.add(t)
+        }
+        query = ""
+    }
+
+    fun run() {
+        if (query.isNotBlank()) addToken(query)
+        if (tokens.isEmpty()) return
+        running = true
+        searchSeq++
+        repo?.addSearchHistory(tokens.joinToString(" "))
+    }
+
+    fun runFromHistory(entry: String) {
+        tokens.clear()
+        addToken(entry)
+        if (tokens.isEmpty()) return
+        running = true
+        searchSeq++
     }
 
     Column(Modifier.fillMaxSize().background(DeckColors.Bg)) {
-        SearchBar(query, onChange = { query = it }, onSubmit = { run(query) })
+        SearchBar(query, onChange = { query = it }, onAdd = { addToken(query) }, onSubmit = { run() })
+        TokenRow(tokens, onRemove = { tokens.remove(it); if (tokens.isEmpty()) running = false })
         HorizontalDivider(color = DeckColors.Border)
+        val active = running && tokens.isNotEmpty()
         if (isCompact) {
-            if (active.isBlank()) {
-                HistoryPane(history, repo, onPick = { run(it) }, modifier = Modifier.fillMaxSize())
+            if (!active) {
+                HistoryPane(history, repo, onPick = { runFromHistory(it) }, modifier = Modifier.fillMaxSize())
             } else {
-                ResultsPane(state, repo, active, onBack = { active = "" }, modifier = Modifier.fillMaxSize())
+                ResultsPane(
+                    state, repo, tokens.toList(), searchSeq,
+                    onBack = { running = false }, modifier = Modifier.fillMaxSize(),
+                )
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                HistoryPane(history, repo, onPick = { run(it) }, modifier = Modifier.width(280.dp).fillMaxHeight())
+                HistoryPane(history, repo, onPick = { runFromHistory(it) }, modifier = Modifier.width(280.dp).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(DeckColors.Border))
-                ResultsPane(state, repo, active, onBack = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                if (!active) {
+                    Box(Modifier.weight(1f).fillMaxHeight().padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
+                        Text(
+                            "単語・#タグを追加して検索してください（複数は OR で並びます）",
+                            color = DeckColors.Text3, fontSize = DeckType.Caption,
+                        )
+                    }
+                } else {
+                    ResultsPane(
+                        state, repo, tokens.toList(), searchSeq,
+                        onBack = null, modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
             }
         }
     }
 }
 
+/** トークン列 → キーワード・タグフィードの ReqFilter。 */
+private fun tokensToFilter(tokens: List<String>) = ReqFilter(
+    kinds = listOf(1),
+    words = tokens.filterNot { it.startsWith("#") },
+    hashtags = tokens.filter { it.startsWith("#") }.map { it.removePrefix("#").lowercase() },
+)
+
 @Composable
-private fun SearchBar(query: String, onChange: (String) -> Unit, onSubmit: () -> Unit) {
+private fun SearchBar(query: String, onChange: (String) -> Unit, onAdd: () -> Unit, onSubmit: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(DeckSpace.Md), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(
             value = query, onValueChange = onChange,
-            placeholder = "キーワードで検索（NIP-50）",
+            placeholder = "単語 / #タグ（スペース区切りで複数・ORで並ぶ）",
             modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
@@ -99,6 +153,43 @@ private fun SearchBar(query: String, onChange: (String) -> Unit, onSubmit: () ->
                     modifier = Modifier.size(DeckDimens.IconMd).clickable { onSubmit() },
                 )
             },
+        )
+        Spacer(Modifier.width(DeckSpace.Sm))
+        // 条件として積むだけ（実行しない）。複数を組んでから検索する導線。
+        DeckGhostButton("＋追加", onClick = onAdd)
+    }
+}
+
+/** 追加済みトークンのチップ列。無ければ何も出さない。 */
+@Composable
+private fun TokenRow(tokens: List<String>, onRemove: (String) -> Unit) {
+    if (tokens.isEmpty()) return
+    LazyRow(Modifier.fillMaxWidth().padding(start = DeckSpace.Md, end = DeckSpace.Md, bottom = DeckSpace.Sm)) {
+        items(tokens, key = { it }) { t ->
+            TokenChip(t, onRemove = { onRemove(t) })
+            Spacer(Modifier.width(DeckSpace.Xs))
+        }
+    }
+}
+
+@Composable
+private fun TokenChip(token: String, onRemove: () -> Unit) {
+    Row(
+        Modifier.clip(CircleShape).background(DeckColors.Surface2)
+            .padding(start = DeckSpace.Sm, end = DeckSpace.Xs, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val icon = if (token.startsWith("#")) Icons.Outlined.Tag else Icons.Outlined.Search
+        Icon(icon, null, tint = DeckColors.Text3, modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(DeckSpace.Xs))
+        Text(
+            token, color = DeckColors.Text, fontSize = DeckType.Caption,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(DeckSpace.Xs))
+        Icon(
+            Icons.Outlined.Close, "条件を削除", tint = DeckColors.Text3,
+            modifier = Modifier.size(DeckDimens.IconSm).clip(CircleShape).clickable(onClick = onRemove),
         )
     }
 }
@@ -157,26 +248,28 @@ private fun HistoryPane(
 private fun ResultsPane(
     state: DeckState,
     repo: EventRepository?,
-    active: String,
+    tokens: List<String>,
+    searchSeq: Int,
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    if (repo == null || active.isBlank()) {
+    if (repo == null || tokens.isEmpty()) {
         Box(modifier.padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
-            Text("キーワードを入力して検索してください", color = DeckColors.Text3, fontSize = DeckType.Caption)
+            Text("単語・#タグを追加して検索してください", color = DeckColors.Text3, fontSize = DeckType.Caption)
         }
         return
     }
-    val filter = remember(active) { ReqFilter(kinds = listOf(1), search = active) }
-    DisposableEffect(active) {
+    val filter = remember(tokens) { tokensToFilter(tokens) }
+    DisposableEffect(filter, searchSeq) {
         repo.subscribeColumn("search_screen", filter)
         onDispose { repo.unsubscribeColumn("search_screen") }
     }
-    val results = remember(active) { repo.columnFeed(filter) }.collectAsState().value
+    val results = remember(filter) { repo.columnFeed(filter) }.collectAsState().value
     val loaded by repo.columnLoadedFlow().collectAsState()
+    val summary = tokens.joinToString(" ")
 
     Column(modifier) {
-        // ヘッダ: 検索語 ＋「Deckに追加」
+        // ヘッダ: トークンの要約 ＋「Deckに追加」
         Row(
             Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
             verticalAlignment = Alignment.CenterVertically,
@@ -188,11 +281,11 @@ private fun ResultsPane(
                 )
             }
             Text(
-                "検索: $active", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                "検索: $summary", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             DeckGhostButton("Deckに追加", onClick = {
-                state.addColumn(ColumnTemplate.SEARCH.build(input = active))
+                state.addColumn(buildSearchColumn(words = filter.words, hashtags = filter.hashtags))
                 state.navDest = NavDest.HOME
             })
         }

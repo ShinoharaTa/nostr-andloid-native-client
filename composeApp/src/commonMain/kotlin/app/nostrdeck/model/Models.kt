@@ -94,6 +94,12 @@ data class ReqFilter(
     val search: String? = null,
     /** NIP-10 スレッド: 表示の起点となるノート id（タップしたノート）。 */
     val eventId: String? = null,
+    /**
+     * [#135] キーワード・タグフィードの単語条件（1語ずつ・NIP-50）。
+     * 非空ならキーワード・タグフィードとして扱い、[hashtags] と OR で並べる
+     * （役割が近い単語/タグを1カラムに集約するフィード）。
+     */
+    val words: List<String> = emptyList(),
 )
 
 /**
