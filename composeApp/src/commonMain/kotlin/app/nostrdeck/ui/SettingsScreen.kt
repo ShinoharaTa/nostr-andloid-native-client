@@ -811,6 +811,28 @@ private fun DataSettings() {
     var confirm by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
 
+    // [#122] カラム構成のリレー保存。読み込みは常時（リレーに保存済みなら追従＝後勝ち）で、
+    // トグルは「この端末での変更をリレー(kind:30078/NIP-78)へ保存するか」だけを選ぶ。
+    if (repo != null) {
+        val syncRelay by repo.columnSyncRelayFlow().collectAsState()
+        Text("カラム構成のリレー保存", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(
+            "リレーに保存済みのカラム構成（kind:30078 / NIP-78）があれば常に取り込みます（新しい方が優先）。" +
+                "このトグルを有効にすると、この端末でのカラム変更もリレーへ保存され、" +
+                "他の端末・クライアントから参照できます。無効（既定）なら読み取り専用です。\n" +
+                "※ 現在準備中のため一時的に無効化しています。",
+            color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
+        )
+        SettingToggle(
+            "この端末の変更をリレーに保存（kind:30078）", syncRelay,
+            enabled = repo.columnSyncFeatureEnabled,
+        ) { repo.setColumnSyncRelay(it) }
+        Spacer(Modifier.size(DeckSpace.Lg))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Lg))
+    }
+
     Text(
         "端末内に保存しているキャッシュ（タイムライン履歴・プロフィール・チャンネル・送信待ち）を" +
             "すべて消去し、リレーから取り直します。鍵・リレー設定・ハッシュタグ履歴は保持されます。",

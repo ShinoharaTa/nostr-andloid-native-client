@@ -26,6 +26,8 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -69,7 +71,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -264,6 +268,8 @@ class EventRepository(
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
         loadRetroMode()
+        // [#122] カラム構成の保存先（ローカル/リレー）を KV から復元。リレーなら 30078 を購読。
+        loadColumnSync()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
@@ -531,6 +537,9 @@ class EventRepository(
             follows.value = emptyList(); followsAt = 0L
             relayList.value = emptyList(); relayListAt = 0L
             emojiListAt = 0L
+            // [#122] 旧アカウントの 30078 タイムスタンプが新アカウントの取込を阻害しないように。
+            deckColumnsAt = 0L
+            putSettingAsync(DECK_COLUMNS_AT, "0")
 
             // 履歴・キャッシュを全消去（NIP-65 リレーも。default/manual は維持）。
             q.transaction {
@@ -616,8 +625,14 @@ class EventRepository(
     /**
      * 現在のピン留めカラム集合を丸ごと保存する（全消し→並び順で再INSERT）。
      * 追加/固定/解除/並べ替えのたびに呼ぶ。順序は引数のリスト順。
+     * [#122] 保存先が「リレー」のときは kind:30078 も発行する（ローカルはオフラインキャッシュ兼用）。
      */
     fun persistPinnedColumns(specs: List<ColumnSpec>) {
+        persistPinnedLocal(specs)
+        if (columnSyncRelayState.value) scope.launch { publishDeckColumns(specs) }
+    }
+
+    private fun persistPinnedLocal(specs: List<ColumnSpec>) {
         q.transaction {
             q.clearPinnedColumns()
             specs.forEachIndexed { i, s ->
@@ -626,6 +641,117 @@ class EventRepository(
                     json.encodeToString(ReqFilter.serializer(), s.filter), i.toLong(),
                 )
             }
+        }
+    }
+
+    // ---- [#122] カラム構成のリレー保存（NIP-78 kind:30078）----
+    //
+    // ミュートリスト(kind:10000)と同じく「リレー上のリストは常に存在しうる」前提。
+    //  - 読み込み: 常時購読し、手元より新しい構成が届けば取り込む（単純な LWW・確認UIなし）。
+    //    後発端末は起動時点でリレー構成へ追従するため、有効化操作で他端末を初期化する事故が起きない。
+    //  - 書き込み: トグル（COLUMN_SYNC_RELAY）が ON の端末だけが、保存のたびに
+    //    kind:30078（d = DECK_COLUMNS_D, content = カラム構成のJSON配列）を発行する。
+
+    /** 30078 の content に載せるカラム1件分。他クライアントからも読める素直な JSON。 */
+    @Serializable
+    private data class DeckColumnDto(
+        val id: String,
+        val title: String,
+        val subtitle: String = "",
+        val kind: String,
+        val renderer: String,
+        val filter: ReqFilter = ReqFilter(),
+        val order: Int = 0,
+    )
+
+    /**
+     * [#122] 機能フラグ。仕様（読み込み常時+書き込み選択）の検討中は無効化しておく。
+     * false の間は 30078 の購読・発行を一切行わず、設定のトグルも押せない。
+     */
+    val columnSyncFeatureEnabled = false
+
+    private val columnSyncRelayState = MutableStateFlow(false)
+    /** カラム構成をリレー(kind:30078)にも保存するか。 */
+    fun columnSyncRelayFlow(): StateFlow<Boolean> = columnSyncRelayState
+
+    // 自分が発行/取込した 30078 の created_at（LWW 判定・自分の発行エコーの除外）。KV 永続。
+    private var deckColumnsAt = 0L
+
+    // リレーから取り込んだカラム構成。App が collect して DeckState へ適用する。
+    private val remoteColumnsFlow = MutableSharedFlow<List<ColumnSpec>>(replay = 1)
+    fun remoteDeckColumnsFlow(): SharedFlow<List<ColumnSpec>> = remoteColumnsFlow
+
+    /**
+     * 「この端末の変更をリレーに保存するか」を切り替える（読み込みは常時なので影響しない）。
+     * ON にした時点の構成も発行する。常時読み込みにより有効化前にリレー構成へ追従済みなので、
+     * ここでの発行が他端末の構成を巻き戻すことはない（リレーに無ければ種になる）。
+     */
+    fun setColumnSyncRelay(on: Boolean) {
+        if (!columnSyncFeatureEnabled) return
+        columnSyncRelayState.value = on
+        putSettingAsync(COLUMN_SYNC_RELAY, if (on) "1" else "0")
+        if (on) scope.launch { publishDeckColumns(loadPinnedColumns()) }
+    }
+
+    private fun loadColumnSync() {
+        if (!columnSyncFeatureEnabled) return
+        deckColumnsAt = q.getSetting(DECK_COLUMNS_AT).executeAsOneOrNull()?.toLongOrNull() ?: 0L
+        columnSyncRelayState.value = q.getSetting(COLUMN_SYNC_RELAY).executeAsOneOrNull() == "1"
+        // 読み込みはトグルに関係なく常時（ミュートリストと同じ扱い）。
+        subscribeDeckColumns()
+    }
+
+    /** 自分の kind:30078（d=DECK_COLUMNS_D）を常時1件購読する。 */
+    private fun subscribeDeckColumns() {
+        if (!openColumns.add(DECK_COLUMNS_SUB)) return
+        notifJobs[DECK_COLUMNS_SUB] = scope.launch {
+            myPubkeyFlow.collect { me ->
+                if (me != null) {
+                    subscribeAll(
+                        DECK_COLUMNS_SUB,
+                        Filter(kinds = listOf(30078), authors = listOf(me), dTags = listOf(DECK_COLUMNS_D), limit = 1),
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun publishDeckColumns(specs: List<ColumnSpec>) = runCatching {
+        val dtos = specs.mapIndexed { i, s ->
+            DeckColumnDto(s.id, s.title, s.subtitle, s.kind.name, s.renderer.name, s.filter, i)
+        }
+        val content = json.encodeToString(ListSerializer(DeckColumnDto.serializer()), dtos)
+        val signed = publishSigned(
+            UnsignedEvent(kind = 30078, content = content, tags = listOf(listOf("d", DECK_COLUMNS_D))),
+        )
+        deckColumnsAt = signed.createdAt
+        putSettingAsync(DECK_COLUMNS_AT, signed.createdAt.toString())
+    }.getOrElse { println("Nostrism publishDeckColumns failed: $it") }
+
+    /**
+     * 受信した kind:30078 を検査し、自分の・対象 d タグの・手元より新しいものだけ取り込む。
+     * 取り込みはローカル保存（pinned_column）+ [remoteColumnsFlow] への通知（UI 反映は App 側）。
+     */
+    private fun updateDeckColumns(e: NostrEvent) {
+        if (!columnSyncFeatureEnabled) return
+        if (e.pubkey != myPubkey) return
+        if (e.tags.none { it.size >= 2 && it[0] == "d" && it[1] == DECK_COLUMNS_D }) return
+        if (e.createdAt <= deckColumnsAt) return
+        val specs = runCatching {
+            json.decodeFromString(ListSerializer(DeckColumnDto.serializer()), e.content).map { d ->
+                ColumnSpec(
+                    id = d.id, title = d.title, subtitle = d.subtitle,
+                    kind = ColumnKind.valueOf(d.kind), renderer = ColumnRenderer.valueOf(d.renderer),
+                    filter = d.filter, pinned = true, order = d.order,
+                )
+            }
+        }.getOrNull() ?: return
+        if (specs.isEmpty()) return  // 空構成は事故（別クライアントの初期化等）とみなし採用しない
+        deckColumnsAt = e.createdAt
+        putSettingAsync(DECK_COLUMNS_AT, e.createdAt.toString())
+        scope.launch {
+            persistPinnedLocal(specs)
+            remoteColumnsFlow.emit(specs)
         }
     }
 
@@ -1977,6 +2103,7 @@ class EventRepository(
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
+            30078 -> updateDeckColumns(e) // [#122] NIP-78 アプリデータ（カラム構成の任意リレー保存）
             // [#124] NIP-23 長文記事。nevent 参照から記事ビューワーで開けるよう本体を保存する。
             30023 -> {
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
@@ -3478,6 +3605,15 @@ class EventRepository(
 
         /** 「古のSNS廃人モード」の KV キー（"1"/"0"）。 */
         const val RETRO_MODE = "retro_haijin_mode"
+
+        /** [#122] カラム構成をリレー(kind:30078)にも保存するか（"1"/"0"）。 */
+        const val COLUMN_SYNC_RELAY = "column_sync_relay"
+        /** [#122] 自分が発行/取込した 30078 の created_at（LWW 判定）。 */
+        const val DECK_COLUMNS_AT = "deck_columns_at"
+        /** [#122] 30078 の d タグ（このアプリのカラム構成を示す識別子）。 */
+        const val DECK_COLUMNS_D = "app.nostrdeck:deck-columns"
+        /** [#122] 30078 購読の subId。 */
+        const val DECK_COLUMNS_SUB = "deckcolumns"
 
         /** 自分の最新 kind:0 生JSON（プロフィール編集の未知フィールド温存・purge 耐性用）。 */
         const val MY_PROFILE_JSON = "my_profile_json"
