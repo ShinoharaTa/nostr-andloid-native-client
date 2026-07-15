@@ -48,6 +48,14 @@ class MuteMatcher(
     /** 通知がミュート対象か（相手＝actor がミュート中ユーザー）。 */
     fun muted(notif: NotificationUi): Boolean = !isEmpty && notif.actor.pubkey in users
 
+    /** [#121] チャットメッセージ(NIP-28)がミュート対象か（著者ユーザー/本文ワード）。 */
+    fun muted(msg: ChannelMessage): Boolean {
+        if (isEmpty) return false
+        if (msg.event.pubkey in users) return true
+        if (hasWords && matchesWord(msg.event.content)) return true
+        return false
+    }
+
     companion object {
         fun from(mute: MuteList?): MuteMatcher {
             if (mute == null) return MuteMatcher(emptySet(), emptyList(), emptyList(), emptySet(), emptySet())
