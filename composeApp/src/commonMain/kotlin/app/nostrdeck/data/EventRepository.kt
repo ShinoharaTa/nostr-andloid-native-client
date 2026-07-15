@@ -2,6 +2,7 @@ package app.nostrdeck.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOneOrNull
 import app.nostrdeck.crypto.Bech32
 import app.nostrdeck.crypto.EventCrypto
 import app.nostrdeck.crypto.Nip01
@@ -766,6 +767,12 @@ class EventRepository(
             delay(8000)
             if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
         }
+        // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
+        // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
+        if (filter.words.isNotEmpty()) {
+            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = 100))
+            return
+        }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
@@ -774,6 +781,16 @@ class EventRepository(
             else -> subscribeAll(columnId, proto)
         }
     }
+
+    /**
+     * [#135] キーワード・タグフィードの REQ フィルタ群。
+     * 単語は NIP-50（1語=1フィルタ）・タグは #t（複数値=OR）で、同一 REQ 内の
+     * 複数フィルタ = リレー側 OR として届く（単語とタグで REQ の仕組みが違うため分ける）。
+     */
+    private fun ReqFilter.toSearchProtocols(limit: Int): Array<Filter> = buildList {
+        words.forEach { add(Filter(kinds = listOf(1), search = it, limit = limit)) }
+        if (hashtags.isNotEmpty()) add(Filter(kinds = listOf(1), hashtags = hashtags, limit = limit))
+    }.toTypedArray()
 
     // [#3] 過去方向の追い読み用の一発 REQ 連番。
     private var olderReqSeq = 0
@@ -787,6 +804,11 @@ class EventRepository(
         val proto = filter.toProtocol(limit = 100).copy(until = untilSec)
         val subId = "older-$columnId-${olderReqSeq++}"
         when {
+            // [#135] 複合検索: 条件フィルタ群に until を付けて NIP-50 リレーへ。
+            filter.words.isNotEmpty() -> subscribeTargeted(
+                subId, SEARCH_RELAYS.toSet(),
+                *filter.toSearchProtocols(limit = 100).map { it.copy(until = untilSec) }.toTypedArray(),
+            )
             !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
             else -> subscribeAll(subId, proto)
@@ -965,8 +987,10 @@ class EventRepository(
             .conflate()
             .map { (rows, profiles, meta) ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { row ->
-                    applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta)
+                // [#134] kind:6/16 の行（プロフィールの投稿+リポスト）も扱えるよう
+                // フォロー中と同じ変換に統一する（kind:1 は従来と同じ経路に落ちる）。
+                rows.mapNotNull { row ->
+                    toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) }
                 }
             }.flowOn(Dispatchers.Default)
 
@@ -1243,6 +1267,12 @@ class EventRepository(
         )
     }
 
+    /** [#124] 単一イベントの DB 監視（記事ビューワー等、id 参照の表示用）。未取得なら null を流す。 */
+    fun eventByIdFlow(id: String): Flow<NostrEvent?> =
+        q.eventById(id).asFlow().mapToOneOrNull(Dispatchers.Default).map { row ->
+            row?.let { NostrEvent(it.id, it.pubkey, it.kind.toInt(), it.created_at, it.content, parseTags(it.tags_json), it.sig) }
+        }
+
     /** スレッド表示（深さ付きで root→返信を並べる）。DB の差分に追従する。 */
     fun threadFeed(focusId: String): Flow<List<ThreadEntry>> {
         val ids = threadAnchorIds(focusId)
@@ -1425,12 +1455,38 @@ class EventRepository(
         q.transaction { ids.forEach { id -> q.deleteEventById(id); q.deleteTagsForEvent(id) } }
     }
 
-    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
-        filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
-        filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
-        !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
-        else -> q.recentNotes(300L)
-    }.asFlow().mapToList(Dispatchers.Default)
+    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> {
+        // [#135] 複合検索: SQL では広めに取り、AND/OR の締めは Kotlin 側で行う。
+        if (filter.words.isNotEmpty()) return compositeSearchRows(filter)
+        return when {
+            filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+            // [#134] プロフィール（投稿+リポスト）: kind:6/16 を含む要求は専用クエリで。
+            filter.authors.isNotEmpty() && filter.kinds.any { it == 6 || it == 16 } ->
+                q.feedAuthorsWithReposts(filter.authors, 0L)
+            filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
+            !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
+            else -> q.recentNotes(300L)
+        }.asFlow().mapToList(Dispatchers.Default)
+    }
+
+    /**
+     * [#135] 複合検索のローカル読み出し。直近ノート + 指定著者のノートを母集合に、
+     * [matchesConditions] で AND/OR を適用する（検索リレーから届いた分もここに載る）。
+     */
+    private fun compositeSearchRows(filter: ReqFilter): Flow<List<Event>> =
+        q.recentNotes(600L).asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.filter { matchesConditions(filter, it) }.take(200) }
+            .flowOn(Dispatchers.Default)
+
+    /** [#135] キーワード・タグフィードの判定（OR）。単語=本文の部分一致（大文字小文字無視）/ タグ=t タグ。 */
+    private fun matchesConditions(filter: ReqFilter, row: Event): Boolean {
+        if (filter.words.any { row.content.contains(it, ignoreCase = true) }) return true
+        if (filter.hashtags.isEmpty()) return false
+        val tagValues = parseTags(row.tags_json)
+            .filter { it.size >= 2 && it[0] == "t" }
+            .map { it[1].lowercase() }.toSet()
+        return filter.hashtags.any { it.lowercase() in tagValues }
+    }
 
     private fun ReqFilter.toProtocol(limit: Int) = Filter(
         authors = authors.ifEmpty { null },
@@ -1782,6 +1838,55 @@ class EventRepository(
     private val hintRelays = mutableSetOf<String>()
 
     /**
+     * [#124] naddr（kind+著者+dタグ）を event id へ解決する。
+     * DB に既存ならそれを返し、無ければ接続中リレー + リレーヒントへ #d 付き REQ を投げて
+     * 取り込まれるのを最大 [timeoutMs] 待つ。見つからなければ null。
+     */
+    // [#124] resolveAddress 実行中の kind。addressable(3xxxx) は基本 whitelist 外なので、
+    // 解決の間だけ ingest が event テーブルへ保存できるようにする。
+    private val addressKindsWanted = mutableSetOf<Int>()
+
+    suspend fun resolveAddress(
+        kind: Int,
+        author: String,
+        dTag: String,
+        hints: List<String> = emptyList(),
+        timeoutMs: Long = 6000,
+    ): String? {
+        fun dbLookup(): String? = q.eventsByKindAuthor(kind.toLong(), author).executeAsList()
+            .firstOrNull { row ->
+                runCatching { parseTags(row.tags_json).any { it.size >= 2 && it[0] == "d" && it[1] == dTag } }
+                    .getOrDefault(false)
+            }?.id
+        dbLookup()?.let { return it }
+
+        // ヒントリレーへ一時接続（requestEvent と同じ規則・接続数上限つき）。
+        if (hints.isNotEmpty()) {
+            withContext(relayDispatcher) {
+                for (raw in hints) {
+                    val url = normalizeRelayUrl(raw)
+                    if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                    if (relays.containsKey(url)) continue
+                    if (hintRelays.size >= HINT_RELAY_CAP) break
+                    if (hintRelays.add(url)) ensureRelay(url)
+                }
+            }
+        }
+        val subId = "addr_${kind}_${author.take(8)}_${dTag.hashCode()}"
+        addressKindsWanted.add(kind)
+        subscribeAll(subId, Filter(kinds = listOf(kind), authors = listOf(author), dTags = listOf(dTag), limit = 1))
+        var found: String? = null
+        var waited = 0L
+        while (found == null && waited < timeoutMs) {
+            delay(300); waited += 300
+            found = dbLookup()
+        }
+        unsubscribeAll(subId)
+        addressKindsWanted.remove(kind)
+        return found
+    }
+
+    /**
      * イベント id の取得を要求する。[hints] があれば、そのリレー（未接続なら上限内で一時接続）
      * にも REQ が届くようにする。接続済み/ヒント無しなら従来どおり接続中リレーへ問い合わせる。
      * [#101] nostr:nevent1… ディープリンク（リレーヒント付き）からも呼ぶため公開。
@@ -1999,6 +2104,18 @@ class EventRepository(
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
             30078 -> updateDeckColumns(e) // [#122] NIP-78 アプリデータ（カラム構成の任意リレー保存）
+            // [#124] NIP-23 長文記事。nevent 参照から記事ビューワーで開けるよう本体を保存する。
+            30023 -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+            }
+            // [#124] naddr 解決中の addressable kind（3xxxx）だけ一時的に保存する。
+            else -> if (e.kind in 30000..39999 && e.kind in addressKindsWanted) {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                requestProfile(e.pubkey)
+            }
         }
     }
 
@@ -2420,27 +2537,51 @@ class EventRepository(
         scope.launch { delay(6000); unsubscribeAll(subId); unsubscribeAll("${subId}_idx") }
     }
 
+    /** ページング付きフォロワー集計の1ページ分。[hasMore]=true なら続きを取れる見込みがある。 */
+    data class FollowersPage(val followers: List<String>, val hasMore: Boolean)
+
+    // フォロワー集計の累積（対象1人分のみ保持）と続きカーソル（観測済み kind:3 の最古 created_at - 1）。
+    private var followerAccumTarget: String? = null
+    private var followerAccum = mutableMapOf<String, Pair<Long, Boolean>>()
+    private var followerCursor: Long? = null
+
     /**
-     * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを収集する（リレーで観測できた範囲のみ・全数ではない）。
-     * 接続中リレー＋インデクサへ REQ し数秒集計。同一発行者は最新の kind:3 だけ採用し、
-     * 最新リストに対象が含まれない発行者は除外する（アンフォロー検出）。
-     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由 #80-OOM）。
+     * [#97] 対象を p タグに含む kind:3 の発行者＝フォロワーを1ページ分収集する
+     * （リレーで観測できた範囲のみ・全数ではない）。
+     * [#80-OOM 続報] kind:3 は1通で数百〜数千 p タグの巨大イベントで、全接続リレーに
+     * limit 500 で投げるとパース洪水だけで heap が枯渇する（プロフィールを開くと OOM）。
+     *  - 自動では実行しない（フォロワー一覧を開いた時のみ呼ぶ）
+     *  - インデクサリレーだけに投げる（全接続リレーへの重複 REQ をやめる）
+     *  - limit [pageSize] のページング（観測した created_at を until カーソルに続きを取る）
+     * 同一発行者は最新の kind:3 だけ採用し、対象を含まない発行者は除外（アンフォロー検出）。
+     * メモリには「含むか」の真偽値しか積まない（[captureContacts] の followerScans 経由）。
      */
-    suspend fun fetchFollowersOf(pubkey: String): List<String> {
-        val subId = "followers_of_${pubkey.take(12)}"
-        val seen = mutableMapOf<String, Pair<Long, Boolean>>()
+    suspend fun fetchFollowersPage(pubkey: String, reset: Boolean, pageSize: Int = 100): FollowersPage {
+        if (reset || followerAccumTarget != pubkey) {
+            followerAccumTarget = pubkey
+            followerAccum = mutableMapOf()
+            followerCursor = null
+        }
+        val seen = followerAccum
+        val before = seen.size
         followerScans[pubkey] = seen
-        subscribeAll(subId, Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
-        subscribeTargeted("${subId}_idx", INDEXER_RELAYS.toSet(), Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500))
+        val subId = "followers_of_${pubkey.take(12)}"
+        subscribeTargeted(
+            subId, INDEXER_RELAYS.toSet(),
+            Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = pageSize, until = followerCursor),
+        )
         try {
-            delay(3500)
+            delay(2500)
         } finally {
             // 画面離脱等でキャンセルされても REQ と集計テーブルを残さない。
             followerScans.remove(pubkey)
             unsubscribeAll(subId)
-            unsubscribeAll("${subId}_idx")
         }
-        return seen.filterValues { it.second }.keys.toList()
+        followerCursor = seen.values.minOfOrNull { it.first }?.let { it - 1 }
+        return FollowersPage(
+            followers = seen.filterValues { it.second }.keys.toList(),
+            hasMore = seen.size > before,
+        )
     }
 
     /** [#99] 対象ユーザーの NIP-65 リレー（受信済みキャッシュから最大 [max] 件）。nprofile のリレーヒント用。 */
@@ -2896,6 +3037,32 @@ class EventRepository(
     private val ogpCache = mutableMapOf<String, OgpData?>()
     private val ogpMutex = Mutex()
 
+    // [#136] YouTube 動画情報（タイトル/チャンネル名）。oEmbed は API キー不要・軽量 JSON。
+    private val ytInfoCache = mutableMapOf<String, Pair<String, String>?>()
+
+    /**
+     * YouTube 動画のタイトルとチャンネル名を oEmbed から取得する（videoId 単位でキャッシュ・失敗も記憶）。
+     * 埋め込みカードに YouTube 標準風のタイトル帯を出すために使う。
+     */
+    suspend fun fetchYouTubeInfo(videoId: String): Pair<String, String>? {
+        ogpMutex.withLock { if (ytInfoCache.containsKey(videoId)) return ytInfoCache[videoId] }
+        val info = runCatching {
+            withContext(Dispatchers.Default) {
+                val body = uploadHttp.get(
+                    "https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D$videoId&format=json",
+                ).bodyAsText()
+                val o = json.parseToJsonElement(body).jsonObject
+                val title = o["title"]?.jsonPrimitive?.contentOrNull
+                title?.let { it to (o["author_name"]?.jsonPrimitive?.contentOrNull ?: "") }
+            }
+        }.getOrNull()
+        ogpMutex.withLock {
+            ytInfoCache[videoId] = info
+            if (ytInfoCache.size > 256) ytInfoCache.remove(ytInfoCache.keys.first())
+        }
+        return info
+    }
+
     /**
      * URL の OGP(OpenGraph) メタを取得する。成功/失敗ともメモリキャッシュ（null もキャッシュ）。
      * HTML 先頭のみを走査して og:title/og:description/og:image/og:site_name を拾う簡易実装。
@@ -2904,7 +3071,11 @@ class EventRepository(
         ogpMutex.withLock { if (ogpCache.containsKey(url)) return ogpCache[url] }
         val data = runCatching {
             withContext(Dispatchers.Default) {
-                val html = uploadHttp.get(url).bodyAsText()
+                // [#137] ブラウザ風 UA を名乗らないと Amazon 等がボット扱いで 404/簡易ページを返す。
+                val html = uploadHttp.get(url) {
+                    header(HttpHeaders.UserAgent, OGP_UA)
+                    header(HttpHeaders.AcceptLanguage, "ja-JP,ja;q=0.9,en;q=0.5")
+                }.bodyAsText()
                 val head = html.take(200_000)  // <head> を含む先頭のみ
                 fun meta(prop: String): String? {
                     // property="og:x" content="..." と content="..." property="og:x" の両順序に対応。
@@ -2921,7 +3092,13 @@ class EventRepository(
                 val title = meta("og:title")
                     ?: Regex("""<title[^>]*>([^<]*)</title>""", RegexOption.IGNORE_CASE).find(head)?.groupValues?.get(1)
                         ?.let { decodeHtmlEntities(it.trim()) }?.ifBlank { null }
-                val image = meta("og:image")
+                // [#137] Amazon は OG タグを載せないため、商品ページ特有の画像フィールドから補完する。
+                // 画像 JSON はページ後半に来る構成もあるので head ではなく全文を走査する。
+                val image = meta("og:image") ?: if (isAmazonUrl(url)) {
+                    Regex(""""hiRes"\s*:\s*"(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                        ?: Regex("""id="landingImage"[^>]*\bsrc="(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                        ?: Regex(""""large"\s*:\s*"(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                } else null
                 if (title == null && image == null) null
                 else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
             }
@@ -3389,6 +3566,15 @@ class EventRepository(
 
         /** NIP-89 client タグに載せるアプリ名。 */
         const val CLIENT_NAME = "Nostrism"
+
+        /** [#137] OGP 取得時に名乗るブラウザ風 UA（Amazon 等のボット拒否を避ける）。 */
+        const val OGP_UA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+
+        /** [#137] Amazon の商品 URL か（画像フォールバックの対象判定）。 */
+        fun isAmazonUrl(url: String): Boolean =
+            Regex("""^https?://(www\.)?amazon\.[a-z.]+/""", RegexOption.IGNORE_CASE).containsMatchIn(url) ||
+                Regex("""^https?://amzn\.(to|asia)/""", RegexOption.IGNORE_CASE).containsMatchIn(url)
         /** client タグを付与する公開コンテンツ kind（投稿/リポスト/リアクション/パブリックチャット）。 */
         val CLIENT_TAG_KINDS = setOf(1, 6, 16, 7, 42)
 

@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,13 +103,14 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     androidx.compose.runtime.DisposableEffect(pubkey) {
         repo?.loadProfile(pubkey)
         val subId = "profile_overlay_$pubkey"
-        repo?.subscribeColumn(subId, ReqFilter(kinds = listOf(0, 1, 10002), authors = listOf(pubkey)))
+        // [#134] リポスト(kind:6/16)も購読して投稿タブに混ぜる。
+        repo?.subscribeColumn(subId, ReqFilter(kinds = listOf(0, 1, 6, 16, 10002), authors = listOf(pubkey)))
         onDispose { repo?.unsubscribeColumn(subId) }
     }
 
     val profile = repo?.let { remember(pubkey) { it.profileFlow(pubkey) } }?.collectAsState(null)?.value
     val following = repo?.let { remember(pubkey) { it.isFollowingFlow(pubkey) } }?.collectAsState(false)?.value ?: false
-    val notes = repo?.let { remember(pubkey) { it.columnFeed(ReqFilter(kinds = listOf(1), authors = listOf(pubkey))) } }
+    val notes = repo?.let { remember(pubkey) { it.columnFeed(ReqFilter(kinds = listOf(1, 6, 16), authors = listOf(pubkey))) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
 
     val pinnedNotes = repo?.let { remember(pubkey) { it.pinnedNotesFor(pubkey) } }
@@ -124,9 +126,11 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val followingList = repo?.let { remember(pubkey) { it.followsOf(pubkey) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
     val followsMe = me != null && !isMe && me in followingList
-    // [#97] フォロワー（kind:3 逆引き）。開いたとき一度だけ数秒集計する（null=集計中）。
-    var followers by remember(pubkey) { mutableStateOf<List<String>?>(null) }
-    androidx.compose.runtime.LaunchedEffect(pubkey) { followers = repo?.fetchFollowersOf(pubkey) }
+    // [#97→#followers-oom] フォロワー（kind:3 逆引き）は重いので自動では集計しない。
+    // 「フォロワーを確認」で一覧を開いた時に、インデクサのみ・ページングで取得する。
+    var followers by remember(pubkey) { mutableStateOf<List<String>?>(null) }   // null=未集計/集計中
+    var followersHasMore by remember(pubkey) { mutableStateOf(false) }
+    var followersLoading by remember(pubkey) { mutableStateOf(false) }
     // [#95] ミュート状態（NIP-51 kind:10000 の p）。
     val muted = repo?.let { remember(it) { it.mutedUsersFlow() } }
         ?.collectAsState(emptySet())?.value?.contains(pubkey) ?: false
@@ -137,7 +141,8 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val tab = tabRaw
     val visible = remember(notes, tab) {
         when (tab) {
-            ProfileTab.POSTS -> notes.filter { !it.isReply }
+            // [#134] リポスト（repostedBy 非null）は元が返信でも「投稿」に出す（フォロー中と同じ扱い）。
+            ProfileTab.POSTS -> notes.filter { !it.isReply || it.repostedBy != null }
             ProfileTab.REPLIES -> notes
             ProfileTab.MEDIA -> notes.filter { it.images.isNotEmpty() }
         }
@@ -159,21 +164,46 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val onEdit: () -> Unit = { state.clearDetail(); state.settingsSection = "account"; state.navDest = NavDest.SETTINGS }
 
     // [#96/#97] フォロー中/フォロワーの一覧はプロフィールを丸ごと差し替えて表示（戻るで復帰）。
+    // Compact/Expanded 共通。フォロワーの集計はこのタブを開いた時に初めて走る。
     userList?.let { mode ->
+        if (mode == UserListMode.FOLLOWERS) {
+            androidx.compose.runtime.LaunchedEffect(pubkey) {
+                if (followers == null && !followersLoading) {
+                    followersLoading = true
+                    val page = repo?.fetchFollowersPage(pubkey, reset = true)
+                    followers = page?.followers.orEmpty()
+                    followersHasMore = page?.hasMore == true
+                    followersLoading = false
+                }
+            }
+        }
         UserListScreen(
             mode = mode,
             pubkeys = if (mode == UserListMode.FOLLOWING) followingList else followers.orEmpty(),
             loading = mode == UserListMode.FOLLOWERS && followers == null,
+            hasMore = mode == UserListMode.FOLLOWERS && followersHasMore,
+            loadingMore = followersLoading && followers != null,
+            onLoadMore = {
+                if (!followersLoading) {
+                    scope.launch {
+                        followersLoading = true
+                        repo?.fetchFollowersPage(pubkey, reset = false)?.let {
+                            followers = it.followers
+                            followersHasMore = it.hasMore
+                        }
+                        followersLoading = false
+                    }
+                }
+            },
             onBack = { userList = null },
             onOpen = { state.openProfile(it) },
         )
         return
     }
 
-    // ヘッダに渡す社会グラフ系の状態（フォロー中/フォロワー件数・相互バッジ・ミュート）。
+    // ヘッダに渡す社会グラフ系の状態（フォロー中件数・相互バッジ・ミュート）。
     val social = ProfileSocial(
         followingCount = followingList.size,
-        followerCount = followers?.size,
         followsMe = followsMe,
         muted = muted,
         onShowFollowing = { userList = UserListMode.FOLLOWING },
@@ -200,11 +230,10 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
 /** [#95-#98] ヘッダに表示する社会グラフ系のまとめ（引数の膨張を避ける）。 */
 private data class ProfileSocial(
     val followingCount: Int,
-    val followerCount: Int?,          // null=集計中
     val followsMe: Boolean,           // 相手が自分をフォローしているか [#98]
     val muted: Boolean,               // 自分が相手をミュート中か [#95]
     val onShowFollowing: () -> Unit,
-    val onShowFollowers: () -> Unit,
+    val onShowFollowers: () -> Unit,  // 「フォロワーを確認」→ 一覧タブで初めて集計する
 )
 
 /* ---------- Compact: ヘッダ + タブ（スティッキー） + リスト ---------- */
@@ -329,7 +358,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
             }
         }
     } else {
-        items(visible, key = { it.event.id }) { note ->
+        // [#134] セルフリポストで元投稿と id が衝突しないよう、リポストは rp_<リポストid> をキーに。
+        items(visible, key = { it.repostId?.let { rid -> "rp_$rid" } ?: it.event.id }) { note ->
             NoteItem(
                 note, onClick = { onNoteClick(note) },
                 onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
@@ -480,7 +510,9 @@ private fun ProfileHeaderCard(
                     }
                 }
             }
-            // [#96/#97] フォロー中/フォロワーの件数。タップで一覧へ。
+            // [#96/#97] フォロー中の件数（タップで一覧へ）と「フォロワーを確認」ボタン。
+            // [#followers-oom] フォロワー数の常時表示は kind:3 逆引き集計が重すぎるため廃止。
+            // ボタンから一覧を開いた時に初めて集計する。
             social?.let { s ->
                 Spacer(Modifier.height(DeckSpace.Sm))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -493,14 +525,15 @@ private fun ProfileHeaderCard(
                         Text("フォロー中", color = DeckColors.Text3, fontSize = DeckType.Label)
                     }
                     Spacer(Modifier.width(DeckSpace.Lg))
-                    Row(
-                        Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = s.onShowFollowers),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        Text(s.followerCount?.toString() ?: "…", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
-                        Spacer(Modifier.width(DeckSpace.Xs))
-                        Text("フォロワー（把握できた範囲）", color = DeckColors.Text3, fontSize = DeckType.Label)
-                    }
+                    Text(
+                        "フォロワーを確認",
+                        color = DeckColors.Text3, fontSize = DeckType.Label,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(DeckRadius.Sm))
+                            .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Sm))
+                            .clickable(onClick = s.onShowFollowers)
+                            .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
+                    )
                 }
             }
             profile?.about?.takeIf { it.isNotBlank() }?.let {
@@ -664,11 +697,14 @@ private fun UserListScreen(
     loading: Boolean,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
+    hasMore: Boolean = false,
+    loadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ProfileTopBar(mode.title, onBack)
         HorizontalDivider(color = DeckColors.Border)
-        // [#97] フォロワーは kind:3 逆引きの数秒集計＝観測できた範囲である旨を明示する。
+        // [#97] フォロワーは kind:3 逆引きのページング集計＝観測できた範囲である旨を明示する。
         if (mode == UserListMode.FOLLOWERS) {
             Text(
                 "リレーで観測できた範囲のみ表示しています（全数ではありません）",
@@ -696,6 +732,25 @@ private fun UserListScreen(
                     items(pubkeys, key = { it }) { pk ->
                         UserListRow(pk, profiles[pk], onClick = { onOpen(pk) })
                         HorizontalDivider(color = DeckColors.Border)
+                    }
+                    // [#followers-oom] ページング: 続きがあり得る間だけ「さらに読み込む」を出す。
+                    if (hasMore || loadingMore) {
+                        item(key = "load_more") {
+                            Box(
+                                Modifier.fillMaxWidth().padding(DeckSpace.Md),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    if (loadingMore) "集計中…" else "さらに読み込む",
+                                    color = DeckColors.Text3, fontSize = DeckType.Caption,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(DeckRadius.Sm))
+                                        .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Sm))
+                                        .clickable(enabled = !loadingMore, onClick = onLoadMore)
+                                        .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -748,6 +803,18 @@ fun ThreadDetail(state: DeckState, eventId: String) {
     }
     val entries = repo?.let { remember(eventId) { it.threadFeed(eventId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#124] 参照先が長文記事(kind:30023)なら、スレッドではなく記事ビューワーで開く。
+    // subscribeThread は ids 指定（kind 制限なし）なので 30023 本体も取得・保存される。
+    val rootEvent = repo?.let { remember(eventId) { it.eventByIdFlow(eventId) } }
+        ?.collectAsState(null)?.value
+    if (rootEvent?.kind == 30023) {
+        ArticleReader(
+            state, rootEvent,
+            // コメント = スレッド構築済みエントリから記事本体を除いた返信(kind:1)群。
+            comments = entries.filter { it.note.event.id != eventId },
+        )
+        return
+    }
     // 起点ノートへの Zap を購読して「リプライ風」に列挙。
     androidx.compose.runtime.LaunchedEffect(eventId) { repo?.subscribeZaps("${subId}_zaps", listOf(eventId)) }
     val zaps = repo?.let { remember(eventId) { it.zapsForNote(eventId) } }

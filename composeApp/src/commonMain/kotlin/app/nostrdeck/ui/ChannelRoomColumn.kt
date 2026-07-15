@@ -99,7 +99,11 @@ fun LiveChannelRoom(
             repo.unsubscribeColumn("${spec.id}_rx")
         }
     }
-    val messages = remember(channelId) { repo.channelMessagesFeed(channelId) }.collectAsState().value
+    val allMessages = remember(channelId) { repo.channelMessagesFeed(channelId) }.collectAsState().value
+    // [#121] NIP-51 ミュート（ユーザー/ワード）をチャットにも適用する。LiveChannelRoom は
+    // パブリックチャット(NIP-28)専用の入口なので、ここで濾せば DM(1:1) には影響しない。
+    val muteMatcher = rememberMuteMatcher()
+    val messages = remember(allMessages, muteMatcher) { allMessages.filter { !muteMatcher.muted(it) } }
     // 表示中メッセージへのリアクション(kind:7)を購読（id 群が変わるたび貼り直す）。
     val msgIds = remember(messages) { messages.map { it.event.id } }
     LaunchedEffect(msgIds) { repo.subscribeChannelReactions("${spec.id}_rx", msgIds) }
@@ -457,7 +461,7 @@ private fun Bubble(
             NoteImages(images)
         }
         // リンク埋め込み（吹き出しの下）。埋め込み対象が無ければ何も描かない。
-        LinkEmbeds(m.event.content, Modifier.padding(top = DeckSpace.Xs))
+        LinkEmbeds(m.event.content, tags = m.event.tags, modifier = Modifier.padding(top = DeckSpace.Xs))
     }
 }
 

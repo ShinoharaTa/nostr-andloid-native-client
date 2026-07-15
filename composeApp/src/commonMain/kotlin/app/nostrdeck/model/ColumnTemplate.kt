@@ -19,7 +19,7 @@ enum class ColumnTemplate(
     NOTIFICATIONS("通知", ColumnConfig.NOTIF_FILTER),
     DM("DM"),
     PROFILE("指定 npub の投稿", ColumnConfig.TEXT, "npub または hex"),
-    SEARCH("ワード検索", ColumnConfig.TEXT, "検索ワード"),
+    SEARCH("キーワード・タグ", ColumnConfig.TEXT, "スペース区切りで複数可（#〜=タグ）"),
     HASHTAG("ハッシュタグ", ColumnConfig.TEXT, "タグ（# は不要）"),
     FAVS("ふぁぼ欄", hint = "自分がリアクションした投稿"),
 }
@@ -58,8 +58,14 @@ fun ColumnTemplate.build(
         ColumnTemplate.PROFILE -> spec(id, npubShort(text), "profile", ColumnKind.PROFILE,
             ReqFilter(kinds = listOf(1), authors = listOf(text)))
 
-        ColumnTemplate.SEARCH -> spec(id, "検索: $text", "NIP-50", ColumnKind.GLOBAL,
-            ReqFilter(kinds = listOf(1), search = text))
+        ColumnTemplate.SEARCH -> {
+            // [#135] スペース区切りのトークンを単語/タグへ振り分け、OR で並べる1フィードに。
+            val tokens = text.split(Regex("""\s+""")).filter { it.isNotBlank() }
+            buildSearchColumn(
+                words = tokens.filterNot { it.startsWith("#") },
+                hashtags = tokens.filter { it.startsWith("#") },
+            )
+        }
 
         ColumnTemplate.HASHTAG -> spec(id, "#${text.removePrefix("#")}", "hashtag", ColumnKind.HASHTAG,
             ReqFilter(kinds = listOf(1), hashtags = listOf(text.removePrefix("#"))))
@@ -73,6 +79,25 @@ private fun spec(id: String, title: String, subtitle: String, kind: ColumnKind, 
     ColumnSpec(id, title, subtitle, kind, ColumnRenderer.FEED, filter, pinned = true)
 
 /**
+ * [#135] キーワード・タグフィード。指定した単語・#タグの投稿を1カラムに OR で集約する
+ * （例: rally #wrc #rally）。タイトルは条件の要約。
+ */
+fun buildSearchColumn(words: List<String>, hashtags: List<String>): ColumnSpec {
+    val summary = (words + hashtags.map { "#${it.removePrefix("#")}" }).joinToString(" ")
+    return spec(
+        "col_search_${currentUnixTime()}",
+        summary.ifBlank { "キーワード・タグ" },
+        "キーワード・タグ",
+        ColumnKind.GLOBAL,
+        ReqFilter(
+            kinds = listOf(1),
+            words = words,
+            hashtags = hashtags.map { it.removePrefix("#").lowercase() },
+        ),
+    )
+}
+
+/**
  * 既存カラムの「フィルター再設定」に使うテンプレ（設定を持たないカラムは null）。
  * FOLLOWING/DM/スレッド/チャンネル系は設定項目が無いので編集対象外。
  */
@@ -80,7 +105,7 @@ fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
     kind == ColumnKind.HASHTAG -> ColumnTemplate.HASHTAG
     kind == ColumnKind.PROFILE -> ColumnTemplate.PROFILE
     kind == ColumnKind.NOTIFICATIONS -> ColumnTemplate.NOTIFICATIONS
-    kind == ColumnKind.GLOBAL && filter.search != null -> ColumnTemplate.SEARCH
+    kind == ColumnKind.GLOBAL && (filter.words.isNotEmpty() || filter.search != null) -> ColumnTemplate.SEARCH
     kind == ColumnKind.GLOBAL -> ColumnTemplate.GLOBAL
     else -> null
 }
@@ -89,7 +114,11 @@ fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
 fun ColumnSpec.editText(): String = when (kind) {
     ColumnKind.HASHTAG -> filter.hashtags.firstOrNull().orEmpty()
     ColumnKind.PROFILE -> filter.authors.firstOrNull().orEmpty()
-    ColumnKind.GLOBAL -> filter.search ?: ""
+    // [#135] キーワード・タグフィードはトークン列へ可逆に戻す（旧形式は search をそのまま）。
+    ColumnKind.GLOBAL ->
+        if (filter.words.isNotEmpty() || filter.hashtags.isNotEmpty())
+            (filter.words + filter.hashtags.map { "#$it" }).joinToString(" ")
+        else filter.search ?: ""
     else -> ""
 }
 
