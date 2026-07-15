@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Home
@@ -87,17 +86,15 @@ fun DeckRail(state: DeckState) {
                 AppMark(Modifier.size(DeckDimens.RailMark))
             }
 
+            // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（下部ナビと同順）。
+            // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
             NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
             NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
-                state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
-            }
-            // Public Chat は DM の隣に配置（どちらも会話系の2ペイン画面）
             NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
                 state.clearDetail(); state.navDest = NavDest.CHANNELS
             }
-            NavIcon(Icons.Outlined.MailOutline, "DM", state.navDest == NavDest.DM, badge = dmUnread) {
-                state.clearDetail(); state.navDest = NavDest.DM
+            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
+                state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
             }
         }
 

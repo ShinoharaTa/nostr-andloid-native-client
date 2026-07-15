@@ -21,7 +21,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -147,25 +146,19 @@ private fun CompactPager(state: DeckState) {
                             // タブをタップしてもそのカラムへ遷移できる（スワイプと併用）
                             .clickable { scope.launch { pager.animateScrollToPage(i) } }
                             .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
-                            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                            // [#nav] タブは片手操作の主導線なので、高さに余裕を持たせてタップしやすく。
+                            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                     )
                 }
                 // カラム追加
                 Text(
                     "＋", color = DeckColors.Text2, fontSize = DeckType.Sub,
                     modifier = Modifier.clip(CircleShape).clickable { state.showAddColumn = true }
-                        .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                        .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                 )
             }
-            // [#62] 折り畳み時はレール（＝検索の唯一の入口）が出ないため、デッキ上部バーに
-            // 検索アイコンを常設して検索へ到達できるようにする。下タブは増やさずモノクロで据える。
-            Spacer(Modifier.width(DeckSpace.Xs))
-            Icon(
-                Icons.Outlined.Search, "検索", tint = DeckColors.Text2,
-                modifier = Modifier.size(DeckDimens.RailIcon)
-                    .clip(CircleShape)
-                    .clickable { state.clearDetail(); state.navDest = NavDest.SEARCH },
-            )
+            // [#nav] 検索は下部ナビへ移設（旧 #62 の上部バー検索アイコンは廃止）。
+            // 上部バーはタブ一覧の視認性・到達性を優先する。
             // リレー接続ステータス（緑/黄/グレー ● + N/N）。タップで一覧ダイアログ。
             val repo = LocalRepository.current
             if (repo != null) {
