@@ -117,6 +117,46 @@ object Nip19 {
         }
     }.getOrNull()
 
+    /** [#124] naddr の解析結果（parameterized replaceable のアドレス）。 */
+    data class AddrRef(val kind: Int, val pubkey: String, val dTag: String, val relays: List<String>)
+
+    /**
+     * [#124] naddr(TLV) の bech32 → [AddrRef]。Nosli 等の記事リンク（naddr）の解決用。
+     *  - type=0 special : d タグ値（UTF-8 文字列）
+     *  - type=1 relay   : リレーヒント（複数可）
+     *  - type=2 author  : 32byte 公開鍵
+     *  - type=3 kind    : u32 ビッグエンディアン
+     * 必須の d/author/kind が揃わなければ null。
+     */
+    fun naddrDecode(bech: String): AddrRef? = runCatching {
+        val (hrp, five) = Bech32.decode(bech)
+        if (hrp != "naddr") return@runCatching null
+        val bytes = Bech32.convertBits(five, 5, 8, false).let { d -> ByteArray(d.size) { d[it].toByte() } }
+        var dTag: String? = null
+        var author: String? = null
+        var kind: Int? = null
+        val relays = mutableListOf<String>()
+        var i = 0
+        while (i + 2 <= bytes.size) {
+            val type = bytes[i].toInt() and 0xFF
+            val len = bytes[i + 1].toInt() and 0xFF
+            val start = i + 2
+            if (start + len > bytes.size) break
+            val value = bytes.copyOfRange(start, start + len)
+            when (type) {
+                0 -> dTag = value.decodeToString()
+                1 -> relays.add(value.decodeToString())
+                2 -> if (len == 32) author = value.toHex()
+                3 -> if (len == 4) kind = ((value[0].toInt() and 0xFF) shl 24) or
+                    ((value[1].toInt() and 0xFF) shl 16) or
+                    ((value[2].toInt() and 0xFF) shl 8) or
+                    (value[3].toInt() and 0xFF)
+            }
+            i = start + len
+        }
+        if (dTag != null && author != null && kind != null) AddrRef(kind, author, dTag, relays.toList()) else null
+    }.getOrNull()
+
     /**
      * npub / nprofile(TLV) の bech32 → 64文字 hex 公開鍵。メンションのタップ遷移用。
      * 解析できなければ null。

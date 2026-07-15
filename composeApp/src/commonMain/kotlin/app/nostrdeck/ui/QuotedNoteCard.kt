@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,9 +29,14 @@ import app.nostrdeck.theme.DeckWeight
 /** [M8-repost] 引用リポスト（NIP-18 q タグ）の埋め込みカード。著者名 + 切り詰めた本文を枠内に。モノクロ。 */
 @Composable
 fun QuotedNoteCard(note: NoteUi, modifier: Modifier = Modifier) {
+    // [#124] カードタップで引用元イベントを開く（kind:1=スレッド / kind:30023=記事ビューワー）。
+    // 従来はタップ不能で、nevent 参照の記事や引用元スレッドへ辿る導線が無かった。
+    val nav = LocalNoteNav.current
     Column(
         modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(DeckRadius.Md))
+            .clickable(enabled = nav != null) { nav?.onEvent?.invoke(note.event.id) }
             .background(DeckColors.Surface2, RoundedCornerShape(DeckRadius.Md))
             .padding(DeckSpace.Sm),
     ) {
