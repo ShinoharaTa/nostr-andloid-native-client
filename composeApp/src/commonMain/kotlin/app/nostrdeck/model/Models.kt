@@ -95,12 +95,11 @@ data class ReqFilter(
     /** NIP-10 スレッド: 表示の起点となるノート id（タップしたノート）。 */
     val eventId: String? = null,
     /**
-     * [#135] 複合検索の単語条件（1語ずつ・NIP-50）。非空なら複合検索カラムとして扱い、
-     * [hashtags]/[authors] と併せて [matchAll] で AND/OR 結合する。
+     * [#135] キーワード・タグフィードの単語条件（1語ずつ・NIP-50）。
+     * 非空ならキーワード・タグフィードとして扱い、[hashtags] と OR で並べる
+     * （役割が近い単語/タグを1カラムに集約するフィード）。
      */
     val words: List<String> = emptyList(),
-    /** [#135] 複合検索: true=すべての条件を満たす(AND) / false=いずれかを満たす(OR)。 */
-    val matchAll: Boolean = false,
 )
 
 /**
