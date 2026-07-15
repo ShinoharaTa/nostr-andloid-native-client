@@ -820,10 +820,14 @@ private fun DataSettings() {
         Text(
             "リレーに保存済みのカラム構成（kind:30078 / NIP-78）があれば常に取り込みます（新しい方が優先）。" +
                 "このトグルを有効にすると、この端末でのカラム変更もリレーへ保存され、" +
-                "他の端末・クライアントから参照できます。無効（既定）なら読み取り専用です。",
+                "他の端末・クライアントから参照できます。無効（既定）なら読み取り専用です。\n" +
+                "※ 現在準備中のため一時的に無効化しています。",
             color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
         )
-        SettingToggle("この端末の変更をリレーに保存（kind:30078）", syncRelay) { repo.setColumnSyncRelay(it) }
+        SettingToggle(
+            "この端末の変更をリレーに保存（kind:30078）", syncRelay,
+            enabled = repo.columnSyncFeatureEnabled,
+        ) { repo.setColumnSyncRelay(it) }
         Spacer(Modifier.size(DeckSpace.Lg))
         HorizontalDivider(color = DeckColors.Border)
         Spacer(Modifier.size(DeckSpace.Lg))

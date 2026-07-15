@@ -663,6 +663,12 @@ class EventRepository(
         val order: Int = 0,
     )
 
+    /**
+     * [#122] 機能フラグ。仕様（読み込み常時+書き込み選択）の検討中は無効化しておく。
+     * false の間は 30078 の購読・発行を一切行わず、設定のトグルも押せない。
+     */
+    val columnSyncFeatureEnabled = false
+
     private val columnSyncRelayState = MutableStateFlow(false)
     /** カラム構成をリレー(kind:30078)にも保存するか。 */
     fun columnSyncRelayFlow(): StateFlow<Boolean> = columnSyncRelayState
@@ -680,12 +686,14 @@ class EventRepository(
      * ここでの発行が他端末の構成を巻き戻すことはない（リレーに無ければ種になる）。
      */
     fun setColumnSyncRelay(on: Boolean) {
+        if (!columnSyncFeatureEnabled) return
         columnSyncRelayState.value = on
         putSettingAsync(COLUMN_SYNC_RELAY, if (on) "1" else "0")
         if (on) scope.launch { publishDeckColumns(loadPinnedColumns()) }
     }
 
     private fun loadColumnSync() {
+        if (!columnSyncFeatureEnabled) return
         deckColumnsAt = q.getSetting(DECK_COLUMNS_AT).executeAsOneOrNull()?.toLongOrNull() ?: 0L
         columnSyncRelayState.value = q.getSetting(COLUMN_SYNC_RELAY).executeAsOneOrNull() == "1"
         // 読み込みはトグルに関係なく常時（ミュートリストと同じ扱い）。
@@ -724,6 +732,7 @@ class EventRepository(
      * 取り込みはローカル保存（pinned_column）+ [remoteColumnsFlow] への通知（UI 反映は App 側）。
      */
     private fun updateDeckColumns(e: NostrEvent) {
+        if (!columnSyncFeatureEnabled) return
         if (e.pubkey != myPubkey) return
         if (e.tags.none { it.size >= 2 && it[0] == "d" && it[1] == DECK_COLUMNS_D }) return
         if (e.createdAt <= deckColumnsAt) return
