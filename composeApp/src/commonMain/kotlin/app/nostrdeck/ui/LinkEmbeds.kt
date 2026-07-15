@@ -72,10 +72,18 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** YouTube: サムネイル（通信は画像のみ）+ 再生オーバーレイ。タップで外部アプリ/ブラウザへ。 */
+/**
+ * [#136] YouTube: 公式埋め込み（iframe）風のカード。
+ *  - 上部にタイトル帯（oEmbed からタイトル/チャンネル名を取得・取得中は帯なし）
+ *  - 中央に YouTube 標準の赤い角丸再生ボタン（ブランド要素としてモノクロ鉄則の例外）
+ *  - 右下に YouTube ロゴタイプ
+ * 通信はサムネ画像 + oEmbed(JSON) のみ。タップで外部アプリ/ブラウザへ。
+ */
 @Composable
 private fun YouTubeEmbed(url: String, videoId: String) {
     val uri = LocalUriHandler.current
+    val repo = LocalRepository.current
+    val info by produceState<Pair<String, String>?>(null, videoId) { value = repo?.fetchYouTubeInfo(videoId) }
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
             .background(Color.Black).clickable { uri.openUri(url) },
@@ -86,12 +94,41 @@ private fun YouTubeEmbed(url: String, videoId: String) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
         )
-        // 再生ボタン（無彩の半透明円 + ▶）。
+        // タイトル帯（公式埋め込みの上部バー相当。グラデ禁止のため半透明の単色帯）。
+        info?.let { (title, author) ->
+            Column(
+                Modifier.align(Alignment.TopStart).fillMaxWidth()
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            ) {
+                Text(
+                    title, color = Color.White, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                if (author.isNotBlank()) {
+                    Text(
+                        author, color = Color(0xCCFFFFFF), fontSize = DeckType.Label,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        // YouTube 標準の再生ボタン（赤い角丸長方形 + 白い三角）。
         Box(
-            Modifier.align(Alignment.Center).size(52.dp).clip(RoundedCornerShape(50))
-                .background(Color(0xCC000000)),
+            Modifier.align(Alignment.Center).width(58.dp).height(40.dp)
+                .clip(RoundedCornerShape(10.dp)).background(Color(0xF2FF0000)),
             contentAlignment = Alignment.Center,
-        ) { Text("▶", color = DeckColors.Text, fontSize = DeckType.Title) }
+        ) { Text("▶", color = Color.White, fontSize = DeckType.Title) }
+        // 右下の YouTube ロゴタイプ（公式埋め込みの透かし相当）。
+        Text(
+            "YouTube",
+            color = Color(0xCCFFFFFF), fontSize = DeckType.Label, fontWeight = DeckWeight.Strong,
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(DeckSpace.Sm)
+                .clip(RoundedCornerShape(DeckRadius.Sm))
+                .background(Color(0x66000000))
+                .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
+        )
     }
 }
 

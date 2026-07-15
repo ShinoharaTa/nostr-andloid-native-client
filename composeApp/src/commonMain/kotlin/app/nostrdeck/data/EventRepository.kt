@@ -2886,6 +2886,32 @@ class EventRepository(
     private val ogpCache = mutableMapOf<String, OgpData?>()
     private val ogpMutex = Mutex()
 
+    // [#136] YouTube 動画情報（タイトル/チャンネル名）。oEmbed は API キー不要・軽量 JSON。
+    private val ytInfoCache = mutableMapOf<String, Pair<String, String>?>()
+
+    /**
+     * YouTube 動画のタイトルとチャンネル名を oEmbed から取得する（videoId 単位でキャッシュ・失敗も記憶）。
+     * 埋め込みカードに YouTube 標準風のタイトル帯を出すために使う。
+     */
+    suspend fun fetchYouTubeInfo(videoId: String): Pair<String, String>? {
+        ogpMutex.withLock { if (ytInfoCache.containsKey(videoId)) return ytInfoCache[videoId] }
+        val info = runCatching {
+            withContext(Dispatchers.Default) {
+                val body = uploadHttp.get(
+                    "https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D$videoId&format=json",
+                ).bodyAsText()
+                val o = json.parseToJsonElement(body).jsonObject
+                val title = o["title"]?.jsonPrimitive?.contentOrNull
+                title?.let { it to (o["author_name"]?.jsonPrimitive?.contentOrNull ?: "") }
+            }
+        }.getOrNull()
+        ogpMutex.withLock {
+            ytInfoCache[videoId] = info
+            if (ytInfoCache.size > 256) ytInfoCache.remove(ytInfoCache.keys.first())
+        }
+        return info
+    }
+
     /**
      * URL の OGP(OpenGraph) メタを取得する。成功/失敗ともメモリキャッシュ（null もキャッシュ）。
      * HTML 先頭のみを走査して og:title/og:description/og:image/og:site_name を拾う簡易実装。
@@ -2894,7 +2920,11 @@ class EventRepository(
         ogpMutex.withLock { if (ogpCache.containsKey(url)) return ogpCache[url] }
         val data = runCatching {
             withContext(Dispatchers.Default) {
-                val html = uploadHttp.get(url).bodyAsText()
+                // [#137] ブラウザ風 UA を名乗らないと Amazon 等がボット扱いで 404/簡易ページを返す。
+                val html = uploadHttp.get(url) {
+                    header(HttpHeaders.UserAgent, OGP_UA)
+                    header(HttpHeaders.AcceptLanguage, "ja-JP,ja;q=0.9,en;q=0.5")
+                }.bodyAsText()
                 val head = html.take(200_000)  // <head> を含む先頭のみ
                 fun meta(prop: String): String? {
                     // property="og:x" content="..." と content="..." property="og:x" の両順序に対応。
@@ -2911,7 +2941,13 @@ class EventRepository(
                 val title = meta("og:title")
                     ?: Regex("""<title[^>]*>([^<]*)</title>""", RegexOption.IGNORE_CASE).find(head)?.groupValues?.get(1)
                         ?.let { decodeHtmlEntities(it.trim()) }?.ifBlank { null }
-                val image = meta("og:image")
+                // [#137] Amazon は OG タグを載せないため、商品ページ特有の画像フィールドから補完する。
+                // 画像 JSON はページ後半に来る構成もあるので head ではなく全文を走査する。
+                val image = meta("og:image") ?: if (isAmazonUrl(url)) {
+                    Regex(""""hiRes"\s*:\s*"(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                        ?: Regex("""id="landingImage"[^>]*\bsrc="(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                        ?: Regex(""""large"\s*:\s*"(https:[^"]+)"""").find(html)?.groupValues?.get(1)
+                } else null
                 if (title == null && image == null) null
                 else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
             }
@@ -3379,6 +3415,15 @@ class EventRepository(
 
         /** NIP-89 client タグに載せるアプリ名。 */
         const val CLIENT_NAME = "Nostrism"
+
+        /** [#137] OGP 取得時に名乗るブラウザ風 UA（Amazon 等のボット拒否を避ける）。 */
+        const val OGP_UA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+
+        /** [#137] Amazon の商品 URL か（画像フォールバックの対象判定）。 */
+        fun isAmazonUrl(url: String): Boolean =
+            Regex("""^https?://(www\.)?amazon\.[a-z.]+/""", RegexOption.IGNORE_CASE).containsMatchIn(url) ||
+                Regex("""^https?://amzn\.(to|asia)/""", RegexOption.IGNORE_CASE).containsMatchIn(url)
         /** client タグを付与する公開コンテンツ kind（投稿/リポスト/リアクション/パブリックチャット）。 */
         val CLIENT_TAG_KINDS = setOf(1, 6, 16, 7, 42)
 
