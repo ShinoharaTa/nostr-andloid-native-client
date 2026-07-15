@@ -6,25 +6,21 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,10 +33,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -167,31 +168,34 @@ private fun ActiveVideoPlayer(url: String, modifier: Modifier) {
     Box(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(DeckRadius.Md))) {
         // 全画面中はインライン側から player を外す（1つの player を2つの View に繋がない）。
         if (!fullscreen) {
-            PlayerSurface(player)
-            // 右下の常設オーバーレイ: ミュートトグル + 全画面。
-            Row(Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Sm)) {
+            PlayerSurface(player, fullscreen = false, onFullscreenChange = { fullscreen = it })
+            // ミュートトグルだけは標準コントローラーに無いので常設。
+            // 下部のシークバーと重ならないよう右上に置く。
+            Box(Modifier.align(Alignment.TopEnd).padding(DeckSpace.Sm)) {
                 MuteButton(muted, toggleMute)
-                Spacer(Modifier.width(DeckSpace.Xs))
-                OverlayButton(Icons.Outlined.Fullscreen, "全画面") { fullscreen = true }
             }
         }
     }
 
     if (fullscreen) {
+        // 全画面はコントローラー標準の全画面ボタンから遷移し、システムバーを隠した
+        // 没入表示にする（バーを避けないとシークバーが画面外にはみ出す）。
         Dialog(
             onDismissRequest = { fullscreen = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
+            val view = LocalView.current
+            SideEffect {
+                val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                val insets = WindowCompat.getInsetsController(window, view)
+                insets.hide(WindowInsetsCompat.Type.systemBars())
+                insets.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
             Box(Modifier.fillMaxSize().background(Color.Black)) {
-                PlayerSurface(player)
-                // 閉じる（戻るキーでも閉じられる）。
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md)
-                        .size(40.dp).clip(CircleShape).background(Color(0x99000000))
-                        .clickable { fullscreen = false },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Outlined.Close, "全画面を閉じる", tint = Color.White) }
-                Row(Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Md)) {
+                PlayerSurface(player, fullscreen = true, onFullscreenChange = { fullscreen = it })
+                Box(Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md)) {
                     MuteButton(muted, toggleMute)
                 }
             }
@@ -199,18 +203,25 @@ private fun ActiveVideoPlayer(url: String, modifier: Modifier) {
     }
 }
 
+/**
+ * Media3 標準コントローラー付きの再生ビュー。全画面の出入りもコントローラー内蔵の
+ * 全画面ボタンに任せる（リスナーを設定するとボタンが表示される）。
+ */
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerSurface(player: ExoPlayer) {
+private fun PlayerSurface(player: ExoPlayer, fullscreen: Boolean, onFullscreenChange: (Boolean) -> Unit) {
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
-                this.player = player
                 useController = true
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
             }
         },
-        update = { it.player = player },
+        update = {
+            it.player = player
+            it.setFullscreenButtonClickListener { isFullScreen -> onFullscreenChange(isFullScreen) }
+            it.setFullscreenButtonState(fullscreen)
+        },
         onRelease = { it.player = null },
         modifier = Modifier.fillMaxSize(),
     )
