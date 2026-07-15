@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,20 +74,29 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * [#136] YouTube: 公式埋め込み（iframe）風のカード。
- *  - 上部にタイトル帯（oEmbed からタイトル/チャンネル名を取得・取得中は帯なし）
- *  - 中央に YouTube 標準の赤い角丸再生ボタン（ブランド要素としてモノクロ鉄則の例外）
- *  - 右下に YouTube ロゴタイプ
- * 通信はサムネ画像 + oEmbed(JSON) のみ。タップで外部アプリ/ブラウザへ。
+ * [#136] YouTube 埋め込み。
+ *  - 通常はサムネカード（上部にタイトル帯=oEmbed・中央に赤い再生ボタン・右下に YouTube ロゴ）。
+ *    通信はサムネ画像 + oEmbed(JSON) のみで、フィードに WebView は並べない
+ *  - タップで YouTube 公式 iframe プレイヤー（WebView）に差し替えてアプリ内再生
+ *    （未対応プラットフォームは外部アプリ/ブラウザへ）。右下ロゴのタップは常に外部で開く
+ * 赤い再生ボタンはブランド要素としてモノクロ鉄則の例外。
  */
 @Composable
 private fun YouTubeEmbed(url: String, videoId: String) {
     val uri = LocalUriHandler.current
     val repo = LocalRepository.current
     val info by produceState<Pair<String, String>?>(null, videoId) { value = repo?.fetchYouTubeInfo(videoId) }
+    var playing by remember(videoId) { mutableStateOf(false) }
+    if (playing) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md)).background(Color.Black)) {
+            YouTubeInlinePlayer(videoId, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        }
+        return
+    }
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
-            .background(Color.Black).clickable { uri.openUri(url) },
+            .background(Color.Black)
+            .clickable { if (youTubeInlineSupported()) playing = true else uri.openUri(url) },
     ) {
         AsyncImage(
             model = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
@@ -119,7 +129,7 @@ private fun YouTubeEmbed(url: String, videoId: String) {
                 .clip(RoundedCornerShape(10.dp)).background(Color(0xF2FF0000)),
             contentAlignment = Alignment.Center,
         ) { Text("▶", color = Color.White, fontSize = DeckType.Title) }
-        // 右下の YouTube ロゴタイプ（公式埋め込みの透かし相当）。
+        // 右下の YouTube ロゴタイプ（公式埋め込みの透かし相当）。タップで外部アプリ/ブラウザへ。
         Text(
             "YouTube",
             color = Color(0xCCFFFFFF), fontSize = DeckType.Label, fontWeight = DeckWeight.Strong,
@@ -127,6 +137,7 @@ private fun YouTubeEmbed(url: String, videoId: String) {
                 .padding(DeckSpace.Sm)
                 .clip(RoundedCornerShape(DeckRadius.Sm))
                 .background(Color(0x66000000))
+                .clickable { uri.openUri(url) }
                 .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
         )
     }
