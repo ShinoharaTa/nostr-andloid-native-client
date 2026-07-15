@@ -56,4 +56,34 @@ class EmbedTest {
         val text = (1..10).joinToString(" ") { "https://example.com/p$it" }
         assertEquals(2, detectEmbeds(text, max = 2).size)
     }
+
+    @Test
+    fun imeta_thumb_maps_url_to_thumbnail() {
+        // [NIP-92] thumb があればそれを使う。
+        val tags = listOf(
+            listOf(
+                "imeta",
+                "url https://v.example.com/a.mp4",
+                "m video/mp4",
+                "thumb https://v.example.com/a-thumb.jpg",
+                "dim 1920x1080",
+            ),
+        )
+        assertEquals(mapOf("https://v.example.com/a.mp4" to "https://v.example.com/a-thumb.jpg"), imetaThumbs(tags))
+    }
+
+    @Test
+    fun imeta_falls_back_to_image_and_skips_incomplete() {
+        val tags = listOf(
+            // thumb 無し → image で代用。
+            listOf("imeta", "url https://v.example.com/b.mp4", "image https://v.example.com/b.jpg"),
+            // url 無し / サムネ情報無し / thumbhash（≠thumb）のみ → 対象外。
+            listOf("imeta", "thumb https://v.example.com/orphan.jpg"),
+            listOf("imeta", "url https://v.example.com/c.mp4", "dim 704x320", "duration 31.2"),
+            listOf("imeta", "url https://v.example.com/d.mp4", "thumbhash FvgFBgCQGito"),
+            // imeta 以外のタグは無視。
+            listOf("t", "nostr"),
+        )
+        assertEquals(mapOf("https://v.example.com/b.mp4" to "https://v.example.com/b.jpg"), imetaThumbs(tags))
+    }
 }

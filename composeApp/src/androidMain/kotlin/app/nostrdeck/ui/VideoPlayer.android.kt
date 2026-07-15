@@ -48,6 +48,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import app.nostrdeck.theme.DeckColors
+import coil3.compose.AsyncImage
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -78,31 +79,34 @@ private object VideoPlaybackArbiter {
  * Composable 破棄時にプレイヤーを解放してリークを防ぐ。
  */
 @Composable
-actual fun VideoPlayer(url: String, modifier: Modifier) {
+actual fun VideoPlayer(url: String, posterUrl: String?, modifier: Modifier) {
     var activated by remember(url) { mutableStateOf(false) }
     if (!activated) {
-        VideoPoster(url, onPlay = { activated = true }, modifier = modifier)
+        VideoPoster(url, posterUrl, onPlay = { activated = true }, modifier = modifier)
     } else {
         ActiveVideoPlayer(url, modifier)
     }
 }
 
 /**
- * 再生前のポスター。1フレーム目は MediaMetadataRetriever で取得する
+ * 再生前のポスター。NIP-92 imeta のサムネ([posterUrl])があればそれを表示し、
+ * 無ければ1フレーム目を MediaMetadataRetriever で取得する
  * （HTTP range で必要部分のみ読む。Coil の VideoFrameDecoder は動画全体を
  * ダウンロードしてしまうため使わない）。取得失敗時は黒地 + ▶ のまま。
  */
 @Composable
-private fun VideoPoster(url: String, onPlay: () -> Unit, modifier: Modifier) {
+private fun VideoPoster(url: String, posterUrl: String?, onPlay: () -> Unit, modifier: Modifier) {
     var poster by remember(url) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    LaunchedEffect(url) {
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val mmr = MediaMetadataRetriever()
-                mmr.setDataSource(url, emptyMap())
-                val frame = mmr.getFrameAtTime(0)
-                mmr.release()
-                frame?.let { poster = it.asImageBitmap() }
+    if (posterUrl == null) {
+        LaunchedEffect(url) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val mmr = MediaMetadataRetriever()
+                    mmr.setDataSource(url, emptyMap())
+                    val frame = mmr.getFrameAtTime(0)
+                    mmr.release()
+                    frame?.let { poster = it.asImageBitmap() }
+                }
             }
         }
     }
@@ -111,7 +115,14 @@ private fun VideoPoster(url: String, onPlay: () -> Unit, modifier: Modifier) {
             .clip(RoundedCornerShape(DeckRadius.Md)).background(Color.Black)
             .clickable(onClick = onPlay),
     ) {
-        poster?.let {
+        if (posterUrl != null) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = "動画",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else poster?.let {
             Image(
                 bitmap = it,
                 contentDescription = "動画",

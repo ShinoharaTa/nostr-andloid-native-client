@@ -59,6 +59,37 @@ fun detectEmbeds(content: String, max: Int = 4): List<LinkEmbed> {
     return out.values.toList()
 }
 
+/**
+ * [NIP-92] imeta タグから「メディア URL → サムネイル URL」の対応を取り出す。
+ * imeta は ["imeta", "url https://…", "thumb https://…", "blurhash …", …] の形式で、
+ * 2要素目以降が「キー 値」の空白区切り。thumb が無ければ image で代用する。
+ * アップローダー(nostr.build 等)が生成したサムネをそのまま使えるので、
+ * 動画から1フレーム取得するより速く通信も少ない。
+ */
+fun imetaThumbs(tags: List<List<String>>): Map<String, String> {
+    val out = HashMap<String, String>()
+    for (tag in tags) {
+        if (tag.firstOrNull() != "imeta") continue
+        var url: String? = null
+        var thumb: String? = null
+        var image: String? = null
+        for (field in tag.drop(1)) {
+            val sp = field.indexOf(' ')
+            if (sp <= 0) continue
+            val value = field.substring(sp + 1).trim()
+            if (value.isEmpty()) continue
+            when (field.substring(0, sp)) {
+                "url" -> url = value
+                "thumb" -> thumb = value
+                "image" -> image = value
+            }
+        }
+        val u = url ?: continue
+        (thumb ?: image)?.let { out[u] = it }
+    }
+    return out
+}
+
 private fun isSpotify(url: String): Boolean =
     Regex("""^https?://open\.spotify\.com/""", RegexOption.IGNORE_CASE).containsMatchIn(url)
 

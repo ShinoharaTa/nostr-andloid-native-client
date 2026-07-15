@@ -17,7 +17,7 @@ import app.nostrdeck.theme.DeckType
 // iOS の動画インライン再生は後回し（AVPlayer + UIKitView で実装予定）。TODO。
 // 当面はプレースホルダのみ表示し、再生は行わない。
 @Composable
-actual fun VideoPlayer(url: String, modifier: Modifier) {
+actual fun VideoPlayer(url: String, posterUrl: String?, modifier: Modifier) {
     Box(
         modifier
             .fillMaxWidth()

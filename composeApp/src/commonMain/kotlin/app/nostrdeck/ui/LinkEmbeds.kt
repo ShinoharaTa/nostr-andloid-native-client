@@ -35,6 +35,7 @@ import app.nostrdeck.model.EmbedKind
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.OgpData
 import app.nostrdeck.model.detectEmbeds
+import app.nostrdeck.model.imetaThumbs
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -46,12 +47,14 @@ import coil3.compose.AsyncImage
  * 本文中リンクの埋め込み表示（YouTube サムネ / Spotify・一般リンクの OGP カード）。
  * 表示可否と OGP 画像読み込みは設定([EmbedPrefs])に従う。取得中/失敗は何も描かない。
  * 画像 URL は [NoteImages] が別途表示するため [detectEmbeds] 側で除外済み。
+ * [tags] はイベントのタグ列。NIP-92 imeta のサムネイルを動画ポスターに使う。
  */
 @Composable
-fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
+fun LinkEmbeds(content: String, tags: List<List<String>> = emptyList(), modifier: Modifier = Modifier) {
     val repo = LocalRepository.current
     val prefs by (repo?.embedPrefsFlow()?.collectAsState() ?: remember { mutableStateOf(EmbedPrefs()) })
     val embeds = remember(content) { detectEmbeds(content) }
+    val imetaThumbs = remember(tags) { imetaThumbs(tags) }
     val visible = embeds.filter {
         when (it.kind) {
             EmbedKind.YOUTUBE -> prefs.youtube
@@ -67,7 +70,7 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
                 EmbedKind.YOUTUBE -> YouTubeEmbed(e.url, e.youtubeId!!)
                 EmbedKind.SPOTIFY -> OgpEmbed(e.url, loadImage = true)   // Spotify も OGP カードで表現
                 EmbedKind.OGP -> OgpEmbed(e.url, loadImage = prefs.ogpImages)
-                EmbedKind.VIDEO -> VideoPlayer(e.url)                    // 動画直リンクはインライン再生
+                EmbedKind.VIDEO -> VideoPlayer(e.url, posterUrl = imetaThumbs[e.url])  // 動画直リンクはインライン再生
             }
         }
     }
