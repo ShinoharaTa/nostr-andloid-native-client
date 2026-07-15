@@ -123,12 +123,19 @@ fun ComposeSheet(
     val threadSegments = remember { mutableStateListOf<String>() }
     // [#13] 送信済みなら閉じても下書き保存しない。
     var sentOk by remember { mutableStateOf(false) }
+    // [#120] 破棄確認で「破棄する」を選んだ（＝下書きも消して閉じる）。
+    // rememberUpdatedState は再コンポーズで値を運ぶため、フラグを立てた直後に onDismiss で
+    // コンポジションが破棄されると間に合わない。MutableState を直接読めばスナップショットの
+    // 最新値が onDispose 時点で見える。
+    val discarded = remember { mutableStateOf(false) }
     val latestText by rememberUpdatedState(field.text)
     // [#13] 未送信で閉じたら下書き保存（新規投稿のみ）。空なら消す。
+    // [#120] 「破棄する」で閉じたときは保存せず既存の下書きも消す（従来はここで再保存され、
+    // 破棄したはずの本文が次回復元されていた）。
     DisposableEffect(Unit) {
         onDispose {
             if (replyTo == null && quoting == null && !sentOk) {
-                if (latestText.isNotBlank()) repo?.saveDraft(latestText) else repo?.clearDraft()
+                if (latestText.isNotBlank() && !discarded.value) repo?.saveDraft(latestText) else repo?.clearDraft()
             }
         }
     }
@@ -491,7 +498,8 @@ fun ComposeSheet(
             title = "入力内容を破棄しますか？",
             text = "作成中の本文と添付画像は保存されません。",
             confirmLabel = "破棄する", destructive = true,
-            onConfirm = { confirmDiscard = false; onDismiss() },
+            // [#120] discarded を立ててから閉じる → onDispose が下書きを保存せず消す。
+            onConfirm = { confirmDiscard = false; discarded.value = true; onDismiss() },
             onDismiss = { confirmDiscard = false },
         )
     }
