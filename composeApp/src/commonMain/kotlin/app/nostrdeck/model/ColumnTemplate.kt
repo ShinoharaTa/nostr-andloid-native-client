@@ -73,6 +73,34 @@ private fun spec(id: String, title: String, subtitle: String, kind: ColumnKind, 
     ColumnSpec(id, title, subtitle, kind, ColumnRenderer.FEED, filter, pinned = true)
 
 /**
+ * [#135] 複合検索カラム（単語・#タグ・ユーザーを AND/OR で結合）。
+ * タイトルは条件の要約（例: 検索: foo #nostr @npub1ab…）。
+ */
+fun buildSearchColumn(
+    words: List<String>,
+    hashtags: List<String>,
+    authors: List<String>,
+    matchAll: Boolean,
+): ColumnSpec {
+    val summary = (
+        words + hashtags.map { "#$it" } + authors.map { "@${npubShort(it)}" }
+        ).joinToString(" ")
+    return spec(
+        "col_search_${currentUnixTime()}",
+        "検索: $summary",
+        if (matchAll) "すべて含む (AND)" else "いずれか (OR)",
+        ColumnKind.GLOBAL,
+        ReqFilter(
+            kinds = listOf(1),
+            words = words,
+            hashtags = hashtags.map { it.removePrefix("#").lowercase() },
+            authors = authors,
+            matchAll = matchAll,
+        ),
+    )
+}
+
+/**
  * 既存カラムの「フィルター再設定」に使うテンプレ（設定を持たないカラムは null）。
  * FOLLOWING/DM/スレッド/チャンネル系は設定項目が無いので編集対象外。
  */
@@ -80,6 +108,8 @@ fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
     kind == ColumnKind.HASHTAG -> ColumnTemplate.HASHTAG
     kind == ColumnKind.PROFILE -> ColumnTemplate.PROFILE
     kind == ColumnKind.NOTIFICATIONS -> ColumnTemplate.NOTIFICATIONS
+    // [#135] 複合検索カラムはテキスト1行の再設定ダイアログでは表現できないので編集対象外。
+    kind == ColumnKind.GLOBAL && filter.words.isNotEmpty() -> null
     kind == ColumnKind.GLOBAL && filter.search != null -> ColumnTemplate.SEARCH
     kind == ColumnKind.GLOBAL -> ColumnTemplate.GLOBAL
     else -> null

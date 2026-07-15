@@ -640,6 +640,12 @@ class EventRepository(
             delay(8000)
             if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
         }
+        // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
+        // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
+        if (filter.words.isNotEmpty()) {
+            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = 100))
+            return
+        }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
@@ -647,6 +653,30 @@ class EventRepository(
             filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
             else -> subscribeAll(columnId, proto)
         }
+    }
+
+    /**
+     * [#135] 複合検索の REQ フィルタ群を作る。
+     *  - AND: 1本のフィルタに結合（単語は NIP-50 の空白区切り・タグは #t、著者は authors）。
+     *    リレー側の #t 複数値は OR なので、タグの AND はローカル側（[matchesConditions]）で締める。
+     *  - OR : 条件ごとに独立フィルタ（同一 REQ の複数フィルタ = リレー側で OR）。
+     */
+    private fun ReqFilter.toSearchProtocols(limit: Int): Array<Filter> = if (matchAll) {
+        arrayOf(
+            Filter(
+                kinds = listOf(1),
+                search = words.joinToString(" ").ifBlank { null },
+                hashtags = hashtags.ifEmpty { null },
+                authors = authors.ifEmpty { null },
+                limit = limit,
+            ),
+        )
+    } else {
+        buildList {
+            words.forEach { add(Filter(kinds = listOf(1), search = it, limit = limit)) }
+            if (hashtags.isNotEmpty()) add(Filter(kinds = listOf(1), hashtags = hashtags, limit = limit))
+            if (authors.isNotEmpty()) add(Filter(kinds = listOf(1), authors = authors, limit = limit))
+        }.toTypedArray()
     }
 
     // [#3] 過去方向の追い読み用の一発 REQ 連番。
@@ -661,6 +691,11 @@ class EventRepository(
         val proto = filter.toProtocol(limit = 100).copy(until = untilSec)
         val subId = "older-$columnId-${olderReqSeq++}"
         when {
+            // [#135] 複合検索: 条件フィルタ群に until を付けて NIP-50 リレーへ。
+            filter.words.isNotEmpty() -> subscribeTargeted(
+                subId, SEARCH_RELAYS.toSet(),
+                *filter.toSearchProtocols(limit = 100).map { it.copy(until = untilSec) }.toTypedArray(),
+            )
             !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
             else -> subscribeAll(subId, proto)
@@ -1299,12 +1334,50 @@ class EventRepository(
         q.transaction { ids.forEach { id -> q.deleteEventById(id); q.deleteTagsForEvent(id) } }
     }
 
-    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> = when {
-        filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
-        filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
-        !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
-        else -> q.recentNotes(300L)
-    }.asFlow().mapToList(Dispatchers.Default)
+    private fun rowsFlow(filter: ReqFilter): Flow<List<Event>> {
+        // [#135] 複合検索: SQL では広めに取り、AND/OR の締めは Kotlin 側で行う。
+        if (filter.words.isNotEmpty()) return compositeSearchRows(filter)
+        return when {
+            filter.hashtags.isNotEmpty() -> q.feedByHashtag(filter.hashtags.first().lowercase())
+            filter.authors.isNotEmpty() -> q.feedByAuthors(filter.authors, 0L)
+            !filter.search.isNullOrBlank() -> q.feedBySearch(filter.search)
+            else -> q.recentNotes(300L)
+        }.asFlow().mapToList(Dispatchers.Default)
+    }
+
+    /**
+     * [#135] 複合検索のローカル読み出し。直近ノート + 指定著者のノートを母集合に、
+     * [matchesConditions] で AND/OR を適用する（検索リレーから届いた分もここに載る）。
+     */
+    private fun compositeSearchRows(filter: ReqFilter): Flow<List<Event>> {
+        val recent = q.recentNotes(600L).asFlow().mapToList(Dispatchers.Default)
+        val base = if (filter.authors.isEmpty()) recent
+        else combine(recent, q.feedByAuthors(filter.authors, 0L).asFlow().mapToList(Dispatchers.Default)) { a, b ->
+            (a + b).distinctBy { it.id }.sortedByDescending { it.created_at }
+        }
+        return base.map { rows -> rows.filter { matchesConditions(filter, it) }.take(200) }
+            .flowOn(Dispatchers.Default)
+    }
+
+    /** [#135] 複合検索の条件判定。単語=本文の部分一致（大文字小文字無視）/ タグ=t タグ / 著者=pubkey。 */
+    private fun matchesConditions(filter: ReqFilter, row: Event): Boolean {
+        val tagValues: Set<String> by lazy {
+            parseTags(row.tags_json)
+                .filter { it.size >= 2 && it[0] == "t" }
+                .map { it[1].lowercase() }.toSet()
+        }
+        val wordHit = { w: String -> row.content.contains(w, ignoreCase = true) }
+        val tagHit = { t: String -> t.lowercase() in tagValues }
+        return if (filter.matchAll) {
+            filter.words.all(wordHit) &&
+                filter.hashtags.all(tagHit) &&
+                (filter.authors.isEmpty() || row.pubkey in filter.authors)
+        } else {
+            filter.words.any(wordHit) ||
+                filter.hashtags.any(tagHit) ||
+                (filter.authors.isNotEmpty() && row.pubkey in filter.authors)
+        }
+    }
 
     private fun ReqFilter.toProtocol(limit: Int) = Filter(
         authors = authors.ifEmpty { null },
