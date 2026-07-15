@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +35,7 @@ import app.nostrdeck.model.EmbedKind
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.OgpData
 import app.nostrdeck.model.detectEmbeds
+import app.nostrdeck.model.imetaThumbs
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -45,12 +47,14 @@ import coil3.compose.AsyncImage
  * 本文中リンクの埋め込み表示（YouTube サムネ / Spotify・一般リンクの OGP カード）。
  * 表示可否と OGP 画像読み込みは設定([EmbedPrefs])に従う。取得中/失敗は何も描かない。
  * 画像 URL は [NoteImages] が別途表示するため [detectEmbeds] 側で除外済み。
+ * [tags] はイベントのタグ列。NIP-92 imeta のサムネイルを動画ポスターに使う。
  */
 @Composable
-fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
+fun LinkEmbeds(content: String, tags: List<List<String>> = emptyList(), modifier: Modifier = Modifier) {
     val repo = LocalRepository.current
     val prefs by (repo?.embedPrefsFlow()?.collectAsState() ?: remember { mutableStateOf(EmbedPrefs()) })
     val embeds = remember(content) { detectEmbeds(content) }
+    val imetaThumbs = remember(tags) { imetaThumbs(tags) }
     val visible = embeds.filter {
         when (it.kind) {
             EmbedKind.YOUTUBE -> prefs.youtube
@@ -66,19 +70,35 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
                 EmbedKind.YOUTUBE -> YouTubeEmbed(e.url, e.youtubeId!!)
                 EmbedKind.SPOTIFY -> OgpEmbed(e.url, loadImage = true)   // Spotify も OGP カードで表現
                 EmbedKind.OGP -> OgpEmbed(e.url, loadImage = prefs.ogpImages)
-                EmbedKind.VIDEO -> VideoPlayer(e.url)                    // 動画直リンクはインライン再生
+                EmbedKind.VIDEO -> VideoPlayer(e.url, posterUrl = imetaThumbs[e.url])  // 動画直リンクはインライン再生
             }
         }
     }
 }
 
-/** YouTube: サムネイル（通信は画像のみ）+ 再生オーバーレイ。タップで外部アプリ/ブラウザへ。 */
+/**
+ * [#136] YouTube 埋め込み。
+ *  - 対応プラットフォームでは最初から公式 iframe プレイヤー（WebView）を置く。
+ *    再生前のポスター・タイトル・再生ボタンも YouTube 標準 UI に任せる（サムネ再現はしない）
+ *  - 未対応プラットフォーム（iOS）はサムネカード（タイトル帯=oEmbed + 赤ボタン + ロゴ）を表示し、
+ *    タップで外部アプリ/ブラウザへ
+ * 赤い再生ボタンはブランド要素としてモノクロ鉄則の例外。
+ */
 @Composable
 private fun YouTubeEmbed(url: String, videoId: String) {
+    if (youTubeInlineSupported()) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md)).background(Color.Black)) {
+            YouTubeInlinePlayer(videoId, autoplay = false, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        }
+        return
+    }
     val uri = LocalUriHandler.current
+    val repo = LocalRepository.current
+    val info by produceState<Pair<String, String>?>(null, videoId) { value = repo?.fetchYouTubeInfo(videoId) }
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
-            .background(Color.Black).clickable { uri.openUri(url) },
+            .background(Color.Black)
+            .clickable { uri.openUri(url) },
     ) {
         AsyncImage(
             model = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
@@ -86,12 +106,42 @@ private fun YouTubeEmbed(url: String, videoId: String) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
         )
-        // 再生ボタン（無彩の半透明円 + ▶）。
+        // タイトル帯（公式埋め込みの上部バー相当。グラデ禁止のため半透明の単色帯）。
+        info?.let { (title, author) ->
+            Column(
+                Modifier.align(Alignment.TopStart).fillMaxWidth()
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            ) {
+                Text(
+                    title, color = Color.White, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                if (author.isNotBlank()) {
+                    Text(
+                        author, color = Color(0xCCFFFFFF), fontSize = DeckType.Label,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        // YouTube 標準の再生ボタン（赤い角丸長方形 + 白い三角）。
         Box(
-            Modifier.align(Alignment.Center).size(52.dp).clip(RoundedCornerShape(50))
-                .background(Color(0xCC000000)),
+            Modifier.align(Alignment.Center).width(58.dp).height(40.dp)
+                .clip(RoundedCornerShape(10.dp)).background(Color(0xF2FF0000)),
             contentAlignment = Alignment.Center,
-        ) { Text("▶", color = DeckColors.Text, fontSize = DeckType.Title) }
+        ) { Text("▶", color = Color.White, fontSize = DeckType.Title) }
+        // 右下の YouTube ロゴタイプ（公式埋め込みの透かし相当）。タップで外部アプリ/ブラウザへ。
+        Text(
+            "YouTube",
+            color = Color(0xCCFFFFFF), fontSize = DeckType.Label, fontWeight = DeckWeight.Strong,
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(DeckSpace.Sm)
+                .clip(RoundedCornerShape(DeckRadius.Sm))
+                .background(Color(0x66000000))
+                .clickable { uri.openUri(url) }
+                .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
+        )
     }
 }
 

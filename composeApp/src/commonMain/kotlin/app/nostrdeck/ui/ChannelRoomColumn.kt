@@ -461,7 +461,7 @@ private fun Bubble(
             NoteImages(images)
         }
         // リンク埋め込み（吹き出しの下）。埋め込み対象が無ければ何も描かない。
-        LinkEmbeds(m.event.content, Modifier.padding(top = DeckSpace.Xs))
+        LinkEmbeds(m.event.content, tags = m.event.tags, modifier = Modifier.padding(top = DeckSpace.Xs))
     }
 }
 
