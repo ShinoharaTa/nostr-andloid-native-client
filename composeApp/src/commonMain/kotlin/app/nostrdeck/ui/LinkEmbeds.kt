@@ -75,28 +75,27 @@ fun LinkEmbeds(content: String, modifier: Modifier = Modifier) {
 
 /**
  * [#136] YouTube 埋め込み。
- *  - 通常はサムネカード（上部にタイトル帯=oEmbed・中央に赤い再生ボタン・右下に YouTube ロゴ）。
- *    通信はサムネ画像 + oEmbed(JSON) のみで、フィードに WebView は並べない
- *  - タップで YouTube 公式 iframe プレイヤー（WebView）に差し替えてアプリ内再生
- *    （未対応プラットフォームは外部アプリ/ブラウザへ）。右下ロゴのタップは常に外部で開く
+ *  - 対応プラットフォームでは最初から公式 iframe プレイヤー（WebView）を置く。
+ *    再生前のポスター・タイトル・再生ボタンも YouTube 標準 UI に任せる（サムネ再現はしない）
+ *  - 未対応プラットフォーム（iOS）はサムネカード（タイトル帯=oEmbed + 赤ボタン + ロゴ）を表示し、
+ *    タップで外部アプリ/ブラウザへ
  * 赤い再生ボタンはブランド要素としてモノクロ鉄則の例外。
  */
 @Composable
 private fun YouTubeEmbed(url: String, videoId: String) {
-    val uri = LocalUriHandler.current
-    val repo = LocalRepository.current
-    val info by produceState<Pair<String, String>?>(null, videoId) { value = repo?.fetchYouTubeInfo(videoId) }
-    var playing by remember(videoId) { mutableStateOf(false) }
-    if (playing) {
+    if (youTubeInlineSupported()) {
         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md)).background(Color.Black)) {
-            YouTubeInlinePlayer(videoId, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+            YouTubeInlinePlayer(videoId, autoplay = false, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
         }
         return
     }
+    val uri = LocalUriHandler.current
+    val repo = LocalRepository.current
+    val info by produceState<Pair<String, String>?>(null, videoId) { value = repo?.fetchYouTubeInfo(videoId) }
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
             .background(Color.Black)
-            .clickable { if (youTubeInlineSupported()) playing = true else uri.openUri(url) },
+            .clickable { uri.openUri(url) },
     ) {
         AsyncImage(
             model = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",

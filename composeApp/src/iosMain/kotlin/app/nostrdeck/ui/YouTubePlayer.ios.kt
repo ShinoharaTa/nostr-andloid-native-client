@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
  * 対応する場合は WKWebView の actual を実装して [youTubeInlineSupported] を true にする。
  */
 @Composable
-actual fun YouTubeInlinePlayer(videoId: String, modifier: Modifier) {
+actual fun YouTubeInlinePlayer(videoId: String, autoplay: Boolean, modifier: Modifier) {
     // 未対応（youTubeInlineSupported=false のため呼ばれない）。
 }
 
