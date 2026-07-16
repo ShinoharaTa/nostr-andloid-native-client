@@ -184,7 +184,6 @@ object SampleData {
         "reaction" to "リアクション",
         "data" to "データ・キャッシュ",
         "appearance" to "表示",
-        "retro" to "古のSNS廃人モード",
         "about" to "このアプリについて",
     )
 }
