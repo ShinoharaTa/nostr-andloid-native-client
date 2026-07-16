@@ -86,6 +86,7 @@ import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
@@ -107,8 +108,12 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     // [#hub] プロフィールだけは全幅オーバーレイ（1枚の大きな画面）。
     // ふぁぼ/ブックマーク/ミュート等は設定の右ペイン（リスト）に表示する。
     val onSelect: (String) -> Unit = { id ->
-        if (id == "profile_view") myPubkey?.let { state.openProfile(it) }
-        else state.settingsSection = id
+        when (id) {
+            "profile_view" -> myPubkey?.let { state.openProfile(it) }
+            // [#nav] DM はナビから外したので、ここから DM 画面へ遷移する。
+            "dm_view" -> { state.clearDetail(); state.navDest = NavDest.DM }
+            else -> state.settingsSection = id
+        }
     }
 
     TwoPane(
@@ -132,6 +137,8 @@ private data class SItem(val id: String, val label: String, val icon: ImageVecto
 // （レール/下バーはアバター1枠だけにして煩雑さを避ける）。
 private val paletteFav = listOf(
     SItem("profile_view", "プロフィール", Icons.Outlined.Person),
+    // [#nav] DM は下部ナビ/レールから外したため、ここが導線（タップで DM 画面へ）。
+    SItem("dm_view", "DM", Icons.Outlined.MailOutline),
     SItem("favs", "ふぁぼ", Icons.Outlined.StarBorder),
     SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
     SItem("mute", "ミュート", Icons.Outlined.Block),
