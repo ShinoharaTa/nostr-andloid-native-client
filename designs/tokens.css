@@ -15,8 +15,8 @@
 
   /* --- Color: text --- */
   --text:    #ecedf1;
-  --text-2:  #a7a8b3;  /* セカンダリ */
-  --text-3:  #6f7080;  /* メタ情報・npub */
+  --text-2:  #bebfc9;  /* セカンダリ（可読性のため従来 #a7a8b3 から明るめに） */
+  --text-3:  #90919e;  /* メタ情報・npub（可読性のため従来 #6f7080 から明るめに・対背景 約6:1） */
 
   /* --- Color: accent (Nostr purple) --- */
   --accent:        #a855f7;

@@ -16,9 +16,11 @@ object DeckColors {
     val BorderStrong = Color(0xFF3A3A48)
 
     // text
+    // Text2/Text3 は可読性のため明るめに調整（背景がほぼ黒でコントラスト不足だった）。
+    // Text3 の対背景コントラストは約 6:1（WCAG AA 相当）。
     val Text   = Color(0xFFECEDF1)
-    val Text2  = Color(0xFFA7A8B3)
-    val Text3  = Color(0xFF6F7080)
+    val Text2  = Color(0xFFBEBFC9)
+    val Text3  = Color(0xFF90919E)
 
     // accent: モノクロ基調。ブランドカラー(紫)は持たない。
     // 「選択中/アクティブ」は彩度ゼロの明色で示し、Damus/Nostr 的な紫を避ける。
