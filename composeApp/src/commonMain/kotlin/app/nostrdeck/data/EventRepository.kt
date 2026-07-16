@@ -270,7 +270,6 @@ class EventRepository(
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
-        loadRetroMode()
         // [#122] カラム構成の保存先（ローカル/リレー）を KV から復元。リレーなら 30078 を購読。
         loadColumnSync()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
@@ -1638,15 +1637,6 @@ class EventRepository(
         defaultReactionState.value = content to imageUrl
         putSettingAsync(DEFAULT_REACTION_CONTENT, content)
         putSettingAsync(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
-    }
-
-    /** [M17] 「古のSNS廃人モード」。ON でデッキが高密度・玄人寄りの見た目/挙動になる。既定OFF。 */
-    private val retroModeState = MutableStateFlow(false)
-    fun retroModeFlow(): StateFlow<Boolean> = retroModeState
-    private fun loadRetroMode() { retroModeState.value = q.getSetting(RETRO_MODE).executeAsOneOrNull() == "1" }
-    fun setRetroMode(on: Boolean) {
-        retroModeState.value = on
-        putSettingAsync(RETRO_MODE, if (on) "1" else "0")
     }
 
     /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
@@ -3623,8 +3613,6 @@ class EventRepository(
         const val DEFAULT_REACTION_CONTENT = "default_reaction:content"
         const val DEFAULT_REACTION_IMAGE = "default_reaction:image"
 
-        /** 「古のSNS廃人モード」の KV キー（"1"/"0"）。 */
-        const val RETRO_MODE = "retro_haijin_mode"
 
         /** [#122] カラム構成をリレー(kind:30078)にも保存するか（"1"/"0"）。 */
         const val COLUMN_SYNC_RELAY = "column_sync_relay"
