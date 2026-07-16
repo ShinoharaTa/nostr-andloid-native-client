@@ -12,7 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.model.TextScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
@@ -91,10 +94,16 @@ fun App(repository: EventRepository? = null) {
                     ExternalIntents.consume()
                 }
         }
+        // [#appearance] 文字サイズ設定（小/中/大）を fontScale に乗算して全 sp テキストへ波及させる。
+        // dp 寸法（レイアウト・アイコン・余白）は変えず、文字だけ拡大する。
+        val textScale by (repository?.textScaleFlow()?.collectAsState()
+            ?: remember { mutableStateOf(TextScale.SMALL) })
+        val density = LocalDensity.current
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,
             LocalNoteNav provides noteNav,
+            LocalDensity provides Density(density.density, density.fontScale * textScale.factor),
         ) {
             // システムバー裏まで暗色で塗る（iOS はウィンドウ既定が白でステータスバー裏が白帯に
             // なるため）。子は systemBars 分を padding するので、この背景が最上端まで敷かれる。
