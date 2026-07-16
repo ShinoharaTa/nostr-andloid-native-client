@@ -758,13 +758,11 @@ private fun AppearanceSettings() {
     val textScale by repo.textScaleFlow().collectAsState()
     val uiScale by repo.uiScaleFlow().collectAsState()
 
-    // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。文字だけでなくアイコン・余白・
-    // 下部ナビなど UI 全体を拡大する（老眼向け）。
+    // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。UI 全体（文字・アイコン・余白）を拡大。
     Text("表示サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "文字だけでなく、アイコンやボタン・余白を含めた画面全体の大きさを変えられます。" +
-            "「標準」がこれまでのサイズです。",
+        "文字・アイコン・余白を含む画面全体の大きさ。",
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
@@ -779,7 +777,7 @@ private fun AppearanceSettings() {
     Text("文字サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "表示サイズに加えて、文字だけをさらに大きくできます。「小」がこれまでのサイズです。",
+        "文字だけをさらに大きく。",
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
