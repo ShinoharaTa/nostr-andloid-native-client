@@ -78,13 +78,8 @@ fun FeedColumn(
     }
     val scope = rememberCoroutineScope()
     val repo = LocalRepository.current
-    val retro by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     // [#17] EOSE 受信済みか（空 vs 読込中の判別）。
     val loaded by (repo?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
-    // [#24] 流速は再コンポーズ毎ではなく、フィード先頭/件数が変わったときだけ再計算する。
-    val velocity = if (retro) remember(notes.firstOrNull()?.event?.id, notes.size) {
-        feedVelocity(notes.map { it.event.createdAt })
-    } else null
     // [#3] 無限スクロール: 末尾付近まで来たら、最古より古いイベントをリレーから継ぎ足す。
     // derivedStateOf で「末尾付近か」の真偽が変わったときだけ再コンポーズ（スクロール中は無反応）。
     var loadingOlder by remember(spec.id) { mutableStateOf(false) }
@@ -109,7 +104,6 @@ fun FeedColumn(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         RefreshableBox(onRefresh) {
@@ -180,18 +174,12 @@ fun FollowingFeedColumn(
     }
     val scope = rememberCoroutineScope()
     val keys = remember(entries) { entries.map { feedEntryKey(it) } }
-    val retro by (LocalRepository.current?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
     val loaded by (LocalRepository.current?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
-    // [#24] 流速は先頭/件数が変わったときだけ再計算。
-    val velocity = if (retro) remember(keys.firstOrNull(), entries.size) {
-        feedVelocity(entries.map { it.sortAt })
-    } else null
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = spec.subtitle,
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
-            velocity = velocity,
         )
         HorizontalDivider(color = DeckColors.Border)
         RefreshableBox(onRefresh) {
@@ -238,13 +226,6 @@ private fun LoadMoreFooter() {
         Spacer(Modifier.width(DeckSpace.Sm))
         Text("過去を読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
     }
-}
-
-/** [#11/#24] 流速: 直近10分の件数。時刻(Unix秒)は順不同でよい。表示は「N/10分」。 */
-private fun feedVelocity(times: List<Long>): Int {
-    if (times.isEmpty()) return 0
-    val newest = times.maxOrNull() ?: return 0
-    return times.count { it > newest - 600L }  // 直近10分
 }
 
 /** LazyColumn の安定キー。エントリ種別ごとに一意化する。 */

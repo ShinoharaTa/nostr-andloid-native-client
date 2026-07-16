@@ -96,8 +96,6 @@ fun NoteItem(
   // 自分の zap 合計が変わったときのみ再コンポーズする。
   val zapSats by remember(note.event.id) { derivedStateOf { zapTotals[note.event.id] ?: 0L } }
   val defaultReaction by (repo?.defaultReactionFlow()?.collectAsState() ?: remember { mutableStateOf("+" to null) })
-  // [M17] 廃人モード: ON でアバター縮小・余白圧縮の高密度表示（"TLを浴びる"用）。
-  val compact by (repo?.retroModeFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
   var repostMenu by remember { mutableStateOf(false) }
   var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
@@ -119,10 +117,10 @@ fun NoteItem(
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm))
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = if (compact) DeckSpace.Sm else DeckSpace.Md)) {
-        // アバターを少し下げて名前の文字位置に揃える。廃人モードは小さめにして情報密度を上げる。
+    Row(Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Md)) {
+        // アバターを少し下げて名前の文字位置に揃える。
         Avatar(note.author.name, note.author.pictureUrl, Modifier.padding(top = DeckSpace.Xs).then(authorTap),
-            size = if (compact) 28.dp else DeckDimens.AvatarSize)
+            size = DeckDimens.AvatarSize)
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             // 名前+ハンドルを左、時刻は右端に固定（残り幅はグループが占有）。
@@ -143,8 +141,8 @@ fun NoteItem(
                 Spacer(Modifier.width(DeckSpace.Sm))
                 Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
             }
-            // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差を付け、テキスト羅列→UIブロック化。廃人モードは詰める。
-            Spacer(Modifier.size(if (compact) DeckSpace.Xs else DeckSpace.Sm))
+            // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差を付け、テキスト羅列→UIブロック化。
+            Spacer(Modifier.size(DeckSpace.Sm))
             // [#5] NIP-36 コンテンツ警告: 未開封なら本文/メディアを隠して警告のみ表示。
             val cw = note.contentWarning
             if (cw != null && !cwRevealed) {

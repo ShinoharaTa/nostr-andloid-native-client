@@ -22,7 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -263,10 +263,12 @@ private fun BottomBar(state: DeckState) {
         tonalElevation = 0.dp,
         windowInsets = bottomBarInsets(),
     ) {
+        // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（レールと同順）。
+        // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
         NavItem(state, NavDest.HOME, Icons.Outlined.Home, "ホーム")
+        NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, "検索")
+        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "パブリックチャット")
         NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, "通知")
-        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "Chat")
-        NavItem(state, NavDest.DM, Icons.Outlined.MailOutline, "DM")
         val pk = myPubkey
         NavigationBarItem(
             selected = state.navDest == NavDest.SETTINGS,

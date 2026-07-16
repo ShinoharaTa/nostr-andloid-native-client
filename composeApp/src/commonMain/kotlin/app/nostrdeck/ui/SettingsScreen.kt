@@ -24,7 +24,6 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.MailOutline
@@ -86,6 +85,7 @@ import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
@@ -107,8 +107,12 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     // [#hub] プロフィールだけは全幅オーバーレイ（1枚の大きな画面）。
     // ふぁぼ/ブックマーク/ミュート等は設定の右ペイン（リスト）に表示する。
     val onSelect: (String) -> Unit = { id ->
-        if (id == "profile_view") myPubkey?.let { state.openProfile(it) }
-        else state.settingsSection = id
+        when (id) {
+            "profile_view" -> myPubkey?.let { state.openProfile(it) }
+            // [#nav] DM はナビから外したので、ここから DM 画面へ遷移する。
+            "dm_view" -> { state.clearDetail(); state.navDest = NavDest.DM }
+            else -> state.settingsSection = id
+        }
     }
 
     TwoPane(
@@ -132,6 +136,8 @@ private data class SItem(val id: String, val label: String, val icon: ImageVecto
 // （レール/下バーはアバター1枠だけにして煩雑さを避ける）。
 private val paletteFav = listOf(
     SItem("profile_view", "プロフィール", Icons.Outlined.Person),
+    // [#nav] DM は下部ナビ/レールから外したため、ここが導線（タップで DM 画面へ）。
+    SItem("dm_view", "DM", Icons.Outlined.MailOutline),
     SItem("favs", "ふぁぼ", Icons.Outlined.StarBorder),
     SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
     SItem("mute", "ミュート", Icons.Outlined.Block),
@@ -141,7 +147,6 @@ private val paletteGroups = listOf(
     "カスタマイズ" to listOf(
         SItem("reaction", "リアクション", Icons.Outlined.FavoriteBorder),
         SItem("appearance", "表示", Icons.Outlined.Visibility),
-        SItem("retro", "古のSNS廃人モード", Icons.Outlined.AutoAwesome),
     ),
     "接続・アカウント" to listOf(
         SItem("signer", "ログイン方法", Icons.Outlined.Key),
@@ -258,7 +263,6 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "bookmarks" -> BookmarkSettings(state)
                 "dmrelays" -> DmRelaySettings()
                 "reaction" -> ReactionSettings()
-                "retro" -> RetroSettings()
                 "media" -> MediaSettings()
                 "data" -> DataSettings()
                 "appearance" -> AppearanceSettings()
@@ -685,31 +689,6 @@ private fun ReactionSettings() {
         ReactionChoice(Icons.Filled.Favorite, "ハート", selected = !isStar) { repo.setDefaultReaction("+", null) }
         ReactionChoice(Icons.Filled.Star, "スター", selected = isStar) { repo.setDefaultReaction("⭐", null) }
     }
-}
-
-/**
- * [M17] 「古のSNS廃人モード」。普段はマイルドなまま、ONにした人だけデッキが"あの頃"の濃さになる
- * オプトイン。まずは高密度表示（アバター縮小・余白圧縮）で "TLを浴びる" 質感を出す。今後ここに
- * デッキ系の玄人向け機能（流速表示・カラム操作など）を足していく。
- */
-@Composable
-private fun RetroSettings() {
-    val repo = LocalRepository.current
-    if (repo == null) {
-        Text("この設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
-        return
-    }
-    val on by repo.retroModeFlow().collectAsState()
-
-    Text("古のSNS廃人モード", color = DeckColors.Text2, fontSize = DeckType.Caption)
-    Spacer(Modifier.size(DeckSpace.Xs))
-    Text(
-        "ふぁぼ全盛期のあのデッキを思い出す、玄人向けの濃いめモード。普段はOFFのままでOK、" +
-            "オンにするとタイムラインが高密度になり“浴びる”感じに。遊びたくなったらどうぞ。",
-        color = DeckColors.Text3, fontSize = DeckType.Label,
-    )
-    Spacer(Modifier.size(DeckSpace.Md))
-    SettingToggle("廃人モードを有効にする（高密度表示）", on) { repo.setRetroMode(it) }
 }
 
 /** 排他選択のチップ（AUTH ポリシー/文字サイズ等）。選択中はアクセント背景。 */
