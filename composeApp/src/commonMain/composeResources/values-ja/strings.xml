@@ -16,8 +16,8 @@
     <string name="group_system">システム</string>
 
     <!-- Settings: sections / tiles -->
-    <string name="section_account">アカウント</string>
-    <string name="section_signer">ログイン方法</string>
+    <string name="section_account">プロフィール編集</string>
+    <string name="section_signer">アカウント</string>
     <string name="section_relays">リレー</string>
     <string name="section_dm_relays">DMリレー</string>
     <string name="section_media">メディアサーバー</string>

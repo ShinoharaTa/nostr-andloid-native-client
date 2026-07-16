@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -996,17 +997,115 @@ fun LoginGate() {
     }
 }
 
+/**
+ * [#154] アカウント（旧: ログイン方法）。誤タップでアカウントが切り替わる事故を防ぐため、
+ * 「状態の確認」「このアカウントを守る操作」を前面に、「別アカウントでのログインし直し」は
+ * 警告ゲートの先に隔離する。方式のラジオ風一覧は廃止（現在の方式はカード内に1行表示）。
+ */
 @Composable
 private fun SignerSettings() {
-    val current = SignerProvider.current().method
-    // [#39] 外部署名アプリ(Amber 等)が入っていれば NIP-55 も利用可能として扱う。
-    val extAvailable = ExternalSignerHost.provider?.isAvailable() == true
-    // [#Nosskey] パスキー(Credential Manager)が使える環境なら NOSSKEY も利用可能。
-    val nosskeyAvailable = NosskeyHost.provider?.isAvailable() == true
-    // [#login] ログアウト: 全セッション/ローカル鍵を破棄して未ログイン（ゲート）へ。破壊的なので確認を挟む。
+    val repo = LocalRepository.current
+    val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
+    val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     var confirmLogout by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("現在: $current", color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+    var confirmRelogin by remember { mutableStateOf(false) }  // 警告ゲート
+    var showRelogin by remember { mutableStateOf(false) }     // ゲート通過後のみ方法選択を出す
+
+    // ── ① 現在のログイン ──
+    val npub = remember(myPubkey) { myPubkey?.let { runCatching { Nip19.hexToNpub(it) }.getOrNull() } }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
+            .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Md))
+            .background(DeckColors.Surface2).padding(DeckSpace.Md),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(myProfile?.name ?: myPubkey ?: "me", myProfile?.pictureUrl, size = 40.dp)
+            Spacer(Modifier.width(DeckSpace.Sm))
+            Column {
+                Text(
+                    myProfile?.name?.takeIf { it.isNotBlank() } ?: myPubkey?.take(10) ?: "（未取得）",
+                    color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                )
+                npub?.let {
+                    Text(
+                        it.take(16) + "…" + it.takeLast(6),
+                        color = DeckColors.Text3, fontSize = DeckType.Label,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.size(DeckSpace.Sm))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Sm))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ログイン方法: ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+            Text(signerMethodLabel(SignerProvider.current().method), color = DeckColors.Text, fontSize = DeckType.Caption)
+            Spacer(Modifier.width(DeckSpace.Sm))
+            Text("● 有効", color = DeckColors.Verified, fontSize = DeckType.Label)
+        }
+    }
+
+    // ── ② このアカウントを守る ──
+    Spacer(Modifier.size(DeckSpace.Xl))
+    Text("このアカウントを守る", color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Md))
+    // [#Nosskey] パスキー(WebAuthn PRF)で nsec を保護。
+    NosskeyLogin()
+    // [#nsec-reveal] ローカル鍵のバックアップ（nsec 表示）。LOCAL のときのみ。
+    NsecBackupRow()
+
+    // ── ③ 別のアカウントを使う ──
+    Spacer(Modifier.size(DeckSpace.Lg))
+    Text("別のアカウントを使う", color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Md))
+    if (!showRelogin) {
+        // 入口は1行だけ。タップしても即座には何も起きない（警告ゲートへ）。
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
+                .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Md))
+                .clickable { confirmRelogin = true }
+                .padding(DeckSpace.Md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("別のアカウントでログインし直す", color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+            Text("›", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        }
+    } else {
+        Text(
+            "ログイン方法を選んでください。端末で使える方法だけを表示しています。",
+            color = DeckColors.Text3, fontSize = DeckType.Caption,
+        )
+        Spacer(Modifier.size(DeckSpace.Md))
+        // [#39] 外部署名アプリ(NIP-55/Amber)。導入時のみ表示。
+        ExternalSignerLogin()
+        // [#41] NIP-46（bunker / Nostr Connect）リモート署名。
+        Nip46Login()
+        // 秘密鍵（nsec）の取り込み / 新規生成。
+        LocalSignerLogin()
+        DeckGhostButton("閉じる", onClick = { showRelogin = false })
+    }
+    if (confirmRelogin) {
+        DeckConfirmDialog(
+            title = "ログインし直しますか？",
+            text = "現在のログインを切り替える操作です。続行すると、端末内に保存しているキャッシュ" +
+                "（タイムライン履歴・プロフィール等）を消去します。ローカル鍵はバックアップ（nsec）が" +
+                "無いと復元できません。",
+            confirmLabel = "続行する", destructive = true,
+            onConfirm = {
+                confirmRelogin = false
+                // [#154] アカウント混在を避けるため、端末内キャッシュを消去してから方法選択へ。
+                repo?.purgeCache()
+                showRelogin = true
+            },
+            onDismiss = { confirmRelogin = false },
+        )
+    }
+
+    // ── ④ ログアウト（最下部に隔離） ──
+    Spacer(Modifier.size(DeckSpace.Xl))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(DeckSpace.Lg))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         DeckTextButton("ログアウト", color = DeckColors.Warn, onClick = { confirmLogout = true })
     }
     if (confirmLogout) {
@@ -1026,29 +1125,38 @@ private fun SignerSettings() {
             onDismiss = { confirmLogout = false },
         )
     }
-    Spacer(Modifier.size(DeckSpace.Md))
-    SignerMethod.entries.filter { it != SignerMethod.NONE }.forEach { m ->
-        val done = m == SignerMethod.LOCAL || (m == SignerMethod.NIP55 && extAvailable) ||
-            (m == SignerMethod.NOSSKEY && nosskeyAvailable) || m == SignerMethod.NIP46
-        Row(Modifier.fillMaxWidth().padding(vertical = DeckSpace.Sm)) {
-            Text(if (m == current) "● " else "○ ", color = DeckColors.Accent, fontSize = DeckType.Sub)
-            Text(
-                "$m" + if (done) "" else "（未実装）",
-                color = if (done) DeckColors.Text else DeckColors.Text3, fontSize = DeckType.Sub,
-            )
-        }
-    }
+}
 
+/** [#154] 現在の署名方式のユーザー向け表示名。 */
+private fun signerMethodLabel(m: SignerMethod): String = when (m) {
+    SignerMethod.NIP55 -> "外部署名アプリ（Amber 等）"
+    SignerMethod.NIP46 -> "リモート署名（NIP-46）"
+    SignerMethod.NOSSKEY -> "パスキー保護（Nosskey）"
+    SignerMethod.LOCAL -> "この端末の鍵（ローカル署名）"
+    SignerMethod.NONE -> "未ログイン"
+    else -> m.name
+}
+
+/**
+ * [#nsec-reveal] 保管中の秘密鍵のバックアップ表示（ローカル鍵ログイン中のみ）。
+ * 生成直後にしか出さないと控え損ねたユーザーが詰むので、いつでも確認できるようにする。
+ */
+@Composable
+private fun NsecBackupRow() {
+    if (SignerProvider.current().method != SignerMethod.LOCAL) return
+    var showNsec by remember { mutableStateOf(false) }
+    Text("秘密鍵のバックアップ", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Text(
+        "この端末に保管中の秘密鍵（nsec）を表示して控えられます。紛失すると復元できません。",
+        color = DeckColors.Text2, fontSize = DeckType.Caption,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    DeckTextButton("秘密鍵 (nsec) を表示…", color = DeckColors.Warn, onClick = { showNsec = true })
+    if (showNsec) NsecRevealDialog(onDismiss = { showNsec = false })
     Spacer(Modifier.size(DeckSpace.Lg))
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Lg))
-    // [#39] 外部署名アプリ(NIP-55/Amber)ログイン。導入時のみ表示。
-    ExternalSignerLogin()
-    // [#41] NIP-46（bunker / Nostr Connect）リモート署名ログイン。
-    Nip46Login()
-    // [#Nosskey] パスキー(WebAuthn PRF)で nsec を保護。
-    NosskeyLogin()
-    LocalSignerLogin()
 }
 
 /**
@@ -1472,8 +1580,6 @@ private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean)
 @Composable
 private fun LocalSignerLogin() {
     val repo = LocalRepository.current
-    // import/generate のたびに公開鍵を読み直すためのトリガ。
-    var refresh by remember { mutableStateOf(0) }
     var nsecInput by remember { mutableStateOf("") }
     var reveal by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1481,31 +1587,14 @@ private fun LocalSignerLogin() {
     // 取り込みは検証済み hex を保持、生成は true で確認待ち。
     var pendingImportHex by remember { mutableStateOf<String?>(null) }
     var confirmGenerate by remember { mutableStateOf(false) }
-    // [#nsec-reveal] 保管中の秘密鍵のバックアップ表示（警告→表示の2段階モーダル）。
-    var showNsec by remember { mutableStateOf(false) }
 
-    // publicKeyHex() は suspend。refresh をキーに収集して npub を求める。
-    val npub by produceState<String?>(null, refresh) {
-        value = try {
-            Nip19.hexToNpub(SignerProvider.current().publicKeyHex())
-        } catch (e: Throwable) {
-            null
-        }
-    }
-
-    Text("ログイン（ローカル署名）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text("秘密鍵（nsec）でログイン", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
-    // ローカル鍵でログイン中のときだけ現在の npub を出す（未ログイン/外部署名時は隠す）。
-    if (SignerProvider.current().method == SignerMethod.LOCAL) {
-        Text("現在の公開鍵 (npub):", color = DeckColors.Text2, fontSize = DeckType.Caption)
-        Text(npub ?: "（取得中…）", color = DeckColors.Accent, fontSize = DeckType.Caption)
-        Spacer(Modifier.size(DeckSpace.Sm))
-        // [#nsec-reveal] 端末に保管中の nsec のバックアップ用表示。生成直後にしか出さないと
-        // 控え損ねたユーザーが詰むので、ローカル鍵ログイン中はいつでも確認できるようにする。
-        DeckTextButton("秘密鍵 (nsec) を表示…", color = DeckColors.Warn, onClick = { showNsec = true })
-        Spacer(Modifier.size(DeckSpace.Md))
-    }
-    if (showNsec) NsecRevealDialog(onDismiss = { showNsec = false })
+    Text(
+        "nsec を取り込むか、新しい鍵を生成します。取り込んだ鍵はこの端末に保管されます。",
+        color = DeckColors.Text2, fontSize = DeckType.Caption,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
     DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
@@ -1561,7 +1650,6 @@ private fun LocalSignerLogin() {
                 nsecInput = ""
                 pendingImportHex = null
                 error = null
-                refresh++
             },
             onDismiss = { pendingImportHex = null },
         )
@@ -1574,7 +1662,6 @@ private fun LocalSignerLogin() {
                 repo?.reloadForNewIdentity()
                 confirmGenerate = false
                 error = null
-                refresh++
             },
             onDismiss = { confirmGenerate = false },
         )
