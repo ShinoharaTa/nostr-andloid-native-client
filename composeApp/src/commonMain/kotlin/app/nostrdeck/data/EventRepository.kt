@@ -37,6 +37,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
@@ -264,6 +265,8 @@ class EventRepository(
         loadSearchHistory()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
         loadEmbedPrefs()
+        // 文字サイズ（小/中/大）を KV から復元。
+        loadTextScale()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
@@ -3034,6 +3037,22 @@ class EventRepository(
         putSettingAsync(EMBED_PREFIX + "video", if (prefs.video) "1" else "0")
     }
 
+    // ---- [#appearance] 文字サイズ（小/中/大。小=従来）----
+
+    private val textScaleState = MutableStateFlow(TextScale.SMALL)
+    /** 文字サイズ設定（設定 > 表示）。fontScale への乗算係数として App ルートで適用する。 */
+    fun textScaleFlow(): StateFlow<TextScale> = textScaleState
+
+    fun setTextScale(scale: TextScale) {
+        textScaleState.value = scale
+        putSettingAsync(TEXT_SCALE_KEY, scale.id)
+    }
+
+    /** KV から文字サイズを復元（未設定は小=従来サイズ）。start() から呼ぶ。 */
+    private fun loadTextScale() {
+        textScaleState.value = TextScale.fromId(q.getSetting(TEXT_SCALE_KEY).executeAsOneOrNull())
+    }
+
     private val ogpCache = mutableMapOf<String, OgpData?>()
     private val ogpMutex = Mutex()
 
@@ -3598,6 +3617,7 @@ class EventRepository(
 
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
+        const val TEXT_SCALE_KEY = "ui:text_scale"   // [#appearance] 文字サイズ（s/m/l）
 
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */
         const val DEFAULT_REACTION_CONTENT = "default_reaction:content"

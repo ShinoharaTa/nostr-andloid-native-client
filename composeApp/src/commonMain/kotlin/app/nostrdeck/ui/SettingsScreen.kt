@@ -712,9 +712,9 @@ private fun RetroSettings() {
     SettingToggle("廃人モードを有効にする（高密度表示）", on) { repo.setRetroMode(it) }
 }
 
-/** [NIP-42] AUTH 応答ポリシーの選択チップ。選択中はアクセント背景。 */
+/** 排他選択のチップ（AUTH ポリシー/文字サイズ等）。選択中はアクセント背景。 */
 @Composable
-private fun AuthPolicyChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label,
         color = if (selected) DeckColors.Text else DeckColors.Text3,
@@ -755,6 +755,22 @@ private fun AppearanceSettings() {
         return
     }
     val prefs by repo.embedPrefsFlow().collectAsState()
+    val textScale by repo.textScaleFlow().collectAsState()
+
+    // [#appearance] 文字サイズ（小=従来 / 中 / 大）。アプリ全体の文字スケーリングはここに集約。
+    Text("文字サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "アプリ全体の文字の大きさを変えられます。「小」がこれまでのサイズです。",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        app.nostrdeck.model.TextScale.entries.forEach { s ->
+            ChoiceChip(s.label, selected = textScale == s) { repo.setTextScale(s) }
+        }
+    }
+    Spacer(Modifier.size(DeckSpace.Xl))
 
     Text("リンクの埋め込み表示", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
@@ -1246,9 +1262,9 @@ private fun RelaySettings() {
     )
     Spacer(Modifier.size(DeckSpace.Sm))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
-        AuthPolicyChip("DM/自分のリレーのみ", authPolicy == AuthPolicy.DM_AND_MINE) { repo.setAuthPolicy(AuthPolicy.DM_AND_MINE) }
-        AuthPolicyChip("常に応答", authPolicy == AuthPolicy.ALWAYS) { repo.setAuthPolicy(AuthPolicy.ALWAYS) }
-        AuthPolicyChip("無効", authPolicy == AuthPolicy.OFF) { repo.setAuthPolicy(AuthPolicy.OFF) }
+        ChoiceChip("DM/自分のリレーのみ", authPolicy == AuthPolicy.DM_AND_MINE) { repo.setAuthPolicy(AuthPolicy.DM_AND_MINE) }
+        ChoiceChip("常に応答", authPolicy == AuthPolicy.ALWAYS) { repo.setAuthPolicy(AuthPolicy.ALWAYS) }
+        ChoiceChip("無効", authPolicy == AuthPolicy.OFF) { repo.setAuthPolicy(AuthPolicy.OFF) }
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
