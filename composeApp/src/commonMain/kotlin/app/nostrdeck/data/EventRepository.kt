@@ -38,6 +38,7 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.TextScale
+import app.nostrdeck.model.UiScale
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
@@ -267,6 +268,8 @@ class EventRepository(
         loadEmbedPrefs()
         // 文字サイズ（小/中/大）を KV から復元。
         loadTextScale()
+        // 表示サイズ（標準/大きめ/最大）を KV から復元。
+        loadUiScale()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
@@ -3053,6 +3056,22 @@ class EventRepository(
         textScaleState.value = TextScale.fromId(q.getSetting(TEXT_SCALE_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#appearance] 表示サイズ（標準/大きめ/最大。標準=従来）----
+
+    private val uiScaleState = MutableStateFlow(UiScale.SMALL)
+    /** 表示サイズ設定（設定 > 表示）。density への乗算係数として App ルートで適用する。 */
+    fun uiScaleFlow(): StateFlow<UiScale> = uiScaleState
+
+    fun setUiScale(scale: UiScale) {
+        uiScaleState.value = scale
+        putSettingAsync(UI_SCALE_KEY, scale.id)
+    }
+
+    /** KV から表示サイズを復元（未設定は標準=従来サイズ）。start() から呼ぶ。 */
+    private fun loadUiScale() {
+        uiScaleState.value = UiScale.fromId(q.getSetting(UI_SCALE_KEY).executeAsOneOrNull())
+    }
+
     private val ogpCache = mutableMapOf<String, OgpData?>()
     private val ogpMutex = Mutex()
 
@@ -3618,6 +3637,7 @@ class EventRepository(
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
         const val TEXT_SCALE_KEY = "ui:text_scale"   // [#appearance] 文字サイズ（s/m/l）
+        const val UI_SCALE_KEY = "ui:ui_scale"       // [#appearance] 表示サイズ（s/m/l）
 
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */
         const val DEFAULT_REACTION_CONTENT = "default_reaction:content"
