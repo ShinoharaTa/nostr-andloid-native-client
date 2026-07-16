@@ -756,12 +756,28 @@ private fun AppearanceSettings() {
     }
     val prefs by repo.embedPrefsFlow().collectAsState()
     val textScale by repo.textScaleFlow().collectAsState()
+    val uiScale by repo.uiScaleFlow().collectAsState()
 
-    // [#appearance] 文字サイズ（小=従来 / 中 / 大）。アプリ全体の文字スケーリングはここに集約。
+    // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。UI 全体（文字・アイコン・余白）を拡大。
+    Text("表示サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        "文字・アイコン・余白を含む画面全体の大きさ。",
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        app.nostrdeck.model.UiScale.entries.forEach { s ->
+            ChoiceChip(s.label, selected = uiScale == s) { repo.setUiScale(s) }
+        }
+    }
+    Spacer(Modifier.size(DeckSpace.Xl))
+
+    // [#appearance] 文字サイズ（小=従来 / 中 / 大）。表示サイズに加えて文字だけをさらに拡大。
     Text("文字サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "アプリ全体の文字の大きさを変えられます。「小」がこれまでのサイズです。",
+        "文字だけをさらに大きく。",
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))

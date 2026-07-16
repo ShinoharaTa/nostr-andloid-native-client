@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.model.TextScale
+import app.nostrdeck.model.UiScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
@@ -94,16 +95,24 @@ fun App(repository: EventRepository? = null) {
                     ExternalIntents.consume()
                 }
         }
-        // [#appearance] 文字サイズ設定（小/中/大）を fontScale に乗算して全 sp テキストへ波及させる。
-        // dp 寸法（レイアウト・アイコン・余白）は変えず、文字だけ拡大する。
+        // [#appearance] 表示サイズと文字サイズを LocalDensity へ反映（独立2軸）。
+        //  - 表示サイズ(uiScale): density に乗算 → dp を含む UI 全体（アイコン・余白・
+        //    カラム幅・下部ナビのアイコン）と文字がまとめて拡大する。
+        //  - 文字サイズ(textScale): fontScale に乗算 → sp 指定の文字だけ追加で拡大する。
+        // 両者は掛け合わせて効く（Android の「表示サイズ」×「フォントサイズ」と同じ考え方）。
         val textScale by (repository?.textScaleFlow()?.collectAsState()
             ?: remember { mutableStateOf(TextScale.SMALL) })
+        val uiScale by (repository?.uiScaleFlow()?.collectAsState()
+            ?: remember { mutableStateOf(UiScale.SMALL) })
         val density = LocalDensity.current
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,
             LocalNoteNav provides noteNav,
-            LocalDensity provides Density(density.density, density.fontScale * textScale.factor),
+            LocalDensity provides Density(
+                density.density * uiScale.factor,
+                density.fontScale * textScale.factor,
+            ),
         ) {
             // システムバー裏まで暗色で塗る（iOS はウィンドウ既定が白でステータスバー裏が白帯に
             // なるため）。子は systemBars 分を padding するので、この背景が最上端まで敷かれる。
