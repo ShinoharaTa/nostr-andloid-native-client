@@ -85,6 +85,49 @@ import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.state.DeckState
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.embed_ogp
+import nostr_deck_client.composeapp.generated.resources.embed_ogp_images
+import nostr_deck_client.composeapp.generated.resources.embed_section
+import nostr_deck_client.composeapp.generated.resources.embed_section_desc
+import nostr_deck_client.composeapp.generated.resources.embed_spotify
+import nostr_deck_client.composeapp.generated.resources.embed_video
+import nostr_deck_client.composeapp.generated.resources.embed_youtube
+import nostr_deck_client.composeapp.generated.resources.group_connection
+import nostr_deck_client.composeapp.generated.resources.group_customize
+import nostr_deck_client.composeapp.generated.resources.group_quick_access
+import nostr_deck_client.composeapp.generated.resources.group_system
+import nostr_deck_client.composeapp.generated.resources.nav_dm
+import nostr_deck_client.composeapp.generated.resources.section_about
+import nostr_deck_client.composeapp.generated.resources.section_account
+import nostr_deck_client.composeapp.generated.resources.section_appearance
+import nostr_deck_client.composeapp.generated.resources.section_bookmarks
+import nostr_deck_client.composeapp.generated.resources.section_data
+import nostr_deck_client.composeapp.generated.resources.section_dm_relays
+import nostr_deck_client.composeapp.generated.resources.section_favs
+import nostr_deck_client.composeapp.generated.resources.section_media
+import nostr_deck_client.composeapp.generated.resources.section_mute
+import nostr_deck_client.composeapp.generated.resources.section_reaction
+import nostr_deck_client.composeapp.generated.resources.section_relays
+import nostr_deck_client.composeapp.generated.resources.section_signer
+import nostr_deck_client.composeapp.generated.resources.settings_title
+import nostr_deck_client.composeapp.generated.resources.text_scale_desc
+import nostr_deck_client.composeapp.generated.resources.text_scale_large
+import nostr_deck_client.composeapp.generated.resources.text_scale_medium
+import nostr_deck_client.composeapp.generated.resources.text_scale_small
+import nostr_deck_client.composeapp.generated.resources.text_scale_title
+import nostr_deck_client.composeapp.generated.resources.theme_dark
+import nostr_deck_client.composeapp.generated.resources.theme_light
+import nostr_deck_client.composeapp.generated.resources.theme_system
+import nostr_deck_client.composeapp.generated.resources.theme_title
+import nostr_deck_client.composeapp.generated.resources.tile_profile
+import nostr_deck_client.composeapp.generated.resources.ui_scale_desc
+import nostr_deck_client.composeapp.generated.resources.ui_scale_large
+import nostr_deck_client.composeapp.generated.resources.ui_scale_medium
+import nostr_deck_client.composeapp.generated.resources.ui_scale_small
+import nostr_deck_client.composeapp.generated.resources.ui_scale_title
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -129,34 +172,35 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 }
 
 // [#28] メニューを「ランチャー(パレット)」化。よく使う機能をタイルで前面に、設定はグループ化。
-private data class SItem(val id: String, val label: String, val icon: ImageVector)
+// [#149] ラベルは文字列リソース（既定=英語 / values-ja=日本語）。
+private data class SItem(val id: String, val label: StringResource, val icon: ImageVector)
 
 // ① よく使う（大タイル）: 日常操作。設定というより機能。
 // [#hub] 自分ハブ = 設定一覧。プロフ/私的リスト/ミュートへの直行口をここに集約する
 // （レール/下バーはアバター1枠だけにして煩雑さを避ける）。
 private val paletteFav = listOf(
-    SItem("profile_view", "プロフィール", Icons.Outlined.Person),
+    SItem("profile_view", Res.string.tile_profile, Icons.Outlined.Person),
     // [#nav] DM は下部ナビ/レールから外したため、ここが導線（タップで DM 画面へ）。
-    SItem("dm_view", "DM", Icons.Outlined.MailOutline),
-    SItem("favs", "ふぁぼ", Icons.Outlined.StarBorder),
-    SItem("bookmarks", "ブックマーク", Icons.Outlined.BookmarkBorder),
-    SItem("mute", "ミュート", Icons.Outlined.Block),
+    SItem("dm_view", Res.string.nav_dm, Icons.Outlined.MailOutline),
+    SItem("favs", Res.string.section_favs, Icons.Outlined.StarBorder),
+    SItem("bookmarks", Res.string.section_bookmarks, Icons.Outlined.BookmarkBorder),
+    SItem("mute", Res.string.section_mute, Icons.Outlined.Block),
 )
 // ②③④ グループ化した設定。
 private val paletteGroups = listOf(
-    "カスタマイズ" to listOf(
-        SItem("reaction", "リアクション", Icons.Outlined.FavoriteBorder),
-        SItem("appearance", "表示", Icons.Outlined.Visibility),
+    Res.string.group_customize to listOf(
+        SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
+        SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
     ),
-    "接続・アカウント" to listOf(
-        SItem("signer", "ログイン方法", Icons.Outlined.Key),
-        SItem("relays", "リレー", Icons.Outlined.Cloud),
-        SItem("dmrelays", "DMリレー", Icons.Outlined.MailOutline),
-        SItem("media", "メディアサーバー", Icons.Outlined.CloudUpload),
+    Res.string.group_connection to listOf(
+        SItem("signer", Res.string.section_signer, Icons.Outlined.Key),
+        SItem("relays", Res.string.section_relays, Icons.Outlined.Cloud),
+        SItem("dmrelays", Res.string.section_dm_relays, Icons.Outlined.MailOutline),
+        SItem("media", Res.string.section_media, Icons.Outlined.CloudUpload),
     ),
-    "システム" to listOf(
-        SItem("data", "データ・キャッシュ", Icons.Outlined.Storage),
-        SItem("about", "このアプリについて", Icons.Outlined.Info),
+    Res.string.group_system to listOf(
+        SItem("data", Res.string.section_data, Icons.Outlined.Storage),
+        SItem("about", Res.string.section_about, Icons.Outlined.Info),
     ),
 )
 
@@ -164,11 +208,11 @@ private val paletteGroups = listOf(
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
-            Text("設定", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+            Text(stringResource(Res.string.settings_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
-            item { PaletteGroupHeader("よく使う") }
+            item { PaletteGroupHeader(stringResource(Res.string.group_quick_access)) }
             item {
                 // 2列グリッド（4タイルを2行に）。1行4列だとラベルが窮屈で見切れるため。
                 Column(
@@ -184,7 +228,7 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
                 }
             }
             paletteGroups.forEach { (title, rows) ->
-                item { PaletteGroupHeader(title) }
+                item { PaletteGroupHeader(stringResource(title)) }
                 items(rows, key = { it.id }) { PaletteRow(it, selectedId, onSelect) }
             }
         }
@@ -211,7 +255,7 @@ private fun PaletteTile(item: SItem, selectedId: String?, onSelect: (String) -> 
     ) {
         Icon(item.icon, null, tint = if (active) DeckColors.Text else DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg))
         Spacer(Modifier.height(DeckSpace.Xs))
-        Text(item.label, color = if (active) DeckColors.Text else DeckColors.Text2, fontSize = DeckType.Label, maxLines = 1)
+        Text(stringResource(item.label), color = if (active) DeckColors.Text else DeckColors.Text2, fontSize = DeckType.Label, maxLines = 1)
     }
 }
 
@@ -227,7 +271,7 @@ private fun PaletteRow(item: SItem, selectedId: String?, onSelect: (String) -> U
         Icon(item.icon, null, tint = if (active) DeckColors.Accent else DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd))
         Spacer(Modifier.width(DeckSpace.Md))
         Text(
-            item.label,
+            stringResource(item.label),
             color = if (active) DeckColors.Accent else DeckColors.Text, fontSize = DeckType.Sub,
             fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
         )
@@ -236,7 +280,8 @@ private fun PaletteRow(item: SItem, selectedId: String?, onSelect: (String) -> U
 
 @Composable
 private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> Unit)? = null) {
-    val title = SampleData.settingsSections.firstOrNull { it.first == sectionId }?.second ?: ""
+    // [#149] セクションタイトルは文字列リソースから解決（SampleData のラベルは廃止予定）。
+    val title = sectionTitle(sectionId)
     Column(Modifier.fillMaxSize().background(DeckColors.Bg).padding(DeckSpace.Lg)) {
         // タイトル横に ← を置いて一覧へ戻る（Compact のみ。自然な単一ヘッダー）。
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -691,6 +736,46 @@ private fun ReactionSettings() {
     }
 }
 
+// [#149] 設定セクション id → タイトル（文字列リソース）。
+@Composable
+private fun sectionTitle(sectionId: String): String = when (sectionId) {
+    "account" -> stringResource(Res.string.section_account)
+    "signer" -> stringResource(Res.string.section_signer)
+    "relays" -> stringResource(Res.string.section_relays)
+    "dmrelays" -> stringResource(Res.string.section_dm_relays)
+    "media" -> stringResource(Res.string.section_media)
+    "reaction" -> stringResource(Res.string.section_reaction)
+    "appearance" -> stringResource(Res.string.section_appearance)
+    "data" -> stringResource(Res.string.section_data)
+    "about" -> stringResource(Res.string.section_about)
+    "mute" -> stringResource(Res.string.section_mute)
+    "favs" -> stringResource(Res.string.section_favs)
+    "bookmarks" -> stringResource(Res.string.section_bookmarks)
+    else -> ""
+}
+
+// [#149] 表示系 enum のラベル解決（enum は文言を持たず、UI 層でリソースに割り当てる）。
+@Composable
+private fun themeModeLabel(m: app.nostrdeck.model.ThemeMode): String = when (m) {
+    app.nostrdeck.model.ThemeMode.SYSTEM -> stringResource(Res.string.theme_system)
+    app.nostrdeck.model.ThemeMode.LIGHT -> stringResource(Res.string.theme_light)
+    app.nostrdeck.model.ThemeMode.DARK -> stringResource(Res.string.theme_dark)
+}
+
+@Composable
+private fun uiScaleLabel(s: app.nostrdeck.model.UiScale): String = when (s) {
+    app.nostrdeck.model.UiScale.SMALL -> stringResource(Res.string.ui_scale_small)
+    app.nostrdeck.model.UiScale.MEDIUM -> stringResource(Res.string.ui_scale_medium)
+    app.nostrdeck.model.UiScale.LARGE -> stringResource(Res.string.ui_scale_large)
+}
+
+@Composable
+private fun textScaleLabel(s: app.nostrdeck.model.TextScale): String = when (s) {
+    app.nostrdeck.model.TextScale.SMALL -> stringResource(Res.string.text_scale_small)
+    app.nostrdeck.model.TextScale.MEDIUM -> stringResource(Res.string.text_scale_medium)
+    app.nostrdeck.model.TextScale.LARGE -> stringResource(Res.string.text_scale_large)
+}
+
 /** 排他選択のチップ（AUTH ポリシー/文字サイズ等）。選択中はアクセント背景。 */
 @Composable
 private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
@@ -739,60 +824,60 @@ private fun AppearanceSettings() {
     val themeMode by repo.themeModeFlow().collectAsState()
 
     // [#152] テーマ（既定=ダーク）。SYSTEM は OS のダークモード追従。
-    Text("テーマ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.theme_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Md))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
         app.nostrdeck.model.ThemeMode.entries.forEach { m ->
-            ChoiceChip(m.label, selected = themeMode == m) { repo.setThemeMode(m) }
+            ChoiceChip(themeModeLabel(m), selected = themeMode == m) { repo.setThemeMode(m) }
         }
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。UI 全体（文字・アイコン・余白）を拡大。
-    Text("表示サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.ui_scale_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "文字・アイコン・余白を含む画面全体の大きさ。",
+        stringResource(Res.string.ui_scale_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
         app.nostrdeck.model.UiScale.entries.forEach { s ->
-            ChoiceChip(s.label, selected = uiScale == s) { repo.setUiScale(s) }
+            ChoiceChip(uiScaleLabel(s), selected = uiScale == s) { repo.setUiScale(s) }
         }
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#appearance] 文字サイズ（小=従来 / 中 / 大）。表示サイズに加えて文字だけをさらに拡大。
-    Text("文字サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.text_scale_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "文字だけをさらに大きく。",
+        stringResource(Res.string.text_scale_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
         app.nostrdeck.model.TextScale.entries.forEach { s ->
-            ChoiceChip(s.label, selected = textScale == s) { repo.setTextScale(s) }
+            ChoiceChip(textScaleLabel(s), selected = textScale == s) { repo.setTextScale(s) }
         }
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
-    Text("リンクの埋め込み表示", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.embed_section), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "本文中のリンクをカードやサムネイルで表示します。通信量が気になる場合はオフにできます。",
+        stringResource(Res.string.embed_section_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
 
-    SettingToggle("動画（mp4 等）をインライン再生", prefs.video) { repo.setEmbedPrefs(prefs.copy(video = it)) }
-    SettingToggle("YouTube のサムネイルを表示", prefs.youtube) { repo.setEmbedPrefs(prefs.copy(youtube = it)) }
-    SettingToggle("Spotify のカードを表示", prefs.spotify) { repo.setEmbedPrefs(prefs.copy(spotify = it)) }
-    SettingToggle("その他リンクの OGP カードを表示", prefs.ogp) { repo.setEmbedPrefs(prefs.copy(ogp = it)) }
+    SettingToggle(stringResource(Res.string.embed_video), prefs.video) { repo.setEmbedPrefs(prefs.copy(video = it)) }
+    SettingToggle(stringResource(Res.string.embed_youtube), prefs.youtube) { repo.setEmbedPrefs(prefs.copy(youtube = it)) }
+    SettingToggle(stringResource(Res.string.embed_spotify), prefs.spotify) { repo.setEmbedPrefs(prefs.copy(spotify = it)) }
+    SettingToggle(stringResource(Res.string.embed_ogp), prefs.ogp) { repo.setEmbedPrefs(prefs.copy(ogp = it)) }
     // OGP 画像は OGP 表示が有効なときだけ意味を持つ。
     SettingToggle(
-        "OGP カードの画像を読み込む", prefs.ogpImages, enabled = prefs.ogp,
+        stringResource(Res.string.embed_ogp_images), prefs.ogpImages, enabled = prefs.ogp,
         onChange = { repo.setEmbedPrefs(prefs.copy(ogpImages = it)) },
     )
 }

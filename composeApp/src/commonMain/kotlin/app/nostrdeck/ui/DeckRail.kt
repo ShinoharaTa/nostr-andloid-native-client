@@ -41,6 +41,13 @@ import androidx.compose.ui.unit.dp
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.nav_add_column
+import nostr_deck_client.composeapp.generated.resources.nav_home
+import nostr_deck_client.composeapp.generated.resources.nav_notifications
+import nostr_deck_client.composeapp.generated.resources.nav_public_chat
+import nostr_deck_client.composeapp.generated.resources.nav_search
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
@@ -88,12 +95,12 @@ fun DeckRail(state: DeckState) {
 
             // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（下部ナビと同順）。
             // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-            NavIcon(Icons.Outlined.Home, "ホーム", state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
-            NavIcon(Icons.Outlined.Search, "検索", state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.AutoMirrored.Outlined.Chat, "パブリックチャット", state.navDest == NavDest.CHANNELS) {
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
+            NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
+            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
                 state.clearDetail(); state.navDest = NavDest.CHANNELS
             }
-            NavIcon(Icons.Outlined.Notifications, "通知", state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
+            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
                 state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
             }
         }
@@ -111,7 +118,7 @@ fun DeckRail(state: DeckState) {
 
         // カラム追加（常設アクション・固定）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
         RailSlot(active = true, onClick = { state.showAddColumn = true }) {
-            Icon(Icons.Outlined.Add, "カラム追加", tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
+            Icon(Icons.Outlined.Add, stringResource(Res.string.nav_add_column), tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
         }
 
         RailDivider()
