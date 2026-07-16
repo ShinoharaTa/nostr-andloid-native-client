@@ -736,6 +736,17 @@ private fun AppearanceSettings() {
     val prefs by repo.embedPrefsFlow().collectAsState()
     val textScale by repo.textScaleFlow().collectAsState()
     val uiScale by repo.uiScaleFlow().collectAsState()
+    val themeMode by repo.themeModeFlow().collectAsState()
+
+    // [#152] テーマ（既定=ダーク）。SYSTEM は OS のダークモード追従。
+    Text("テーマ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Spacer(Modifier.size(DeckSpace.Md))
+    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        app.nostrdeck.model.ThemeMode.entries.forEach { m ->
+            ChoiceChip(m.label, selected = themeMode == m) { repo.setThemeMode(m) }
+        }
+    }
+    Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。UI 全体（文字・アイコン・余白）を拡大。
     Text("表示サイズ", color = DeckColors.Text2, fontSize = DeckType.Caption)

@@ -4,7 +4,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import app.nostrdeck.model.ThemeMode
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -84,29 +86,35 @@ object DeckSpace {
     val Xl = 24.dp
 }
 
-private val DarkScheme = darkColorScheme(
-    primary      = DeckColors.Accent,
-    onPrimary    = DeckColors.Bg,        // 明色 primary 上は暗色文字
-    // FAB は primaryContainer を使う。未指定だと M3 既定の紫が漏れる（Damus 風）ので明示的にモノクロ化。
-    primaryContainer   = DeckColors.Accent,
-    onPrimaryContainer = DeckColors.Bg,
-    secondaryContainer   = DeckColors.Surface2,
-    onSecondaryContainer = DeckColors.Text,
-    tertiaryContainer   = DeckColors.Surface2,
-    onTertiaryContainer = DeckColors.Text,
-    // 未読バッジは error を使う。既定のピンクを避け、白地+暗色数字のモノクロに。
-    error          = DeckColors.Accent,
-    onError        = DeckColors.Bg,
-    errorContainer = DeckColors.Accent,
-    onErrorContainer = DeckColors.Bg,
-    background   = DeckColors.Bg,
-    surface      = DeckColors.Surface,
-    surfaceVariant = DeckColors.Surface2,
-    onBackground = DeckColors.Text,
-    onSurface    = DeckColors.Text,
-    onSurfaceVariant = DeckColors.Text2,
-    outline      = DeckColors.Border,
-)
+/** M3 スキームをパレットから組む（ダーク/ライト共通のマッピング）。 */
+private fun schemeFrom(p: DeckPalette, dark: Boolean) = (if (dark) darkColorScheme() else lightColorScheme()).let { base ->
+    base.copy(
+        primary      = p.accent,
+        onPrimary    = p.bg,        // アクセント上は背景色の文字（ダーク=暗字/ライト=明字）
+        // FAB は primaryContainer を使う。未指定だと M3 既定の紫が漏れる（Damus 風）ので明示的にモノクロ化。
+        primaryContainer   = p.accent,
+        onPrimaryContainer = p.bg,
+        secondaryContainer   = p.surface2,
+        onSecondaryContainer = p.text,
+        tertiaryContainer   = p.surface2,
+        onTertiaryContainer = p.text,
+        // 未読バッジは error を使う。既定のピンクを避けたモノクロに。
+        error          = p.accent,
+        onError        = p.bg,
+        errorContainer = p.accent,
+        onErrorContainer = p.bg,
+        background   = p.bg,
+        surface      = p.surface,
+        surfaceVariant = p.surface2,
+        onBackground = p.text,
+        onSurface    = p.text,
+        onSurfaceVariant = p.text2,
+        outline      = p.border,
+    )
+}
+
+private val DarkScheme = schemeFrom(DarkPalette, dark = true)
+private val LightScheme = schemeFrom(LightPalette, dark = false)
 
 /**
  * 全 [androidx.compose.material3.Text] の行を「line box の中央」に揃える。
@@ -124,10 +132,16 @@ private val CenteredLineHeight = LineHeightStyle(
 )
 
 @Composable
-fun DeckTheme(content: @Composable () -> Unit) {
-    // 現状はダーク固定（Nostr クライアントの定番）。将来ライト対応する場合はここで分岐。
-    @Suppress("UNUSED_VARIABLE") val dark = isSystemInDarkTheme()
-    MaterialTheme(colorScheme = DarkScheme) {
+fun DeckTheme(themeMode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Unit) {
+    // [#152] テーマ分岐。既定はダーク（従来挙動）。SYSTEM は OS のダークモード追従。
+    val dark = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    // DeckColors（トークン参照）を現在のテーマに合わせる。値が変わる時のみ書き込む。
+    DeckColors.apply(dark)
+    MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme) {
         // 各 Text() は fontSize/color を LocalTextStyle にマージして描くため、ここで
         // lineHeightStyle を既定に載せておけば全呼び出し箇所へ波及する（呼び出し側改修不要）。
         CompositionLocalProvider(

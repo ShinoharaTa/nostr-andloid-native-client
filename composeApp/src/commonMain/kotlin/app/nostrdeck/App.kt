@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.model.TextScale
+import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.signer.SignerProvider
@@ -38,7 +39,10 @@ import kotlinx.coroutines.flow.combine
  */
 @Composable
 fun App(repository: EventRepository? = null) {
-    DeckTheme {
+    // [#152] テーマ設定（OSに合わせる/ライト/ダーク）。既定はダーク（従来挙動）。
+    val themeMode by (repository?.themeModeFlow()?.collectAsState()
+        ?: remember { mutableStateOf(ThemeMode.DARK) })
+    DeckTheme(themeMode) {
         // カラム構成は pinned_column に永続化する。初回（空）のみ既定をseedして保存し、
         // 以降は保存済みを復元。追加/固定/解除/並べ替えのたびに DeckState から保存する。
         val state = remember {

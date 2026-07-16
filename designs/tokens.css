@@ -4,6 +4,22 @@
    ここで決めた値を shared/ の Theme.kt に写経する想定。
    ============================================================ */
 
+/* [#152] ライトテーマ（Theme.kt の LightPalette と1対1） */
+:root[data-theme="light"] {
+  --bg:            #f2f2f5;
+  --surface:       #fbfbfd;
+  --surface-2:     #eaeaef;
+  --surface-3:     #dfdfe6;
+  --border:        #d4d4dc;
+  --border-strong: #bfbfca;
+  --text:    #16171c;
+  --text-2:  #45464f;
+  --text-3:  #6b6c78;
+  --accent:      #16171c;
+  --accent-2:    #3b3c45;
+  --accent-weak: rgba(0, 0, 0, 0.08);
+}
+
 :root {
   /* --- Color: surfaces --- */
   --bg:            #0c0c10;  /* アプリ最背面 */

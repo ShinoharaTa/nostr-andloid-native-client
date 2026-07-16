@@ -7,8 +7,11 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.state.ExternalIntent
@@ -122,7 +125,24 @@ class MainActivity : ComponentActivity() {
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。
         repository = EventRepository(db, appScope, DEFAULT_RELAYS).apply { start() }
 
-        setContent { App(repository) }
+        setContent {
+            // [#152] ステータスバー/ナビバーのアイコン色をテーマに追従させる
+            // （ライトテーマで白アイコンのままだと見えない）。
+            val mode by repository.themeModeFlow().collectAsState()
+            val dark = when (mode) {
+                app.nostrdeck.model.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                app.nostrdeck.model.ThemeMode.LIGHT -> false
+                app.nostrdeck.model.ThemeMode.DARK -> true
+            }
+            androidx.compose.runtime.LaunchedEffect(dark) {
+                val t = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) SystemBarStyle.dark(t) else SystemBarStyle.light(t, t),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(t) else SystemBarStyle.light(t, t),
+                )
+            }
+            App(repository)
+        }
 
         // [#100][#101] 起動 Intent（共有/ディープリンク）を処理。
         // 再生成（回転/プロセス復元）では再処理しない（savedInstanceState で判定）。
