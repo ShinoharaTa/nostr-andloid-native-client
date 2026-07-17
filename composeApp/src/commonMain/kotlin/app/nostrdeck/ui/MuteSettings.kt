@@ -37,6 +37,9 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.MuteEntry
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -55,11 +58,20 @@ import kotlinx.coroutines.launch
 fun MuteSettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("ミュート情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.mute_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
+    // [#160] コルーチン内（トースト）で使う文言はコンポジション中に解決しておく。
+    val savedMsg = stringResource(Res.string.mute_saved)
+    val saveFailedMsg = stringResource(Res.string.mute_save_failed)
+    val wordAddedMsg = stringResource(Res.string.mute_word_added)
+    val addFailedMsg = stringResource(Res.string.mute_add_failed)
+    val catUsers = stringResource(Res.string.mute_cat_users)
+    val catWords = stringResource(Res.string.mute_cat_words)
+    val catHashtags = stringResource(Res.string.mute_cat_hashtags)
+    val catThreads = stringResource(Res.string.mute_cat_threads)
     DisposableEffect(Unit) {
         repo.subscribeMuteList()
         onDispose { repo.unsubscribeColumn("mute_list") }
@@ -92,18 +104,18 @@ fun MuteSettings() {
             // 安定待ち: 楽観反映 + リレーエコーが落ち着くまで待ってから編集ロックを解く。
             delay(1500)
             saving = false
-            if (ok) { edited = false; toast("ミュートリストを保存しました") }
-            else toast("保存に失敗しました（鍵を確認してください）")
+            if (ok) { edited = false; toast(savedMsg) }
+            else toast(saveFailedMsg)
         }
     }
 
     val editable = mute?.editable == true && !saving
 
     Column(Modifier.fillMaxSize()) {
-        Text("ミュートリスト（NIP-51 / kind:10000）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.mute_list_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
-            "公開／非公開を切り替えて「保存」で再発行します。両方のチェックを外すと解除です。",
+            stringResource(Res.string.mute_list_desc),
             color = DeckColors.Text3, fontSize = DeckType.Label,
         )
         Spacer(Modifier.size(DeckSpace.Md))
@@ -113,12 +125,12 @@ fun MuteSettings() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             DeckTextField(
                 value = wordInput, onValueChange = { wordInput = it },
-                placeholder = "ミュートするワード（/正規表現/ 可）", modifier = Modifier.weight(1f),
+                placeholder = stringResource(Res.string.mute_word_placeholder), modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckButton("追加", enabled = wordInput.isNotBlank(), onClick = {
+            DeckButton(stringResource(Res.string.common_add), enabled = wordInput.isNotBlank(), onClick = {
                 val w = wordInput.trim(); wordInput = ""
-                scope.launch { if (repo.addMuteWord(w)) toast("ミュートワードを追加しました") else toast("追加できませんでした") }
+                scope.launch { if (repo.addMuteWord(w)) toast(wordAddedMsg) else toast(addFailedMsg) }
             })
         }
         Spacer(Modifier.size(DeckSpace.Md))
@@ -130,17 +142,17 @@ fun MuteSettings() {
             entries == null -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), strokeWidth = 2.dp, color = DeckColors.Text2)
                 Spacer(Modifier.width(DeckSpace.Sm))
-                Text("リレーから取得中…", color = DeckColors.Text3, fontSize = DeckType.Sub)
+                Text(stringResource(Res.string.mute_loading), color = DeckColors.Text3, fontSize = DeckType.Sub)
             }
             entries.none { it.isPublic || it.isPrivate } && !edited ->
-                Text("ミュートしている項目はありません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+                Text(stringResource(Res.string.mute_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                 if (mute?.editable == false) item { LockedBanner() }
                 item { ColumnLegend() }
-                muteSection(MuteCategory.USER, "ユーザー", entries, editable, ::toggle)
-                muteSection(MuteCategory.WORD, "ワード", entries, editable, ::toggle)
-                muteSection(MuteCategory.HASHTAG, "ハッシュタグ", entries, editable, ::toggle)
-                muteSection(MuteCategory.THREAD, "スレッド", entries, editable, ::toggle)
+                muteSection(MuteCategory.USER, catUsers, entries, editable, ::toggle)
+                muteSection(MuteCategory.WORD, catWords, entries, editable, ::toggle)
+                muteSection(MuteCategory.HASHTAG, catHashtags, entries, editable, ::toggle)
+                muteSection(MuteCategory.THREAD, catThreads, entries, editable, ::toggle)
             }
         }
 
@@ -176,12 +188,12 @@ private fun SaveBar(saving: Boolean, onSave: () -> Unit) {
         if (saving) {
             CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), strokeWidth = 2.dp, color = DeckColors.Text2)
             Spacer(Modifier.width(DeckSpace.Sm))
-            Text("保存中…（安定するまでお待ちください）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.mute_saving_wait), color = DeckColors.Text2, fontSize = DeckType.Caption)
         } else {
-            Text("変更があります", color = DeckColors.Text2, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.mute_dirty), color = DeckColors.Text2, fontSize = DeckType.Caption)
         }
         Spacer(Modifier.weight(1f))
-        DeckButton(if (saving) "保存中…" else "保存", onClick = onSave, enabled = !saving)
+        DeckButton(if (saving) stringResource(Res.string.common_saving) else stringResource(Res.string.common_save), onClick = onSave, enabled = !saving)
     }
 }
 
@@ -224,9 +236,9 @@ private fun MuteCheck(checked: Boolean, enabled: Boolean, onChange: (Boolean) ->
 private fun ColumnLegend() {
     Row(Modifier.fillMaxWidth().padding(top = DeckSpace.Xs), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
-        LegendLabel("公開")
+        LegendLabel(stringResource(Res.string.mute_public))
         Spacer(Modifier.width(DeckSpace.Sm))
-        LegendLabel("非公開")
+        LegendLabel(stringResource(Res.string.mute_private))
     }
 }
 
@@ -279,7 +291,7 @@ private fun LockedBanner() {
             .background(DeckColors.Zap.copy(alpha = 0.1f)).padding(DeckSpace.Md, DeckSpace.Sm),
     ) {
         Text(
-            "復号できない非公開項目があるため編集できません（上書きで失うのを防いでいます）",
+            stringResource(Res.string.mute_locked),
             color = DeckColors.Zap, fontSize = DeckType.Label,
         )
     }

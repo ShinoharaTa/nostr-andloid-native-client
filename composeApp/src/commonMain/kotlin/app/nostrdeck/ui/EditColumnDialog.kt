@@ -26,6 +26,9 @@ import app.nostrdeck.model.editText
 import app.nostrdeck.model.editRelays
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -61,7 +64,7 @@ fun EditColumnDialog(state: DeckState) {
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
         title = {
-            Text("フィルターを編集 — ${template.label}",
+            Text(stringResource(Res.string.edit_filter_title_fmt, stringResource(template.label)),
                 color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
         },
         text = {
@@ -69,12 +72,12 @@ fun EditColumnDialog(state: DeckState) {
                 when (template.config) {
                     ColumnConfig.TEXT -> DeckTextField(
                         value = text, onValueChange = { text = it },
-                        placeholder = template.hint ?: "",
+                        placeholder = template.hint?.let { stringResource(it) } ?: "",
                         modifier = Modifier.fillMaxWidth(),
                     )
                     ColumnConfig.RELAY_SET -> RelaySetEditor(initial = relays, onChange = { relays = it })
                     ColumnConfig.NOTIF_FILTER -> Column {
-                        Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
+                        Text(stringResource(Res.string.add_column_kinds), color = DeckColors.Text2, fontSize = DeckType.Caption)
                         Spacer(Modifier.size(DeckSpace.Xs))
                         NotifKind.entries.forEach { k ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -86,7 +89,7 @@ fun EditColumnDialog(state: DeckState) {
                                         checkmarkColor = DeckColors.Bg,
                                     ),
                                 )
-                                Text(k.label, color = DeckColors.Text, fontSize = DeckType.Sub)
+                                Text(stringResource(k.label), color = DeckColors.Text, fontSize = DeckType.Sub)
                             }
                         }
                     }
@@ -95,7 +98,7 @@ fun EditColumnDialog(state: DeckState) {
             }
         },
         confirmButton = {
-            DeckTextButton("保存", color = if (canSave) DeckColors.Text else DeckColors.Text3, onClick = {
+            DeckTextButton(stringResource(Res.string.common_save), color = if (canSave) DeckColors.Text else DeckColors.Text3, onClick = {
                 if (canSave) {
                     val selected = NotifKind.entries.filter { kinds[it] == true }.map { it.kind }
                     val newSpec = template.build(input = text, notifKinds = selected, relays = relays)
@@ -111,7 +114,7 @@ fun EditColumnDialog(state: DeckState) {
             })
         },
         dismissButton = {
-            DeckTextButton("キャンセル", color = DeckColors.Text3, onClick = { state.editingColumnId = null })
+            DeckTextButton(stringResource(Res.string.common_cancel), color = DeckColors.Text3, onClick = { state.editingColumnId = null })
         },
     )
 }
