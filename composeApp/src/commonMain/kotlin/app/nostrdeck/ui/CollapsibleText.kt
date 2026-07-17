@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -105,7 +108,7 @@ fun CollapsibleText(
                     .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
             ) {
                 Text(
-                    if (expanded) "閉じる" else "もっと見る",
+                    if (expanded) stringResource(Res.string.common_close) else stringResource(Res.string.show_more),
                     color = DeckColors.Accent, fontSize = DeckType.Caption, fontWeight = DeckWeight.Link,
                 )
                 Spacer(Modifier.width(DeckSpace.Xs))

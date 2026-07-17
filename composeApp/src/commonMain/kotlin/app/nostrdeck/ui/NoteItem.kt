@@ -55,6 +55,10 @@ import app.nostrdeck.model.ReactionUi
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.getString
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -186,11 +190,11 @@ fun NoteItem(
                     )
                     DropdownMenu(expanded = repostMenu, onDismissRequest = { repostMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text("リポスト") },
+                            text = { Text(stringResource(Res.string.note_repost)) },
                             onClick = { repostMenu = false; scope.launch { repo?.publishRepost(note.event) } },
                         )
                         DropdownMenuItem(
-                            text = { Text("引用リポスト") },
+                            text = { Text(stringResource(Res.string.note_quote_repost)) },
                             onClick = { repostMenu = false; onQuote?.invoke() },
                         )
                     }
@@ -233,7 +237,7 @@ fun NoteItem(
                             val isFollowing by (repo?.isFollowingFlow(note.event.pubkey)?.collectAsState(false)
                                 ?: remember { mutableStateOf(false) })
                             DropdownMenuItem(
-                                text = { Text(if (isFollowing) "フォロー解除" else "フォロー") },
+                                text = { Text(if (isFollowing) stringResource(Res.string.note_unfollow) else stringResource(Res.string.note_follow)) },
                                 onClick = {
                                     moreMenu = false
                                     if (isFollowing) confirmUnfollow = true
@@ -242,13 +246,13 @@ fun NoteItem(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(if (isBookmarked) "ブックマークを解除" else "ブックマーク") },
+                            text = { Text(if (isBookmarked) stringResource(Res.string.note_unbookmark) else stringResource(Res.string.note_bookmark)) },
                             onClick = { moreMenu = false; scope.launch { repo?.toggleBookmark(note.event.id) } },
                         )
                         // 自分の投稿だけ「プロフィールに固定」。他人はミュート。
                         if (isMine) {
                             DropdownMenuItem(
-                                text = { Text(if (isPinned) "プロフィールの固定を解除" else "プロフィールに固定") },
+                                text = { Text(if (isPinned) stringResource(Res.string.note_unpin_profile) else stringResource(Res.string.note_pin_profile)) },
                                 onClick = { moreMenu = false; scope.launch { repo?.togglePinned(note.event.id) } },
                             )
                         } else {
@@ -257,26 +261,26 @@ fun NoteItem(
                                 ?: remember { mutableStateOf(emptySet<String>()) })
                             val isMuted = note.event.pubkey in mutedUsers
                             DropdownMenuItem(
-                                text = { Text(if (isMuted) "ミュートを解除" else "このユーザーをミュート") },
+                                text = { Text(if (isMuted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.note_mute_user)) },
                                 onClick = {
                                     moreMenu = false
                                     if (isMuted) scope.launch {
                                         toast(
-                                            if (repo?.unmuteUser(note.event.pubkey) == true) "ミュートを解除しました"
-                                            else "ミュートリストが変更できません（ロック中の可能性）"
+                                            if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unmuted_toast)
+                                            else getString(Res.string.note_mute_locked)
                                         )
                                     } else confirmMute = true
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("通報", color = DeckColors.Warn) },
+                                text = { Text(stringResource(Res.string.note_report), color = DeckColors.Warn) },
                                 onClick = { moreMenu = false; showReport = true },
                             )
                         }
                         HorizontalDivider(color = DeckColors.Border)
                         // --- コピー系 ---
                         DropdownMenuItem(
-                            text = { Text("テキストをコピー") },
+                            text = { Text(stringResource(Res.string.note_copy_text)) },
                             onClick = {
                                 moreMenu = false
                                 clipboard.setText(AnnotatedString(note.text ?: note.event.content))
@@ -284,7 +288,7 @@ fun NoteItem(
                         )
                         if (nevent != null || note1 != null) {
                             DropdownMenuItem(
-                                text = { Text("リンクをコピー（njump）") },
+                                text = { Text(stringResource(Res.string.note_copy_link)) },
                                 onClick = {
                                     moreMenu = false
                                     clipboard.setText(AnnotatedString("https://njump.me/${nevent ?: note1}"))
@@ -292,18 +296,18 @@ fun NoteItem(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("投稿IDをコピー") },
+                            text = { Text(stringResource(Res.string.note_copy_id)) },
                             onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note.event.id)) },
                         )
                         if (note1 != null) {
                             DropdownMenuItem(
-                                text = { Text("${note1.take(12)}… をコピー") },
+                                text = { Text(stringResource(Res.string.note_copy_fmt, note1.take(12))) },
                                 onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note1)) },
                             )
                         }
                         if (nevent != null) {
                             DropdownMenuItem(
-                                text = { Text("${nevent.take(12)}… をコピー") },
+                                text = { Text(stringResource(Res.string.note_copy_fmt, nevent.take(12))) },
                                 onClick = { moreMenu = false; clipboard.setText(AnnotatedString(nevent)) },
                             )
                         }
@@ -317,10 +321,9 @@ fun NoteItem(
   // リアクション取り消しの確認。NIP-09 削除イベント(kind:5)を発行するため一旦止める。
   if (confirmUnreact) {
       DeckConfirmDialog(
-          title = "リアクションを取り消しますか？",
-          text = "削除イベント（kind:5）を発行してリアクションを取り消します。" +
-              "リレーによっては削除が反映されない場合があります。",
-          confirmLabel = "取り消す", destructive = true,
+          title = stringResource(Res.string.unreact_title),
+          text = stringResource(Res.string.unreact_text),
+          confirmLabel = stringResource(Res.string.unreact_confirm), destructive = true,
           onConfirm = { confirmUnreact = false; scope.launch { repo?.toggleReaction(note.event) } },
           onDismiss = { confirmUnreact = false },
       )
@@ -329,9 +332,9 @@ fun NoteItem(
   // [#93] フォロー解除の確認。kind:3（フォローリスト）を再発行するため一旦止める。
   if (confirmUnfollow) {
       DeckConfirmDialog(
-          title = "フォローを解除しますか？",
-          text = "${note.author.name} のフォローを解除します。",
-          confirmLabel = "解除する", destructive = true,
+          title = stringResource(Res.string.unfollow_title),
+          text = stringResource(Res.string.unfollow_text_fmt, note.author.name),
+          confirmLabel = stringResource(Res.string.unfollow_confirm), destructive = true,
           onConfirm = { confirmUnfollow = false; scope.launch { repo?.unfollow(note.event.pubkey) } },
           onDismiss = { confirmUnfollow = false },
       )
@@ -340,15 +343,15 @@ fun NoteItem(
   // [#94] ミュートの確認。実行結果はトーストで知らせる。
   if (confirmMute) {
       DeckConfirmDialog(
-          title = "このユーザーをミュートしますか？",
-          text = "この人の投稿と通知を表示しなくなります。設定 → ミュート でいつでも解除できます。",
-          confirmLabel = "ミュート", destructive = true,
+          title = stringResource(Res.string.mute_confirm_title),
+          text = stringResource(Res.string.mute_confirm_text),
+          confirmLabel = stringResource(Res.string.mute_confirm), destructive = true,
           onConfirm = {
               confirmMute = false
               scope.launch {
                   toast(
-                      if (repo?.muteUserPrivate(note.event.pubkey) == true) "ミュートしました"
-                      else "ミュートリストが変更できません（ロック中の可能性）"
+                      if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
+                      else getString(Res.string.note_mute_locked)
                   )
               }
           },
@@ -390,13 +393,13 @@ private fun ContentWarningFold(reason: String, onReveal: () -> Unit) {
         Icon(Icons.Outlined.VisibilityOff, null, tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd))
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
-            Text("センシティブな内容", color = DeckColors.Text2, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name)
+            Text(stringResource(Res.string.cw_sensitive), color = DeckColors.Text2, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name)
             if (reason.isNotBlank()) {
                 Text(reason, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.width(DeckSpace.Sm))
-        Text("表示", color = DeckColors.Accent, fontSize = DeckType.Label, fontWeight = DeckWeight.Name)
+        Text(stringResource(Res.string.common_show), color = DeckColors.Accent, fontSize = DeckType.Label, fontWeight = DeckWeight.Name)
     }
 }
 
@@ -405,14 +408,14 @@ private fun ContentWarningFold(reason: String, onReveal: () -> Unit) {
  * [#95] プロフィールからのユーザー通報でも再利用する（[title] で見出しを差し替え）。
  */
 @Composable
-fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String = "この投稿を通報") {
+fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String = stringResource(Res.string.report_title)) {
     val reasons = listOf(
-        "illegal" to "違法・児童の安全に関わる",
-        "nudity" to "性的・ヌード",
-        "spam" to "スパム",
-        "impersonation" to "なりすまし",
-        "profanity" to "不適切な表現",
-        "other" to "その他",
+        "illegal" to stringResource(Res.string.report_illegal),
+        "nudity" to stringResource(Res.string.report_nudity),
+        "spam" to stringResource(Res.string.report_spam),
+        "impersonation" to stringResource(Res.string.report_impersonation),
+        "profanity" to stringResource(Res.string.report_profanity),
+        "other" to stringResource(Res.string.report_other),
     )
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -421,7 +424,7 @@ fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String 
         title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
         text = {
             Column {
-                Text("理由を選んでください（NIP-56 で報告します）", color = DeckColors.Text3, fontSize = DeckType.Label)
+                Text(stringResource(Res.string.report_pick_reason), color = DeckColors.Text3, fontSize = DeckType.Label)
                 Spacer(Modifier.height(DeckSpace.Sm))
                 reasons.forEach { (type, label) ->
                     Text(
@@ -432,7 +435,7 @@ fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String 
             }
         },
         confirmButton = {},
-        dismissButton = { DeckTextButton("キャンセル", onClick = onDismiss, color = DeckColors.Text3) },
+        dismissButton = { DeckTextButton(stringResource(Res.string.common_cancel), onClick = onDismiss, color = DeckColors.Text3) },
     )
 }
 

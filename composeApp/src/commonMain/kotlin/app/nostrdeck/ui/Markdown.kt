@@ -41,6 +41,9 @@ import kotlinx.coroutines.launch
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -223,7 +226,7 @@ private fun EmbeddedAddrRef(addr: Nip19.AddrRef) {
                 .padding(DeckSpace.Sm),
         ) {
             Text(
-                if (failed) "参照先を取得できませんでした (naddr)" else "参照を解決中…",
+                if (failed) stringResource(Res.string.md_naddr_failed) else stringResource(Res.string.md_resolving),
                 color = DeckColors.Text3, fontSize = DeckType.Caption,
             )
         }
@@ -247,7 +250,7 @@ private fun EmbeddedNoteRef(id: String, relays: List<String>) {
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
                     .background(DeckColors.Surface2).padding(DeckSpace.Sm),
             ) {
-                Text("ノートを読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.md_loading_note), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
         } else {
             val profile = repo.let { r -> remember(event.pubkey) { r.profileFlow(event.pubkey) } }

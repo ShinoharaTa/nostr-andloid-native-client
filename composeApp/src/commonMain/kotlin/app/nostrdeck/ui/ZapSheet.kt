@@ -31,6 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.getString
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -85,7 +89,7 @@ private fun ZapSheetImpl(
             Text("⚡ Zap", color = DeckColors.Text, fontSize = DeckType.Display, fontWeight = DeckWeight.Strong)
             Spacer(Modifier.size(DeckSpace.Xs))
             Text(
-                "$recipientName へ投げ銭します。金額を選び、ウォレットで支払ってください。",
+                stringResource(Res.string.zap_desc_fmt, recipientName),
                 color = DeckColors.Text3, fontSize = DeckType.Label,
             )
             Spacer(Modifier.size(DeckSpace.Md))
@@ -108,13 +112,13 @@ private fun ZapSheetImpl(
             Spacer(Modifier.size(DeckSpace.Sm))
             DeckTextField(
                 value = custom, onValueChange = { custom = it.filter { c -> c.isDigit() } },
-                placeholder = "カスタム額 (sats)", modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.zap_custom_amount), modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
             Spacer(Modifier.size(DeckSpace.Sm))
             DeckTextField(
                 value = comment, onValueChange = { comment = it },
-                placeholder = "コメント（任意）", modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.zap_comment), modifier = Modifier.fillMaxWidth(),
             )
             error?.let {
                 Spacer(Modifier.size(DeckSpace.Sm))
@@ -123,12 +127,12 @@ private fun ZapSheetImpl(
             Spacer(Modifier.size(DeckSpace.Md))
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("送信先: $lud16", color = DeckColors.Text3, fontSize = DeckType.Label,
+                Text(stringResource(Res.string.zap_to_fmt, lud16), color = DeckColors.Text3, fontSize = DeckType.Label,
                     modifier = Modifier.weight(1f))
                 if (busy) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = DeckColors.Text2)
                 } else {
-                    DeckTextButton("キャンセル", color = DeckColors.Text2, onClick = onDismiss)
+                    DeckTextButton(stringResource(Res.string.common_cancel), color = DeckColors.Text2, onClick = onDismiss)
                     Spacer(Modifier.width(DeckSpace.Sm))
                     DeckButton("⚡ $effectiveAmount", onClick = {
                         busy = true; error = null
@@ -140,11 +144,11 @@ private fun ZapSheetImpl(
                             )
                             busy = false
                             if (invoice.isNullOrBlank()) {
-                                error = "invoice を取得できませんでした。lud16/リレー設定を確認してください。"
+                                error = getString(Res.string.zap_invoice_failed)
                             } else {
                                 // 外部の Lightning ウォレットへ。対応アプリが無い環境では失敗する。
                                 val opened = runCatching { uri.openUri("lightning:$invoice") }.isSuccess
-                                if (opened) onDismiss() else error = "Lightning ウォレットを開けませんでした。"
+                                if (opened) onDismiss() else error = getString(Res.string.zap_wallet_failed)
                             }
                         }
                     })
