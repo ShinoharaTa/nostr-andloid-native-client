@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_home">ホーム</string>
+    <string name="nav_search">検索</string>
+    <string name="nav_public_chat">パブリックチャット</string>
+    <string name="nav_notifications">通知</string>
+    <string name="nav_dm">DM</string>
+    <string name="nav_add_column">カラム追加</string>
+    <string name="settings_title">設定</string>
+
+    <!-- Settings: groups -->
+    <string name="group_quick_access">よく使う</string>
+    <string name="group_customize">カスタマイズ</string>
+    <string name="group_connection">接続・アカウント</string>
+    <string name="group_system">システム</string>
+
+    <!-- Settings: sections / tiles -->
+    <string name="section_account">アカウント</string>
+    <string name="section_signer">ログイン方法</string>
+    <string name="section_relays">リレー</string>
+    <string name="section_dm_relays">DMリレー</string>
+    <string name="section_media">メディアサーバー</string>
+    <string name="section_reaction">リアクション</string>
+    <string name="section_appearance">表示</string>
+    <string name="section_data">データ・キャッシュ</string>
+    <string name="section_about">このアプリについて</string>
+    <string name="section_mute">ミュート</string>
+    <string name="section_favs">ふぁぼ</string>
+    <string name="section_bookmarks">ブックマーク</string>
+    <string name="tile_profile">プロフィール</string>
+
+    <!-- Settings: appearance -->
+    <string name="theme_title">テーマ</string>
+    <string name="theme_system">OSに合わせる</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+    <string name="ui_scale_title">表示サイズ</string>
+    <string name="ui_scale_desc">文字・アイコン・余白を含む画面全体の大きさ。</string>
+    <string name="ui_scale_small">標準</string>
+    <string name="ui_scale_medium">大きめ</string>
+    <string name="ui_scale_large">最大</string>
+    <string name="text_scale_title">文字サイズ</string>
+    <string name="text_scale_desc">文字だけをさらに大きく。</string>
+    <string name="text_scale_small">小</string>
+    <string name="text_scale_medium">中</string>
+    <string name="text_scale_large">大</string>
+    <string name="embed_section">リンクの埋め込み表示</string>
+    <string name="embed_section_desc">本文中のリンクをカードやサムネイルで表示します。通信量が気になる場合はオフにできます。</string>
+    <string name="embed_video">動画（mp4 等）をインライン再生</string>
+    <string name="embed_youtube">YouTube のサムネイルを表示</string>
+    <string name="embed_spotify">Spotify のカードを表示</string>
+    <string name="embed_ogp">その他リンクの OGP カードを表示</string>
+    <string name="embed_ogp_images">OGP カードの画像を読み込む</string>
+
+    <!-- Profile tabs -->
+    <string name="tab_posts">投稿</string>
+    <string name="tab_posts_replies">投稿とリプライ</string>
+    <string name="tab_media">メディア</string>
+</resources>

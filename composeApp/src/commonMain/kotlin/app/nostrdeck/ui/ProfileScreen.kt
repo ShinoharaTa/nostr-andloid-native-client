@@ -67,6 +67,12 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.tab_media
+import nostr_deck_client.composeapp.generated.resources.tab_posts
+import nostr_deck_client.composeapp.generated.resources.tab_posts_replies
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
@@ -80,8 +86,9 @@ import kotlinx.coroutines.launch
  * ふぁぼ/ブックマークは「公開プロフ」ではなく私的リストなので、ここではなく
  * 独立の目的地（レール自分ゾーン / コンパクトの自分シート）で開く。
  */
-private enum class ProfileTab(val label: String) {
-    POSTS("投稿"), REPLIES("投稿とリプライ"), MEDIA("メディア"),
+// [#149] ラベルは文字列リソース（UI 層で解決）。
+private enum class ProfileTab(val label: StringResource) {
+    POSTS(Res.string.tab_posts), REPLIES(Res.string.tab_posts_replies), MEDIA(Res.string.tab_media),
 }
 
 private val ALL_TABS = ProfileTab.entries.toList()
@@ -665,7 +672,7 @@ private fun ProfileTabs(selected: ProfileTab, tabs: List<ProfileTab>, onSelect: 
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    t.label,
+                    stringResource(t.label),
                     color = if (active) DeckColors.Text else DeckColors.Text3,
                     fontSize = DeckType.Caption,
                     fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
