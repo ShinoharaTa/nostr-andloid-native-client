@@ -172,18 +172,9 @@ object SampleData {
     }
 
     // ---- 設定（左メニュー / 右内容） ----
-    val settingsSections = listOf(
-        "account" to "アカウント",
-        "signer" to "ログイン方法",
-        "relays" to "リレー",
-        "mute" to "ミュート",
-        "favs" to "ふぁぼ",
-        "bookmarks" to "ブックマーク",
-        "dmrelays" to "DMリレー",
-        "media" to "メディアサーバー",
-        "reaction" to "リアクション",
-        "data" to "データ・キャッシュ",
-        "appearance" to "表示",
-        "about" to "このアプリについて",
+    // [#162] ラベルは文字列リソースで解決するため id のみ持つ（SettingsScreen.sectionTitle 参照）。
+    val settingsSectionIds = listOf(
+        "account", "signer", "relays", "mute", "favs", "bookmarks",
+        "dmrelays", "media", "reaction", "data", "appearance", "about",
     )
 }

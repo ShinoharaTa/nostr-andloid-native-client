@@ -68,10 +68,12 @@ import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
 import nostr_deck_client.composeapp.generated.resources.tab_media
 import nostr_deck_client.composeapp.generated.resources.tab_posts
 import nostr_deck_client.composeapp.generated.resources.tab_posts_replies
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -312,7 +314,7 @@ private fun ProfileExpanded(
         Column(
             Modifier.width(340.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
         ) {
-            ProfileTopBar("プロフィール", onBack)
+            ProfileTopBar(stringResource(Res.string.profile_section), onBack)
             HorizontalDivider(color = DeckColors.Border)
             ProfileHeaderCard(pubkey, profile, following, isMe, onFollowToggle, onEdit, social)
         }
@@ -347,7 +349,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
             ) {
                 Text("📌", fontSize = DeckType.Label)
                 Spacer(Modifier.width(DeckSpace.Xs))
-                Text("固定された投稿", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
+                Text(stringResource(Res.string.pinned_post), color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
             }
         }
         items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
@@ -361,7 +363,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.notesItems(
     if (visible.isEmpty() && pinnedNotes.isEmpty()) {
         item {
             Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
-                Text("まだ投稿がありません", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.profile_no_posts), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
         }
     } else {
@@ -401,6 +403,10 @@ private fun ProfileHeaderCard(
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
     val clipboard = LocalClipboardManager.current
+    // [#162] 非コルーチンの onClick で使うトースト文言はコンポジション中に解決しておく。
+    val nprofileCopiedMsg = stringResource(Res.string.nprofile_copied)
+    val linkCopiedMsg = stringResource(Res.string.link_copied)
+    val npubCopiedMsg = stringResource(Res.string.npub_copied)
     val npub = remember(pubkey) { runCatching { Nip19.hexToNpub(pubkey) }.getOrNull() }
     // [#95] …メニューとミュート/通報の確認ダイアログ。
     var moreMenu by remember { mutableStateOf(false) }
@@ -435,7 +441,7 @@ private fun ProfileHeaderCard(
                 }
                 // [#95/#99] …メニュー: 共有用コピー（自分にも有用）＋ 他人にはミュート/通報。
                 Box {
-                    CircleIconButton(Icons.Outlined.MoreHoriz, "メニュー") { moreMenu = true }
+                    CircleIconButton(Icons.Outlined.MoreHoriz, stringResource(Res.string.menu)) { moreMenu = true }
                     DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                         // nprofile は対象の NIP-65 リレー（受信済みキャッシュ・最大3件）をヒントに含める。
                         val nprofile = {
@@ -444,37 +450,37 @@ private fun ProfileHeaderCard(
                             }.getOrNull()
                         }
                         DropdownMenuItem(
-                            text = { Text("nprofile をコピー") },
+                            text = { Text(stringResource(Res.string.copy_nprofile)) },
                             onClick = {
                                 moreMenu = false
-                                nprofile()?.let { clipboard.setText(AnnotatedString(it)); toast("nprofile をコピーしました") }
+                                nprofile()?.let { clipboard.setText(AnnotatedString(it)); toast(nprofileCopiedMsg) }
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("リンクをコピー（njump）") },
+                            text = { Text(stringResource(Res.string.note_copy_link)) },
                             onClick = {
                                 moreMenu = false
                                 val bech = nprofile() ?: runCatching { Nip19.hexToNpub(pubkey) }.getOrNull()
                                 bech?.let {
                                     clipboard.setText(AnnotatedString("https://njump.me/$it"))
-                                    toast("リンクをコピーしました")
+                                    toast(linkCopiedMsg)
                                 }
                             },
                         )
                         if (!isMe) {
                             DropdownMenuItem(
-                                text = { Text(if (muted) "ミュートを解除" else "ミュート") },
+                                text = { Text(if (muted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.mute_confirm)) },
                                 onClick = { moreMenu = false; confirmMute = true },
                             )
                             DropdownMenuItem(
-                                text = { Text("通報", color = DeckColors.Warn) },
+                                text = { Text(stringResource(Res.string.note_report), color = DeckColors.Warn) },
                                 onClick = { moreMenu = false; showReport = true },
                             )
                         }
                     }
                 }
                 Spacer(Modifier.width(DeckSpace.Xs))
-                if (isMe) DeckGhostButton("編集", onClick = onEdit) else FollowButton(following, onFollowToggle)
+                if (isMe) DeckGhostButton(stringResource(Res.string.edit), onClick = onEdit) else FollowButton(following, onFollowToggle)
             }
         }
         // --- テキスト情報 ---
@@ -489,12 +495,12 @@ private fun ProfileHeaderCard(
                 // [#98] 相互フォロー: 相手の kind:3 に自分が含まれていればバッジ。
                 if (social?.followsMe == true) {
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    ProfileBadge("フォローされています")
+                    ProfileBadge(stringResource(Res.string.follows_you))
                 }
                 // [#95] ミュート中の控えめなバッジ。
                 if (muted) {
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    ProfileBadge("ミュート中")
+                    ProfileBadge(stringResource(Res.string.muted_badge))
                 }
             }
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
@@ -512,8 +518,8 @@ private fun ProfileHeaderCard(
                         color = DeckColors.Text3, fontSize = DeckType.Label,
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))
-                    CircleIconButton(Icons.Outlined.ContentCopy, "npub をコピー", tint = DeckColors.Text3) {
-                        clipboard.setText(AnnotatedString(bech)); toast("npub をコピーしました")
+                    CircleIconButton(Icons.Outlined.ContentCopy, stringResource(Res.string.npub_copy), tint = DeckColors.Text3) {
+                        clipboard.setText(AnnotatedString(bech)); toast(npubCopiedMsg)
                     }
                 }
             }
@@ -529,11 +535,11 @@ private fun ProfileHeaderCard(
                     ) {
                         Text("${s.followingCount}", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
                         Spacer(Modifier.width(DeckSpace.Xs))
-                        Text("フォロー中", color = DeckColors.Text3, fontSize = DeckType.Label)
+                        Text(stringResource(Res.string.tpl_following), color = DeckColors.Text3, fontSize = DeckType.Label)
                     }
                     Spacer(Modifier.width(DeckSpace.Lg))
                     Text(
-                        "フォロワーを確認",
+                        stringResource(Res.string.followers_check),
                         color = DeckColors.Text3, fontSize = DeckType.Label,
                         modifier = Modifier
                             .clip(RoundedCornerShape(DeckRadius.Sm))
@@ -562,10 +568,10 @@ private fun ProfileHeaderCard(
     // [#95] ミュート/解除の確認。ミュートは非公開（NIP-51 private p）で保存する。
     if (confirmMute) {
         DeckConfirmDialog(
-            title = if (muted) "ミュートを解除しますか？" else "このユーザーをミュートしますか？",
-            text = if (muted) "このユーザーの投稿が再びタイムラインに表示されるようになります。"
-            else "このユーザーの投稿がタイムラインに表示されなくなります。ミュートは非公開（NIP-51）で保存されます。",
-            confirmLabel = if (muted) "解除する" else "ミュートする",
+            title = if (muted) stringResource(Res.string.unmute_confirm_title) else stringResource(Res.string.mute_confirm_title),
+            text = if (muted) stringResource(Res.string.unmute_confirm_text)
+            else stringResource(Res.string.mute_confirm_text2),
+            confirmLabel = if (muted) stringResource(Res.string.lift_confirm) else stringResource(Res.string.mute_confirm_action),
             destructive = !muted,
             onConfirm = {
                 confirmMute = false
@@ -573,9 +579,9 @@ private fun ProfileHeaderCard(
                     val ok = if (muted) repo?.unmuteUser(pubkey) == true else repo?.muteUserPrivate(pubkey) == true
                     toast(
                         when {
-                            ok && muted -> "ミュートを解除しました"
-                            ok -> "ミュートしました"
-                            else -> "変更できませんでした"
+                            ok && muted -> getString(Res.string.note_unmuted_toast)
+                            ok -> getString(Res.string.muted_toast)
+                            else -> getString(Res.string.mute_change_failed)
                         }
                     )
                 }
@@ -596,10 +602,10 @@ private fun ProfileHeaderCard(
     }
     if (showReport) {
         ReportDialog(
-            title = "このユーザーを通報",
+            title = stringResource(Res.string.report_user_title),
             onPick = { type ->
                 showReport = false
-                scope.launch { repo?.reportUser(pubkey, type); toast("通報しました") }
+                scope.launch { repo?.reportUser(pubkey, type); toast(getString(Res.string.reported_toast)) }
             },
             onDismiss = { showReport = false },
         )
@@ -653,9 +659,9 @@ private fun ProfileBanner(url: String?) {
 @Composable
 private fun FollowButton(following: Boolean, onClick: () -> Unit) {
     if (following) {
-        DeckGhostButton("フォロー中", onClick = onClick)
+        DeckGhostButton(stringResource(Res.string.tpl_following), onClick = onClick)
     } else {
-        DeckButton("フォロー", onClick = onClick)
+        DeckButton(stringResource(Res.string.note_follow), onClick = onClick)
     }
 }
 
@@ -691,7 +697,7 @@ private fun ProfileTabs(selected: ProfileTab, tabs: List<ProfileTab>, onSelect: 
 /* ---------- [#96/#97] フォロー中/フォロワーのユーザーリスト ---------- */
 
 /** ユーザーリストの種別。FOLLOWERS はリレーで観測できた範囲のみ（全数ではない）。 */
-private enum class UserListMode(val title: String) { FOLLOWING("フォロー中"), FOLLOWERS("フォロワー") }
+private enum class UserListMode(val title: StringResource) { FOLLOWING(Res.string.tpl_following), FOLLOWERS(Res.string.list_followers) }
 
 /**
  * pubkey のリストをアバター/名前/nip05 で列挙する（タップでプロフィールへ）。
@@ -709,12 +715,12 @@ private fun UserListScreen(
     onLoadMore: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        ProfileTopBar(mode.title, onBack)
+        ProfileTopBar(stringResource(mode.title), onBack)
         HorizontalDivider(color = DeckColors.Border)
         // [#97] フォロワーは kind:3 逆引きのページング集計＝観測できた範囲である旨を明示する。
         if (mode == UserListMode.FOLLOWERS) {
             Text(
-                "リレーで観測できた範囲のみ表示しています（全数ではありません）",
+                stringResource(Res.string.followers_scope_note),
                 color = DeckColors.Text3, fontSize = DeckType.Label,
                 modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
             )
@@ -722,10 +728,10 @@ private fun UserListScreen(
         }
         when {
             loading -> Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
-                Text("集計中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.aggregating), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
             pubkeys.isEmpty() -> Box(Modifier.fillMaxWidth().padding(DeckSpace.Xl), contentAlignment = Alignment.Center) {
-                Text("見つかりませんでした", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.not_found), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
             else -> {
                 // [#96-perf] 行ごとに DB クエリ listener を張ると、kind:0 が届くたびに
@@ -748,7 +754,7 @@ private fun UserListScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    if (loadingMore) "集計中…" else "さらに読み込む",
+                                    if (loadingMore) stringResource(Res.string.aggregating) else stringResource(Res.string.load_more),
                                     color = DeckColors.Text3, fontSize = DeckType.Caption,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(DeckRadius.Sm))
@@ -803,7 +809,7 @@ fun ThreadDetail(state: DeckState, eventId: String) {
     }
     val spec = remember(eventId) {
         ColumnSpec(
-            id = subId, title = "スレッド", subtitle = "NIP-10",
+            id = subId, title = "スレッド", subtitle = "NIP-10",  // 正準キー（表示時にローカライズ）
             kind = ColumnKind.THREAD, renderer = ColumnRenderer.THREAD,
             filter = ReqFilter(kinds = listOf(1), eventId = eventId), pinned = false,
         )

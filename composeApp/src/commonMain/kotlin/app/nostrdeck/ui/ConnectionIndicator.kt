@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -44,12 +47,12 @@ import app.nostrdeck.theme.DeckWeight
  */
 /** 接続待ちの間に回すゆるいメッセージ（2秒おきに切り替え・真面目じゃなくてよい）。 */
 private val CONNECTING_MESSAGES = listOf(
-    "リレーに接続中…",
-    "ダチョウを追いかけています…",
-    "分散の海を泳いでいます…",
-    "野生のノートを探しています…",
-    "リレーと握手しています…",
-    "波長を合わせています…",
+    Res.string.connecting_1,
+    Res.string.connecting_2,
+    Res.string.connecting_3,
+    Res.string.connecting_4,
+    Res.string.connecting_5,
+    Res.string.connecting_6,
 )
 
 @Composable
@@ -87,7 +90,7 @@ fun BoxScope.ConnectionIndicator() {
             )
             Spacer(Modifier.width(DeckSpace.Sm))
             Text(
-                CONNECTING_MESSAGES[msgIndex], color = DeckColors.Text2,
+                stringResource(CONNECTING_MESSAGES[msgIndex]), color = DeckColors.Text2,
                 fontSize = DeckType.Caption, fontWeight = DeckWeight.Link,
             )
         }

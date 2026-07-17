@@ -40,6 +40,9 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -68,7 +71,7 @@ fun ArticleReader(
     fun tag(name: String): String? =
         article.tags.firstOrNull { it.size >= 2 && it[0] == name }?.get(1)?.takeIf { it.isNotBlank() }
 
-    val title = tag("title") ?: "無題の記事"
+    val title = tag("title") ?: stringResource(Res.string.article_untitled)
     val image = tag("image")
     val summary = tag("summary")
     val publishedAt = tag("published_at")?.toLongOrNull() ?: article.createdAt
@@ -86,11 +89,11 @@ fun ArticleReader(
                     .clickable { state.popDetail() },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = DeckColors.Text)
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(Res.string.common_back), tint = DeckColors.Text)
             }
             Spacer(Modifier.width(DeckSpace.Sm))
             Column {
-                Text("記事", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+                Text(stringResource(Res.string.article_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
                 Text("NIP-23 · kind:30023", color = DeckColors.Text3, fontSize = DeckType.Label)
             }
         }
@@ -130,15 +133,15 @@ fun ArticleReader(
                         Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ActionIcon(Icons.AutoMirrored.Outlined.Reply, "コメント") {
+                        ActionIcon(Icons.AutoMirrored.Outlined.Reply, stringResource(Res.string.article_comment)) {
                             state.replyTo = article; state.showCompose = true
                         }
                         Spacer(Modifier.width(DeckSpace.Xl))
-                        ActionIcon(Icons.Outlined.FavoriteBorder, "リアクション") {
+                        ActionIcon(Icons.Outlined.FavoriteBorder, stringResource(Res.string.section_reaction)) {
                             scope.launch { repo?.publishReaction(article) }
                         }
                         Spacer(Modifier.width(DeckSpace.Xl))
-                        ActionIcon(Icons.Outlined.AddReaction, "絵文字リアクション") { showPicker = true }
+                        ActionIcon(Icons.Outlined.AddReaction, stringResource(Res.string.article_emoji_reaction)) { showPicker = true }
                     }
                     HorizontalDivider(color = DeckColors.Border)
                 }
@@ -146,7 +149,7 @@ fun ArticleReader(
             if (comments.isNotEmpty()) {
                 item("comments-header") {
                     Text(
-                        "コメント (${comments.size})",
+                        stringResource(Res.string.article_comments_fmt, comments.size),
                         color = DeckColors.Text2, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
                         modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm),
                     )

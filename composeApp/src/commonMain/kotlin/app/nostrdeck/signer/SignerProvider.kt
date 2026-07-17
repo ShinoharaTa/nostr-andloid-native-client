@@ -80,8 +80,8 @@ object SignerProvider {
 private object NoSigner : Signer {
     override val method = SignerMethod.NONE
     override val capabilities = emptySet<SignerCap>()
-    override suspend fun publicKeyHex(): String = error("未ログインです")
-    override suspend fun sign(unsigned: UnsignedEvent): NostrEvent = error("未ログインです")
-    override suspend fun nip44Encrypt(peerPubkeyHex: String, plaintext: String): String = error("未ログインです")
-    override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String = error("未ログインです")
+    override suspend fun publicKeyHex(): String = error("not logged in")
+    override suspend fun sign(unsigned: UnsignedEvent): NostrEvent = error("not logged in")
+    override suspend fun nip44Encrypt(peerPubkeyHex: String, plaintext: String): String = error("not logged in")
+    override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String = error("not logged in")
 }

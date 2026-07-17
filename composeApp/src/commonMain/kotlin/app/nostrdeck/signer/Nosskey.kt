@@ -61,4 +61,4 @@ class LockedNosskeySigner(private val pubkeyHex: String) : Signer {
     override suspend fun nip44Decrypt(peerPubkeyHex: String, ciphertext: String): String = throw NosskeyLockedException()
 }
 
-class NosskeyLockedException : Exception("パスキーで解錠してください")
+class NosskeyLockedException : Exception("unlock with your passkey")

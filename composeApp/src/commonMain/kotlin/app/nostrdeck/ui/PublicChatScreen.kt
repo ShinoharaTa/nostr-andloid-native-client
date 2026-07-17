@@ -8,6 +8,9 @@ import androidx.compose.runtime.remember
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.state.DeckState
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Public Chat（NIP-28）の独立画面。list-detail 2ペイン。
@@ -42,8 +45,8 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
         },
         detail = {
             when {
-                state.publicChatRoom == null -> DetailPlaceholder("チャンネルを選択")
-                selected == null -> DetailPlaceholder("チャンネルを読み込み中…")
+                state.publicChatRoom == null -> DetailPlaceholder(stringResource(Res.string.chat_select_channel))
+                selected == null -> DetailPlaceholder(stringResource(Res.string.chat_loading_channel))
                 else -> LiveChannelRoom(
                     spec = SampleData.roomColumnFor(selected),
                     channelId = selected.id,

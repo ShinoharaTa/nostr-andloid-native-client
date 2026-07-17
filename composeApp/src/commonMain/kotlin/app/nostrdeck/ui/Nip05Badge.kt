@@ -17,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 
 /** NIP-05 検証の状態。CHECKING=確認中、VERIFIED=一致(OK)、INVALID=不一致/取得失敗(異常)。 */
@@ -52,7 +55,7 @@ fun Nip05Handle(
                 Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(
                     Icons.Filled.Verified,
-                    contentDescription = "NIP-05 検証OK",
+                    contentDescription = stringResource(Res.string.nip05_ok),
                     tint = DeckColors.Verified,
                     modifier = Modifier.size(iconSize),
                 )
@@ -61,7 +64,7 @@ fun Nip05Handle(
                 Spacer(Modifier.width(DeckSpace.Xs))
                 Icon(
                     Icons.Outlined.ErrorOutline,
-                    contentDescription = "NIP-05 検証エラー",
+                    contentDescription = stringResource(Res.string.nip05_bad),
                     tint = DeckColors.Warn,
                     modifier = Modifier.size(iconSize),
                 )

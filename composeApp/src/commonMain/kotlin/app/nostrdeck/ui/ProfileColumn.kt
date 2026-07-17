@@ -27,6 +27,9 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
@@ -57,7 +60,7 @@ fun ProfileColumn(
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = profile?.name?.takeIf { it.isNotBlank() } ?: spec.title,
-            subtitle = "プロフィール",
+            subtitle = stringResource(Res.string.profile_section),
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
         )
@@ -76,7 +79,7 @@ fun ProfileColumn(
                     ) {
                         Text("📌", fontSize = DeckType.Label)
                         Spacer(Modifier.width(DeckSpace.Xs))
-                        Text("固定された投稿", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
+                        Text(stringResource(Res.string.pinned_post), color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong)
                     }
                 }
                 items(pinnedNotes, key = { "pin_" + it.event.id }) { note ->
@@ -134,8 +137,8 @@ private fun ProfileHeaderCard(
 @Composable
 private fun FollowButton(isFollowing: Boolean, onClick: () -> Unit) {
     if (isFollowing) {
-        DeckGhostButton("フォロー中", onClick = onClick)
+        DeckGhostButton(stringResource(Res.string.tpl_following), onClick = onClick)
     } else {
-        DeckButton("フォロー", onClick = onClick)
+        DeckButton(stringResource(Res.string.note_follow), onClick = onClick)
     }
 }

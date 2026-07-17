@@ -43,6 +43,9 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 
@@ -122,7 +125,7 @@ fun FeedColumn(
                 scope.launch { listState.animateScrollToItem(0) }
             }
             // [#17] 空/読込中の表示（0件のときだけ重ねる）。
-            if (notes.isEmpty()) ColumnStateView(spec.id !in loaded, "投稿がありません", Modifier.fillMaxSize())
+            if (notes.isEmpty()) ColumnStateView(spec.id !in loaded, stringResource(Res.string.feed_empty), Modifier.fillMaxSize())
         }
     }
 }
@@ -210,7 +213,7 @@ fun FollowingFeedColumn(
                 scope.launch { listState.animateScrollToItem(0) }
             }
             // [#17] 空/読込中の表示。
-            if (entries.isEmpty()) ColumnStateView(spec.id !in loaded, "投稿がありません", Modifier.fillMaxSize())
+            if (entries.isEmpty()) ColumnStateView(spec.id !in loaded, stringResource(Res.string.feed_empty), Modifier.fillMaxSize())
         }
     }
 }
@@ -224,7 +227,7 @@ private fun LoadMoreFooter() {
     ) {
         CircularProgressIndicator(color = DeckColors.Text3, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(DeckSpace.Sm))
-        Text("過去を読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.feed_loading_older), color = DeckColors.Text3, fontSize = DeckType.Caption)
     }
 }
 
@@ -263,7 +266,7 @@ private fun MyReactionRow(
                 Text(r.display, fontSize = DeckType.EmojiLg)
             }
             Spacer(Modifier.width(DeckSpace.Xs))
-            Text("あなたがリアクション", color = DeckColors.Text3, fontSize = DeckType.Label)
+            Text(stringResource(Res.string.feed_you_reacted), color = DeckColors.Text3, fontSize = DeckType.Label)
         }
         NoteItem(
             entry.target, onClick = onNoteClick,

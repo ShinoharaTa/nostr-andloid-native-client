@@ -43,6 +43,9 @@ import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
@@ -59,7 +62,7 @@ import coil3.request.crossfade
 fun NotificationsScreen(state: DeckState) {
     val repo = LocalRepository.current
     if (repo == null) {
-        DetailPlaceholder("通知を利用できません")
+        DetailPlaceholder(stringResource(Res.string.notif_unavailable))
         return
     }
     DisposableEffect(Unit) {
@@ -73,7 +76,7 @@ fun NotificationsScreen(state: DeckState) {
 
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ColumnHeader(
-            title = "通知", subtitle = "メンション・リアクション・リポスト",
+            title = stringResource(Res.string.tpl_notifications), subtitle = stringResource(Res.string.notif_subtitle),
             leadingIcon = Icons.Outlined.Notifications, pinned = false,
         )
         HorizontalDivider(color = DeckColors.Border)
@@ -115,7 +118,7 @@ fun NotificationsColumn(
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
-        DetailPlaceholder("通知を利用できません")
+        DetailPlaceholder(stringResource(Res.string.notif_unavailable))
         return
     }
     DisposableEffect(spec.id) {
@@ -148,7 +151,7 @@ private fun NotificationsBody(
 ) {
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("通知はまだありません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+            Text(stringResource(Res.string.notif_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
         }
     } else {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {

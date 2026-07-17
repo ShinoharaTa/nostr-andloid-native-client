@@ -28,7 +28,7 @@ interface Signer {
 
     /** NIP-04 復号（NIP-51 非公開リスト等のレガシー互換・読み出し専用）。対応実装のみ override。 */
     suspend fun nip04Decrypt(peerPubkeyHex: String, ciphertext: String): String =
-        throw NotImplementedError("NIP-04 に未対応の署名方式です")
+        throw NotImplementedError("this signer does not support NIP-04")
 }
 
 enum class SignerMethod {

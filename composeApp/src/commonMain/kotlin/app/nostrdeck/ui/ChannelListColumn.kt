@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.sp
 import app.nostrdeck.model.Channel
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -124,7 +127,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 .clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onPin),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Outlined.PushPin, "ピン留め",
+            Icon(Icons.Outlined.PushPin, stringResource(Res.string.channel_pin),
                 tint = if (pinned) DeckColors.Zap else DeckColors.Text3,
                 modifier = Modifier.size(DeckDimens.IconSm))
         }

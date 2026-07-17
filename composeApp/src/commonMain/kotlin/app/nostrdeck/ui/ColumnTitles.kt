@@ -17,6 +17,9 @@ fun columnDisplayTitle(title: String): String = when (title) {
     "通知" -> stringResource(Res.string.tpl_notifications)
     "ふぁぼ欄" -> stringResource(Res.string.tpl_favs)
     "キーワード・タグ" -> stringResource(Res.string.tpl_search)
+    "パブリックチャット" -> stringResource(Res.string.nav_public_chat)
+    "スレッド" -> stringResource(Res.string.thread_title)
+    "DM" -> stringResource(Res.string.nav_dm)
     else -> title
 }
 
@@ -24,5 +27,6 @@ fun columnDisplayTitle(title: String): String = when (title) {
 fun columnDisplaySubtitle(subtitle: String): String = when (subtitle) {
     "自分のリアクション" -> stringResource(Res.string.sub_my_reactions)
     "キーワード・タグ" -> stringResource(Res.string.tpl_search)
+    "プロフィール" -> stringResource(Res.string.profile_section)
     else -> subtitle
 }

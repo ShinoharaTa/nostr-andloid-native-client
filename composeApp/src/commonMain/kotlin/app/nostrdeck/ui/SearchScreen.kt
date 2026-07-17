@@ -45,6 +45,9 @@ import app.nostrdeck.data.EventRepository
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.model.buildSearchColumn
 import app.nostrdeck.state.DeckState
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -116,7 +119,7 @@ fun SearchScreen(state: DeckState, isCompact: Boolean) {
                 if (!active) {
                     Box(Modifier.weight(1f).fillMaxHeight().padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
                         Text(
-                            "単語・#タグを追加して検索してください（複数は OR で並びます）",
+                            stringResource(Res.string.search_hint_add),
                             color = DeckColors.Text3, fontSize = DeckType.Caption,
                         )
                     }
@@ -143,20 +146,20 @@ private fun SearchBar(query: String, onChange: (String) -> Unit, onAdd: () -> Un
     Row(Modifier.fillMaxWidth().padding(DeckSpace.Md), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(
             value = query, onValueChange = onChange,
-            placeholder = "単語 / #タグ（スペース区切りで複数・ORで並ぶ）",
+            placeholder = stringResource(Res.string.search_placeholder),
             modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
             trailing = {
                 Icon(
-                    Icons.Outlined.Search, "検索", tint = DeckColors.Text2,
+                    Icons.Outlined.Search, stringResource(Res.string.nav_search), tint = DeckColors.Text2,
                     modifier = Modifier.size(DeckDimens.IconMd).clickable { onSubmit() },
                 )
             },
         )
         Spacer(Modifier.width(DeckSpace.Sm))
         // 条件として積むだけ（実行しない）。複数を組んでから検索する導線。
-        DeckGhostButton("＋追加", onClick = onAdd)
+        DeckGhostButton(stringResource(Res.string.search_add), onClick = onAdd)
     }
 }
 
@@ -188,7 +191,7 @@ private fun TokenChip(token: String, onRemove: () -> Unit) {
         )
         Spacer(Modifier.width(DeckSpace.Xs))
         Icon(
-            Icons.Outlined.Close, "条件を削除", tint = DeckColors.Text3,
+            Icons.Outlined.Close, stringResource(Res.string.search_remove_token), tint = DeckColors.Text3,
             modifier = Modifier.size(DeckDimens.IconSm).clip(CircleShape).clickable(onClick = onRemove),
         )
     }
@@ -206,17 +209,17 @@ private fun HistoryPane(
             Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("検索履歴", color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
+            Text(stringResource(Res.string.search_history), color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
             if (history.isNotEmpty()) {
                 Text(
-                    "クリア", color = DeckColors.Text3, fontSize = DeckType.Label,
+                    stringResource(Res.string.clear), color = DeckColors.Text3, fontSize = DeckType.Label,
                     modifier = Modifier.clickable { repo?.clearSearchHistory() }.padding(DeckSpace.Xs),
                 )
             }
         }
         if (history.isEmpty()) {
             Box(Modifier.fillMaxWidth().padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
-                Text("検索履歴はありません", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.search_history_empty), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
         } else {
             LazyColumn {
@@ -233,7 +236,7 @@ private fun HistoryPane(
                             modifier = Modifier.weight(1f).padding(horizontal = DeckSpace.Sm),
                         )
                         Icon(
-                            Icons.Outlined.Close, "削除", tint = DeckColors.Text3,
+                            Icons.Outlined.Close, stringResource(Res.string.common_delete), tint = DeckColors.Text3,
                             modifier = Modifier.size(DeckDimens.IconMd).clickable { repo?.removeSearchHistory(term) },
                         )
                     }
@@ -255,7 +258,7 @@ private fun ResultsPane(
 ) {
     if (repo == null || tokens.isEmpty()) {
         Box(modifier.padding(DeckSpace.Lg), contentAlignment = Alignment.Center) {
-            Text("単語・#タグを追加して検索してください", color = DeckColors.Text3, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.search_hint_add2), color = DeckColors.Text3, fontSize = DeckType.Caption)
         }
         return
     }
@@ -276,22 +279,22 @@ private fun ResultsPane(
         ) {
             if (onBack != null) {
                 Text(
-                    "← 履歴", color = DeckColors.Text3, fontSize = DeckType.Label,
+                    stringResource(Res.string.search_back_history), color = DeckColors.Text3, fontSize = DeckType.Label,
                     modifier = Modifier.clickable { onBack() }.padding(end = DeckSpace.Sm),
                 )
             }
             Text(
-                "検索: $summary", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                stringResource(Res.string.search_summary_fmt, summary), color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            DeckGhostButton("Deckに追加", onClick = {
+            DeckGhostButton(stringResource(Res.string.search_add_deck), onClick = {
                 state.addColumn(buildSearchColumn(words = filter.words, hashtags = filter.hashtags))
                 state.navDest = NavDest.HOME
             })
         }
         HorizontalDivider(color = DeckColors.Border)
         if (results.isEmpty()) {
-            ColumnStateView("search_screen" !in loaded, "検索結果がありません", Modifier.fillMaxSize())
+            ColumnStateView("search_screen" !in loaded, stringResource(Res.string.search_no_results), Modifier.fillMaxSize())
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { it.event.id }) { note ->

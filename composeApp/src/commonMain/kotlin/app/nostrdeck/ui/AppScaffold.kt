@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
 import nostr_deck_client.composeapp.generated.resources.nav_home
 import nostr_deck_client.composeapp.generated.resources.nav_notifications
 import nostr_deck_client.composeapp.generated.resources.nav_public_chat
@@ -161,7 +162,7 @@ private fun ContentWithCompose(state: DeckState, isCompact: Boolean, modifier: M
                 onClick = { state.showCompose = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Lg),
             ) {
-                Icon(Icons.Outlined.Edit, "投稿")
+                Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
             }
         }
     }
