@@ -44,6 +44,9 @@ import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
@@ -85,7 +88,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         },
         detail = {
             if (selected == null) {
-                DetailPlaceholder("会話を選択")
+                DetailPlaceholder(stringResource(Res.string.dm_select_conversation))
             } else {
                 val messages = if (repo != null)
                     remember(selected.pubkey) { repo.dmMessagesFlow(selected.pubkey) }.collectAsState(emptyList()).value
@@ -129,10 +132,10 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
             }
         }
         DeckInputDialog(
-            title = "新しいメッセージ",
-            placeholder = "npub または hex",
+            title = stringResource(Res.string.dm_new_title),
+            placeholder = stringResource(Res.string.tpl_profile_hint),
             value = input, onValueChange = { input = it },
-            confirmLabel = "開く", confirmEnabled = hex != null,
+            confirmLabel = stringResource(Res.string.dm_open), confirmEnabled = hex != null,
             onConfirm = { hex?.let { state.dmThread = it }; showNew = false },
             onDismiss = { showNew = false },
         )
@@ -151,12 +154,12 @@ private fun DmList(
             Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("メッセージ", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
+            Text(stringResource(Res.string.dm_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
                 modifier = Modifier.weight(1f))
             Box(
                 Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onNew),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.Add, "新しいメッセージ", tint = DeckColors.Text) }
+            ) { Icon(Icons.Outlined.Add, stringResource(Res.string.dm_new_title), tint = DeckColors.Text) }
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize()) {

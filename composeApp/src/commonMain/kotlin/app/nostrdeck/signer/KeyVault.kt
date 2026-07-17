@@ -25,9 +25,9 @@ class InMemoryKeyVault : KeyVault {
     private var key: ByteArray? = null
 
     override fun hasKey(): Boolean = key != null
-    override fun privateKey(): ByteArray = key ?: error("鍵が未設定です")
+    override fun privateKey(): ByteArray = key ?: error("no key set")
     override fun importPrivateKey(privateKey: ByteArray) {
-        require(privateKey.size == 32) { "秘密鍵は 32byte" }
+        require(privateKey.size == 32) { "private key must be 32 bytes" }
         key = privateKey.copyOf()
     }
 

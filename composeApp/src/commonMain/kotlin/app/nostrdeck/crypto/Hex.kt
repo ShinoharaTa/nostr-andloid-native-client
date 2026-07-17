@@ -12,7 +12,7 @@ fun ByteArray.toHex(): String {
 }
 
 fun String.hexToBytes(): ByteArray {
-    require(length % 2 == 0) { "hex 文字列の長さが奇数: $length" }
+    require(length % 2 == 0) { "odd-length hex string: $length" }
     return ByteArray(length / 2) { i ->
         val hi = hexDigit(this[i * 2])
         val lo = hexDigit(this[i * 2 + 1])
@@ -24,5 +24,5 @@ private fun hexDigit(c: Char): Int = when (c) {
     in '0'..'9' -> c - '0'
     in 'a'..'f' -> c - 'a' + 10
     in 'A'..'F' -> c - 'A' + 10
-    else -> throw IllegalArgumentException("不正な hex 文字: $c")
+    else -> throw IllegalArgumentException("invalid hex char: $c")
 }

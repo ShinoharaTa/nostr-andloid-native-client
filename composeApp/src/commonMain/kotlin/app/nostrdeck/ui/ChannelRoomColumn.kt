@@ -64,6 +64,9 @@ import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -223,7 +226,7 @@ fun ChannelRoomColumn(
                     Modifier.fillMaxWidth().padding(DeckSpace.Sm),
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    DeckGhostButton("✏️ メッセージを書く", onClick = { replyingTo = null; showComposeModal = true })
+                    DeckGhostButton(stringResource(Res.string.chat_write_message), onClick = { replyingTo = null; showComposeModal = true })
                 }
             } else {
                 Composer(
@@ -344,13 +347,13 @@ private fun MessageActions(onReply: (() -> Unit)?, onReact: (() -> Unit)?) {
             Box(
                 Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReply),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.Reply, "リプライ", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+            ) { Icon(Icons.AutoMirrored.Outlined.Reply, stringResource(Res.string.chat_reply), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
         }
         if (onReact != null) {
             Box(
                 Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReact),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.AddReaction, "リアクション", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+            ) { Icon(Icons.Outlined.AddReaction, stringResource(Res.string.section_reaction), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
         }
     }
 }
@@ -440,14 +443,14 @@ private fun Bubble(
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (onReact != null) {
                         DropdownMenuItem(
-                            text = { Text("リアクション") },
+                            text = { Text(stringResource(Res.string.section_reaction)) },
                             leadingIcon = { Icon(Icons.Outlined.AddReaction, null, modifier = Modifier.size(18.dp)) },
                             onClick = { menu = false; onReact() },
                         )
                     }
                     if (onReply != null) {
                         DropdownMenuItem(
-                            text = { Text("リプライ") },
+                            text = { Text(stringResource(Res.string.chat_reply)) },
                             leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Reply, null, modifier = Modifier.size(18.dp)) },
                             onClick = { menu = false; onReply() },
                         )
@@ -535,7 +538,7 @@ private fun Composer(
             Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = DeckColors.Accent2, modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(DeckSpace.Xs))
             Text(
-                "${replyingTo.author.name} に返信: ${replyingTo.event.content}",
+                stringResource(Res.string.chat_reply_to_fmt, replyingTo.author.name, replyingTo.event.content),
                 color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
@@ -543,7 +546,7 @@ private fun Composer(
             Box(
                 Modifier.size(DeckDimens.TouchTargetXs).clip(CircleShape).clickable(onClick = onCancelReply),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.Close, "返信をやめる", tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+            ) { Icon(Icons.Outlined.Close, stringResource(Res.string.chat_cancel_reply), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
         }
     }
     // [#109] 入力中の候補（入力欄の直上）。絵文字 > メンション の優先で1種のみ出す。
@@ -572,7 +575,7 @@ private fun Composer(
         Box(
             Modifier.size(DeckDimens.TouchTargetXs).clip(CircleShape).clickable { showEmojiPicker = true },
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg)) }
+        ) { Icon(Icons.Outlined.Mood, stringResource(Res.string.compose_insert_emoji), tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg)) }
         Spacer(Modifier.width(DeckSpace.Xs))
         // 入力欄の丸枠。プレースホルダーと BasicTextField の行高差で空↔入力時に枠が
         // 伸縮しないよう、最小高（タップ領域 Sm 相当）を確保して安定させる（#106）。
@@ -585,7 +588,7 @@ private fun Composer(
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {
-                Text("メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Body)
+                Text(stringResource(Res.string.chat_input_placeholder), color = DeckColors.Text3, fontSize = DeckType.Body)
             }
             BasicTextField(
                 value = field,
@@ -604,7 +607,7 @@ private fun Composer(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.AutoMirrored.Outlined.Send, "送信",
+                Icons.AutoMirrored.Outlined.Send, stringResource(Res.string.send),
                 tint = if (canSend) DeckColors.Bg else DeckColors.Text3, modifier = Modifier.size(16.dp),
             )
         }
@@ -629,7 +632,7 @@ private fun ComposerDisabled() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "メッセージを入力…", color = DeckColors.Text3, fontSize = DeckType.Caption,
+            stringResource(Res.string.chat_input_placeholder), color = DeckColors.Text3, fontSize = DeckType.Caption,
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(DeckRadius.Full))
                 .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         )
@@ -637,6 +640,6 @@ private fun ComposerDisabled() {
         Box(
             Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape).background(DeckColors.Surface2),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Text3, modifier = Modifier.size(16.dp)) }
+        ) { Icon(Icons.AutoMirrored.Outlined.Send, stringResource(Res.string.send), tint = DeckColors.Text3, modifier = Modifier.size(16.dp)) }
     }
 }

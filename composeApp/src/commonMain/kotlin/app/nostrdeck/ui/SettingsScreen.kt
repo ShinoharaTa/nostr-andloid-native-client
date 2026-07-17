@@ -145,8 +145,8 @@ import app.nostrdeck.theme.DeckWeight
  */
 @Composable
 fun SettingsScreen(state: DeckState, isCompact: Boolean) {
-    val sections = SampleData.settingsSections
-    val selectedId = state.settingsSection ?: if (!isCompact) sections.first().first else null
+    val sections = SampleData.settingsSectionIds
+    val selectedId = state.settingsSection ?: if (!isCompact) sections.first() else null
     val repo = LocalRepository.current
     val myPubkey = repo?.loggedInPubkey()?.collectAsState(null)?.value
 

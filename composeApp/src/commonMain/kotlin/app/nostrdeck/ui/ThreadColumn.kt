@@ -34,6 +34,9 @@ import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.ZapUi
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -79,7 +82,7 @@ fun ThreadColumn(
                     ) {
                         Icon(Icons.Outlined.Bolt, null, tint = DeckColors.Zap, modifier = Modifier.width(16.dp))
                         Spacer(Modifier.width(DeckSpace.Xs))
-                        Text("Zap · 合計 $total sats", color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(Res.string.zap_total_fmt, total), color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = FontWeight.SemiBold)
                     }
                     HorizontalDivider(color = DeckColors.Border)
                 }
@@ -108,7 +111,7 @@ private fun ThreadRow(entry: ThreadEntry, onReply: () -> Unit, onQuote: () -> Un
     ) {
         if (entry.replyToName != null) {
             Text(
-                "返信先 @${entry.replyToName}", color = DeckColors.Text3, fontSize = DeckType.Label,
+                stringResource(Res.string.reply_to_at_fmt, entry.replyToName), color = DeckColors.Text3, fontSize = DeckType.Label,
                 modifier = Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm),
             )
         }
@@ -156,12 +159,12 @@ private fun ReplyBox(enabled: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "返信を書く…", color = DeckColors.Text3, fontSize = DeckType.Caption,
+            stringResource(Res.string.thread_write_reply), color = DeckColors.Text3, fontSize = DeckType.Caption,
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(DeckRadius.Full))
                 .background(DeckColors.Surface2).padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         )
         Spacer(Modifier.width(DeckSpace.Sm))
-        Icon(Icons.AutoMirrored.Outlined.Send, "送信", tint = DeckColors.Accent,
+        Icon(Icons.AutoMirrored.Outlined.Send, stringResource(Res.string.send), tint = DeckColors.Accent,
             modifier = Modifier.padding(DeckSpace.Xs))
     }
 }

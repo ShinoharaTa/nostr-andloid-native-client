@@ -159,13 +159,13 @@ class Nip46Client(
         val d = CompletableDeferred<String>()
         connectAck = d
         return withTimeoutOrNull(timeoutMs) { d.await() }
-            ?: throw RuntimeException("署名アプリの接続待ちがタイムアウトしました")
+            ?: throw RuntimeException("timed out waiting for the signing app to connect")
     }
 
     /** RPC 1往復。接続を待ってから暗号化リクエストを送り、id 一致の応答を待つ。 */
     suspend fun request(method: String, params: List<String>, timeoutMs: Long = 60_000): String {
-        val remote = remotePubkey ?: throw RuntimeException("NIP-46 未接続")
-        val ck = convKey ?: throw RuntimeException("NIP-46 未接続")
+        val remote = remotePubkey ?: throw RuntimeException("NIP-46 not connected")
+        val ck = convKey ?: throw RuntimeException("NIP-46 not connected")
         withTimeoutOrNull(15_000) { relay.state.first { it == RelayConnState.CONNECTED } }
         val id = secureRandomBytes(8).toHex()
         val reqJson = buildJsonObject {
@@ -178,8 +178,8 @@ class Nip46Client(
         pending[id] = deferred
         relay.publish(RelayProtocol.event(signed))
         val (result, error) = withTimeoutOrNull(timeoutMs) { deferred.await() }
-            ?: run { pending.remove(id); throw RuntimeException("NIP-46 応答タイムアウト: $method") }
-        if (error.isNotEmpty()) throw RuntimeException("NIP-46 署名側エラー: $error")
+            ?: run { pending.remove(id); throw RuntimeException("NIP-46 response timeout: $method") }
+        if (error.isNotEmpty()) throw RuntimeException("NIP-46 signer error: $error")
         return result
     }
 
@@ -222,7 +222,7 @@ object Nip46Manager {
 
     /** bunker:// で接続 → connect/get_public_key。成功で NIP-46 に切替＋永続化し userPubkey を返す。 */
     suspend fun connectBunker(bunkerUri: String): String {
-        val sc = scope ?: error("Nip46Manager 未初期化")
+        val sc = scope ?: error("Nip46Manager not initialized")
         val b = parseBunkerUri(bunkerUri) ?: throw RuntimeException("bunker:// URI が不正です")
         val clientSecret = secureRandomBytes(32)
         val c = Nip46Client(clientSecret, b.relays, sc, b.remoteSignerPubkey)
@@ -238,7 +238,7 @@ object Nip46Manager {
      * 署名アプリの承認を待って get_public_key し、NIP-46 に切替＋永続化して userPubkey を返す。
      */
     suspend fun connectNostrConnect(appName: String, relay: String = DEFAULT_RELAY, onUri: (String) -> Unit): String {
-        val sc = scope ?: error("Nip46Manager 未初期化")
+        val sc = scope ?: error("Nip46Manager not initialized")
         val clientSecret = secureRandomBytes(32)
         val secret = secureRandomBytes(16).toHex()
         val c = Nip46Client(clientSecret, listOf(relay), sc)
@@ -246,7 +246,7 @@ object Nip46Manager {
         onUri(c.nostrConnectUri(relay, secret, appName))
         c.awaitConnect(secret)
         val user = c.request("get_public_key", emptyList())
-        val remote = c.remoteSignerPubkeyOrNull ?: throw RuntimeException("remote pubkey 未確定")
+        val remote = c.remoteSignerPubkeyOrNull ?: throw RuntimeException("remote pubkey not determined")
         finish(c, clientSecret, remote, listOf(relay), user)
         return user
     }
@@ -279,7 +279,7 @@ object Nip46Manager {
     }
 
     private fun finish(c: Nip46Client, clientSecret: ByteArray, remote: String, relays: List<String>, user: String) {
-        require(isHex64(user)) { "get_public_key 応答が不正: $user" }
+        require(isHex64(user)) { "invalid get_public_key response: $user" }
         client?.stop()
         client = c
         SignerProvider.use(Nip46Signer(c, user))

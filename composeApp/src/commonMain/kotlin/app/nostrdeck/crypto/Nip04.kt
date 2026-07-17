@@ -16,7 +16,7 @@ object Nip04 {
 
     fun decrypt(privKey: ByteArray, peerPubkeyHex: String, payload: String): String {
         val at = payload.indexOf("?iv=")
-        require(at > 0) { "NIP-04 形式ではありません（?iv= がない）" }
+        require(at > 0) { "not NIP-04 format (missing ?iv=)" }
         val data = Base64.decode(payload.substring(0, at))
         val iv = Base64.decode(payload.substring(at + 4))
         return aesCbcDecrypt(sharedSecretX(privKey, peerPubkeyHex), iv, data).decodeToString()

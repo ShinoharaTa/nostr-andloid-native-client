@@ -26,6 +26,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -75,8 +78,8 @@ fun BoxScope.FeedTopPill(count: Int, listState: LazyListState, onClick: () -> Un
     // 状態観測は無条件で行い（remember スロットを安定させる）、表示だけ分岐する。
     val scrolledAway = rememberScrolledAway(listState)
     when {
-        count > 0 -> Pill("$count 件の新着", onClick)
-        scrolledAway -> Pill("最新へ戻る", onClick)
+        count > 0 -> Pill(stringResource(Res.string.pill_new_fmt, count), onClick)
+        scrolledAway -> Pill(stringResource(Res.string.pill_back_latest), onClick)
     }
 }
 

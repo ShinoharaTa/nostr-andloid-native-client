@@ -190,16 +190,16 @@ object Nip19 {
 
     private fun encodeFixed(hrp: String, hex: String): String {
         val data = hex.hexToBytes()
-        require(data.size == 32) { "$hrp のペイロードは 32byte（hex 64文字）: ${data.size}byte" }
+        require(data.size == 32) { "$hrp payload must be 32 bytes (64 hex chars): ${data.size} bytes" }
         val five = Bech32.convertBits(data, 8, 5, true)
         return Bech32.encode(hrp, five)
     }
 
     private fun decodeFixed(bech: String, expectedHrp: String): String {
         val (hrp, five) = Bech32.decode(bech)
-        require(hrp == expectedHrp) { "hrp が不正: 期待=$expectedHrp 実際=$hrp" }
+        require(hrp == expectedHrp) { "unexpected hrp: expected=$expectedHrp actual=$hrp" }
         val data = Bech32.convertBits(five, 5, 8, false)
-        require(data.size == 32) { "$expectedHrp のペイロードは 32byte: ${data.size}byte" }
+        require(data.size == 32) { "$expectedHrp payload must be 32 bytes: ${data.size} bytes" }
         return ByteArray(data.size) { data[it].toByte() }.toHex()
     }
 }
@@ -230,27 +230,27 @@ object Bech32 {
 
     /** bech32 文字列を (hrp, 5bit データ) に分解。チェックサムを検証する。 */
     fun decode(bech: String): Pair<String, IntArray> {
-        require(bech.length <= MAX_LENGTH) { "bech32 が長すぎる: ${bech.length}" }
+        require(bech.length <= MAX_LENGTH) { "bech32 too long: ${bech.length}" }
         var hasLower = false
         var hasUpper = false
         for (c in bech) {
-            require(c.code in 33..126) { "bech32 に使えない文字: $c" }
+            require(c.code in 33..126) { "invalid bech32 char: $c" }
             if (c in 'a'..'z') hasLower = true
             if (c in 'A'..'Z') hasUpper = true
         }
-        require(!(hasLower && hasUpper)) { "大文字と小文字が混在している" }
+        require(!(hasLower && hasUpper)) { "mixed upper and lower case" }
         val s = bech.lowercase()
         val sep = s.lastIndexOf('1')
-        require(sep >= 1) { "区切り '1' が無い" }
-        require(sep + 7 <= s.length) { "チェックサムが短すぎる" }
+        require(sep >= 1) { "missing separator '1'" }
+        require(sep + 7 <= s.length) { "checksum too short" }
         val hrp = s.substring(0, sep)
         val dataPart = s.substring(sep + 1)
         val values = IntArray(dataPart.length) { i ->
             val v = CHARSET_REV[dataPart[i].code]
-            require(v != -1) { "data 部に不正な文字: ${dataPart[i]}" }
+            require(v != -1) { "invalid char in data part: ${dataPart[i]}" }
             v
         }
-        require(verifyChecksum(hrp, values)) { "bech32 チェックサム不正" }
+        require(verifyChecksum(hrp, values)) { "bad bech32 checksum" }
         // 末尾 6 シンボルがチェックサム
         return hrp to values.copyOfRange(0, values.size - 6)
     }
@@ -269,7 +269,7 @@ object Bech32 {
         val maxv = (1 shl to) - 1
         val maxAcc = (1 shl (from + to - 1)) - 1
         for (value in data) {
-            require(value in 0..((1 shl from) - 1)) { "入力値が範囲外: $value" }
+            require(value in 0..((1 shl from) - 1)) { "value out of range: $value" }
             acc = ((acc shl from) or value) and maxAcc
             bits += from
             while (bits >= to) {
@@ -280,8 +280,8 @@ object Bech32 {
         if (pad) {
             if (bits > 0) out.add((acc shl (to - bits)) and maxv)
         } else {
-            require(bits < from) { "余剰ビットが多すぎる" }
-            require(((acc shl (to - bits)) and maxv) == 0) { "末尾の非ゼロパディング" }
+            require(bits < from) { "too many leftover bits" }
+            require(((acc shl (to - bits)) and maxv) == 0) { "non-zero trailing padding" }
         }
         return out.toIntArray()
     }

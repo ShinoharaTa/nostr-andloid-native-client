@@ -654,7 +654,7 @@ private fun ResolutionSelector(selected: ImageResolution, onSelect: (ImageResolu
         ImageResolution.entries.forEach { r ->
             val active = r == selected
             Text(
-                r.label,
+                stringResource(r.label),
                 color = if (active) DeckColors.Bg else DeckColors.Text2,
                 fontSize = DeckType.Caption, fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
                 modifier = Modifier

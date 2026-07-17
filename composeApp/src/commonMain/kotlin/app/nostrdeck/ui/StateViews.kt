@@ -14,6 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 
@@ -32,7 +35,7 @@ fun ColumnStateView(loading: Boolean, emptyText: String, modifier: Modifier = Mo
                     modifier = Modifier.size(26.dp),
                 )
                 Spacer(Modifier.height(DeckSpace.Sm))
-                Text("読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.loading), color = DeckColors.Text3, fontSize = DeckType.Caption)
             }
         } else {
             Text(emptyText, color = DeckColors.Text3, fontSize = DeckType.Caption)
