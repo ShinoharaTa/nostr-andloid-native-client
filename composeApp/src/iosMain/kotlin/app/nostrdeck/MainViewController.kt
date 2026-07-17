@@ -2,6 +2,10 @@ package app.nostrdeck
 
 import androidx.compose.ui.window.ComposeUIViewController
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.data.defaultRelaysFor
+import platform.Foundation.NSLocale
+import platform.Foundation.currentLocale
+import platform.Foundation.languageCode
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
 import app.nostrdeck.signer.KeychainKeyVault
@@ -11,11 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-/** 既定リレー（Android MainActivity と揃える）。設定変更対応は別途。 */
-private val DEFAULT_RELAYS = listOf(
-    "wss://relay.damus.io",
-    "wss://nos.lol",
-)
+/** [#150] 既定リレー。端末の言語で切替（Android MainActivity と同じマッピング）。初回シードのみに使う。 */
+private val DEFAULT_RELAYS = defaultRelaysFor(NSLocale.currentLocale.languageCode)
 
 // [#78] 未捕捉の非同期例外でプロセスを落とさない底。SupervisorJob は兄弟キャンセルを防ぐだけ
 // なので、CoroutineExceptionHandler で握ってログに留める。アプリ全体で1つ。
