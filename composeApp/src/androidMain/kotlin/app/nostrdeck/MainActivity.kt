@@ -47,11 +47,8 @@ import kotlinx.coroutines.cancel
 import kotlin.coroutines.cancellation.CancellationException
 import okio.Path.Companion.toPath
 
-/** M1: 既定リレー（公開リレー）。設定で変更可能にするのは M5/M7。 */
-private val DEFAULT_RELAYS = listOf(
-    "wss://relay.damus.io",
-    "wss://nos.lol",
-)
+/** [#150] 既定リレー。端末の言語で切替（日本語なら日本リレーを含む）。初回シードのみに使う。 */
+private val DEFAULT_RELAYS = app.nostrdeck.data.defaultRelaysFor(java.util.Locale.getDefault().language)
 
 class MainActivity : ComponentActivity() {
 
