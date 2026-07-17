@@ -468,4 +468,12 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="thread_write_reply">Write a reply…</string>
     <string name="fab_post">Post</string>
     <string name="list_followers">Followers</string>
+
+    <!-- [#163] Emoji picker categories -->
+    <string name="emoji_cat_faces">Faces</string>
+    <string name="emoji_cat_gestures">Hands &amp; gestures</string>
+    <string name="emoji_cat_hearts">Hearts &amp; feelings</string>
+    <string name="emoji_cat_nature">Animals &amp; nature</string>
+    <string name="emoji_cat_food">Food &amp; drink</string>
+    <string name="emoji_cat_activity">Activities &amp; symbols</string>
 </resources>
