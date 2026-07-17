@@ -38,6 +38,7 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.TextScale
+import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
@@ -270,6 +271,8 @@ class EventRepository(
         loadTextScale()
         // 表示サイズ（標準/大きめ/最大）を KV から復元。
         loadUiScale()
+        // テーマ（OSに合わせる/ライト/ダーク）を KV から復元。
+        loadThemeMode()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
         // 「古のSNS廃人モード」を KV から復元。
@@ -3062,6 +3065,22 @@ class EventRepository(
         uiScaleState.value = UiScale.fromId(q.getSetting(UI_SCALE_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#152] テーマ（OSに合わせる/ライト/ダーク。既定=ダーク）----
+
+    private val themeModeState = MutableStateFlow(ThemeMode.DARK)
+    /** テーマ設定（設定 > 表示）。App ルートで DeckTheme に渡す。 */
+    fun themeModeFlow(): StateFlow<ThemeMode> = themeModeState
+
+    fun setThemeMode(mode: ThemeMode) {
+        themeModeState.value = mode
+        putSettingAsync(THEME_MODE_KEY, mode.id)
+    }
+
+    /** KV からテーマを復元（未設定はダーク=従来）。start() から呼ぶ。 */
+    private fun loadThemeMode() {
+        themeModeState.value = ThemeMode.fromId(q.getSetting(THEME_MODE_KEY).executeAsOneOrNull())
+    }
+
     private val ogpCache = mutableMapOf<String, OgpData?>()
     private val ogpMutex = Mutex()
 
@@ -3628,6 +3647,7 @@ class EventRepository(
         const val EMBED_PREFIX = "embed:"
         const val TEXT_SCALE_KEY = "ui:text_scale"   // [#appearance] 文字サイズ（s/m/l）
         const val UI_SCALE_KEY = "ui:ui_scale"       // [#appearance] 表示サイズ（s/m/l）
+        const val THEME_MODE_KEY = "ui:theme"        // [#152] テーマ（system/light/dark）
 
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */
         const val DEFAULT_REACTION_CONTENT = "default_reaction:content"

@@ -30,3 +30,17 @@ enum class UiScale(val id: String, val label: String, val factor: Float) {
         fun fromId(id: String?): UiScale = entries.firstOrNull { it.id == id } ?: SMALL
     }
 }
+
+/**
+ * [#152] テーマ（設定 > 表示）。既定はダーク（従来挙動そのまま）。
+ * SYSTEM は OS のダークモード設定に追従する。
+ */
+enum class ThemeMode(val id: String, val label: String) {
+    SYSTEM("system", "OSに合わせる"),
+    LIGHT("light", "ライト"),
+    DARK("dark", "ダーク");
+
+    companion object {
+        fun fromId(id: String?): ThemeMode = entries.firstOrNull { it.id == id } ?: DARK
+    }
+}
