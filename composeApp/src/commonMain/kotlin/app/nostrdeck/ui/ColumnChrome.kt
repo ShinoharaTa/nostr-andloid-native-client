@@ -45,6 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -111,9 +114,9 @@ fun ColumnHeader(
         Spacer(Modifier.width(DeckSpace.Sm))
         // タイトル+説明のテキストブロックは行高で合計40dp（LineTitle+LineDesc）に固定。
         Column(Modifier.weight(1f)) {
-            Text(title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+            Text(columnDisplayTitle(title), color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = DeckColors.Text3, fontSize = DeckType.Label,
+            Text(columnDisplaySubtitle(subtitle), color = DeckColors.Text3, fontSize = DeckType.Label,
                 lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (menu != null) {
@@ -122,13 +125,13 @@ fun ColumnHeader(
         } else {
             // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
             if (onPin != null) {
-                HeaderIconButton(Icons.Outlined.PushPin, if (pinned) "固定を解除" else "固定",
+                HeaderIconButton(Icons.Outlined.PushPin, if (pinned) stringResource(Res.string.col_unpin) else stringResource(Res.string.col_pin),
                     tint = if (pinned) DeckColors.Zap else DeckColors.Text3, onClick = onPin)
             }
             if (pinned && onPin != null) {
-                HeaderIconButton(Icons.Outlined.DragIndicator, "並べ替え", DeckColors.Text3, onClick = null)
+                HeaderIconButton(Icons.Outlined.DragIndicator, stringResource(Res.string.col_reorder), DeckColors.Text3, onClick = null)
             } else if (onClose != null) {
-                HeaderIconButton(Icons.Outlined.Close, "閉じる", DeckColors.Text3, onClick = onClose)
+                HeaderIconButton(Icons.Outlined.Close, stringResource(Res.string.col_close), DeckColors.Text3, onClick = onClose)
             }
         }
     }
@@ -139,26 +142,26 @@ fun ColumnHeader(
 private fun ColumnMenuButton(menu: ColumnMenuActions) {
     var open by remember { mutableStateOf(false) }
     Box {
-        HeaderIconButton(Icons.Outlined.MoreHoriz, "カラムメニュー", DeckColors.Text3, onClick = { open = true })
+        HeaderIconButton(Icons.Outlined.MoreHoriz, stringResource(Res.string.col_menu), DeckColors.Text3, onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // 移動: 1行に ◀▶ を並べる（端では該当方向を無効化）。
             Row(
                 Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("移動", color = DeckColors.Text, fontSize = DeckType.Sub)
+                Text(stringResource(Res.string.col_move), color = DeckColors.Text, fontSize = DeckType.Sub)
                 Spacer(Modifier.width(DeckSpace.Lg))
-                MoveArrow(Icons.Outlined.ChevronLeft, "左へ移動", enabled = menu.canMoveLeft) {
+                MoveArrow(Icons.Outlined.ChevronLeft, stringResource(Res.string.col_move_left), enabled = menu.canMoveLeft) {
                     menu.onMoveLeft()
                 }
                 Spacer(Modifier.width(DeckSpace.Sm))
-                MoveArrow(Icons.Outlined.ChevronRight, "右へ移動", enabled = menu.canMoveRight) {
+                MoveArrow(Icons.Outlined.ChevronRight, stringResource(Res.string.col_move_right), enabled = menu.canMoveRight) {
                     menu.onMoveRight()
                 }
             }
             menu.onEdit?.let { edit ->
                 DropdownMenuItem(
-                    text = { Text("フィルターを編集") },
+                    text = { Text(stringResource(Res.string.col_edit_filter)) },
                     leadingIcon = { Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(DeckDimens.IconMd)) },
                     onClick = { open = false; edit() },
                 )
@@ -167,7 +170,7 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
             if (menu.mutedRevealed != null && menu.onToggleMuted != null) {
                 val revealed = menu.mutedRevealed
                 DropdownMenuItem(
-                    text = { Text(if (revealed) "ミュートを隠す" else "ミュートを表示") },
+                    text = { Text(if (revealed) stringResource(Res.string.col_hide_muted) else stringResource(Res.string.col_show_muted)) },
                     leadingIcon = {
                         Icon(
                             if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
@@ -182,14 +185,14 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
             if (menu.hiddenCategories != null && menu.onToggleCategory != null) {
                 HorizontalDivider(color = DeckColors.Border)
                 Text(
-                    "タイムラインに混ぜる表示",
+                    stringResource(Res.string.col_mix_categories),
                     color = DeckColors.Text3, fontSize = DeckType.Label,
                     modifier = Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
                 )
-                FeedCategoryItem("自分へのリアクション", FeedNoticeCategory.REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
-                FeedCategoryItem("自分への返信・メンション", FeedNoticeCategory.REPLIES, menu.hiddenCategories, menu.onToggleCategory)
-                FeedCategoryItem("自分へのリポスト", FeedNoticeCategory.REPOSTS, menu.hiddenCategories, menu.onToggleCategory)
-                FeedCategoryItem("自分がしたリアクション", FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem(stringResource(Res.string.cat_reactions_to_me), FeedNoticeCategory.REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem(stringResource(Res.string.cat_replies_to_me), FeedNoticeCategory.REPLIES, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem(stringResource(Res.string.cat_reposts_of_me), FeedNoticeCategory.REPOSTS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem(stringResource(Res.string.cat_my_reactions), FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
                 HorizontalDivider(color = DeckColors.Border)
             }
             // [#10] カラム幅（S/M/L）。タップしてもメニューは閉じない。
@@ -199,17 +202,17 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
                     Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("カラム幅", color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
-                    WidthChip("狭", "S", menu.columnWidth, menu.onSetWidth)
+                    Text(stringResource(Res.string.col_width), color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
+                    WidthChip(stringResource(Res.string.width_narrow), "S", menu.columnWidth, menu.onSetWidth)
                     Spacer(Modifier.width(DeckSpace.Xs))
-                    WidthChip("標準", "M", menu.columnWidth, menu.onSetWidth)
+                    WidthChip(stringResource(Res.string.width_default), "M", menu.columnWidth, menu.onSetWidth)
                     Spacer(Modifier.width(DeckSpace.Xs))
-                    WidthChip("広", "L", menu.columnWidth, menu.onSetWidth)
+                    WidthChip(stringResource(Res.string.width_wide), "L", menu.columnWidth, menu.onSetWidth)
                 }
                 HorizontalDivider(color = DeckColors.Border)
             }
             DropdownMenuItem(
-                text = { Text("カラムを削除", color = DeckColors.Warn) },
+                text = { Text(stringResource(Res.string.col_delete), color = DeckColors.Warn) },
                 leadingIcon = { Icon(Icons.Outlined.Close, null, tint = DeckColors.Warn, modifier = Modifier.size(DeckDimens.IconMd)) },
                 onClick = { open = false; menu.onDelete() },
             )
@@ -272,7 +275,7 @@ fun HeaderBackButton(onClick: () -> Unit, tint: Color = DeckColors.Text) {
     Box(
         Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "戻る", tint = tint, modifier = Modifier.size(DeckDimens.IconLg)) }
+    ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(Res.string.common_back), tint = tint, modifier = Modifier.size(DeckDimens.IconLg)) }
 }
 
 /** ヘッダー共通のアイコンアクション（閉じる/ピン/並べ替え等）。40dp 実タップ領域 + IconSm。 */
@@ -293,7 +296,7 @@ fun OfflineBanner(pendingCount: Int) {
             Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Sm))
                 .background(DeckColors.Zap.copy(alpha = 0.1f)).padding(DeckSpace.Md, DeckSpace.Sm)
         ) {
-            Text("⚠ オフライン — キャッシュ表示中・$pendingCount 件の投稿を送信待ち",
+            Text(stringResource(Res.string.offline_banner_fmt, pendingCount),
                 color = DeckColors.Zap, fontSize = DeckType.Label)
         }
     }

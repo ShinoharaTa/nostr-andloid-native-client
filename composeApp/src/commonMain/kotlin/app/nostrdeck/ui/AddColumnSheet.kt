@@ -35,6 +35,9 @@ import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.NotifKind
 import app.nostrdeck.model.build
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
@@ -52,7 +55,7 @@ fun AddColumnSheet(onDismiss: () -> Unit, onAdd: (ColumnSpec) -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(bottom = DeckSpace.Xl)) {
             Text(
-                if (selected == null) "カラムを追加" else selected!!.label,
+                if (selected == null) stringResource(Res.string.add_column) else stringResource(selected!!.label),
                 color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
                 modifier = Modifier.padding(DeckSpace.Lg, DeckSpace.Sm),
             )
@@ -83,8 +86,8 @@ private fun TemplateList(onPick: (ColumnTemplate) -> Unit) {
                 Icon(columnIcon(t.toKindForIcon()), null, tint = DeckColors.Text2,
                     modifier = Modifier.padding(end = DeckSpace.Md))
                 Column(Modifier.weight(1f)) {
-                    Text(t.label, color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = DeckType.LineTitle)
-                    t.hint?.let { Text(it, color = DeckColors.Text3, fontSize = DeckType.Label, lineHeight = DeckType.LineDesc) }
+                    Text(stringResource(t.label), color = DeckColors.Text, fontSize = DeckType.Body, lineHeight = DeckType.LineTitle)
+                    t.hint?.let { Text(stringResource(it), color = DeckColors.Text3, fontSize = DeckType.Label, lineHeight = DeckType.LineDesc) }
                 }
                 if (t.config != ColumnConfig.NONE) Text("›", color = DeckColors.Text3, fontSize = DeckType.Emoji)
             }
@@ -103,12 +106,12 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
         when (t.config) {
             ColumnConfig.TEXT -> DeckTextField(
                 value = text, onValueChange = { text = it },
-                placeholder = t.hint ?: "",
+                placeholder = t.hint?.let { stringResource(it) } ?: "",
                 modifier = Modifier.fillMaxWidth(),
             )
             ColumnConfig.RELAY_SET -> RelaySetEditor(initial = emptyList(), onChange = { relays = it })
             ColumnConfig.NOTIF_FILTER -> Column {
-                Text("表示する種別", color = DeckColors.Text2, fontSize = DeckType.Caption)
+                Text(stringResource(Res.string.add_column_kinds), color = DeckColors.Text2, fontSize = DeckType.Caption)
                 NotifKind.entries.forEach { k ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -119,7 +122,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                                 checkmarkColor = DeckColors.Bg,
                             ),
                         )
-                        Text(k.label, color = DeckColors.Text, fontSize = DeckType.Sub)
+                        Text(stringResource(k.label), color = DeckColors.Text, fontSize = DeckType.Sub)
                     }
                 }
             }
@@ -127,10 +130,10 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
         }
         Spacer(Modifier.height(DeckSpace.Lg))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            DeckGhostButton("戻る", onClick = onBack)
+            DeckGhostButton(stringResource(Res.string.common_back), onClick = onBack)
             Spacer(Modifier.width(DeckSpace.Sm))
             DeckButton(
-                "追加",
+                stringResource(Res.string.common_add),
                 onClick = {
                     val kinds = NotifKind.entries.filter { notif[it] == true }.map { it.kind }
                     onAdd(t.build(input = text, notifKinds = kinds, relays = relays))

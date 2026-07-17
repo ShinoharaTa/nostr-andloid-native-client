@@ -17,6 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.StringResource
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
@@ -26,18 +30,21 @@ import app.nostrdeck.theme.DeckType
  * 静的にキュレーションした一覧で、ワンタップで設定へ追加できる（追加≠即時常時接続）。
  * 掲載リストはあくまで目安で、後から自由に増減してよい。
  */
-enum class PresetCategory(val label: String) {
-    General("汎用"),
-    Japan("日本"),
-    Paid("ペイド"),
-    Image("画像特化"),
+enum class PresetCategory(val label: StringResource) {
+    General(Res.string.preset_general),
+    Japan(Res.string.preset_japan),
+    Paid(Res.string.preset_paid),
+    Image(Res.string.preset_image),
 }
+
+/** 補足バッジの種別（「有料」等）。表示文言は UI 層でリソース解決する。 */
+enum class PresetNote { PAID, SEARCH }
 
 /** プリセット1件。[note] は「有料」等の軽い補足。 */
 data class Preset(
     val url: String,
     val category: PresetCategory,
-    val note: String? = null,
+    val note: PresetNote? = null,
 ) {
     /** チップ表示用にスキームを落とした短い名前（例: relay.damus.io）。 */
     val displayName: String
@@ -58,7 +65,7 @@ val RELAY_PRESETS: List<Preset> = listOf(
     Preset("wss://relay.damus.io", PresetCategory.General),
     Preset("wss://nos.lol", PresetCategory.General),
     Preset("wss://relay.primal.net", PresetCategory.General),
-    Preset("wss://relay.nostr.band", PresetCategory.General, "検索対応"),
+    Preset("wss://relay.nostr.band", PresetCategory.General, PresetNote.SEARCH),
     Preset("wss://relay.snort.social", PresetCategory.General),
     Preset("wss://nostr.mom", PresetCategory.General),
     Preset("wss://offchain.pub", PresetCategory.General),
@@ -68,9 +75,9 @@ val RELAY_PRESETS: List<Preset> = listOf(
     Preset("wss://yabu.me", PresetCategory.Japan),
     Preset("wss://r.kojira.io", PresetCategory.Japan),
     // ペイド（有料・認証必須のことが多い）
-    Preset("wss://nostr.wine", PresetCategory.Paid, "有料"),
-    Preset("wss://eden.nostr.land", PresetCategory.Paid, "有料"),
-    Preset("wss://nostrelites.org", PresetCategory.Paid, "有料"),
+    Preset("wss://nostr.wine", PresetCategory.Paid, PresetNote.PAID),
+    Preset("wss://eden.nostr.land", PresetCategory.Paid, PresetNote.PAID),
+    Preset("wss://nostrelites.org", PresetCategory.Paid, PresetNote.PAID),
 )
 
 /** NIP-96 メディアサーバー候補（画像アップロード先）。2026-07 に well-known 応答で生存確認済み。 */
@@ -98,10 +105,10 @@ internal fun PresetPicker(
     val remaining = presets.filter { normalizePresetUrl(it.url) !in registered }
     if (remaining.isEmpty()) return
 
-    Text("候補（おすすめ）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.presets_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "タップで一覧に追加します（登録済みは表示されません）。追加してもすぐには常時接続しません。",
+        stringResource(Res.string.presets_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Sm))
@@ -110,7 +117,7 @@ internal fun PresetPicker(
     PresetCategory.entries.forEach { cat ->
         val items = remaining.filter { it.category == cat }
         if (items.isEmpty()) return@forEach
-        Text(cat.label, color = DeckColors.Text3, fontSize = DeckType.Micro)
+        Text(stringResource(cat.label), color = DeckColors.Text3, fontSize = DeckType.Micro)
         Spacer(Modifier.size(DeckSpace.Xs))
         FlowRow(
             Modifier.fillMaxWidth(),
@@ -133,7 +140,7 @@ internal fun RecommendedRelayChips(
     recs: List<Pair<String, Int>>,
     registered: Set<String>,
     onAdd: (String) -> Unit,
-    title: String = "フォロー中でよく使われているリレー",
+    title: String = stringResource(Res.string.presets_popular_follows),
 ) {
     val remaining = recs.filter { normalizePresetUrl(it.first) !in registered }
     if (remaining.isEmpty()) return
@@ -145,14 +152,14 @@ internal fun RecommendedRelayChips(
         verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
     ) {
         remaining.forEach { (url, n) ->
-            PresetChip(Preset(url, PresetCategory.General, "${n}人"), onAdd)
+            PresetChip(Preset(url, PresetCategory.General), onAdd, noteOverride = stringResource(Res.string.presets_users_fmt, n))
         }
     }
 }
 
 /** 候補チップ（先頭「＋」＋ホスト名＋補足）。タップで追加。 */
 @Composable
-private fun PresetChip(preset: Preset, onAdd: (String) -> Unit) {
+private fun PresetChip(preset: Preset, onAdd: (String) -> Unit, noteOverride: String? = null) {
     Row(
         Modifier.clip(RoundedCornerShape(DeckRadius.Full))
             .background(DeckColors.Surface2)
@@ -163,7 +170,12 @@ private fun PresetChip(preset: Preset, onAdd: (String) -> Unit) {
         Text("＋", color = DeckColors.Accent, fontSize = DeckType.Sub)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(preset.displayName, color = DeckColors.Text, fontSize = DeckType.Label)
-        preset.note?.let {
+        val note = noteOverride ?: when (preset.note) {
+            PresetNote.PAID -> stringResource(Res.string.preset_note_paid)
+            PresetNote.SEARCH -> stringResource(Res.string.preset_note_search)
+            null -> null
+        }
+        note?.let {
             Spacer(Modifier.size(DeckSpace.Xs))
             Text(it, color = DeckColors.Text3, fontSize = DeckType.Micro)
         }

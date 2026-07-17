@@ -127,7 +127,9 @@ import nostr_deck_client.composeapp.generated.resources.ui_scale_large
 import nostr_deck_client.composeapp.generated.resources.ui_scale_medium
 import nostr_deck_client.composeapp.generated.resources.ui_scale_small
 import nostr_deck_client.composeapp.generated.resources.ui_scale_title
+import nostr_deck_client.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
@@ -164,7 +166,7 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
         showDetail = state.settingsSection != null,
         list = { SettingsMenu(selectedId, onSelect) },
         detail = {
-            if (selectedId == null) DetailPlaceholder("メニューを選択")
+            if (selectedId == null) DetailPlaceholder(stringResource(Res.string.placeholder_select_menu))
             // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
             else SettingsContent(selectedId, state, onBack = if (isCompact) ({ state.settingsSection = null }) else null)
         },
@@ -312,7 +314,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "media" -> MediaSettings()
                 "data" -> DataSettings()
                 "appearance" -> AppearanceSettings()
-                else -> Text("（このセクションは未実装）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+                else -> Text(stringResource(Res.string.section_unimplemented), color = DeckColors.Text3, fontSize = DeckType.Sub)
             }
         }
     }
@@ -326,17 +328,17 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
 private fun MediaSettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("メディアサーバー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.media_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val servers by repo.mediaServersFlow().collectAsState(emptyList())
     var input by remember { mutableStateOf("") }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
 
-    Text("画像アップロード先（NIP-96 / 認証は NIP-98）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.media_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "投稿に画像を添付すると、選択中のサーバへアップロードします。",
+        stringResource(Res.string.media_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
@@ -347,7 +349,7 @@ private fun MediaSettings() {
             placeholder = "https://…", modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton("追加", onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
+        DeckButton(stringResource(Res.string.common_add), onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
@@ -376,7 +378,7 @@ private fun MediaSettings() {
                 )
                 Text(s.url, color = DeckColors.Text, fontSize = DeckType.Sub,
                     modifier = Modifier.weight(1f))
-                DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = s.url })
+                DeckTextButton(stringResource(Res.string.common_delete), color = DeckColors.Warn, onClick = { confirmRemove = s.url })
             }
             HorizontalDivider(color = DeckColors.Border)
         }
@@ -386,7 +388,7 @@ private fun MediaSettings() {
     var showMediaPresets by remember { mutableStateOf(false) }
     Spacer(Modifier.size(DeckSpace.Md))
     DeckTextButton(
-        if (showMediaPresets) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        if (showMediaPresets) stringResource(Res.string.recs_close) else stringResource(Res.string.recs_open),
         onClick = { showMediaPresets = !showMediaPresets },
     )
     if (showMediaPresets) {
@@ -398,9 +400,9 @@ private fun MediaSettings() {
     // 削除は破壊的操作なので確認を挟む。
     confirmRemove?.let { url ->
         DeckConfirmDialog(
-            title = "メディアサーバーを削除しますか？",
+            title = stringResource(Res.string.media_delete_title),
             text = url,
-            confirmLabel = "削除する", destructive = true,
+            confirmLabel = stringResource(Res.string.common_delete_confirm), destructive = true,
             onConfirm = { repo.removeMediaServer(url); confirmRemove = null },
             onDismiss = { confirmRemove = null },
         )
@@ -415,7 +417,7 @@ private fun MediaSettings() {
 private fun FavsSettings(state: DeckState) {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("ふぁぼを利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.favs_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     // 自分がリアクション(kind:7)した対象ノートを新しい順で一覧。
@@ -423,9 +425,9 @@ private fun FavsSettings(state: DeckState) {
         .mapNotNull { (it as? app.nostrdeck.model.FeedEntry.MyReaction)?.target }
         .distinctBy { it.event.id }
     if (notes.isEmpty()) {
-        Text("ふぁぼした投稿はまだありません。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.favs_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
         Spacer(Modifier.size(DeckSpace.Xs))
-        Text("各投稿の ♡ でふぁぼできます。", color = DeckColors.Text3, fontSize = DeckType.Label)
+        Text(stringResource(Res.string.favs_hint), color = DeckColors.Text3, fontSize = DeckType.Label)
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -445,7 +447,7 @@ private fun FavsSettings(state: DeckState) {
 private fun BookmarkSettings(state: DeckState) {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("ブックマークを利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.bookmarks_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val notes by repo.bookmarkedNotesFlow().collectAsState(emptyList())
@@ -453,13 +455,13 @@ private fun BookmarkSettings(state: DeckState) {
     val scope = rememberCoroutineScope()
 
     if (ids.isEmpty()) {
-        Text("ブックマークはまだありません。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.bookmarks_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
         Spacer(Modifier.size(DeckSpace.Xs))
-        Text("各投稿の ⋯ メニュー →「ブックマーク」で追加できます。", color = DeckColors.Text3, fontSize = DeckType.Label)
+        Text(stringResource(Res.string.bookmarks_hint), color = DeckColors.Text3, fontSize = DeckType.Label)
         return
     }
     if (notes.isEmpty()) {
-        Text("リレーから取得中…（${ids.size}件）", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.bookmarks_loading_fmt, ids.size), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -483,7 +485,7 @@ private fun BookmarkSettings(state: DeckState) {
 private fun DmRelaySettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("DMリレー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.dmrelay_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val relays by repo.myDmRelaysFlow().collectAsState(emptyList())
@@ -491,11 +493,10 @@ private fun DmRelaySettings() {
     var input by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Text("DMの受信リレー（NIP-17 / kind:10050）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.dmrelay_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "ここに宣言したリレーへ相手からのDMが届きます。プライバシー保護のため少数の専用リレーを推奨。" +
-            "未設定なら初回送信時に受信リレーから自動作成します。",
+        stringResource(Res.string.dmrelay_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
@@ -503,7 +504,7 @@ private fun DmRelaySettings() {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(value = input, onValueChange = { input = it }, placeholder = "wss://…", modifier = Modifier.weight(1f))
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton("追加", enabled = input.isNotBlank(), onClick = {
+        DeckButton(stringResource(Res.string.common_add), enabled = input.isNotBlank(), onClick = {
             val next = (relays + input.trim()).distinct()
             scope.launch { repo.publishDmRelays(next) }
             input = ""
@@ -514,11 +515,11 @@ private fun DmRelaySettings() {
 
     if (relays.isEmpty()) {
         Spacer(Modifier.size(DeckSpace.Sm))
-        Text("未設定です。", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.dmrelay_unset), color = DeckColors.Text3, fontSize = DeckType.Sub)
         val reads = subscribed.filter { it.read != 0L }.map { it.url }.take(4)
         if (reads.isNotEmpty()) {
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckButton("現在の受信リレーから作成", onClick = { scope.launch { repo.publishDmRelays(reads) } })
+            DeckButton(stringResource(Res.string.dmrelay_create_from_reads), onClick = { scope.launch { repo.publishDmRelays(reads) } })
         }
     } else {
         Column(Modifier.fillMaxWidth()) {
@@ -528,7 +529,7 @@ private fun DmRelaySettings() {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(url, color = DeckColors.Text, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
-                    DeckTextButton("削除", color = DeckColors.Warn, onClick = {
+                    DeckTextButton(stringResource(Res.string.common_delete), color = DeckColors.Warn, onClick = {
                         scope.launch { repo.publishDmRelays(relays - url) }
                     })
                 }
@@ -545,7 +546,7 @@ private fun DmRelaySettings() {
     var recsLoading by remember { mutableStateOf(false) }
     Spacer(Modifier.size(DeckSpace.Md))
     DeckTextButton(
-        if (showRecs) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        if (showRecs) stringResource(Res.string.recs_close) else stringResource(Res.string.recs_open),
         onClick = {
             showRecs = !showRecs
             if (showRecs && recs == null && !recsLoading) {
@@ -561,14 +562,14 @@ private fun DmRelaySettings() {
         Spacer(Modifier.size(DeckSpace.Sm))
         val registered = relays.map { normalizePresetUrl(it) }.toSet()
         when {
-            recsLoading -> Text("フォロー中のDMリレー(kind:10050)を集計中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+            recsLoading -> Text(stringResource(Res.string.dmrelay_recs_loading), color = DeckColors.Text3, fontSize = DeckType.Label)
             !recs.isNullOrEmpty() -> RecommendedRelayChips(
                 recs!!, registered,
                 onAdd = { url -> scope.launch { repo.publishDmRelays((relays + url).distinct()) } },
-                title = "フォロー中がDM受信に使っているリレー",
+                title = stringResource(Res.string.dmrelay_recs_title),
             )
             else -> Text(
-                "集計できませんでした（フォローが無い・kind:10050 を公開している人がいない等）。",
+                stringResource(Res.string.dmrelay_recs_empty),
                 color = DeckColors.Text3, fontSize = DeckType.Label,
             )
         }
@@ -585,7 +586,7 @@ private fun AccountSettings() {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     if (repo == null) {
-        Text("アカウント設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.account_edit_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val pubkey by repo.loggedInPubkey().collectAsState(null)
@@ -624,23 +625,23 @@ private fun AccountSettings() {
 
     // スクロールは SettingsContent 側で一括して掛けるので、ここは列にまとめるだけ。
     Column(Modifier.fillMaxWidth()) {
-    Text("プロフィール", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.profile_section), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
-    Text("変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。",
+    Text(stringResource(Res.string.profile_publish_note),
         color = DeckColors.Text3, fontSize = DeckType.Label)
     Spacer(Modifier.size(DeckSpace.Md))
 
-    ProfileField("表示名", name) { name = it; saved = false }
-    ProfileField("自己紹介", about, singleLine = false) { about = it; saved = false }
-    ProfileImageField("アイコン画像", picture, uploadingPic, banner = false, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
-    ProfileImageField("バナー画像", banner, uploadingBanner, banner = true, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
-    ProfileField("Lightning アドレス (lud16)", lud16) { lud16 = it; saved = false }
+    ProfileField(stringResource(Res.string.field_display_name), name) { name = it; saved = false }
+    ProfileField(stringResource(Res.string.field_about), about, singleLine = false) { about = it; saved = false }
+    ProfileImageField(stringResource(Res.string.field_icon), picture, uploadingPic, banner = false, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
+    ProfileImageField(stringResource(Res.string.field_banner), banner, uploadingBanner, banner = true, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
+    ProfileField(stringResource(Res.string.field_lud16), lud16) { lud16 = it; saved = false }
     ProfileField("NIP-05", nip05) { nip05 = it; saved = false }
-    ProfileField("Web サイト", website) { website = it; saved = false }
+    ProfileField(stringResource(Res.string.field_website), website) { website = it; saved = false }
 
     Spacer(Modifier.size(DeckSpace.Md))
     DeckButton(
-        if (saving) "保存中…" else if (saved) "保存しました ✓" else "保存",
+        if (saving) stringResource(Res.string.common_saving) else if (saved) stringResource(Res.string.saved_check) else stringResource(Res.string.common_save),
         enabled = initialized && !saving && !uploadingPic && !uploadingBanner,
         onClick = {
             saving = true
@@ -679,7 +680,7 @@ private fun ProfileImageField(label: String, value: String, uploading: Boolean, 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(value = value, onValueChange = onValueChange, placeholder = "https://…", modifier = Modifier.weight(1f))
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton(if (uploading) "…" else "選択", enabled = !uploading, onClick = onPick)
+        DeckButton(if (uploading) "…" else stringResource(Res.string.pick), enabled = !uploading, onClick = onPick)
     }
     if (value.isNotBlank()) {
         Spacer(Modifier.size(DeckSpace.Sm))
@@ -698,9 +699,9 @@ private fun ProfileImageField(label: String, value: String, uploading: Boolean, 
             )
             when (state) {
                 is AsyncImagePainter.State.Loading ->
-                    Text("読み込み中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+                    Text(stringResource(Res.string.loading), color = DeckColors.Text3, fontSize = DeckType.Label)
                 is AsyncImagePainter.State.Error ->
-                    Text("画像を読み込めません", color = DeckColors.Warn, fontSize = DeckType.Label)
+                    Text(stringResource(Res.string.image_load_failed), color = DeckColors.Warn, fontSize = DeckType.Label)
                 else -> {}
             }
         }
@@ -716,24 +717,23 @@ private fun ProfileImageField(label: String, value: String, uploading: Boolean, 
 private fun ReactionSettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("リアクション設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.reaction_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val def by repo.defaultReactionFlow().collectAsState()
     val isStar = def.first == "⭐" || def.first == "★"
 
-    Text("デフォルトのリアクション", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.reaction_default_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "各投稿のリアクションボタンの形を選べます。押すとこの内容で送信されます。" +
-            "（絵文字ピッカーからは別の絵文字を何度でも付けられます）",
+        stringResource(Res.string.reaction_default_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
 
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Md)) {
-        ReactionChoice(Icons.Filled.Favorite, "ハート", selected = !isStar) { repo.setDefaultReaction("+", null) }
-        ReactionChoice(Icons.Filled.Star, "スター", selected = isStar) { repo.setDefaultReaction("⭐", null) }
+        ReactionChoice(Icons.Filled.Favorite, stringResource(Res.string.reaction_heart), selected = !isStar) { repo.setDefaultReaction("+", null) }
+        ReactionChoice(Icons.Filled.Star, stringResource(Res.string.reaction_star), selected = isStar) { repo.setDefaultReaction("⭐", null) }
     }
 }
 
@@ -816,7 +816,7 @@ private fun ReactionChoice(icon: ImageVector, label: String, selected: Boolean, 
 private fun AppearanceSettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("設定を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.settings_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val prefs by repo.embedPrefsFlow().collectAsState()
@@ -923,17 +923,14 @@ private fun DataSettings() {
     // トグルは「この端末での変更をリレー(kind:30078/NIP-78)へ保存するか」だけを選ぶ。
     if (repo != null) {
         val syncRelay by repo.columnSyncRelayFlow().collectAsState()
-        Text("カラム構成のリレー保存", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
+        Text(stringResource(Res.string.colsync_title), color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
-            "リレーに保存済みのカラム構成（kind:30078 / NIP-78）があれば常に取り込みます（新しい方が優先）。" +
-                "このトグルを有効にすると、この端末でのカラム変更もリレーへ保存され、" +
-                "他の端末・クライアントから参照できます。無効（既定）なら読み取り専用です。\n" +
-                "※ 現在準備中のため一時的に無効化しています。",
+            stringResource(Res.string.colsync_desc),
             color = DeckColors.Text2, fontSize = DeckType.Caption, lineHeight = 17.sp,
         )
         SettingToggle(
-            "この端末の変更をリレーに保存（kind:30078）", syncRelay,
+            stringResource(Res.string.colsync_toggle), syncRelay,
             enabled = repo.columnSyncFeatureEnabled,
         ) { repo.setColumnSyncRelay(it) }
         Spacer(Modifier.size(DeckSpace.Lg))
@@ -942,23 +939,21 @@ private fun DataSettings() {
     }
 
     Text(
-        "端末内に保存しているキャッシュ（タイムライン履歴・プロフィール・チャンネル・送信待ち）を" +
-            "すべて消去し、リレーから取り直します。鍵・リレー設定・ハッシュタグ履歴は保持されます。",
+        stringResource(Res.string.data_purge_desc),
         color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = 19.sp,
     )
     Spacer(Modifier.size(DeckSpace.Lg))
-    DeckButton("キャッシュを強制消去", onClick = { confirm = true }, enabled = repo != null)
+    DeckButton(stringResource(Res.string.data_purge_button), onClick = { confirm = true }, enabled = repo != null)
     if (done) {
         Spacer(Modifier.size(DeckSpace.Sm))
-        Text("キャッシュを消去し、再取得を開始しました。", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.data_purge_done), color = DeckColors.Accent, fontSize = DeckType.Caption)
     }
 
     if (confirm) {
         DeckConfirmDialog(
-            title = "キャッシュを消去しますか？",
-            text = "保存済みのイベント・プロフィール・チャンネル・送信待ちをすべて削除し、" +
-                "リレーから取り直します。鍵やリレー設定は消えません。この操作は元に戻せません。",
-            confirmLabel = "消去する", destructive = true,
+            title = stringResource(Res.string.data_purge_title),
+            text = stringResource(Res.string.data_purge_text),
+            confirmLabel = stringResource(Res.string.data_purge_confirm), destructive = true,
             onConfirm = { repo?.purgeCache(); confirm = false; done = true },
             onDismiss = { confirm = false },
         )
@@ -980,11 +975,10 @@ fun LoginGate() {
         Spacer(Modifier.size(DeckSpace.Xl))
         AppMark(Modifier.size(56.dp))
         Spacer(Modifier.size(DeckSpace.Md))
-        Text("Nostrism へようこそ", color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
+        Text(stringResource(Res.string.login_welcome), color = DeckColors.Text, fontSize = DeckType.Emoji, fontWeight = DeckWeight.Strong)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
-            "ログイン方法を選んでください。秘密鍵を勝手に生成することはありません。" +
-                "アカウントをお持ちでない場合は「ローカル」から新規に鍵を作成できます。",
+            stringResource(Res.string.login_welcome_desc),
             color = DeckColors.Text3, fontSize = DeckType.Sub,
         )
         Spacer(Modifier.size(DeckSpace.Lg))
@@ -1023,7 +1017,7 @@ private fun SignerSettings() {
             Spacer(Modifier.width(DeckSpace.Sm))
             Column {
                 Text(
-                    myProfile?.name?.takeIf { it.isNotBlank() } ?: myPubkey?.take(10) ?: "（未取得）",
+                    myProfile?.name?.takeIf { it.isNotBlank() } ?: myPubkey?.take(10) ?: stringResource(Res.string.account_not_loaded),
                     color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 )
                 npub?.let {
@@ -1038,16 +1032,16 @@ private fun SignerSettings() {
         HorizontalDivider(color = DeckColors.Border)
         Spacer(Modifier.size(DeckSpace.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("ログイン方法: ", color = DeckColors.Text2, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.account_login_method_label), color = DeckColors.Text2, fontSize = DeckType.Caption)
             Text(signerMethodLabel(SignerProvider.current().method), color = DeckColors.Text, fontSize = DeckType.Caption)
             Spacer(Modifier.width(DeckSpace.Sm))
-            Text("● 有効", color = DeckColors.Verified, fontSize = DeckType.Label)
+            Text(stringResource(Res.string.account_active), color = DeckColors.Verified, fontSize = DeckType.Label)
         }
     }
 
     // ── ② このアカウントを守る ──
     Spacer(Modifier.size(DeckSpace.Xl))
-    Text("このアカウントを守る", color = DeckColors.Text3, fontSize = DeckType.Label)
+    Text(stringResource(Res.string.account_protect_section), color = DeckColors.Text3, fontSize = DeckType.Label)
     Spacer(Modifier.size(DeckSpace.Md))
     // [#Nosskey] パスキー(WebAuthn PRF)で nsec を保護。
     NosskeyLogin()
@@ -1056,7 +1050,7 @@ private fun SignerSettings() {
 
     // ── ③ 別のアカウントを使う ──
     Spacer(Modifier.size(DeckSpace.Lg))
-    Text("別のアカウントを使う", color = DeckColors.Text3, fontSize = DeckType.Label)
+    Text(stringResource(Res.string.account_switch_section), color = DeckColors.Text3, fontSize = DeckType.Label)
     Spacer(Modifier.size(DeckSpace.Md))
     if (!showRelogin) {
         // 入口は1行だけ。タップしても即座には何も起きない（警告ゲートへ）。
@@ -1067,12 +1061,12 @@ private fun SignerSettings() {
                 .padding(DeckSpace.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("別のアカウントでログインし直す", color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
+            Text(stringResource(Res.string.account_relogin_row), color = DeckColors.Text2, fontSize = DeckType.Sub, modifier = Modifier.weight(1f))
             Text("›", color = DeckColors.Text3, fontSize = DeckType.Sub)
         }
     } else {
         Text(
-            "ログイン方法を選んでください。端末で使える方法だけを表示しています。",
+            stringResource(Res.string.account_relogin_pick),
             color = DeckColors.Text3, fontSize = DeckType.Caption,
         )
         Spacer(Modifier.size(DeckSpace.Md))
@@ -1082,15 +1076,13 @@ private fun SignerSettings() {
         Nip46Login()
         // 秘密鍵（nsec）の取り込み / 新規生成。
         LocalSignerLogin()
-        DeckGhostButton("閉じる", onClick = { showRelogin = false })
+        DeckGhostButton(stringResource(Res.string.common_close), onClick = { showRelogin = false })
     }
     if (confirmRelogin) {
         DeckConfirmDialog(
-            title = "ログインし直しますか？",
-            text = "現在のログインを切り替える操作です。続行すると、端末内に保存しているキャッシュ" +
-                "（タイムライン履歴・プロフィール等）を消去します。ローカル鍵はバックアップ（nsec）が" +
-                "無いと復元できません。",
-            confirmLabel = "続行する", destructive = true,
+            title = stringResource(Res.string.relogin_title),
+            text = stringResource(Res.string.relogin_text),
+            confirmLabel = stringResource(Res.string.relogin_confirm), destructive = true,
             onConfirm = {
                 confirmRelogin = false
                 // [#154] アカウント混在を避けるため、端末内キャッシュを消去してから方法選択へ。
@@ -1106,14 +1098,13 @@ private fun SignerSettings() {
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Lg))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        DeckTextButton("ログアウト", color = DeckColors.Warn, onClick = { confirmLogout = true })
+        DeckTextButton(stringResource(Res.string.logout), color = DeckColors.Warn, onClick = { confirmLogout = true })
     }
     if (confirmLogout) {
         DeckConfirmDialog(
-            title = "ログアウトしますか？",
-            text = "この端末のログイン情報を削除します。ローカル鍵(nsec)は端末から消去されるため、" +
-                "バックアップが無いと元に戻せません。外部署名(Amber/リモート/パスキー)の接続も解除されます。",
-            confirmLabel = "ログアウト", destructive = true,
+            title = stringResource(Res.string.logout_title),
+            text = stringResource(Res.string.logout_text),
+            confirmLabel = stringResource(Res.string.logout), destructive = true,
             onConfirm = {
                 confirmLogout = false
                 // 外部の永続セッションを全て破棄してから未ログインへ（次回起動もゲートになる）。
@@ -1128,12 +1119,13 @@ private fun SignerSettings() {
 }
 
 /** [#154] 現在の署名方式のユーザー向け表示名。 */
+@Composable
 private fun signerMethodLabel(m: SignerMethod): String = when (m) {
-    SignerMethod.NIP55 -> "外部署名アプリ（Amber 等）"
-    SignerMethod.NIP46 -> "リモート署名（NIP-46）"
-    SignerMethod.NOSSKEY -> "パスキー保護（Nosskey）"
-    SignerMethod.LOCAL -> "この端末の鍵（ローカル署名）"
-    SignerMethod.NONE -> "未ログイン"
+    SignerMethod.NIP55 -> stringResource(Res.string.signer_nip55)
+    SignerMethod.NIP46 -> stringResource(Res.string.signer_nip46)
+    SignerMethod.NOSSKEY -> stringResource(Res.string.signer_nosskey)
+    SignerMethod.LOCAL -> stringResource(Res.string.signer_local)
+    SignerMethod.NONE -> stringResource(Res.string.signer_none)
     else -> m.name
 }
 
@@ -1145,14 +1137,14 @@ private fun signerMethodLabel(m: SignerMethod): String = when (m) {
 private fun NsecBackupRow() {
     if (SignerProvider.current().method != SignerMethod.LOCAL) return
     var showNsec by remember { mutableStateOf(false) }
-    Text("秘密鍵のバックアップ", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text(stringResource(Res.string.nsec_backup_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text(
-        "この端末に保管中の秘密鍵（nsec）を表示して控えられます。紛失すると復元できません。",
+        stringResource(Res.string.nsec_backup_desc),
         color = DeckColors.Text2, fontSize = DeckType.Caption,
     )
     Spacer(Modifier.size(DeckSpace.Md))
-    DeckTextButton("秘密鍵 (nsec) を表示…", color = DeckColors.Warn, onClick = { showNsec = true })
+    DeckTextButton(stringResource(Res.string.nsec_show), color = DeckColors.Warn, onClick = { showNsec = true })
     if (showNsec) NsecRevealDialog(onDismiss = { showNsec = false })
     Spacer(Modifier.size(DeckSpace.Lg))
     HorizontalDivider(color = DeckColors.Border)
@@ -1181,52 +1173,52 @@ private fun NosskeyLogin() {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Text("パスキーで保護（Nosskey）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text(stringResource(Res.string.nosskey_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text(
-        "秘密鍵をパスキー(生体認証)の PRF で暗号化して保護します（WebAuthn PRF）。",
+        stringResource(Res.string.nosskey_desc),
         color = DeckColors.Text2, fontSize = DeckType.Caption,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     when {
         unlocked -> {
-            Text("● パスキーで保護中（解錠済み）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.nosskey_protected_unlocked), color = DeckColors.Accent, fontSize = DeckType.Caption)
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckGhostButton("保護を解除（ローカル鍵に戻す）", onClick = {
+            DeckGhostButton(stringResource(Res.string.nosskey_unprotect_local), onClick = {
                 provider.logout(); SignerProvider.useLocal(); repo?.reloadForNewIdentity(); refresh++
             })
         }
         hasSession -> {
-            Text("● パスキーで保護中（未解錠）", color = DeckColors.Accent, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.nosskey_protected_locked), color = DeckColors.Accent, fontSize = DeckType.Caption)
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckButton(if (busy) "解錠中…" else "パスキーで解錠", enabled = !busy, onClick = {
+            DeckButton(if (busy) stringResource(Res.string.nosskey_unlocking) else stringResource(Res.string.nosskey_unlock), enabled = !busy, onClick = {
                 busy = true; error = null
                 scope.launch {
                     try {
-                        if (provider.unlock() != null) refresh++ else error = "解錠に失敗しました"
-                    } catch (e: Throwable) { error = "解錠失敗: ${e.message}" }
+                        if (provider.unlock() != null) refresh++ else error = getString(Res.string.nosskey_unlock_failed)
+                    } catch (e: Throwable) { error = getString(Res.string.nosskey_unlock_failed_fmt, e.message ?: "?") }
                     busy = false
                 }
             })
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckGhostButton("保護を解除", onClick = { provider.logout(); refresh++ })
+            DeckGhostButton(stringResource(Res.string.nosskey_unprotect), onClick = { provider.logout(); refresh++ })
         }
         current.method == SignerMethod.LOCAL -> {
-            DeckButton(if (busy) "登録中…" else "パスキーで保護する", enabled = !busy, onClick = {
+            DeckButton(if (busy) stringResource(Res.string.nosskey_enrolling) else stringResource(Res.string.nosskey_enroll), enabled = !busy, onClick = {
                 busy = true; error = null
                 scope.launch {
                     try {
                         if (provider.enroll() != null) {
                             ExternalSignerHost.provider?.logout() // 他方式の永続セッションを掃除
                             refresh++
-                        } else error = "登録に失敗しました（PRF 非対応/キャンセル/ドメイン未関連付け）"
-                    } catch (e: Throwable) { error = "登録失敗: ${e.message}" }
+                        } else error = getString(Res.string.nosskey_enroll_failed)
+                    } catch (e: Throwable) { error = getString(Res.string.nosskey_enroll_failed_fmt, e.message ?: "?") }
                     busy = false
                 }
             })
         }
         else -> {
-            Text("ローカル鍵のときにパスキー保護を設定できます。", color = DeckColors.Text3, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.nosskey_local_only), color = DeckColors.Text3, fontSize = DeckType.Caption)
         }
     }
     error?.let {
@@ -1258,49 +1250,49 @@ private fun Nip46Login() {
 
     fun afterConnect() { ExternalSignerHost.provider?.logout(); repo?.reloadForNewIdentity() }
 
-    Text("リモート署名でログイン（NIP-46）", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text(stringResource(Res.string.nip46_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text(
-        "署名アプリ(Amber 等)や bunker と接続します。秘密鍵はリモート署名側に留まります。",
+        stringResource(Res.string.nip46_desc),
         color = DeckColors.Text2, fontSize = DeckType.Caption,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     if (onNip46) {
-        Text("● リモート署名で接続中", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.nip46_connected), color = DeckColors.Accent, fontSize = DeckType.Caption)
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckGhostButton("ローカル鍵に戻す", onClick = {
+        DeckGhostButton(stringResource(Res.string.back_to_local), onClick = {
             Nip46Manager.disconnect()
             SignerProvider.useLocal()
             repo?.reloadForNewIdentity()
         })
     } else if (generated != null) {
         // nostrconnect:// 生成済み → 署名アプリで貼付・承認を待つ。
-        Text("この接続リンクを署名アプリで「クリップボードから貼付」して承認してください:",
+        Text(stringResource(Res.string.nip46_paste_prompt),
             color = DeckColors.Text2, fontSize = DeckType.Caption)
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(generated!!, color = DeckColors.Accent, fontSize = DeckType.Caption,
             maxLines = 3, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.size(DeckSpace.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            DeckGhostButton("コピー", onClick = { clipboard.setText(AnnotatedString(generated!!)) })
+            DeckGhostButton(stringResource(Res.string.common_copy), onClick = { clipboard.setText(AnnotatedString(generated!!)) })
             Spacer(Modifier.size(DeckSpace.Md))
-            Text("承認待ち…", color = DeckColors.Text3, fontSize = DeckType.Caption)
+            Text(stringResource(Res.string.nip46_waiting), color = DeckColors.Text3, fontSize = DeckType.Caption)
         }
     } else {
-        DeckButton(if (busy) "生成中…" else "接続リンクを生成（Amber 等）", enabled = !busy, onClick = {
+        DeckButton(if (busy) stringResource(Res.string.nip46_generating) else stringResource(Res.string.nip46_generate), enabled = !busy, onClick = {
             busy = true; error = null
             scope.launch {
                 try {
                     Nip46Manager.connectNostrConnect(appName = "Nostrism", onUri = { generated = it })
                     afterConnect()
                 } catch (e: Throwable) {
-                    error = "接続に失敗: ${e.message}"; generated = null
+                    error = getString(Res.string.connect_failed_fmt, e.message ?: "?"); generated = null
                 }
                 busy = false
             }
         })
         Spacer(Modifier.size(DeckSpace.Md))
-        Text("または bunker:// を貼り付け:", color = DeckColors.Text3, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.nip46_bunker_prompt), color = DeckColors.Text3, fontSize = DeckType.Caption)
         Spacer(Modifier.size(DeckSpace.Xs))
         DeckTextField(
             value = uri,
@@ -1309,13 +1301,13 @@ private fun Nip46Login() {
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton(if (busy) "接続中…" else "bunker に接続", enabled = !busy && uri.trim().startsWith("bunker://"), onClick = {
+        DeckButton(if (busy) stringResource(Res.string.connecting) else stringResource(Res.string.nip46_connect_bunker), enabled = !busy && uri.trim().startsWith("bunker://"), onClick = {
             busy = true; error = null
             scope.launch {
                 try {
                     Nip46Manager.connectBunker(uri.trim()); afterConnect(); uri = ""
                 } catch (e: Throwable) {
-                    error = "接続に失敗: ${e.message}"
+                    error = getString(Res.string.connect_failed_fmt, e.message ?: "?")
                 }
                 busy = false
             }
@@ -1347,24 +1339,24 @@ private fun ExternalSignerLogin() {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Text("外部署名アプリでログイン", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text(stringResource(Res.string.nip55_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text(
-        "秘密鍵をアプリに渡さず、${provider.label} 側で署名します（NIP-55）。",
+        stringResource(Res.string.nip55_desc_fmt, provider.label),
         color = DeckColors.Text2, fontSize = DeckType.Caption,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     if (onExternal) {
-        Text("● ${provider.label} で認証中", color = DeckColors.Accent, fontSize = DeckType.Caption)
+        Text(stringResource(Res.string.nip55_connected_fmt, provider.label), color = DeckColors.Accent, fontSize = DeckType.Caption)
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckGhostButton("ローカル鍵に戻す", onClick = {
+        DeckGhostButton(stringResource(Res.string.back_to_local), onClick = {
             provider.logout()
             Nip46Manager.disconnect()
             SignerProvider.useLocal()
             repo?.reloadForNewIdentity()
         })
     } else {
-        DeckButton(if (busy) "接続中…" else "${provider.label} でログイン", enabled = !busy, onClick = { confirm = true })
+        DeckButton(if (busy) stringResource(Res.string.connecting) else stringResource(Res.string.nip55_login_fmt, provider.label), enabled = !busy, onClick = { confirm = true })
     }
     error?.let {
         Spacer(Modifier.size(DeckSpace.Xs))
@@ -1373,7 +1365,7 @@ private fun ExternalSignerLogin() {
 
     if (confirm) {
         KeySwitchConfirm(
-            title = "${provider.label} でログインしますか？",
+            title = stringResource(Res.string.nip55_confirm_title_fmt, provider.label),
             onConfirm = {
                 confirm = false; busy = true; error = null
                 scope.launch {
@@ -1382,9 +1374,9 @@ private fun ExternalSignerLogin() {
                         if (hex != null) {
                             Nip46Manager.disconnect()  // 他方式の外部セッションを掃除
                             repo?.reloadForNewIdentity()
-                        } else error = "ログインがキャンセルされました"
+                        } else error = getString(Res.string.login_cancelled)
                     } catch (e: Throwable) {
-                        error = "ログイン失敗: ${e.message}"
+                        error = getString(Res.string.login_failed_fmt, e.message ?: "?")
                     }
                     busy = false
                 }
@@ -1409,7 +1401,7 @@ private fun ExternalSignerLogin() {
 private fun RelaySettings() {
     val repo = LocalRepository.current
     if (repo == null) {
-        Text("リレー情報を利用できません", color = DeckColors.Text3, fontSize = DeckType.Sub)
+        Text(stringResource(Res.string.relays_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
     }
     val relays by repo.relaysFlow().collectAsState(emptyList())
@@ -1420,11 +1412,10 @@ private fun RelaySettings() {
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var confirmSave by remember { mutableStateOf(false) }
 
-    Text("取得・配信に使うリレー（NIP-65 Inbox/Outbox）", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.relays_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "Read=Inbox（自分宛を読む・購読接続）/ Write=Outbox（投稿を流す）。" +
-            "チェックを編集して「保存」で kind:10002 を公開します。",
+        stringResource(Res.string.relays_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
@@ -1437,13 +1428,13 @@ private fun RelaySettings() {
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton("追加", onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
+        DeckButton(stringResource(Res.string.common_add), onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
     // 保存 = kind:10002 をネットワークへ公開する外向き操作なので確認を挟む。
     DeckButton(
-        if (publishing) "保存中…" else "保存",
+        if (publishing) stringResource(Res.string.common_saving) else stringResource(Res.string.common_save),
         enabled = !publishing,
         onClick = { confirmSave = true },
     )
@@ -1453,17 +1444,17 @@ private fun RelaySettings() {
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Md))
-    Text("AUTH（NIP-42）への応答", color = DeckColors.Text2, fontSize = DeckType.Caption)
+    Text(stringResource(Res.string.auth_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
-        "AUTH必須リレーからのDM等を受け取るための認証です。応答すると自分の公開鍵をそのリレーに証明します。",
+        stringResource(Res.string.auth_desc),
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Sm))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
-        ChoiceChip("DM/自分のリレーのみ", authPolicy == AuthPolicy.DM_AND_MINE) { repo.setAuthPolicy(AuthPolicy.DM_AND_MINE) }
-        ChoiceChip("常に応答", authPolicy == AuthPolicy.ALWAYS) { repo.setAuthPolicy(AuthPolicy.ALWAYS) }
-        ChoiceChip("無効", authPolicy == AuthPolicy.OFF) { repo.setAuthPolicy(AuthPolicy.OFF) }
+        ChoiceChip(stringResource(Res.string.auth_dm_mine), authPolicy == AuthPolicy.DM_AND_MINE) { repo.setAuthPolicy(AuthPolicy.DM_AND_MINE) }
+        ChoiceChip(stringResource(Res.string.auth_always), authPolicy == AuthPolicy.ALWAYS) { repo.setAuthPolicy(AuthPolicy.ALWAYS) }
+        ChoiceChip(stringResource(Res.string.auth_off), authPolicy == AuthPolicy.OFF) { repo.setAuthPolicy(AuthPolicy.OFF) }
     }
 
     Spacer(Modifier.size(DeckSpace.Md))
@@ -1484,7 +1475,7 @@ private fun RelaySettings() {
             }
             RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
             RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
-            DeckTextButton("削除", color = DeckColors.Warn, onClick = { confirmRemove = r.url })
+            DeckTextButton(stringResource(Res.string.common_delete), color = DeckColors.Warn, onClick = { confirmRemove = r.url })
         }
         HorizontalDivider(color = DeckColors.Border)
     }
@@ -1497,7 +1488,7 @@ private fun RelaySettings() {
     var recsLoading by remember { mutableStateOf(false) }
     Spacer(Modifier.size(DeckSpace.Md))
     DeckTextButton(
-        if (showRecs) "▲ 候補を閉じる" else "▼ 候補から追加（おすすめ）",
+        if (showRecs) stringResource(Res.string.recs_close) else stringResource(Res.string.recs_open),
         onClick = {
             showRecs = !showRecs
             if (showRecs && recs == null && !recsLoading) {
@@ -1513,10 +1504,10 @@ private fun RelaySettings() {
         Spacer(Modifier.size(DeckSpace.Sm))
         val registeredRelays = relays.map { normalizePresetUrl(it.url) }.toSet()
         when {
-            recsLoading -> Text("フォロー中のリレーリスト(NIP-65)を集計中…", color = DeckColors.Text3, fontSize = DeckType.Label)
+            recsLoading -> Text(stringResource(Res.string.relays_recs_loading), color = DeckColors.Text3, fontSize = DeckType.Label)
             !recs.isNullOrEmpty() -> RecommendedRelayChips(recs!!, registeredRelays, onAdd = { repo.addRelay(it) })
             else -> {
-                Text("集計できませんでした（フォローが無い等）。定番の候補:", color = DeckColors.Text3, fontSize = DeckType.Label)
+                Text(stringResource(Res.string.relays_recs_empty), color = DeckColors.Text3, fontSize = DeckType.Label)
                 Spacer(Modifier.size(DeckSpace.Sm))
                 PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
             }
@@ -1526,26 +1517,25 @@ private fun RelaySettings() {
     // 削除は破壊的操作なので確認を挟む。
     confirmRemove?.let { url ->
         DeckConfirmDialog(
-            title = "リレーを削除しますか？",
-            text = "$url\n一覧から削除されます。次回「保存」で公開する kind:10002 にも反映されます。",
-            confirmLabel = "削除する", destructive = true,
+            title = stringResource(Res.string.relay_delete_title),
+            text = stringResource(Res.string.relay_delete_text_fmt, url),
+            confirmLabel = stringResource(Res.string.common_delete_confirm), destructive = true,
             onConfirm = { repo.removeRelay(url); confirmRemove = null },
             onDismiss = { confirmRemove = null },
         )
     }
     if (confirmSave) {
         DeckConfirmDialog(
-            title = "リレーリストを公開しますか？",
-            text = "現在の Read/Write 設定を kind:10002 として署名し、" +
-                "Write リレーと接続中リレーへ配信します。ネットワークに公開される操作です。",
-            confirmLabel = "公開する",
+            title = stringResource(Res.string.relays_publish_title),
+            text = stringResource(Res.string.relays_publish_text),
+            confirmLabel = stringResource(Res.string.relays_publish_confirm),
             onConfirm = {
                 confirmSave = false
                 publishing = true
                 scope.launch {
                     val ok = repo.publishRelayList()
                     publishing = false
-                    toast(if (ok) "リレーリストを公開しました" else "公開に失敗しました（鍵を確認してください）")
+                    toast(if (ok) getString(Res.string.relays_published) else getString(Res.string.relays_publish_failed))
                 }
             },
             onDismiss = { confirmSave = false },
@@ -1581,6 +1571,11 @@ private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean)
 private fun LocalSignerLogin() {
     val repo = LocalRepository.current
     var nsecInput by remember { mutableStateOf("") }
+    // [#160] onClick（非コンポーザブル）で使う文言はコンポジション中に解決しておく。
+    val nsecHead = nsecInput.filterNot { it.isWhitespace() }.take(8)
+        .ifBlank { stringResource(Res.string.nsec_empty_head) }
+    val nsecInvalidMsg = stringResource(Res.string.nsec_invalid_fmt, nsecHead)
+    val nsecImportFailedPrefix = stringResource(Res.string.nsec_import_failed_fmt, "").trimEnd(' ', ':', '：')
     var reveal by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // 鍵の切り替えは破壊的（依存データが飛ぶ）ので確認ダイアログで一旦止める。
@@ -1588,17 +1583,17 @@ private fun LocalSignerLogin() {
     var pendingImportHex by remember { mutableStateOf<String?>(null) }
     var confirmGenerate by remember { mutableStateOf(false) }
 
-    Text("秘密鍵（nsec）でログイン", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
+    Text(stringResource(Res.string.nsec_login_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     Spacer(Modifier.size(DeckSpace.Sm))
     Text(
-        "nsec を取り込むか、新しい鍵を生成します。取り込んだ鍵はこの端末に保管されます。",
+        stringResource(Res.string.nsec_login_desc),
         color = DeckColors.Text2, fontSize = DeckType.Caption,
     )
     Spacer(Modifier.size(DeckSpace.Md))
     DeckTextField(
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
-        placeholder = "nsec を貼り付けて取り込み",
+        placeholder = stringResource(Res.string.nsec_placeholder),
         // 秘密鍵なのでパスワード扱い：マスク表示 + パスワードキーボード + 自動入力対応。
         // 中身を目視確認できるよう表示/非表示トグルを付ける（自動入力の取り違え検知用）。
         visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
@@ -1606,7 +1601,7 @@ private fun LocalSignerLogin() {
         inputModifier = Modifier.secretAutofill { nsecInput = it; error = null },
         trailing = {
             Text(
-                if (reveal) "隠す" else "表示",
+                if (reveal) stringResource(Res.string.common_hide) else stringResource(Res.string.common_show),
                 color = DeckColors.Accent, fontSize = DeckType.Caption,
                 modifier = Modifier.clickable { reveal = !reveal }.padding(DeckSpace.Xs),
             )
@@ -1620,30 +1615,26 @@ private fun LocalSignerLogin() {
 
     Spacer(Modifier.size(DeckSpace.Sm))
     Row(Modifier.fillMaxWidth()) {
-        DeckButton("取り込み", onClick = {
+        DeckButton(stringResource(Res.string.nsec_import), onClick = {
             // 改行・空白は除去（折り返しコピーや自動入力の混入対策）。先に検証し、
             // 正しい nsec のときだけ確認ダイアログを出す（破壊的操作の手前で止める）。
             val s = nsecInput.filterNot { it.isWhitespace() }
             try {
-                require(s.startsWith("nsec1")) {
-                    val head = s.take(8).ifBlank { "(空)" }
-                    "nsec1… で始まる秘密鍵を入力してください（入力の先頭: $head）。" +
-                        "自動入力で別の値が入っていないか「表示」で確認してください。"
-                }
+                require(s.startsWith("nsec1")) { nsecInvalidMsg }
                 pendingImportHex = Nip19.nsecToHex(s)  // 検証も兼ねる
                 error = null
             } catch (e: Throwable) {
-                error = "nsec の取り込みに失敗: ${e.message}"
+                error = if (!s.startsWith("nsec1")) nsecInvalidMsg else "$nsecImportFailedPrefix: ${e.message}"
             }
         })
         Spacer(Modifier.size(DeckSpace.Md))
-        DeckGhostButton("新規生成", onClick = { confirmGenerate = true })
+        DeckGhostButton(stringResource(Res.string.nsec_generate), onClick = { confirmGenerate = true })
     }
 
     // --- 鍵切り替えの確認（破壊的操作のガード） ---
     pendingImportHex?.let { hex ->
         KeySwitchConfirm(
-            title = "この nsec に切り替えますか？",
+            title = stringResource(Res.string.keyswitch_import_title),
             onConfirm = {
                 SignerProvider.importPrivateKey(hex.hexToBytes())
                 repo?.reloadForNewIdentity()
@@ -1656,7 +1647,7 @@ private fun LocalSignerLogin() {
     }
     if (confirmGenerate) {
         KeySwitchConfirm(
-            title = "新しい鍵を生成しますか？",
+            title = stringResource(Res.string.keyswitch_generate_title),
             onConfirm = {
                 SignerProvider.generateNewKey()
                 repo?.reloadForNewIdentity()
@@ -1676,10 +1667,8 @@ private fun LocalSignerLogin() {
 private fun KeySwitchConfirm(title: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     DeckConfirmDialog(
         title = title,
-        text = "現在のアカウントのフォロー・リレーリスト(NIP-65)・タイムライン履歴・" +
-            "プロフィールのキャッシュはすべて破棄され、新しい鍵で読み直します。" +
-            "この操作は元に戻せません。",
-        confirmLabel = "切り替える", destructive = true,
+        text = stringResource(Res.string.keyswitch_text),
+        confirmLabel = stringResource(Res.string.keyswitch_confirm), destructive = true,
         onConfirm = onConfirm,
         onDismiss = onDismiss,
     )
@@ -1705,11 +1694,9 @@ private fun NsecRevealDialog(onDismiss: () -> Unit) {
     if (!revealed) {
         // ① 表示前の注意喚起。
         DeckConfirmDialog(
-            title = "秘密鍵を表示します",
-            text = "秘密鍵 (nsec) を知っている人は、あなたのアカウントを完全に操作できます。" +
-                "周囲からの覗き見（ショルダーハッキング）に注意し、" +
-                "スクリーンショット・画面録画・画面共有に写り込まない状態で表示してください。",
-            confirmLabel = "表示する", destructive = true,
+            title = stringResource(Res.string.nsec_reveal_warn_title),
+            text = stringResource(Res.string.nsec_reveal_warn_text),
+            confirmLabel = stringResource(Res.string.nsec_reveal_confirm), destructive = true,
             onConfirm = { revealed = true },
             onDismiss = onDismiss,
         )
@@ -1719,11 +1706,11 @@ private fun NsecRevealDialog(onDismiss: () -> Unit) {
             onDismissRequest = onDismiss,
             containerColor = DeckColors.Surface,
             shape = RoundedCornerShape(DeckRadius.Lg),
-            title = { Text("秘密鍵 (nsec)", color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+            title = { Text(stringResource(Res.string.nsec_dialog_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
             text = {
                 Column {
                     Text(
-                        nsec ?: "秘密鍵を取得できませんでした。",
+                        nsec ?: stringResource(Res.string.nsec_fetch_failed),
                         color = if (nsec != null) DeckColors.Text else DeckColors.Warn,
                         fontSize = DeckType.Caption,
                         fontFamily = FontFamily.Monospace,
@@ -1731,8 +1718,7 @@ private fun NsecRevealDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.size(DeckSpace.Md))
                     Text(
-                        "パスワードマネージャーなど安全な場所に控えてください。" +
-                            "コピーした場合、クリップボードの履歴や同期にも残ることがあります。",
+                        stringResource(Res.string.nsec_keep_safe),
                         color = DeckColors.Text3, fontSize = DeckType.Label,
                     )
                 }
@@ -1740,13 +1726,13 @@ private fun NsecRevealDialog(onDismiss: () -> Unit) {
             confirmButton = {
                 if (nsec != null) {
                     DeckTextButton(
-                        if (copied) "コピーしました" else "コピー",
+                        if (copied) stringResource(Res.string.copied) else stringResource(Res.string.common_copy),
                         color = if (copied) DeckColors.Text3 else DeckColors.Text,
                         onClick = { copySensitive(nsec); copied = true },
                     )
                 }
             },
-            dismissButton = { DeckTextButton("閉じる", color = DeckColors.Text3, onClick = onDismiss) },
+            dismissButton = { DeckTextButton(stringResource(Res.string.common_close), color = DeckColors.Text3, onClick = onDismiss) },
         )
     }
 }

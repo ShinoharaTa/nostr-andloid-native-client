@@ -1,6 +1,9 @@
 package app.nostrdeck.model
 
 import app.nostrdeck.crypto.currentUnixTime
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.StringResource
 
 /** 追加カラムの設定種別。 */
 enum class ColumnConfig { NONE, TEXT, NOTIF_FILTER, RELAY_SET }
@@ -9,30 +12,35 @@ enum class ColumnConfig { NONE, TEXT, NOTIF_FILTER, RELAY_SET }
  * 追加できるカラムの種別を「絞った」一覧（白紙のフィルタ組みではなく選ぶ）。
  * スレッドは文脈型（ノートをタップして開く）なのでここには含めない。
  */
+// [#160] ラベル/ヒントは文字列リソース（UI 層で stringResource() 解決）。
 enum class ColumnTemplate(
-    val label: String,
+    val label: StringResource,
     val config: ColumnConfig = ColumnConfig.NONE,
-    val hint: String? = null,
+    val hint: StringResource? = null,
 ) {
-    FOLLOWING("フォロー中"),
-    GLOBAL("グローバル", ColumnConfig.RELAY_SET, "配信先リレー（未選択＝全リレー）"),
-    NOTIFICATIONS("通知", ColumnConfig.NOTIF_FILTER),
-    DM("DM"),
-    PROFILE("指定 npub の投稿", ColumnConfig.TEXT, "npub または hex"),
-    SEARCH("キーワード・タグ", ColumnConfig.TEXT, "スペース区切りで複数可（#〜=タグ）"),
-    HASHTAG("ハッシュタグ", ColumnConfig.TEXT, "タグ（# は不要）"),
-    FAVS("ふぁぼ欄", hint = "自分がリアクションした投稿"),
+    FOLLOWING(Res.string.tpl_following),
+    GLOBAL(Res.string.tpl_global, ColumnConfig.RELAY_SET, Res.string.tpl_global_hint),
+    NOTIFICATIONS(Res.string.tpl_notifications, ColumnConfig.NOTIF_FILTER),
+    DM(Res.string.nav_dm),
+    PROFILE(Res.string.tpl_profile, ColumnConfig.TEXT, Res.string.tpl_profile_hint),
+    SEARCH(Res.string.tpl_search, ColumnConfig.TEXT, Res.string.tpl_search_hint),
+    HASHTAG(Res.string.tpl_hashtag, ColumnConfig.TEXT, Res.string.tpl_hashtag_hint),
+    FAVS(Res.string.tpl_favs, hint = Res.string.tpl_favs_hint),
 }
 
 /** 通知で選べるイベント種別（永続化されるフィルタ）。 */
-enum class NotifKind(val label: String, val kind: Int) {
-    MENTION("メンション", 1),
-    REACTION("リアクション", 7),
-    ZAP("Zap", 9735),
-    REPOST("リポスト", 6),
+enum class NotifKind(val label: StringResource, val kind: Int) {
+    MENTION(Res.string.notif_mention, 1),
+    REACTION(Res.string.notif_reaction, 7),
+    ZAP(Res.string.notif_zap, 9735),
+    REPOST(Res.string.notif_repost, 6),
 }
 
-/** テンプレ + 入力 → ColumnSpec を生成。[relays]=GLOBAL の配信先リレー集合。 */
+/**
+ * テンプレ + 入力 → ColumnSpec を生成。[relays]=GLOBAL の配信先リレー集合。
+ * [#160] ここで入れる日本語タイトルは DB に永続化される**正準キー**。表示時に
+ * [app.nostrdeck.ui.columnDisplayTitle] がロケールへマップするため、変更しないこと。
+ */
 fun ColumnTemplate.build(
     input: String = "",
     notifKinds: List<Int> = NotifKind.entries.map { it.kind },

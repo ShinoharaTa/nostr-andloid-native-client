@@ -28,6 +28,9 @@ import androidx.compose.ui.window.Dialog
 import app.nostrdeck.nostr.RelayConn
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -112,12 +115,12 @@ fun RelayStatusDialog(conns: List<RelayConn>, onDismiss: () -> Unit) {
                 .background(DeckColors.Surface).padding(vertical = DeckSpace.Md),
         ) {
             Text(
-                "リレー状態", color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong,
+                stringResource(Res.string.relay_status_title), color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong,
                 modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Xs),
             )
             Spacer(Modifier.size(DeckSpace.Xs))
             if (conns.isEmpty()) {
-                Text("接続中のリレーはありません", color = DeckColors.Text3, fontSize = DeckType.Caption,
+                Text(stringResource(Res.string.relay_status_empty), color = DeckColors.Text3, fontSize = DeckType.Caption,
                     modifier = Modifier.padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Sm))
             } else {
                 conns.forEach { c -> RelayStatusRow(c) }
@@ -144,8 +147,9 @@ private fun RelayStatusRow(c: RelayConn) {
     }
 }
 
+@Composable
 private fun statusLabel(s: RelayConnState): String = when (s) {
-    RelayConnState.CONNECTED -> "接続"
-    RelayConnState.CONNECTING -> "接続中"
-    RelayConnState.DISCONNECTED -> "切断"
+    RelayConnState.CONNECTED -> stringResource(Res.string.relay_state_connected)
+    RelayConnState.CONNECTING -> stringResource(Res.string.relay_state_connecting)
+    RelayConnState.DISCONNECTED -> stringResource(Res.string.relay_state_disconnected)
 }

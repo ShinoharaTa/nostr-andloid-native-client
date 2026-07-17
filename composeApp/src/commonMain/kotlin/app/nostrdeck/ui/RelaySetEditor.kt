@@ -26,6 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 
@@ -54,7 +57,7 @@ fun RelaySetEditor(initial: List<String>, onChange: (List<String>) -> Unit) {
 
     Column(Modifier.fillMaxWidth()) {
         Text(
-            if (selected.isEmpty()) "未選択＝全リレーから取得" else "${selected.size} 件のリレーへ配信",
+            if (selected.isEmpty()) stringResource(Res.string.relayset_all) else stringResource(Res.string.relayset_count_fmt, selected.size),
             color = DeckColors.Text3, fontSize = DeckType.Label,
         )
         Spacer(Modifier.size(DeckSpace.Sm))
@@ -90,7 +93,7 @@ fun RelaySetEditor(initial: List<String>, onChange: (List<String>) -> Unit) {
                 placeholder = "wss://…（任意で追加）", modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckButton("追加", enabled = custom.isNotBlank(), onClick = {
+            DeckButton(stringResource(Res.string.common_add), enabled = custom.isNotBlank(), onClick = {
                 val u = custom.trim()
                 if (u.isNotBlank() && u !in selected) selected.add(u)
                 custom = ""

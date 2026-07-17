@@ -25,6 +25,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckSpace
@@ -154,7 +157,7 @@ fun DeckConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     destructive: Boolean = false,
-    dismissLabel: String? = "キャンセル",
+    dismissLabel: String? = stringResource(Res.string.common_cancel),
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -197,6 +200,6 @@ fun DeckInputDialog(
             DeckTextButton(confirmLabel, onClick = { if (confirmEnabled) onConfirm() },
                 color = if (confirmEnabled) DeckColors.Text else DeckColors.Text3)
         },
-        dismissButton = { DeckTextButton("キャンセル", onClick = onDismiss, color = DeckColors.Text3) },
+        dismissButton = { DeckTextButton(stringResource(Res.string.common_cancel), onClick = onDismiss, color = DeckColors.Text3) },
     )
 }
