@@ -20,8 +20,8 @@
     <string name="group_system">System</string>
 
     <!-- Settings: sections / tiles -->
-    <string name="section_account">Account</string>
-    <string name="section_signer">Login method</string>
+    <string name="section_account">Edit profile</string>
+    <string name="section_signer">Account</string>
     <string name="section_relays">Relays</string>
     <string name="section_dm_relays">DM relays</string>
     <string name="section_media">Media servers</string>
