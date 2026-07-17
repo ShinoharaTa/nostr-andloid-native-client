@@ -55,6 +55,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.getString
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -156,6 +160,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
         val saveImage = rememberImageSaver()
         val toast = rememberToaster()
         val clipboard = LocalClipboardManager.current
+    val urlCopiedMsg = stringResource(Res.string.img_url_copied)
         // 二重タップ連打での多重保存を防ぐ。
         var saving by remember { mutableStateOf(false) }
         // 長押しメニューの開閉。
@@ -167,7 +172,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                 val url = urls[pager.currentPage]
                 scope.launch {
                     val ok = saveImage(url)
-                    toast(if (ok) "画像を保存しました" else "保存に失敗しました")
+                    toast(if (ok) getString(Res.string.img_saved) else getString(Res.string.img_save_failed))
                     saving = false
                 }
             }
@@ -202,25 +207,25 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                 Modifier.align(Alignment.TopEnd).padding(DeckSpace.Md),
                 horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
             ) {
-                OverlayIconButton(Icons.Outlined.Download, "画像を保存", onClick = doSave)
-                OverlayIconButton(Icons.Filled.Close, "閉じる", onClick = onDismiss)
+                OverlayIconButton(Icons.Outlined.Download, stringResource(Res.string.img_save), onClick = doSave)
+                OverlayIconButton(Icons.Filled.Close, stringResource(Res.string.common_close), onClick = onDismiss)
             }
 
             // 長押しメニュー（画像を保存 / URLをコピー）。中央付近にアンカーする。
             Box(Modifier.align(Alignment.Center)) {
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("画像を保存") },
+                        text = { Text(stringResource(Res.string.img_save)) },
                         leadingIcon = { Icon(Icons.Outlined.Download, null, modifier = Modifier.size(DeckDimens.IconMd)) },
                         onClick = { menuOpen = false; doSave() },
                     )
                     DropdownMenuItem(
-                        text = { Text("URLをコピー") },
+                        text = { Text(stringResource(Res.string.img_copy_url)) },
                         leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(DeckDimens.IconMd)) },
                         onClick = {
                             menuOpen = false
                             clipboard.setText(AnnotatedString(urls[pager.currentPage]))
-                            toast("URLをコピーしました")
+                            toast(urlCopiedMsg)
                         },
                     )
                 }

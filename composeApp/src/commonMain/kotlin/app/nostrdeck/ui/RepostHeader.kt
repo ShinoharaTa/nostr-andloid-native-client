@@ -15,6 +15,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 
@@ -30,7 +33,7 @@ fun RepostHeader(name: String, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(DeckSpace.Xs))
         Text(
-            "$name がリポスト",
+            stringResource(Res.string.reposted_by_fmt, name),
             color = DeckColors.Text3,
             fontSize = DeckType.Label,
             maxLines = 1,

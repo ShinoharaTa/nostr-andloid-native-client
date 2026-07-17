@@ -45,6 +45,9 @@ import app.nostrdeck.model.CustomEmoji
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.UsedEmoji
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
@@ -98,7 +101,7 @@ fun ReactionPickerSheet(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "絵文字を検索（例: わらい / fire / 🔥）",
+                placeholder = stringResource(Res.string.picker_search_placeholder),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
             Spacer(Modifier.size(DeckSpace.Sm))
@@ -112,16 +115,16 @@ fun ReactionPickerSheet(
                     val matchedCustom = customs.filter { it.shortcode.contains(q, ignoreCase = true) }
                     val matchedUnicode = EmojiCatalog.search(q)
                     if (matchedCustom.isEmpty() && matchedUnicode.isEmpty()) {
-                        EmptyHint("一致する絵文字がありません")
+                        EmptyHint(stringResource(Res.string.picker_no_match))
                     } else {
                         if (matchedCustom.isNotEmpty()) {
-                            SectionLabel("カスタム")
+                            SectionLabel(stringResource(Res.string.picker_custom))
                             EmojiFlow {
                                 matchedCustom.forEach { CustomEmojiButton(it) { onPick(":${it.shortcode}:", it.url); onDismiss() } }
                             }
                         }
                         if (matchedUnicode.isNotEmpty()) {
-                            SectionLabel("絵文字")
+                            SectionLabel(stringResource(Res.string.picker_emoji))
                             EmojiFlow {
                                 matchedUnicode.forEach { e -> UnicodeEmojiButton(e.char) { onPick(e.char, null); onDismiss() } }
                             }
@@ -129,13 +132,13 @@ fun ReactionPickerSheet(
                     }
                 } else {
                     if (recents.isNotEmpty()) {
-                        SectionLabel("最近")
+                        SectionLabel(stringResource(Res.string.picker_recent))
                         EmojiFlow {
                             recents.forEach { r -> RecentEmojiButton(r) { onPick(r.content, r.imageUrl); onDismiss() } }
                         }
                     }
                     if (customs.isNotEmpty()) {
-                        SectionLabel("カスタム絵文字")
+                        SectionLabel(stringResource(Res.string.picker_custom_emoji))
                         EmojiFlow {
                             customs.forEach { c -> CustomEmojiButton(c) { onPick(":${c.shortcode}:", c.url); onDismiss() } }
                         }

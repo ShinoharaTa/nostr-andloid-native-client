@@ -71,6 +71,10 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.getString
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -269,7 +273,7 @@ fun ComposeSheet(
                 } catch (_: Throwable) {
                     // [#55] タイムアウト等でハングが失敗に変わってもここに落ちる。本文・添付・下書きは
                     // 保持したまま（clearDraft は成功時のみ）、送信ボタンを再有効化してワンタップ再送できる。
-                    sendError = "投稿に失敗しました。添付はそのままなので、もう一度お試しください。"
+                    sendError = getString(Res.string.compose_send_failed)
                     sending = false          // 失敗判定 → 送信ボタン再有効化
                 }
             }
@@ -327,7 +331,7 @@ fun ComposeSheet(
                 ) {
                     AccountHeader(pubkey = myPubkey, profile = myProfile, modifier = Modifier.weight(1f))
                     HeaderIconButton(
-                        Icons.Outlined.Close, "閉じる", tint = DeckColors.Text2,
+                        Icons.Outlined.Close, stringResource(Res.string.common_close), tint = DeckColors.Text2,
                         onClick = if (sending) null else attemptClose,
                     )
                 }
@@ -343,14 +347,14 @@ fun ComposeSheet(
                     // 入力中の候補（本文直下）。絵文字 > メンション > ハッシュタグ の優先で1種のみ出す。
                     if (emojiCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Sm))
-                        Text("絵文字候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                        Text(stringResource(Res.string.compose_emoji_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
                         Spacer(Modifier.height(DeckSpace.Xs))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             emojiCandidates.forEach { e -> EmojiSuggestChip(e) { field = insertEmojiShortcode(field, e.shortcode) } }
                         }
                     } else if (mentionCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Sm))
-                        Text("メンション候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                        Text(stringResource(Res.string.compose_mention_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
                         Spacer(Modifier.height(DeckSpace.Xs))
                         Column {
                             mentionCandidates.forEach { p ->
@@ -360,7 +364,7 @@ fun ComposeSheet(
                     } else {
                         if (tagSuggestions.isNotEmpty()) {
                             Spacer(Modifier.height(DeckSpace.Sm))
-                            Text("候補", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Text(stringResource(Res.string.compose_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tagSuggestions.forEach { tag -> TagChip(tag) { field = completeHashtag(field, tag) } }
@@ -368,7 +372,7 @@ fun ComposeSheet(
                         }
                         if (recent.isNotEmpty()) {
                             Spacer(Modifier.height(DeckSpace.Sm))
-                            Text("最近のタグ", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Text(stringResource(Res.string.compose_recent_tags), color = DeckColors.Text3, fontSize = DeckType.Label)
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 recent.forEach { tag -> TagChip(tag) { field = appendHashtag(field, tag) } }
@@ -382,7 +386,7 @@ fun ComposeSheet(
                         ImageCarousel(images, onRemove = { images.removeAt(it) })
                         Spacer(Modifier.height(DeckSpace.Sm))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("解像度", color = DeckColors.Text3, fontSize = DeckType.Label)
+                            Text(stringResource(Res.string.compose_resolution), color = DeckColors.Text3, fontSize = DeckType.Label)
                             Spacer(Modifier.width(DeckSpace.Sm))
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
@@ -393,7 +397,7 @@ fun ComposeSheet(
                 if (parent != null) {
                     ContextCard(
                         parent = parent,
-                        label = if (replyTo != null) "返信先" else "引用元",
+                        label = if (replyTo != null) stringResource(Res.string.compose_reply_to) else stringResource(Res.string.compose_quote_of),
                         modifier = Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
                     )
                 }
@@ -415,25 +419,25 @@ fun ComposeSheet(
                         Spacer(Modifier.width(DeckSpace.Sm))
                         val done by uploadProgress.collectAsState()
                         Text(
-                            if (images.isNotEmpty()) "画像 $done/${images.size} アップロード中…" else "投稿中…",
+                            if (images.isNotEmpty()) stringResource(Res.string.compose_uploading_fmt, done, images.size) else stringResource(Res.string.compose_posting),
                             color = DeckColors.Text2, fontSize = DeckType.Caption,
                         )
                         Spacer(Modifier.weight(1f))
                         // 投稿中の強制キャンセル。
-                        DeckTextButton("キャンセル", color = DeckColors.Text2, onClick = { sendJob?.cancel() })
+                        DeckTextButton(stringResource(Res.string.common_cancel), color = DeckColors.Text2, onClick = { sendJob?.cancel() })
                     } else {
                         // 画像添付（ツールバー操作・40dp 実タップ領域）。
                         Box(
                             Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
                                 .clickable { picker.launch() },
                             contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Outlined.Image, "画像を添付", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+                        ) { Icon(Icons.Outlined.Image, stringResource(Res.string.compose_attach_image), tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         // 絵文字ピッカー（Unicode + 自分のカスタム絵文字）。カーソル位置に挿入。
                         Box(
                             Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
                                 .clickable { showEmojiPicker = true },
                             contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Outlined.Mood, "絵文字を挿入", tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+                        ) { Icon(Icons.Outlined.Mood, stringResource(Res.string.compose_insert_emoji), tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         // [#5] センシティブ(NIP-36 content-warning)トグル。ON はアクセント色。
                         Box(
                             Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
@@ -442,7 +446,7 @@ fun ComposeSheet(
                         ) {
                             Icon(
                                 Icons.Outlined.VisibilityOff,
-                                if (sensitive) "センシティブ: ON" else "センシティブ指定",
+                                if (sensitive) stringResource(Res.string.compose_sensitive_on) else stringResource(Res.string.compose_sensitive),
                                 tint = if (sensitive) DeckColors.Accent else DeckColors.Text,
                                 modifier = Modifier.size(DeckDimens.IconLg),
                             )
@@ -457,14 +461,14 @@ fun ComposeSheet(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    Icons.Outlined.PlaylistAdd, "連投に追加",
+                                    Icons.Outlined.PlaylistAdd, stringResource(Res.string.compose_add_thread),
                                     tint = if (text.isNotBlank()) DeckColors.Text else DeckColors.Text3,
                                     modifier = Modifier.size(DeckDimens.IconLg),
                                 )
                             }
                             if (threadSegments.isNotEmpty()) {
                                 Text(
-                                    "連投 ${threadSegments.size + 1}", color = DeckColors.Accent, fontSize = DeckType.Label,
+                                    stringResource(Res.string.compose_thread_count_fmt, threadSegments.size + 1), color = DeckColors.Accent, fontSize = DeckType.Label,
                                     modifier = Modifier.padding(start = DeckSpace.Xs),
                                 )
                             }
@@ -472,8 +476,8 @@ fun ComposeSheet(
                         Spacer(Modifier.weight(1f))
                         DeckButton(
                             when {
-                                replyTo != null -> "返信"; quoting != null -> "引用"
-                                threadSegments.isNotEmpty() -> "連投"; else -> "送信"
+                                replyTo != null -> stringResource(Res.string.compose_reply); quoting != null -> stringResource(Res.string.compose_quote)
+                                threadSegments.isNotEmpty() -> stringResource(Res.string.compose_thread); else -> stringResource(Res.string.compose_send)
                             },
                             onClick = doSend, enabled = canSend,
                         )
@@ -495,9 +499,9 @@ fun ComposeSheet(
     // 入力内容がある状態で閉じようとしたら破棄確認（オーバーレイ/✗/戻る共通）。
     if (confirmDiscard) {
         DeckConfirmDialog(
-            title = "入力内容を破棄しますか？",
-            text = "作成中の本文と添付画像は保存されません。",
-            confirmLabel = "破棄する", destructive = true,
+            title = stringResource(Res.string.compose_discard_title),
+            text = stringResource(Res.string.compose_discard_text),
+            confirmLabel = stringResource(Res.string.compose_discard_confirm), destructive = true,
             // [#120] discarded を立ててから閉じる → onDispose が下書きを保存せず消す。
             onConfirm = { confirmDiscard = false; discarded.value = true; onDismiss() },
             onDismiss = { confirmDiscard = false },
@@ -513,7 +517,7 @@ fun ComposeSheet(
 private fun AccountHeader(pubkey: String?, profile: Profile?, modifier: Modifier = Modifier) {
     val name = profile?.name?.takeIf { it.isNotBlank() }
         ?: pubkey?.let { runCatching { Nip19.hexToNpub(it).take(12) + "…" }.getOrNull() }
-        ?: "あなた"
+        ?: stringResource(Res.string.compose_you)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Avatar(seed = pubkey ?: "me", pictureUrl = profile?.pictureUrl, size = 22.dp)
         Spacer(Modifier.width(DeckSpace.Sm))
@@ -538,7 +542,7 @@ private fun BodyField(
 ) {
     Box(modifier.padding(vertical = DeckSpace.Sm)) {
         if (value.text.isEmpty()) {
-            Text("いまどうしてる？", color = DeckColors.Text3, fontSize = DeckType.Title)
+            Text(stringResource(Res.string.compose_placeholder), color = DeckColors.Text3, fontSize = DeckType.Title)
         }
         BasicTextField(
             value = value, onValueChange = onChange,
@@ -583,7 +587,7 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                 Box(Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3)) {
                     AsyncImage(
                         model = ImageRequest.Builder(ctx).data(att.src.bytes).build(),
-                        contentDescription = "添付画像",
+                        contentDescription = stringResource(Res.string.compose_attachment),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -593,13 +597,13 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                             .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
                             .clickable { onRemove(i) },
                         contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Outlined.Close, "削除", tint = Color.White, modifier = Modifier.size(DeckDimens.IconSm)) }
+                    ) { Icon(Icons.Outlined.Close, stringResource(Res.string.common_delete), tint = Color.White, modifier = Modifier.size(DeckDimens.IconSm)) }
                 }
                 Spacer(Modifier.height(DeckSpace.Xs))
                 val processed = att.processed
                 Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
                     when {
-                        att.processing -> Text("圧縮中…", color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
+                        att.processing -> Text(stringResource(Res.string.compose_compressing), color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                         processed != null && processed.bytes.size < att.src.bytes.size -> Text(
                             "${humanSize(att.src.bytes.size)}→${humanSize(processed.bytes.size)}",
                             color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1, overflow = TextOverflow.Ellipsis,
