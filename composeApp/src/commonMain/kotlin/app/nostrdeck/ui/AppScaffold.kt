@@ -42,6 +42,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.nav_home
+import nostr_deck_client.composeapp.generated.resources.nav_notifications
+import nostr_deck_client.composeapp.generated.resources.nav_public_chat
+import nostr_deck_client.composeapp.generated.resources.nav_search
+import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
 
@@ -265,10 +271,10 @@ private fun BottomBar(state: DeckState) {
     ) {
         // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（レールと同順）。
         // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-        NavItem(state, NavDest.HOME, Icons.Outlined.Home, "ホーム")
-        NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, "検索")
-        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, "パブリックチャット")
-        NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, "通知")
+        NavItem(state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home))
+        NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
+        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat))
+        NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications))
         val pk = myPubkey
         NavigationBarItem(
             selected = state.navDest == NavDest.SETTINGS,

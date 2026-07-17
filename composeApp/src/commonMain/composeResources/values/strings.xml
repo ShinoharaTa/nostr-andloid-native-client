@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  [#149] 文字列リソース（既定=英語、values-ja=日本語）。
+  ここに無い文言はまだハードコード（日本語）のまま。移行状況は issue #149 参照。
+-->
+<resources>
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_public_chat">Public chat</string>
+    <string name="nav_notifications">Notifications</string>
+    <string name="nav_dm">DM</string>
+    <string name="nav_add_column">Add column</string>
+    <string name="settings_title">Settings</string>
+
+    <!-- Settings: groups -->
+    <string name="group_quick_access">Quick access</string>
+    <string name="group_customize">Customize</string>
+    <string name="group_connection">Connection &amp; account</string>
+    <string name="group_system">System</string>
+
+    <!-- Settings: sections / tiles -->
+    <string name="section_account">Edit profile</string>
+    <string name="section_signer">Account</string>
+    <string name="section_relays">Relays</string>
+    <string name="section_dm_relays">DM relays</string>
+    <string name="section_media">Media servers</string>
+    <string name="section_reaction">Reaction</string>
+    <string name="section_appearance">Appearance</string>
+    <string name="section_data">Data &amp; cache</string>
+    <string name="section_about">About this app</string>
+    <string name="section_mute">Mute</string>
+    <string name="section_favs">Favorites</string>
+    <string name="section_bookmarks">Bookmarks</string>
+    <string name="tile_profile">Profile</string>
+
+    <!-- Settings: appearance -->
+    <string name="theme_title">Theme</string>
+    <string name="theme_system">Match OS</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="ui_scale_title">Display size</string>
+    <string name="ui_scale_desc">Overall size of text, icons, and spacing.</string>
+    <string name="ui_scale_small">Default</string>
+    <string name="ui_scale_medium">Large</string>
+    <string name="ui_scale_large">Largest</string>
+    <string name="text_scale_title">Font size</string>
+    <string name="text_scale_desc">Make only the text larger.</string>
+    <string name="text_scale_small">Small</string>
+    <string name="text_scale_medium">Medium</string>
+    <string name="text_scale_large">Large</string>
+    <string name="embed_section">Link previews</string>
+    <string name="embed_section_desc">Show links in posts as cards and thumbnails. Turn off to save data.</string>
+    <string name="embed_video">Play videos (mp4 etc.) inline</string>
+    <string name="embed_youtube">Show YouTube previews</string>
+    <string name="embed_spotify">Show Spotify cards</string>
+    <string name="embed_ogp">Show preview cards for other links</string>
+    <string name="embed_ogp_images">Load images in preview cards</string>
+
+    <!-- Profile tabs -->
+    <string name="tab_posts">Posts</string>
+    <string name="tab_posts_replies">Posts &amp; replies</string>
+    <string name="tab_media">Media</string>
+</resources>
