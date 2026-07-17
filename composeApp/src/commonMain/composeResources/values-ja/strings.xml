@@ -464,4 +464,12 @@
     <string name="thread_write_reply">返信を書く…</string>
     <string name="fab_post">投稿</string>
     <string name="list_followers">フォロワー</string>
+
+    <!-- [#163] Emoji picker categories -->
+    <string name="emoji_cat_faces">表情</string>
+    <string name="emoji_cat_gestures">手・ジェスチャー</string>
+    <string name="emoji_cat_hearts">ハート・感情</string>
+    <string name="emoji_cat_nature">動物・自然</string>
+    <string name="emoji_cat_food">食べ物・飲み物</string>
+    <string name="emoji_cat_activity">アクティビティ・記号</string>
 </resources>

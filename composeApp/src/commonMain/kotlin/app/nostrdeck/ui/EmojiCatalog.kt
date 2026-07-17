@@ -1,18 +1,22 @@
 package app.nostrdeck.ui
 
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.StringResource
+
 /**
  * リアクションピッカー用の軽量 Unicode 絵文字カタログ。
  * フルデータセット(数百KB)は同梱せず、よく使うものを厳選して日英キーワードで検索できるようにする。
  * 各エントリの [keywords] は小文字英語＋日本語の両方を持たせ、[EmojiCatalog.search] で前方/部分一致する。
  */
 data class EmojiEntry(val char: String, val keywords: List<String>)
-data class EmojiCategory(val title: String, val emojis: List<EmojiEntry>)
+data class EmojiCategory(val title: StringResource, val emojis: List<EmojiEntry>)
 
 object EmojiCatalog {
 
     val categories: List<EmojiCategory> = listOf(
         EmojiCategory(
-            "表情",
+            Res.string.emoji_cat_faces,
             listOf(
                 EmojiEntry("😀", listOf("grin", "smile", "笑顔", "にこ")),
                 EmojiEntry("😃", listOf("smile", "happy", "笑顔", "うれしい")),
@@ -47,7 +51,7 @@ object EmojiCatalog {
             ),
         ),
         EmojiCategory(
-            "手・ジェスチャー",
+            Res.string.emoji_cat_gestures,
             listOf(
                 EmojiEntry("👍", listOf("thumbs up", "good", "いいね", "グッド", "了解")),
                 EmojiEntry("👎", listOf("thumbs down", "bad", "だめ", "わるい")),
@@ -66,7 +70,7 @@ object EmojiCatalog {
             ),
         ),
         EmojiCategory(
-            "ハート・感情",
+            Res.string.emoji_cat_hearts,
             listOf(
                 EmojiEntry("❤️", listOf("heart", "love", "好き", "ハート", "ラブ")),
                 EmojiEntry("🧡", listOf("orange heart", "オレンジ", "ハート")),
@@ -91,7 +95,7 @@ object EmojiCatalog {
             ),
         ),
         EmojiCategory(
-            "動物・自然",
+            Res.string.emoji_cat_nature,
             listOf(
                 EmojiEntry("🐶", listOf("dog", "犬", "いぬ")),
                 EmojiEntry("🐱", listOf("cat", "猫", "ねこ")),
@@ -116,7 +120,7 @@ object EmojiCatalog {
             ),
         ),
         EmojiCategory(
-            "食べ物・飲み物",
+            Res.string.emoji_cat_food,
             listOf(
                 EmojiEntry("🍎", listOf("apple", "りんご")),
                 EmojiEntry("🍌", listOf("banana", "バナナ")),
@@ -137,7 +141,7 @@ object EmojiCatalog {
             ),
         ),
         EmojiCategory(
-            "アクティビティ・記号",
+            Res.string.emoji_cat_activity,
             listOf(
                 EmojiEntry("⚽", listOf("soccer", "サッカー")),
                 EmojiEntry("⚾", listOf("baseball", "野球")),

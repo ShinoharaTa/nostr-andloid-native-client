@@ -144,7 +144,7 @@ fun ReactionPickerSheet(
                         }
                     }
                     EmojiCatalog.categories.forEach { cat ->
-                        SectionLabel(cat.title)
+                        SectionLabel(stringResource(cat.title))
                         EmojiFlow {
                             cat.emojis.forEach { e -> UnicodeEmojiButton(e.char) { onPick(e.char, null); onDismiss() } }
                         }
