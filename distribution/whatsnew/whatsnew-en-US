@@ -1,6 +1,5 @@
-- Reorganized navigation: Home, Search, Public chat, Notifications, You (Search is easier to reach)
-- New Display size setting (Default / Large / Largest) — scales icons and spacing too, easier on the eyes
-- New Font size setting (Small / Medium / Large), combinable with Display size
-- Brighter secondary text colors for better readability
-- Easier-to-tap column tabs
-- Removed the "retro power-user mode" for a simpler experience
+- English UI (follows your device language)
+- New light theme (Match OS / Light / Dark)
+- Redesigned Account page — re-login now sits behind a confirmation so you can't switch accounts by accident
+- Japanese devices get Japanese relays preconfigured on first launch
+- Polish and bug fixes
