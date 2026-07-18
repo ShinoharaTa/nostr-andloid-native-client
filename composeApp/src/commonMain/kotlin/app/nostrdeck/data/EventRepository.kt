@@ -37,6 +37,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import kotlin.coroutines.cancellation.CancellationException
 import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
@@ -2723,25 +2724,37 @@ class EventRepository(
      * [M18-#2] プロフィール(kind:0)を発行。既存 content の**未知フィールドは保持**し、標準キーだけ上書き。
      * 空文字のキーは削除。表示名は `name` に集約し、既存が `display_name`/`displayName` を持つ場合のみ同値で同期。
      * [fields] は "name"/"about"/"picture"/"banner"/"website"/"lud16"/"nip05" のうち編集対象のみ。
+     *
+     * [#171] 署名（Keychain/外部署名等）や配信の失敗を握って **成否を Boolean で返す**。
+     * 以前は例外を投げ、呼び出し側が捕捉せず「保存成功」表示のまま実発行されない不具合があった
+     * （iOS で顕在化。署名がキャンセル/失敗しても更新されない）。
      */
-    suspend fun publishProfile(fields: Map<String, String>) {
-        val pk = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
-        // KV優先(purge耐性)で生JSONを読む。イベント表は起動時purgeで消えるため直読みは不可。
-        val base = myProfileContent()
-            ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
-        val map = LinkedHashMap<String, JsonElement>()
-        base?.forEach { (k, v) -> map[k] = v }  // 未知フィールドを温存
-        fields.forEach { (k, v) -> if (v.isBlank()) map.remove(k) else map[k] = JsonPrimitive(v) }
-        // 表示名(name)を display_name/displayName にも同期（既存が持っている場合のみ）
-        fields["name"]?.let { nm ->
-            listOf("display_name", "displayName").forEach { key ->
-                if (map.containsKey(key)) { if (nm.isBlank()) map.remove(key) else map[key] = JsonPrimitive(nm) }
+    suspend fun publishProfile(fields: Map<String, String>): Boolean {
+        return try {
+            val pk = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+            // KV優先(purge耐性)で生JSONを読む。イベント表は起動時purgeで消えるため直読みは不可。
+            val base = myProfileContent()
+                ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
+            val map = LinkedHashMap<String, JsonElement>()
+            base?.forEach { (k, v) -> map[k] = v }  // 未知フィールドを温存
+            fields.forEach { (k, v) -> if (v.isBlank()) map.remove(k) else map[k] = JsonPrimitive(v) }
+            // 表示名(name)を display_name/displayName にも同期（既存が持っている場合のみ）
+            fields["name"]?.let { nm ->
+                listOf("display_name", "displayName").forEach { key ->
+                    if (map.containsKey(key)) { if (nm.isBlank()) map.remove(key) else map[key] = JsonPrimitive(nm) }
+                }
             }
+            val content = json.encodeToString(JsonObject.serializer(), JsonObject(map))
+            val signed = publishSigned(UnsignedEvent(kind = 0, content = content, tags = emptyList()))
+            q.putSetting(MY_PROFILE_JSON, content)  // 次回編集の温存元を更新（purge 耐性のため KV に保持）
+            upsertProfile(signed)  // ローカル projection を即更新
+            true
+        } catch (e: CancellationException) {
+            throw e  // コルーチンのキャンセルは握らない
+        } catch (e: Throwable) {
+            println("Nostrism publishProfile failed: ${e.message}")
+            false
         }
-        val content = json.encodeToString(JsonObject.serializer(), JsonObject(map))
-        val signed = publishSigned(UnsignedEvent(kind = 0, content = content, tags = emptyList()))
-        q.putSetting(MY_PROFILE_JSON, content)  // 次回編集の温存元を更新（purge 耐性のため KV に保持）
-        upsertProfile(signed)  // ローカル projection を即更新
     }
 
     private fun upsertProfile(e: NostrEvent) {

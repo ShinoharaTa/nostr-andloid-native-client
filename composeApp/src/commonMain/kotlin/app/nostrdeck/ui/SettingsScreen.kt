@@ -585,6 +585,9 @@ private fun DmRelaySettings() {
 private fun AccountSettings() {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
+    // [#171] 保存失敗（署名キャンセル/失敗・配信不可）をユーザーに知らせるためのトースト。
+    val toast = rememberToaster()
+    val saveFailedMsg = stringResource(Res.string.profile_save_failed)
     if (repo == null) {
         Text(stringResource(Res.string.account_edit_unavailable), color = DeckColors.Text3, fontSize = DeckType.Sub)
         return
@@ -646,12 +649,14 @@ private fun AccountSettings() {
         onClick = {
             saving = true
             scope.launch {
-                repo.publishProfile(mapOf(
+                val ok = repo.publishProfile(mapOf(
                     "name" to name.trim(), "about" to about.trim(), "picture" to picture.trim(),
                     "banner" to banner.trim(), "website" to website.trim(),
                     "lud16" to lud16.trim(), "nip05" to nip05.trim(),
                 ))
-                saving = false; saved = true
+                saving = false
+                // [#171] 成功時のみ「保存しました ✓」。失敗はトーストで明示（黙って成功表示にしない）。
+                if (ok) saved = true else toast(saveFailedMsg)
             }
         },
     )
