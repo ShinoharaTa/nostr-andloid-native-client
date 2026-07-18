@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -254,9 +256,12 @@ fun ChannelRoomColumn(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = DeckSpace.Md),
                 )
+                val modalFocus = remember { FocusRequester() }
+                AutoFocusOnShown(modalFocus)
                 Composer(
                     replyingTo = replyingTo,
                     onCancelReply = { replyingTo = null },
+                    focusRequester = modalFocus,
                     onSend = { text -> onSend(text, replyingTo); replyingTo = null; showComposeModal = false },
                 )
             }
@@ -493,6 +498,8 @@ private fun Composer(
     onCancelReply: () -> Unit,
     onSend: (String) -> Unit,
     onFocusChanged: (Boolean) -> Unit = {},
+    // [#172] モーダル表示時に自動フォーカスする場合に渡す（常設入力欄では null）。
+    focusRequester: FocusRequester? = null,
 ) {
     val repo = LocalRepository.current
     // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
@@ -596,7 +603,9 @@ private fun Composer(
                 textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Body),
                 cursorBrush = SolidColor(DeckColors.Accent),
                 maxLines = 6,
-                modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChanged(it.isFocused) },
+                modifier = Modifier.fillMaxWidth()
+                    .let { m -> focusRequester?.let { m.focusRequester(it) } ?: m }
+                    .onFocusChanged { onFocusChanged(it.isFocused) },
             )
         }
         Spacer(Modifier.width(DeckSpace.Sm))

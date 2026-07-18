@@ -61,6 +61,10 @@ import app.nostrdeck.theme.DeckSpace
  */
 @Composable
 fun AppScaffold(state: DeckState) {
+    // [#173] 画面切替時に入力フォーカスを解除（iOS はフィールド外タップで自動解除されず、
+    // キーボードが残って操作できなくなるため）。Android では従来挙動に影響しない。
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    androidx.compose.runtime.LaunchedEffect(state.navDest) { focusManager.clearFocus() }
     // 上端＋左右のみシステムバー分を確保する。下端インセット（ホームインジケータ帯）は
     // ここで消費せず、Compact では BottomBar(NavigationBar) 自身に処理させて**バーを最下端まで
     // 伸ばす**（アイコンはインジケータの上）。Expanded では下の Row で改めて下端を確保する。
