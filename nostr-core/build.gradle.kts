@@ -16,6 +16,15 @@ kotlin {
     listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { it }
 
     sourceSets {
+        commonMain.dependencies {
+            // crypto/ が使う暗号プリミティブ（NIP-01 署名 / SHA-256 / NIP-04・44 の JSON 解釈）
+            implementation(libs.secp256k1)
+            implementation(libs.kotlincrypto.sha2)
+            implementation(libs.kotlinx.serialization.json)
+        }
+        androidMain.dependencies {
+            implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体（Android）
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
