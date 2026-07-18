@@ -472,4 +472,5 @@
     <string name="emoji_cat_nature">動物・自然</string>
     <string name="emoji_cat_food">食べ物・飲み物</string>
     <string name="emoji_cat_activity">アクティビティ・記号</string>
+    <string name="profile_save_failed">プロフィールを保存できませんでした。ログイン/署名の状態を確認して、もう一度お試しください。</string>
 </resources>
