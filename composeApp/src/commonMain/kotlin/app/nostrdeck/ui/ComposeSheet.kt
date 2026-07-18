@@ -54,7 +54,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -311,6 +314,9 @@ fun ComposeSheet(
             contentAlignment = Alignment.TopCenter,
         ) {
             val cardMaxHeight = maxHeight - 24.dp   // 上下の余白ぶんを確保
+            // [#177] カード内の空白（本文余白など）タップでキーボードを閉じる。Dialog は
+            // ルートの背景タップ処理が届かないため、ここにも入れる。
+            val cardFocus = LocalFocusManager.current
             Column(
                 Modifier
                     .padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Md)
@@ -319,6 +325,7 @@ fun ComposeSheet(
                     .heightIn(max = cardMaxHeight)
                     .clip(RoundedCornerShape(DeckRadius.Lg))
                     .background(DeckColors.Surface)
+                    .pointerInput(Unit) { detectTapGestures { cardFocus.clearFocus() } }
                     // カード内のタップがオーバーレイの clickable に抜けないよう消費する。
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

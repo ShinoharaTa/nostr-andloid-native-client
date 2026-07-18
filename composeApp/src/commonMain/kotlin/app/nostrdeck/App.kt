@@ -11,8 +11,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Density
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.model.TextScale
@@ -120,7 +123,16 @@ fun App(repository: EventRepository? = null) {
         ) {
             // システムバー裏まで暗色で塗る（iOS はウィンドウ既定が白でステータスバー裏が白帯に
             // なるため）。子は systemBars 分を padding するので、この背景が最上端まで敷かれる。
-            Box(Modifier.fillMaxSize().background(DeckColors.Bg)) {
+            // [#177] 背景（フォーム外）タップで入力フォーカス/キーボードを閉じる。iOS はフィールド
+            // 外タップで自動解除されず、キーボードが残って更新ボタン等が押せなくなるため。
+            // detectTapGestures は子（ボタン/TextField）が消費したタップでは発火せず、スクロールは
+            // 移動を伴うので tap 扱いにならない → 通常操作と競合しない。Dialog は別ウィンドウのため
+            // 各 Dialog 側にも同処理を入れる。
+            val rootFocus = LocalFocusManager.current
+            Box(
+                Modifier.fillMaxSize().background(DeckColors.Bg)
+                    .pointerInput(Unit) { detectTapGestures { rootFocus.clearFocus() } },
+            ) {
                 // 実データ運用（repository あり）で未ログインならゲート。SampleData プレビュー時は素通し。
                 if (repository != null && !loggedIn) LoginGate() else AppScaffold(state)
             }
