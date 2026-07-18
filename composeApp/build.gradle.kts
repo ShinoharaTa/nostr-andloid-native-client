@@ -42,6 +42,8 @@ kotlin {
             implementation(compose.components.resources)
             implementation(libs.androidx.lifecycle.viewmodel)
 
+            implementation(projects.nostrCore)          // [#183] UI/DB 非依存のプロトコル層
+
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
 
