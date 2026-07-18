@@ -1,5 +1,4 @@
-- English UI (follows your device language)
-- New light theme (Match OS / Light / Dark)
-- Redesigned Account page — re-login now sits behind a confirmation so you can't switch accounts by accident
-- Japanese devices get Japanese relays preconfigured on first launch
+- iOS: input fields now auto-focus when you open the composer and similar screens
+- iOS: fixed focus getting stuck in inputs (e.g. search) so you couldn't go back
+- Profile save now tells you when it fails (no more "saved" when it didn't)
 - Polish and bug fixes
