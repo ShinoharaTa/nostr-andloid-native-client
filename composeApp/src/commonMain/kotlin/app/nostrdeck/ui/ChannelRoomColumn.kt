@@ -243,12 +243,15 @@ fun ChannelRoomColumn(
 
     // [#dm-idiom] デッキ固定カラム用の投稿モーダル。返信もこの経路（replyingTo を引き継ぐ）。
     if (showComposeModal && onSend != null) {
+        val modalDismissFocus = androidx.compose.ui.platform.LocalFocusManager.current
         androidx.compose.ui.window.Dialog(onDismissRequest = { showComposeModal = false; replyingTo = null }) {
             Column(
                 Modifier.fillMaxWidth()
                     .imePadding()  // [#106] フローティングキーボードでも入力欄が隠れないように
                     .clip(RoundedCornerShape(DeckRadius.Md))
                     .background(DeckColors.Surface)
+                    // [#177] カード内の空白タップでキーボードを閉じる（Dialog はルートの背景タップが届かない）。
+                    .pointerInput(Unit) { detectTapGestures { modalDismissFocus.clearFocus() } }
                     .padding(vertical = DeckSpace.Sm),
             ) {
                 Text(
