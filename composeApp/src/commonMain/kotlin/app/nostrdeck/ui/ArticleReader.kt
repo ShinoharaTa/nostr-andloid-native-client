@@ -93,7 +93,7 @@ fun ArticleReader(
             }
             Spacer(Modifier.width(DeckSpace.Sm))
             Column {
-                Text(stringResource(Res.string.article_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+                TitleText(stringResource(Res.string.article_title))
                 HintText("NIP-23 · kind:30023")
             }
         }

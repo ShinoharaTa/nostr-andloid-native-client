@@ -211,7 +211,7 @@ private val paletteGroups = listOf(
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         Row(Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md)) {
-            Text(stringResource(Res.string.settings_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
+            TitleText(stringResource(Res.string.settings_title))
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
@@ -1711,7 +1711,7 @@ private fun NsecRevealDialog(onDismiss: () -> Unit) {
             onDismissRequest = onDismiss,
             containerColor = DeckColors.Surface,
             shape = RoundedCornerShape(DeckRadius.Lg),
-            title = { Text(stringResource(Res.string.nsec_dialog_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+            title = { TitleText(stringResource(Res.string.nsec_dialog_title)) },
             text = {
                 Column {
                     Text(

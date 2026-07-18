@@ -166,7 +166,7 @@ fun DeckConfirmDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        title = { TitleText(title) },
         text = { Text(text, color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = DeckType.LineTitle) },
         confirmButton = {
             DeckTextButton(confirmLabel, onClick = onConfirm,
@@ -194,7 +194,7 @@ fun DeckInputDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        title = { TitleText(title) },
         text = {
             // [#172] ダイアログを開いたら即入力できるよう自動フォーカス（iOS はリトライ式）。
             val focus = remember { FocusRequester() }

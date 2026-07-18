@@ -421,7 +421,7 @@ fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String 
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
+        title = { TitleText(title) },
         text = {
             Column {
                 HintText(stringResource(Res.string.report_pick_reason))
