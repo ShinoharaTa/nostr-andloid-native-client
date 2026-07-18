@@ -55,7 +55,7 @@ fun DeckButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = if (enabled) DeckColors.Bg else DeckColors.Text3,
-            fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
+            fontSize = DeckType.Body, fontWeight = DeckWeight.Strong)
     }
 }
 
@@ -72,7 +72,7 @@ fun DeckGhostButton(label: String, onClick: () -> Unit, modifier: Modifier = Mod
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = if (enabled) DeckColors.Text else DeckColors.Text3,
-            fontSize = DeckType.Sub, fontWeight = DeckWeight.Link)
+            fontSize = DeckType.Body, fontWeight = DeckWeight.Link)
     }
 }
 
@@ -91,7 +91,7 @@ fun DeckTextButton(
             .clickable(onClick = onClick)
             .padding(horizontal = DeckSpace.Sm),
         contentAlignment = Alignment.Center,
-    ) { Text(label, color = color, fontSize = DeckType.Sub, fontWeight = DeckWeight.Link) }
+    ) { Text(label, color = color, fontSize = DeckType.Body, fontWeight = DeckWeight.Link) }
 }
 
 /**
@@ -127,13 +127,13 @@ fun DeckTextField(
     ) {
         Box(Modifier.weight(1f), contentAlignment = boxAlign) {
             if (value.isEmpty()) {
-                Text(placeholder, color = DeckColors.Text3, fontSize = DeckType.Caption)
+                Text(placeholder, color = DeckColors.Text3, fontSize = DeckType.Body)
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = singleLine,
-                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Caption),
+                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Body),
                 cursorBrush = SolidColor(DeckColors.Accent),
                 visualTransformation = visualTransformation,
                 keyboardOptions = keyboardOptions,
