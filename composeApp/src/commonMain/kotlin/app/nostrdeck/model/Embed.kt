@@ -29,7 +29,6 @@ enum class EmbedKind { YOUTUBE, SPOTIFY, OGP, VIDEO }
 /** 検出した1リンク。 */
 data class LinkEmbed(val url: String, val kind: EmbedKind, val youtubeId: String? = null)
 
-private val URL_RE = Regex("""https?://[^\s<>"'）】」]+""", RegexOption.IGNORE_CASE)
 private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
 private val VIDEO_EXT = setOf("mp4", "webm", "mov", "m4v")
 
@@ -37,11 +36,15 @@ private val VIDEO_EXT = setOf("mp4", "webm", "mov", "m4v")
  * 本文からリンク埋め込み候補を抽出する（純ロジック・テスト可能）。
  *  - 画像 URL（拡張子で判定）は [NoteImages] が別途表示するため除外。
  *  - 末尾の句読点/閉じ括弧を落として正規化し、URL 単位で重複排除。上限 [max] 件。
+ *
+ * [#181] URL の発見は共通トークナイザ [tokenizeNostrContent] に一本化した
+ * （本文装飾 [app.nostrdeck.ui.noteAnnotated] と同じ終端規則。従来の追加 trimEnd は残す）。
  */
 fun detectEmbeds(content: String, max: Int = 4): List<LinkEmbed> {
     val out = LinkedHashMap<String, LinkEmbed>()
-    for (m in URL_RE.findAll(content)) {
-        val url = m.value.trimEnd('.', ',', '、', '。', ')', '】', '」', '！', '？', '!', '?', ';', ':')
+    for (tok in tokenizeNostrContent(content)) {
+        if (tok !is ContentToken.Url) continue
+        val url = tok.url.trimEnd('.', ',', '、', '。', ')', '】', '」', '！', '？', '!', '?', ';', ':')
         if (out.containsKey(url)) continue
         val lowerPath = url.substringAfterLast('/').substringBefore('?').lowercase()
         val ext = lowerPath.substringAfterLast('.', "")

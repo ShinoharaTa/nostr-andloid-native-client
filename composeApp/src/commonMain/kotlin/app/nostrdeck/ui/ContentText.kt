@@ -11,6 +11,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.nostrdeck.crypto.Nip19
+import app.nostrdeck.model.ContentToken
+import app.nostrdeck.model.tokenizeNostrContent
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckWeight
 
@@ -57,79 +59,22 @@ fun noteAnnotated(
         withStyle(accent) { append(label) }
     }
 
-    var i = 0
-    val n = text.length
-    while (i < n) {
-        when {
-            text.startsWith("http://", i) || text.startsWith("https://", i) -> {
-                val end = urlEnd(text, i)
-                val url = text.substring(i, end)
-                withLink(LinkAnnotation.Url(url, linkStyles)) { append(url) }
-                i = end
-            }
-            text.startsWith("nostr:", i) && i + 6 < n && isBech(text[i + 6]) -> {
-                val end = bechEnd(text, i + 6)
-                appendEntity(text.substring(i + 6, end))
-                i = end
-            }
-            // 素の bech32 エンティティ（nostr: 接頭辞なし）。語中ヒットを避けるため直前が英数字なら対象外。
-            bareEntityAt(text, i) -> {
-                val end = bechEnd(text, i)
-                appendEntity(text.substring(i, end))
-                i = end
-            }
-            // NIP-30: :shortcode: が emoji タグにあればインライン画像で描く。
-            text[i] == ':' && emojis.isNotEmpty() && shortcodeEnd(text, i).let { it > 0 && text.substring(i + 1, it) in emojis } -> {
-                val close = shortcodeEnd(text, i)
-                val code = text.substring(i + 1, close)
-                appendInlineContent("emoji:$code", ":$code:")
-                i = close + 1
-            }
-            text[i] == '#' && i + 1 < n && isTagChar(text[i + 1]) -> {
-                var j = i + 1
-                while (j < n && isTagChar(text[j])) j++
-                val tag = text.substring(i + 1, j)
-                if (nav != null) clickable({ nav.onHashtag(tag) }, "#$tag")
-                else withStyle(accent) { append("#$tag") }
-                i = j
-            }
-            else -> {
-                append(text[i]); i++
-            }
+    // [#181] トークン抽出は共通トークナイザに一本化（detectEmbeds/Markdown と同じ規則）。
+    // ここは「トークン列 → 装飾付き AnnotatedString」への変換に専念する。
+    for (tok in tokenizeNostrContent(text)) {
+        when (tok) {
+            is ContentToken.Text -> append(text.substring(tok.start, tok.end))
+            is ContentToken.Url -> withLink(LinkAnnotation.Url(tok.url, linkStyles)) { append(tok.url) }
+            is ContentToken.NostrRef -> appendEntity(tok.bech)
+            is ContentToken.Hashtag ->
+                if (nav != null) clickable({ nav.onHashtag(tok.tag) }, "#${tok.tag}")
+                else withStyle(accent) { append("#${tok.tag}") }
+            is ContentToken.EmojiShortcode ->
+                // NIP-30: emoji タグにある shortcode だけインライン画像。無いものは素のテキストに戻す。
+                if (emojis.isNotEmpty() && tok.code in emojis) appendInlineContent("emoji:${tok.code}", ":${tok.code}:")
+                else append(text.substring(tok.start, tok.end))
         }
     }
-}
-
-/** 空白までを URL とみなし、末尾の句読点/閉じ括弧は除外する。 */
-private fun urlEnd(s: String, start: Int): Int {
-    var e = start
-    while (e < s.length && !s[e].isWhitespace()) e++
-    while (e > start && s[e - 1] in ").,!?；。、）】」』") e--
-    return e
-}
-
-/** 素の bech32 エンティティ（npub/nprofile/note/nevent/naddr）の先頭か。語中は除外。 */
-private val BARE_ENTITY_PREFIXES = listOf("nprofile1", "nevent1", "naddr1", "npub1", "note1")
-private fun bareEntityAt(s: String, i: Int): Boolean {
-    if (i > 0 && (s[i - 1] in '0'..'9' || s[i - 1] in 'a'..'z' || s[i - 1] in 'A'..'Z')) return false
-    return BARE_ENTITY_PREFIXES.any { s.startsWith(it, i) }
-}
-
-/** bech32 は ASCII 小英数字（大文字・1/b/i/o を除く）。後続が日本語でも誤って取り込まない。 */
-private fun isBech(c: Char): Boolean = c in '0'..'9' || c in 'a'..'z'
-private fun bechEnd(s: String, start: Int): Int {
-    var e = start
-    while (e < s.length && isBech(s[e])) e++
-    return e
-}
-
-private fun isTagChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_'
-
-/** start は ':'。`:shortcode:` の終端 ':' の index を返す（無効なら -1）。 */
-private fun shortcodeEnd(s: String, start: Int): Int {
-    var j = start + 1
-    while (j < s.length && (s[j].isLetterOrDigit() || s[j] == '_' || s[j] == '-')) j++
-    return if (j < s.length && s[j] == ':' && j > start + 1) j else -1
 }
 
 /** 本文中の画像URL（jpg/png/gif/webp）。表示時は本文から除去し [NoteImages] で下に出す。 */
