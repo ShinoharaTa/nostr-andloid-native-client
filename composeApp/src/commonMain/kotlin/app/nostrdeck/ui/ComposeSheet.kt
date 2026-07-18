@@ -355,14 +355,14 @@ fun ComposeSheet(
                     // 入力中の候補（本文直下）。絵文字 > メンション > ハッシュタグ の優先で1種のみ出す。
                     if (emojiCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Sm))
-                        Text(stringResource(Res.string.compose_emoji_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
+                        HintText(stringResource(Res.string.compose_emoji_suggest))
                         Spacer(Modifier.height(DeckSpace.Xs))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             emojiCandidates.forEach { e -> EmojiSuggestChip(e) { field = insertEmojiShortcode(field, e.shortcode) } }
                         }
                     } else if (mentionCandidates.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Sm))
-                        Text(stringResource(Res.string.compose_mention_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
+                        HintText(stringResource(Res.string.compose_mention_suggest))
                         Spacer(Modifier.height(DeckSpace.Xs))
                         Column {
                             mentionCandidates.forEach { p ->
@@ -372,7 +372,7 @@ fun ComposeSheet(
                     } else {
                         if (tagSuggestions.isNotEmpty()) {
                             Spacer(Modifier.height(DeckSpace.Sm))
-                            Text(stringResource(Res.string.compose_suggest), color = DeckColors.Text3, fontSize = DeckType.Label)
+                            HintText(stringResource(Res.string.compose_suggest))
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tagSuggestions.forEach { tag -> TagChip(tag) { field = completeHashtag(field, tag) } }
@@ -380,7 +380,7 @@ fun ComposeSheet(
                         }
                         if (recent.isNotEmpty()) {
                             Spacer(Modifier.height(DeckSpace.Sm))
-                            Text(stringResource(Res.string.compose_recent_tags), color = DeckColors.Text3, fontSize = DeckType.Label)
+                            HintText(stringResource(Res.string.compose_recent_tags))
                             Spacer(Modifier.height(DeckSpace.Xs))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 recent.forEach { tag -> TagChip(tag) { field = appendHashtag(field, tag) } }
@@ -394,7 +394,7 @@ fun ComposeSheet(
                         ImageCarousel(images, onRemove = { images.removeAt(it) })
                         Spacer(Modifier.height(DeckSpace.Sm))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(Res.string.compose_resolution), color = DeckColors.Text3, fontSize = DeckType.Label)
+                            HintText(stringResource(Res.string.compose_resolution))
                             Spacer(Modifier.width(DeckSpace.Sm))
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
@@ -688,7 +688,7 @@ private fun ContextCard(parent: NostrEvent, label: String, modifier: Modifier = 
             .background(DeckColors.Surface2)
             .padding(DeckSpace.Md),
     ) {
-        Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+        HintText(label)
         Spacer(Modifier.height(DeckSpace.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(seed = parent.pubkey, pictureUrl = profile?.pictureUrl, size = 28.dp)

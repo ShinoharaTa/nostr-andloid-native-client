@@ -58,7 +58,7 @@ private fun ReactionChip(reaction: ReactionUi) {
                     modifier = Modifier.size(16.dp),
                 )
             } else {
-                Text(reaction.display, color = DeckColors.Text2, fontSize = DeckType.Caption)
+                SectionCaption(reaction.display)
             }
             Spacer(Modifier.width(DeckSpace.Xs))
             Text(reaction.count.toString(), color = DeckColors.Text2, fontSize = DeckType.Label)

@@ -266,7 +266,7 @@ private fun MyReactionRow(
                 Text(r.display, fontSize = DeckType.EmojiLg)
             }
             Spacer(Modifier.width(DeckSpace.Xs))
-            Text(stringResource(Res.string.feed_you_reacted), color = DeckColors.Text3, fontSize = DeckType.Label)
+            HintText(stringResource(Res.string.feed_you_reacted))
         }
         NoteItem(
             entry.target, onClick = onNoteClick,

@@ -143,7 +143,7 @@ fun NoteItem(
                     )
                 }
                 Spacer(Modifier.width(DeckSpace.Sm))
-                Text(relativeTime(note.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText(relativeTime(note.event.createdAt))
             }
             // [施策4] 名前行(ヘッダ群)↔本文は Sm で段差を付け、テキスト羅列→UIブロック化。
             Spacer(Modifier.size(DeckSpace.Sm))
@@ -424,7 +424,7 @@ fun ReportDialog(onPick: (String) -> Unit, onDismiss: () -> Unit, title: String 
         title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
         text = {
             Column {
-                Text(stringResource(Res.string.report_pick_reason), color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText(stringResource(Res.string.report_pick_reason))
                 Spacer(Modifier.height(DeckSpace.Sm))
                 reasons.forEach { (type, label) ->
                     Text(
