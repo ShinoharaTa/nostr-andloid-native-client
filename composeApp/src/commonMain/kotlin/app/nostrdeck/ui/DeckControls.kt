@@ -16,8 +16,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -193,7 +196,11 @@ fun DeckInputDialog(
         shape = RoundedCornerShape(DeckRadius.Lg),
         title = { Text(title, color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong) },
         text = {
+            // [#172] ダイアログを開いたら即入力できるよう自動フォーカス（iOS はリトライ式）。
+            val focus = remember { FocusRequester() }
+            AutoFocusOnShown(focus)
             DeckTextField(value = value, onValueChange = onValueChange, placeholder = placeholder,
+                inputModifier = Modifier.focusRequester(focus),
                 modifier = Modifier.fillMaxWidth())
         },
         confirmButton = {

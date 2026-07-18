@@ -166,13 +166,14 @@ fun ComposeSheet(
         images.forEach { att -> scope.launch { att.compress(resolution) } }
     }
     // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。[#13] 新規は下書きを復元。
+    // [#172] iOS はモーダル表示直後の requestFocus が無視されることがあるためリトライ式に。
     LaunchedEffect(Unit) {
         if (replyTo == null && quoting == null && field.text.isEmpty()) {
             val d = repo?.loadDraft().orEmpty()
             if (d.isNotBlank()) field = TextFieldValue(d, selection = TextRange(d.length))
         }
-        runCatching { bodyFocus.requestFocus() }
     }
+    AutoFocusOnShown(bodyFocus)
 
     // ログイン中アカウント（ヘッダ表示）。DB キャッシュの Flow。
     // remember しないと再コンポーズごとに新しい Flow を購読し直し、表示ラグ/ちらつきが出る。

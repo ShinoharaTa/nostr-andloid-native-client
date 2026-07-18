@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.model.buildSearchColumn
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import app.nostrdeck.state.DeckState
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -64,6 +66,9 @@ import app.nostrdeck.theme.DeckWeight
 @Composable
 fun SearchScreen(state: DeckState, isCompact: Boolean) {
     val repo = LocalRepository.current
+    // [#173] iOS はフィールド外タップでフォーカスが外れないため、画面のどこをタップしても
+    // 入力フォーカス（＝キーボード）を解除できるようにする。
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     var query by rememberSaveable { mutableStateOf("") }
     // 条件トークン（"#〜"=タグ / それ以外=単語）。表示もそのまま使う。
     val tokens = rememberSaveable(saver = androidx.compose.runtime.saveable.listSaver(
@@ -88,6 +93,7 @@ fun SearchScreen(state: DeckState, isCompact: Boolean) {
         running = true
         searchSeq++
         repo?.addSearchHistory(tokens.joinToString(" "))
+        focusManager.clearFocus()  // [#173] 実行したらキーボードを畳む
     }
 
     fun runFromHistory(entry: String) {
@@ -98,7 +104,10 @@ fun SearchScreen(state: DeckState, isCompact: Boolean) {
         searchSeq++
     }
 
-    Column(Modifier.fillMaxSize().background(DeckColors.Bg)) {
+    Column(
+        Modifier.fillMaxSize().background(DeckColors.Bg)
+            .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
+    ) {
         SearchBar(query, onChange = { query = it }, onAdd = { addToken(query) }, onSubmit = { run() })
         TokenRow(tokens, onRemove = { tokens.remove(it); if (tokens.isEmpty()) running = false })
         HorizontalDivider(color = DeckColors.Border)
