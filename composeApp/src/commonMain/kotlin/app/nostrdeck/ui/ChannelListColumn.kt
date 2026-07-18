@@ -97,7 +97,7 @@ private fun ChannelRow(ch: Channel, pinned: Boolean, onClick: () -> Unit, onPin:
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
                     Spacer(Modifier.width(DeckSpace.Xs))
-                    Text("👤 ${ch.members}", color = DeckColors.Text3, fontSize = DeckType.Label)
+                    HintText("👤 ${ch.members}")
                 }
             }
             // 直近メッセージがあればそれを、無ければ概要(about)を副題に。両方空なら省略。

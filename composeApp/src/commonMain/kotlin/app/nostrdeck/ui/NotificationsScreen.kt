@@ -193,7 +193,7 @@ fun NoticeRow(n: NotificationUi, onClick: () -> Unit, onActorClick: () -> Unit) 
                     modifier = Modifier.weight(1f).clickable(onClick = onActorClick),
                 )
                 Spacer(Modifier.width(DeckSpace.Sm))
-                Text(relativeTime(n.createdAt), color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText(relativeTime(n.createdAt))
             }
             // 返信/メンションは本文、リアクション/リポストは対象（自分の）ノートの抜粋。
             val body = when (n.kind) {

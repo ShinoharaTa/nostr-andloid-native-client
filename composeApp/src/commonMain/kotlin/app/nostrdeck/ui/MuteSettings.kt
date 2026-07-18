@@ -112,7 +112,7 @@ fun MuteSettings() {
     val editable = mute?.editable == true && !saving
 
     Column(Modifier.fillMaxSize()) {
-        Text(stringResource(Res.string.mute_list_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+        SectionCaption(stringResource(Res.string.mute_list_title))
         Spacer(Modifier.size(DeckSpace.Xs))
         Text(
             stringResource(Res.string.mute_list_desc),
@@ -188,9 +188,9 @@ private fun SaveBar(saving: Boolean, onSave: () -> Unit) {
         if (saving) {
             CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), strokeWidth = 2.dp, color = DeckColors.Text2)
             Spacer(Modifier.width(DeckSpace.Sm))
-            Text(stringResource(Res.string.mute_saving_wait), color = DeckColors.Text2, fontSize = DeckType.Caption)
+            SectionCaption(stringResource(Res.string.mute_saving_wait))
         } else {
-            Text(stringResource(Res.string.mute_dirty), color = DeckColors.Text2, fontSize = DeckType.Caption)
+            SectionCaption(stringResource(Res.string.mute_dirty))
         }
         Spacer(Modifier.weight(1f))
         DeckButton(if (saving) stringResource(Res.string.common_saving) else stringResource(Res.string.common_save), onClick = onSave, enabled = !saving)

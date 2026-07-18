@@ -535,7 +535,7 @@ private fun ProfileHeaderCard(
                     ) {
                         Text("${s.followingCount}", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong)
                         Spacer(Modifier.width(DeckSpace.Xs))
-                        Text(stringResource(Res.string.tpl_following), color = DeckColors.Text3, fontSize = DeckType.Label)
+                        HintText(stringResource(Res.string.tpl_following))
                     }
                     Spacer(Modifier.width(DeckSpace.Lg))
                     Text(

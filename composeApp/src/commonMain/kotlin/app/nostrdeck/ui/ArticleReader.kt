@@ -94,7 +94,7 @@ fun ArticleReader(
             Spacer(Modifier.width(DeckSpace.Sm))
             Column {
                 Text(stringResource(Res.string.article_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong)
-                Text("NIP-23 · kind:30023", color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText("NIP-23 · kind:30023")
             }
         }
         HorizontalDivider(color = DeckColors.Border)
@@ -196,7 +196,7 @@ private fun AuthorRow(pubkey: String, profile: Profile?, publishedAt: Long, onCl
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(DeckSpace.Sm))
-        Text(relativeTime(publishedAt), color = DeckColors.Text3, fontSize = DeckType.Label)
+        HintText(relativeTime(publishedAt))
     }
 }
 

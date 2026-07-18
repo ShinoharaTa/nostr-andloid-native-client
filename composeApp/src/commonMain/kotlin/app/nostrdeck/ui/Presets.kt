@@ -105,7 +105,7 @@ internal fun PresetPicker(
     val remaining = presets.filter { normalizePresetUrl(it.url) !in registered }
     if (remaining.isEmpty()) return
 
-    Text(stringResource(Res.string.presets_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.presets_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.presets_desc),
@@ -144,7 +144,7 @@ internal fun RecommendedRelayChips(
 ) {
     val remaining = recs.filter { normalizePresetUrl(it.first) !in registered }
     if (remaining.isEmpty()) return
-    Text(title, color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(title)
     Spacer(Modifier.size(DeckSpace.Xs))
     FlowRow(
         Modifier.fillMaxWidth(),

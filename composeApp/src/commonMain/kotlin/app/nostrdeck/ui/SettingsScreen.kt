@@ -335,7 +335,7 @@ private fun MediaSettings() {
     var input by remember { mutableStateOf("") }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
 
-    Text(stringResource(Res.string.media_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.media_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.media_desc),
@@ -427,7 +427,7 @@ private fun FavsSettings(state: DeckState) {
     if (notes.isEmpty()) {
         Text(stringResource(Res.string.favs_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
         Spacer(Modifier.size(DeckSpace.Xs))
-        Text(stringResource(Res.string.favs_hint), color = DeckColors.Text3, fontSize = DeckType.Label)
+        HintText(stringResource(Res.string.favs_hint))
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -457,7 +457,7 @@ private fun BookmarkSettings(state: DeckState) {
     if (ids.isEmpty()) {
         Text(stringResource(Res.string.bookmarks_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
         Spacer(Modifier.size(DeckSpace.Xs))
-        Text(stringResource(Res.string.bookmarks_hint), color = DeckColors.Text3, fontSize = DeckType.Label)
+        HintText(stringResource(Res.string.bookmarks_hint))
         return
     }
     if (notes.isEmpty()) {
@@ -493,7 +493,7 @@ private fun DmRelaySettings() {
     var input by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Text(stringResource(Res.string.dmrelay_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.dmrelay_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.dmrelay_desc),
@@ -628,7 +628,7 @@ private fun AccountSettings() {
 
     // スクロールは SettingsContent 側で一括して掛けるので、ここは列にまとめるだけ。
     Column(Modifier.fillMaxWidth()) {
-    Text(stringResource(Res.string.profile_section), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.profile_section))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(stringResource(Res.string.profile_publish_note),
         color = DeckColors.Text3, fontSize = DeckType.Label)
@@ -667,7 +667,7 @@ private fun AccountSettings() {
 /** プロフィール編集の1フィールド（ラベル＋DeckTextField）。 */
 @Composable
 private fun ProfileField(label: String, value: String, singleLine: Boolean = true, onValueChange: (String) -> Unit) {
-    Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+    HintText(label)
     Spacer(Modifier.size(DeckSpace.Xs))
     DeckTextField(value = value, onValueChange = onValueChange, singleLine = singleLine, modifier = Modifier.fillMaxWidth())
     Spacer(Modifier.size(DeckSpace.Md))
@@ -680,7 +680,7 @@ private fun ProfileField(label: String, value: String, singleLine: Boolean = tru
  */
 @Composable
 private fun ProfileImageField(label: String, value: String, uploading: Boolean, banner: Boolean, onValueChange: (String) -> Unit, onPick: () -> Unit) {
-    Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+    HintText(label)
     Spacer(Modifier.size(DeckSpace.Xs))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(value = value, onValueChange = onValueChange, placeholder = "https://…", modifier = Modifier.weight(1f))
@@ -704,7 +704,7 @@ private fun ProfileImageField(label: String, value: String, uploading: Boolean, 
             )
             when (state) {
                 is AsyncImagePainter.State.Loading ->
-                    Text(stringResource(Res.string.loading), color = DeckColors.Text3, fontSize = DeckType.Label)
+                    HintText(stringResource(Res.string.loading))
                 is AsyncImagePainter.State.Error ->
                     Text(stringResource(Res.string.image_load_failed), color = DeckColors.Warn, fontSize = DeckType.Label)
                 else -> {}
@@ -728,7 +728,7 @@ private fun ReactionSettings() {
     val def by repo.defaultReactionFlow().collectAsState()
     val isStar = def.first == "⭐" || def.first == "★"
 
-    Text(stringResource(Res.string.reaction_default_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.reaction_default_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.reaction_default_desc),
@@ -830,7 +830,7 @@ private fun AppearanceSettings() {
     val themeMode by repo.themeModeFlow().collectAsState()
 
     // [#152] テーマ（既定=ダーク）。SYSTEM は OS のダークモード追従。
-    Text(stringResource(Res.string.theme_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.theme_title))
     Spacer(Modifier.size(DeckSpace.Md))
     Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
         app.nostrdeck.model.ThemeMode.entries.forEach { m ->
@@ -840,7 +840,7 @@ private fun AppearanceSettings() {
     Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#appearance] 表示サイズ（標準=従来 / 大きめ / 最大）。UI 全体（文字・アイコン・余白）を拡大。
-    Text(stringResource(Res.string.ui_scale_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.ui_scale_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.ui_scale_desc),
@@ -855,7 +855,7 @@ private fun AppearanceSettings() {
     Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#appearance] 文字サイズ（小=従来 / 中 / 大）。表示サイズに加えて文字だけをさらに拡大。
-    Text(stringResource(Res.string.text_scale_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.text_scale_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.text_scale_desc),
@@ -869,7 +869,7 @@ private fun AppearanceSettings() {
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
-    Text(stringResource(Res.string.embed_section), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.embed_section))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.embed_section_desc),
@@ -1037,7 +1037,7 @@ private fun SignerSettings() {
         HorizontalDivider(color = DeckColors.Border)
         Spacer(Modifier.size(DeckSpace.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.account_login_method_label), color = DeckColors.Text2, fontSize = DeckType.Caption)
+            SectionCaption(stringResource(Res.string.account_login_method_label))
             Text(signerMethodLabel(SignerProvider.current().method), color = DeckColors.Text, fontSize = DeckType.Caption)
             Spacer(Modifier.width(DeckSpace.Sm))
             Text(stringResource(Res.string.account_active), color = DeckColors.Verified, fontSize = DeckType.Label)
@@ -1046,7 +1046,7 @@ private fun SignerSettings() {
 
     // ── ② このアカウントを守る ──
     Spacer(Modifier.size(DeckSpace.Xl))
-    Text(stringResource(Res.string.account_protect_section), color = DeckColors.Text3, fontSize = DeckType.Label)
+    HintText(stringResource(Res.string.account_protect_section))
     Spacer(Modifier.size(DeckSpace.Md))
     // [#Nosskey] パスキー(WebAuthn PRF)で nsec を保護。
     NosskeyLogin()
@@ -1055,7 +1055,7 @@ private fun SignerSettings() {
 
     // ── ③ 別のアカウントを使う ──
     Spacer(Modifier.size(DeckSpace.Lg))
-    Text(stringResource(Res.string.account_switch_section), color = DeckColors.Text3, fontSize = DeckType.Label)
+    HintText(stringResource(Res.string.account_switch_section))
     Spacer(Modifier.size(DeckSpace.Md))
     if (!showRelogin) {
         // 入口は1行だけ。タップしても即座には何も起きない（警告ゲートへ）。
@@ -1417,7 +1417,7 @@ private fun RelaySettings() {
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var confirmSave by remember { mutableStateOf(false) }
 
-    Text(stringResource(Res.string.relays_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.relays_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.relays_desc),
@@ -1449,7 +1449,7 @@ private fun RelaySettings() {
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Md))
-    Text(stringResource(Res.string.auth_title), color = DeckColors.Text2, fontSize = DeckType.Caption)
+    SectionCaption(stringResource(Res.string.auth_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
         stringResource(Res.string.auth_desc),
@@ -1476,7 +1476,7 @@ private fun RelaySettings() {
         ) {
             Column(Modifier.weight(1f)) {
                 Text(r.url, color = DeckColors.Text, fontSize = DeckType.Sub)
-                Text("· ${r.source}", color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText("· ${r.source}")
             }
             RwToggle("Read", read) { repo.setRelayReadWrite(r.url, it, write) }
             RwToggle("Write", write) { repo.setRelayReadWrite(r.url, read, it) }
@@ -1512,7 +1512,7 @@ private fun RelaySettings() {
             recsLoading -> Text(stringResource(Res.string.relays_recs_loading), color = DeckColors.Text3, fontSize = DeckType.Label)
             !recs.isNullOrEmpty() -> RecommendedRelayChips(recs!!, registeredRelays, onAdd = { repo.addRelay(it) })
             else -> {
-                Text(stringResource(Res.string.relays_recs_empty), color = DeckColors.Text3, fontSize = DeckType.Label)
+                HintText(stringResource(Res.string.relays_recs_empty))
                 Spacer(Modifier.size(DeckSpace.Sm))
                 PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
             }

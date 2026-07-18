@@ -111,7 +111,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
             )
             ColumnConfig.RELAY_SET -> RelaySetEditor(initial = emptyList(), onChange = { relays = it })
             ColumnConfig.NOTIF_FILTER -> Column {
-                Text(stringResource(Res.string.add_column_kinds), color = DeckColors.Text2, fontSize = DeckType.Caption)
+                SectionCaption(stringResource(Res.string.add_column_kinds))
                 NotifKind.entries.forEach { k ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
