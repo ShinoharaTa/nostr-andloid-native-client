@@ -1,4 +1,4 @@
-- iOS: input fields now auto-focus when you open the composer and similar screens
-- iOS: fixed focus getting stuck in inputs (e.g. search) so you couldn't go back
-- Profile save now tells you when it fails (no more "saved" when it didn't)
-- Polish and bug fixes
+- iOS: tapping outside a text field now dismisses the keyboard (fixes buttons like Save being unreachable)
+- Unified and enlarged text sizes for inputs and buttons for better readability
+- Fixed body references (@mentions, notes, articles) being wrongly turned into links when incomplete; article links (naddr) are now tappable
+- Stability improvements and minor bug fixes
