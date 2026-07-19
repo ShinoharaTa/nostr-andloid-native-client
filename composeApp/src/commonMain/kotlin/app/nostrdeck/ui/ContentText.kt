@@ -44,19 +44,29 @@ fun noteAnnotated(
         withLink(LinkAnnotation.Clickable("nav", linkStyles, LinkInteractionListener { onClick() })) { append(label) }
     }
     // bech32 エンティティ（npub/nprofile/note/nevent/naddr）を1つ追記する。
-    fun appendEntity(bech: String) {
-        val label = mentionLabel(bech, resolveName)
-        val isProfile = bech.startsWith("npub1") || bech.startsWith("nprofile1")
-        val isEvent = bech.startsWith("note1") || bech.startsWith("nevent1")
-        if (nav != null && isProfile) {
-            val hex = Nip19.mentionBechToHex(bech)
-            if (hex != null) { clickable({ nav.onMention(hex) }, label); return }
+    // [#fix] デコードに成功したものだけをリンク/強調にする。不完全・不正な bech32
+    // （チェックサム不一致や未対応prefix）は素テキスト [raw] に戻す（誤リンク防止）。
+    fun appendEntity(bech: String, raw: String) {
+        // 装飾（nav 有り=タップ可 / 無し=強調のみ）。デコード済みの正当なエンティティにのみ適用。
+        fun styled(onClick: (() -> Unit)?) {
+            val label = mentionLabel(bech, resolveName)
+            if (onClick != null) clickable(onClick, label) else withStyle(accent) { append(label) }
         }
-        if (nav != null && isEvent) {
-            val id = Nip19.eventBechToHex(bech)
-            if (id != null) { clickable({ nav.onEvent(id) }, label); return }
+        when {
+            bech.startsWith("npub1") || bech.startsWith("nprofile1") -> {
+                val hex = Nip19.mentionBechToHex(bech) ?: return append(raw)
+                styled(if (nav != null) ({ nav.onMention(hex) }) else null)
+            }
+            bech.startsWith("note1") || bech.startsWith("nevent1") -> {
+                val id = Nip19.eventBechToHex(bech) ?: return append(raw)
+                styled(if (nav != null) ({ nav.onEvent(id) }) else null)
+            }
+            bech.startsWith("naddr1") -> {
+                val addr = Nip19.naddrDecode(bech) ?: return append(raw)
+                styled(if (nav != null) ({ nav.onAddr(addr) }) else null)
+            }
+            else -> append(raw)
         }
-        withStyle(accent) { append(label) }
     }
 
     // [#181] トークン抽出は共通トークナイザに一本化（detectEmbeds/Markdown と同じ規則）。
@@ -65,7 +75,7 @@ fun noteAnnotated(
         when (tok) {
             is ContentToken.Text -> append(text.substring(tok.start, tok.end))
             is ContentToken.Url -> withLink(LinkAnnotation.Url(tok.url, linkStyles)) { append(tok.url) }
-            is ContentToken.NostrRef -> appendEntity(tok.bech)
+            is ContentToken.NostrRef -> appendEntity(tok.bech, text.substring(tok.start, tok.end))
             is ContentToken.Hashtag ->
                 if (nav != null) clickable({ nav.onHashtag(tok.tag) }, "#${tok.tag}")
                 else withStyle(accent) { append("#${tok.tag}") }
