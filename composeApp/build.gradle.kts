@@ -79,6 +79,12 @@ kotlin {
     }
 }
 
+// [#183] :nostr-core（Compose 非依存）へ移した NostrEvent に @Immutable の代わりに
+// stable 指定を与え、フィードの再コンポーズ最適化を維持する。
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose_stability.conf"))
+}
+
 android {
     namespace = "app.nostrdeck"
     compileSdk = libs.versions.android.compileSdk.get().toInt()

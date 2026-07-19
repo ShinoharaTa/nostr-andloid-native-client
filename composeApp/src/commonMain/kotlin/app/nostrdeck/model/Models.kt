@@ -8,25 +8,8 @@ import kotlinx.serialization.Serializable
  * commonMain なので Android/iOS 双方で共有される。
  */
 
-/** Nostr イベント (kind:1 等)。SQLDelight `events` テーブルと対応。 */
-@Immutable
-data class NostrEvent(
-    val id: String,
-    val pubkey: String,
-    val kind: Int,
-    val createdAt: Long,
-    val content: String,
-    val tags: List<List<String>> = emptyList(),
-    val sig: String = "",
-)
-
-/** 署名前イベント（content/kind/tags を指定し、id・pubkey・sig・created_at は署名時に確定）。 */
-data class UnsignedEvent(
-    val kind: Int,
-    val content: String,
-    val tags: List<List<String>> = emptyList(),
-    val createdAt: Long = 0,    // 0 のとき署名時に現在時刻を充填
-)
+// [#183] NostrEvent / UnsignedEvent は :nostr-core（app.nostrdeck.model）へ移設。
+// 同一パッケージのため参照側の import 変更は不要。
 
 /** kind:0 プロフィール。pubkey ごとに createdAt 最大の1件だけ保持（dedup 済み）。 */
 @Immutable
