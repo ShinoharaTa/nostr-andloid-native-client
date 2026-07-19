@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.data.EventRepository
 
 /**
@@ -20,6 +21,8 @@ class NoteNav(
     val onMention: (pubkeyHex: String) -> Unit,
     val onHashtag: (tag: String) -> Unit,
     val onEvent: (eventIdHex: String) -> Unit,
+    // naddr（parameterized replaceable / 記事など）。kind+著者+dTag から実イベントを解決して開く。
+    val onAddr: (addr: Nip19.AddrRef) -> Unit,
 )
 
 val LocalNoteNav = staticCompositionLocalOf<NoteNav?> { null }

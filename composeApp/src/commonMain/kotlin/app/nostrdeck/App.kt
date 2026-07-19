@@ -10,6 +10,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import app.nostrdeck.ui.LocalRepository
 import app.nostrdeck.ui.LoginGate
 import app.nostrdeck.ui.NoteNav
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 
 /**
  * アプリのルート（Android/iOS 共通の入口）。
@@ -58,11 +60,19 @@ fun App(repository: EventRepository? = null) {
         val names by (repository?.profileNames()?.collectAsState(emptyMap<String, String>())
             ?: remember { mutableStateOf(emptyMap<String, String>()) })
         // 本文リンクのタップ遷移: @→プロフィール / #→ハッシュタグカラム / note・nevent→スレッド。
-        val noteNav = remember(state) {
+        val navScope = rememberCoroutineScope()
+        val noteNav = remember(state, repository) {
             NoteNav(
                 onMention = { hex -> state.openProfile(hex) },
                 onHashtag = { tag -> state.openHashtag(tag) },
                 onEvent = { id -> state.openThreadDetail(id) },
+                // naddr は kind+著者+dTag から実イベント id を解決してスレッドを開く（Markdown 記事と同じ経路）。
+                onAddr = { addr ->
+                    navScope.launch {
+                        repository?.resolveAddress(addr.kind, addr.pubkey, addr.dTag, addr.relays)
+                            ?.let { id -> state.openThreadDetail(id) }
+                    }
+                },
             )
         }
         // [#login] 未ログイン（鍵を自動生成しない）ならログインゲートを出す。
