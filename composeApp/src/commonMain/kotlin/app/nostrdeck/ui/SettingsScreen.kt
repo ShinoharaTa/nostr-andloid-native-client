@@ -1575,6 +1575,7 @@ private fun RwToggle(label: String, checked: Boolean, onCheckedChange: (Boolean)
 @Composable
 private fun LocalSignerLogin() {
     val repo = LocalRepository.current
+    val clipboard = LocalClipboardManager.current
     var nsecInput by remember { mutableStateOf("") }
     // [#160] onClick（非コンポーザブル）で使う文言はコンポジション中に解決しておく。
     val nsecHead = nsecInput.filterNot { it.isWhitespace() }.take(8)
@@ -1599,17 +1600,34 @@ private fun LocalSignerLogin() {
         value = nsecInput,
         onValueChange = { nsecInput = it; error = null },
         placeholder = stringResource(Res.string.nsec_placeholder),
-        // 秘密鍵なのでパスワード扱い：マスク表示 + パスワードキーボード + 自動入力対応。
-        // 中身を目視確認できるよう表示/非表示トグルを付ける（自動入力の取り違え検知用）。
+        // 秘密鍵なのでマスク表示 + 表示/非表示トグル（自動入力の取り違え検知用）。
+        // [#paste] keyboardType は Password にしない。iOS では Password 指定が secure text
+        // entry を有効化し、ネイティブの貼り付けを阻害・不適切な「強力なパスワード」自動入力を
+        // 誘発するため（nsec は貼り付けで取り込むのが主）。マスクは Compose 側の
+        // PasswordVisualTransformation で担保し、貼り付けは trailing の「貼り付け」でも行える。
         visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
         inputModifier = Modifier.secretAutofill { nsecInput = it; error = null },
         trailing = {
-            Text(
-                if (reveal) stringResource(Res.string.common_hide) else stringResource(Res.string.common_show),
-                color = DeckColors.Accent, fontSize = DeckType.Caption,
-                modifier = Modifier.clickable { reveal = !reveal }.padding(DeckSpace.Xs),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // クリップボードから直接充填。iOS の secure entry 挙動に依存せず確実に貼り付けられる。
+                Text(
+                    stringResource(Res.string.common_paste),
+                    color = DeckColors.Accent, fontSize = DeckType.Caption,
+                    modifier = Modifier
+                        .clickable {
+                            clipboard.getText()?.text?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                                nsecInput = it; error = null
+                            }
+                        }
+                        .padding(DeckSpace.Xs),
+                )
+                Text(
+                    if (reveal) stringResource(Res.string.common_hide) else stringResource(Res.string.common_show),
+                    color = DeckColors.Accent, fontSize = DeckType.Caption,
+                    modifier = Modifier.clickable { reveal = !reveal }.padding(DeckSpace.Xs),
+                )
+            }
         },
         modifier = Modifier.fillMaxWidth(),
     )
