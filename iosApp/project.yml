@@ -33,6 +33,8 @@ targets:
         # 暗号の輸出コンプライアンス: 標準TLSと Nostr 署名(secp256k1)のみで独自暗号は持たない。
         # false にすると TestFlight アップロード毎の輸出コンプライアンス質問を省ける（法的宣言）。
         ITSAppUsesNonExemptEncryption: false
+        # 画像を写真ライブラリへ保存する際の利用目的（未設定だと保存時にクラッシュ）。追加のみ。
+        NSPhotoLibraryAddUsageDescription: 画像を写真ライブラリに保存するために使用します。
         # Compose Multiplatform 必須: 未指定だと PlistSanityCheck が例外を投げてクラッシュする
         # （ProMotion 120Hz を有効化するためのフラグ）。
         CADisableMinimumFrameDurationOnPhone: true
