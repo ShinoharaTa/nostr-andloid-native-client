@@ -449,7 +449,8 @@
     <string name="send">送信</string>
     <string name="channel_pin">ピン留め</string>
     <string name="search_hint_add">単語・#タグを追加して検索してください（複数は OR で並びます）</string>
-    <string name="search_placeholder">単語 / #タグ（スペース区切りで複数・ORで並ぶ）</string>
+    <string name="search_placeholder">単語 / #タグ</string>
+    <string name="search_syntax_hint">スペース区切りで複数・OR で並ぶ</string>
     <string name="search_add">＋追加</string>
     <string name="search_remove_token">条件を削除</string>
     <string name="search_history">検索履歴</string>
