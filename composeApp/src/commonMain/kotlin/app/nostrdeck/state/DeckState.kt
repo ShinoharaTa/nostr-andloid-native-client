@@ -69,6 +69,9 @@ class DeckState(
     /** [#100] コンポーザーの初期テキスト（共有ターゲット経由）。閉じたらクリアする。 */
     var composeInitialText by mutableStateOf<String?>(null)
 
+    /** [#201] コンポーザーの初期添付画像（共有ターゲット経由の content URI 文字列）。閉じたらクリアする。 */
+    var composeInitialImageUris by mutableStateOf<List<String>>(emptyList())
+
     /** 返信対象（非null なら ComposeSheet は返信モード）。送信/破棄でクリアする。 */
     var replyTo by mutableStateOf<NostrEvent?>(null)
 

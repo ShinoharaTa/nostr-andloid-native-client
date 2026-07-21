@@ -40,6 +40,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- [#201] 共有ターゲット: 他アプリ/ギャラリーの共有シートから画像を受け取り、
+                 添付付きで投稿コンポーザーを開く。単一(SEND)/複数(SEND_MULTIPLE)の両方を受ける。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
             <!-- [#101][#200] nostr: ディープリンク（npub/nprofile/note/nevent/naddr）。
                  scheme のみのフィルタなので全 bech32 種別を受け、種別判定は MainActivity で行う。 -->
             <intent-filter>

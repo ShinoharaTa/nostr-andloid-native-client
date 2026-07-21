@@ -102,6 +102,13 @@ fun App(repository: EventRepository? = null) {
                             state.composeInitialText = intent.text
                             state.showCompose = true
                         }
+                        is ExternalIntent.ShareImage -> {
+                            // [#201] 共有画像をコンポーザーの初期添付に。返信/引用モードの残骸はクリア。
+                            state.replyTo = null
+                            state.quoting = null
+                            state.composeInitialImageUris = intent.uris
+                            state.showCompose = true
+                        }
                         is ExternalIntent.OpenProfile -> state.openProfile(intent.pubkeyHex)
                         is ExternalIntent.OpenEvent -> {
                             // 未取得でも requestEvent で取得を促してからスレッドを開く

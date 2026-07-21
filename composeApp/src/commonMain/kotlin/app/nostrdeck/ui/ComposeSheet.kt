@@ -89,8 +89,10 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -116,9 +118,12 @@ fun ComposeSheet(
     quoting: NostrEvent? = null,
     // [#100] 共有ターゲット等からの初期本文（非null なら下書き復元より優先）。
     initialText: String? = null,
+    // [#201] 共有ターゲットからの初期添付画像（content URI 文字列）。空なら添付なし（iOS は当面常に空）。
+    initialImageUris: List<String> = emptyList(),
 ) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
+    val platformContext = LocalPlatformContext.current
     // カーソル位置を知るため TextFieldValue で保持（任意位置へメンション/絵文字を挿入するため）。
     var field by remember {
         val init = initialText.orEmpty()
@@ -174,6 +179,19 @@ fun ComposeSheet(
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
     LaunchedEffect(resolution) {
         images.forEach { att -> scope.launch { att.compress(resolution) } }
+    }
+    // [#201] 共有シート経由の初期画像を添付する。content URI を PickedImage に読み出し、
+    // ピッカー選択時と同じく即圧縮を開始する（読み出しは重いので Default へ退避）。iOS は常に空。
+    LaunchedEffect(initialImageUris) {
+        if (initialImageUris.isEmpty()) return@LaunchedEffect
+        val picked = withContext(Dispatchers.Default) {
+            initialImageUris.mapNotNull { readSharedImage(platformContext, it) }
+        }
+        picked.forEach { p ->
+            val att = ComposeAttachment(p)
+            images.add(att)
+            scope.launch { att.compress(resolution) }
+        }
     }
     // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。[#13] 新規は下書きを復元。
     // [#172] iOS はモーダル表示直後の requestFocus が無視されることがあるためリトライ式に。
