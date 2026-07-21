@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -109,6 +111,12 @@ fun FeedColumn(
             onPin = onPin, onClose = onClose, menu = menu,
         )
         HorizontalDivider(color = DeckColors.Border)
+        // [#211] キャッシュを見せつつ購読取得中（EOSE前）は、ヘッダ下の細いバーで「ロード中」を明示。
+        // 検索など「キャッシュのみ表示→リレーから追って届く」ケースで、まだ取得中だと分かる。
+        if (spec.id !in loaded) LinearProgressIndicator(
+            Modifier.fillMaxWidth().height(2.dp),
+            color = DeckColors.Accent, trackColor = DeckColors.Surface2,
+        )
         RefreshableBox(onRefresh) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 if (offline) item { OfflineBanner(pendingCount = 3) }
