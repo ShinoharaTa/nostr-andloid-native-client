@@ -17,6 +17,17 @@ sealed interface ExternalIntent {
 
     /** nostr:note1… / nostr:nevent1… → スレッドを開く（event id + リレーヒント）。 */
     data class OpenEvent(val id: String, val relays: List<String>) : ExternalIntent
+
+    /**
+     * [#200] nostr:naddr1… → parameterized replaceable（記事等）を開く。
+     * kind+著者+dタグ からリレーへ解決してから実イベント id でスレッドを開く（#199 と同じ経路）。
+     */
+    data class OpenAddr(
+        val kind: Int,
+        val pubkey: String,
+        val dTag: String,
+        val relays: List<String>,
+    ) : ExternalIntent
 }
 
 /**

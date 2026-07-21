@@ -178,6 +178,11 @@ class MainActivity : ComponentActivity() {
                         Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
                             ExternalIntent.OpenEvent(id, relays)
                         }
+                    // [#200] naddr（記事等の parameterized replaceable）→ 解決して開く。
+                    bech.startsWith("naddr1") ->
+                        Nip19.naddrDecode(bech)?.let { a ->
+                            ExternalIntent.OpenAddr(a.kind, a.pubkey, a.dTag, a.relays)
+                        }
                     else -> null
                 }
                 if (external != null) {
