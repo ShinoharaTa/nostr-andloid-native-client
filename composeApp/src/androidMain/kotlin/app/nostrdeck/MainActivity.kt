@@ -1,6 +1,7 @@
 package app.nostrdeck
 
 import android.content.Intent
+import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
@@ -158,13 +159,29 @@ class MainActivity : ComponentActivity() {
      */
     private fun handleExternalIntent(intent: Intent?) {
         when (intent?.action) {
-            // [#100] 共有ターゲット: EXTRA_TEXT（+あれば EXTRA_SUBJECT を先頭行に）を投稿初期値へ。
+            // [#100][#201] 共有ターゲット（単一）: テキストは投稿初期値へ、画像はコンポーザーへ添付。
             Intent.ACTION_SEND -> {
-                if (intent.type?.startsWith("text/") != true) return
-                val body = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-                val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
-                val text = listOf(subject, body).filter { it.isNotBlank() }.joinToString("\n")
-                if (text.isNotBlank()) ExternalIntents.post(ExternalIntent.ShareText(text))
+                val type = intent.type.orEmpty()
+                when {
+                    type.startsWith("text/") -> {
+                        // EXTRA_TEXT（+あれば EXTRA_SUBJECT を先頭行に）を投稿初期値へ。
+                        val body = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+                        val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+                        val text = listOf(subject, body).filter { it.isNotBlank() }.joinToString("\n")
+                        if (text.isNotBlank()) ExternalIntents.post(ExternalIntent.ShareText(text))
+                    }
+                    // [#201] 画像1枚（EXTRA_STREAM の単一 Uri）。受信側には読取権限が付与済み。
+                    type.startsWith("image/") -> {
+                        val uri = intent.streamUri()
+                        if (uri != null) ExternalIntents.post(ExternalIntent.ShareImage(listOf(uri.toString())))
+                    }
+                }
+            }
+            // [#201] 共有ターゲット（複数）: EXTRA_STREAM の Uri 一覧を添付付きコンポーザーへ。
+            Intent.ACTION_SEND_MULTIPLE -> {
+                if (intent.type?.startsWith("image/") != true) return
+                val uris = intent.streamUris()
+                if (uris.isNotEmpty()) ExternalIntents.post(ExternalIntent.ShareImage(uris.map { it.toString() }))
             }
             // [#101] nostr: ディープリンク（nostr:npub1… / nostr://npub1… の両形式を許容）。
             Intent.ACTION_VIEW -> {
@@ -194,6 +211,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    // [#201] EXTRA_STREAM（共有された content Uri）を API 差を吸収して取り出す。
+    @Suppress("DEPRECATION")
+    private fun Intent.streamUri(): Uri? =
+        if (Build.VERSION.SDK_INT >= 33) getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        else getParcelableExtra(Intent.EXTRA_STREAM)
+
+    @Suppress("DEPRECATION")
+    private fun Intent.streamUris(): List<Uri> =
+        (if (Build.VERSION.SDK_INT >= 33) getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        else getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)).orEmpty()
 
     override fun onStart() {
         super.onStart()

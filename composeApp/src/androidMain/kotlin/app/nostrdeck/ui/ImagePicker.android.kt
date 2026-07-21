@@ -55,8 +55,8 @@ actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker {
     }
 }
 
-/** content Uri から bytes + MIME + ファイル名を読み出す（失敗時 null）。 */
-private fun readPicked(
+/** content Uri から bytes + MIME + ファイル名を読み出す（失敗時 null）。[#201] 共有画像の読み出しでも再利用する。 */
+internal fun readPicked(
     context: Context,
     uri: Uri,
     fallbackMime: String = "image/jpeg",

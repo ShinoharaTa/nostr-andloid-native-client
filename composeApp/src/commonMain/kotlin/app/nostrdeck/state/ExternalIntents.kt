@@ -12,6 +12,9 @@ sealed interface ExternalIntent {
     /** 他アプリの共有シートから受け取ったテキスト → コンポーザーを初期値付きで開く。 */
     data class ShareText(val text: String) : ExternalIntent
 
+    /** [#201] 他アプリ/ギャラリーの共有シートから受け取った画像（content URI 文字列）→ 添付付きでコンポーザーを開く。 */
+    data class ShareImage(val uris: List<String>) : ExternalIntent
+
     /** nostr:npub1… / nostr:nprofile1… → プロフィールを開く（hex 公開鍵）。 */
     data class OpenProfile(val pubkeyHex: String) : ExternalIntent
 
