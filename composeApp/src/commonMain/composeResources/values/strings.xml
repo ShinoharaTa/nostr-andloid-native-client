@@ -452,7 +452,8 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="send">Send</string>
     <string name="channel_pin">Pin</string>
     <string name="search_hint_add">Add words / #tags to search (multiple conditions are OR-ed)</string>
-    <string name="search_placeholder">Word / #tag (space-separated, OR)</string>
+    <string name="search_placeholder">Word / #tag</string>
+    <string name="search_syntax_hint">Space-separated = multiple; OR to combine</string>
     <string name="search_add">＋Add</string>
     <string name="search_remove_token">Remove condition</string>
     <string name="search_history">Search history</string>

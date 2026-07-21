@@ -152,23 +152,30 @@ private fun tokensToFilter(tokens: List<String>) = ReqFilter(
 
 @Composable
 private fun SearchBar(query: String, onChange: (String) -> Unit, onAdd: () -> Unit, onSubmit: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(DeckSpace.Md), verticalAlignment = Alignment.CenterVertically) {
-        DeckTextField(
-            value = query, onValueChange = onChange,
-            placeholder = stringResource(Res.string.search_placeholder),
-            modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-            trailing = {
-                Icon(
-                    Icons.Outlined.Search, stringResource(Res.string.nav_search), tint = DeckColors.Text2,
-                    modifier = Modifier.size(DeckDimens.IconMd).clickable { onSubmit() },
-                )
-            },
+    // [#198] プレースホルダは短く（折り返し防止）。構文の説明はフォーム下にヒントとして出す。
+    Column(Modifier.fillMaxWidth().padding(DeckSpace.Md)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DeckTextField(
+                value = query, onValueChange = onChange,
+                placeholder = stringResource(Res.string.search_placeholder),
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                trailing = {
+                    Icon(
+                        Icons.Outlined.Search, stringResource(Res.string.nav_search), tint = DeckColors.Text2,
+                        modifier = Modifier.size(DeckDimens.IconMd).clickable { onSubmit() },
+                    )
+                },
+            )
+            Spacer(Modifier.width(DeckSpace.Sm))
+            // 条件として積むだけ（実行しない）。複数を組んでから検索する導線。
+            DeckGhostButton(stringResource(Res.string.search_add), onClick = onAdd)
+        }
+        HintText(
+            stringResource(Res.string.search_syntax_hint),
+            modifier = Modifier.padding(top = DeckSpace.Xs, start = DeckSpace.Sm),
         )
-        Spacer(Modifier.width(DeckSpace.Sm))
-        // 条件として積むだけ（実行しない）。複数を組んでから検索する導線。
-        DeckGhostButton(stringResource(Res.string.search_add), onClick = onAdd)
     }
 }
 
