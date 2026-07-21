@@ -40,7 +40,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <!-- [#101] nostr: ディープリンク（npub/nprofile/note/nevent） -->
+            <!-- [#101][#200] nostr: ディープリンク（npub/nprofile/note/nevent/naddr）。
+                 scheme のみのフィルタなので全 bech32 種別を受け、種別判定は MainActivity で行う。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

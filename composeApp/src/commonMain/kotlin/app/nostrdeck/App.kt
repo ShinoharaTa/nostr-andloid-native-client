@@ -109,6 +109,13 @@ fun App(repository: EventRepository? = null) {
                             repository?.requestEvent(intent.id, intent.relays)
                             state.openThreadDetail(intent.id)
                         }
+                        is ExternalIntent.OpenAddr -> {
+                            // [#200] naddr は kind+著者+dタグ を実イベント id へ解決してから開く
+                            // （本文中 naddr タップ=NoteNav.onAddr と同じ経路）。resolveAddress は
+                            // DB 未取得なら #d 付き REQ をリレーへ投げて取り込みを待つ（=未取得も自動 fetch）。
+                            repository?.resolveAddress(intent.kind, intent.pubkey, intent.dTag, intent.relays)
+                                ?.let { id -> state.openThreadDetail(id) }
+                        }
                     }
                     ExternalIntents.consume()
                 }

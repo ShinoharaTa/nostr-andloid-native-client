@@ -38,6 +38,16 @@ targets:
         # Compose Multiplatform 必須: 未指定だと PlistSanityCheck が例外を投げてクラッシュする
         # （ProMotion 120Hz を有効化するためのフラグ）。
         CADisableMinimumFrameDurationOnPhone: true
+        # [#200] nostr: URL スキームを登録（他アプリの nostr:npub…/note…/naddr… タップで起動）。
+        # TODO(iOS): iOSApp.swift 側で .onOpenURL { url } を受け、url.absoluteString から
+        # "nostr:" 以降の bech を取り出して ExternalIntents.post(...) 相当へ流す配線が未実装。
+        # Android の MainActivity.handleExternalIntent と同じ分岐（npub/nprofile→OpenProfile,
+        # note/nevent→OpenEvent, naddr→OpenAddr）を Kotlin 側の共通ヘルパに切り出して共有するのが望ましい。
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Viewer
+            CFBundleURLName: net.shino3.nostrism.nostr
+            CFBundleURLSchemes:
+              - nostr
         # 暗背景アプリなのでステータスバー文字は明色固定。
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: false
