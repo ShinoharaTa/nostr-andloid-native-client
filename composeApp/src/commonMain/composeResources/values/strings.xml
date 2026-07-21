@@ -73,6 +73,7 @@
     <string name="common_back">Back</string>
     <string name="common_show">Show</string>
     <string name="common_hide">Hide</string>
+    <string name="common_paste">Paste</string>
     <string name="tpl_following">Following</string>
     <string name="tpl_global">Global</string>
     <string name="tpl_global_hint">Source relays (none = all relays)</string>
