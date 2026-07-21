@@ -779,17 +779,56 @@ class EventRepository(
         // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
         // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
         if (filter.words.isNotEmpty()) {
-            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = 100))
+            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT))
             return
         }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
-            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), proto)
+            // [#210] 検索は取りこぼしが多いので取得上限を増やす（表示は feedBySearch 側で LIMIT）。
+            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), filter.toProtocol(limit = SEARCH_FETCH_LIMIT))
             filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
+            // [#209] プロフィール/指定npub（少数著者）は著者の書き込みリレー(NIP-65)からも取得（アウトボックス）。
+            filter.authors.isNotEmpty() && filter.authors.size <= 3 -> subscribeAuthorOutbox(columnId, filter, proto)
             else -> subscribeAll(columnId, proto)
         }
     }
+
+    /**
+     * [#209] 少数著者フィード（プロフィール等）のアウトボックス購読。
+     * まず自分のリレーで即購読し、並行して著者の kind:10002(NIP-65) を取得→その write リレーからも
+     * 同じ投稿を購読する。著者が実際に使うリレーの投稿を拾えるので、自分の購読リレーに無い/古い分の
+     * 取りこぼし（中間抜け）が減る。追加購読はカラム ID に紐づけ、カラム閉時にまとめて CLOSE する。
+     */
+    private fun subscribeAuthorOutbox(columnId: String, filter: ReqFilter, proto: Filter) {
+        subscribeAll(columnId, proto)   // 自分のリレーで即購読
+        scope.launch {
+            // 著者の NIP-65 を indexer + 自分のリレーから取得。
+            val relSub = "$columnId~relaylist"
+            subscribeTargeted(relSub, INDEXER_RELAYS.toSet(),
+                Filter(kinds = listOf(10002), authors = filter.authors, limit = filter.authors.size))
+            subscribeAll(relSub, Filter(kinds = listOf(10002), authors = filter.authors, limit = filter.authors.size))
+            delay(4000)
+            unsubscribeAll(relSub)
+            // DB から write リレーを取り出し、著者の投稿を outbox リレーからも購読（未接続のものだけ）。
+            val writeRelays = filter.authors.flatMap { authorWriteRelays(it) }.distinct()
+                .map { normalizeRelayUrl(it) }.filter { it.isNotBlank() && it !in relays.keys }
+            if (writeRelays.isNotEmpty() && columnId in openColumns) {
+                subscribeTargeted("$columnId~outbox", writeRelays.toSet(), proto)
+            }
+        }
+    }
+
+    /** [#209] 著者の kind:10002 から write リレー URL を取り出す（marker 無し=両用 / "write"）。 */
+    private fun authorWriteRelays(pubkey: String): List<String> =
+        q.eventsByKindAuthor(10002L, pubkey).executeAsList().firstOrNull()?.let { row ->
+            runCatching {
+                parseTags(row.tags_json)
+                    .filter { it.firstOrNull() == "r" && it.size >= 2 }
+                    .filter { it.size < 3 || it[2] == "write" }
+                    .map { it[1] }
+            }.getOrDefault(emptyList())
+        }.orEmpty()
 
     /**
      * [#135] キーワード・タグフィードの REQ フィルタ群。
@@ -816,9 +855,9 @@ class EventRepository(
             // [#135] 複合検索: 条件フィルタ群に until を付けて NIP-50 リレーへ。
             filter.words.isNotEmpty() -> subscribeTargeted(
                 subId, SEARCH_RELAYS.toSet(),
-                *filter.toSearchProtocols(limit = 100).map { it.copy(until = untilSec) }.toTypedArray(),
+                *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT).map { it.copy(until = untilSec) }.toTypedArray(),
             )
-            !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
+            !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), filter.toProtocol(limit = SEARCH_FETCH_LIMIT).copy(until = untilSec))
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
             else -> subscribeAll(subId, proto)
         }
@@ -831,6 +870,9 @@ class EventRepository(
         notifJobs.remove(columnId)?.cancel()
         columnLoadedState.value = columnLoadedState.value - columnId  // [#17]
         if (openColumns.remove(columnId)) unsubscribeAll(columnId)
+        // [#209] アウトボックスの追加購読も CLOSE。
+        unsubscribeAll("$columnId~outbox")
+        unsubscribeAll("$columnId~relaylist")
     }
 
     // ---- FOLLOWING（フォロー中）: 自分の kind:3 を authors にした購読/読み出し ----
@@ -3620,6 +3662,8 @@ class EventRepository(
             "wss://relay.noswhere.sh",
             "wss://search.nos.today",
         )
+        // [#210] 検索の取得上限。ローカル LIKE 表示（feedBySearch, LIMIT 300）に十分載るよう多めに取る。
+        const val SEARCH_FETCH_LIMIT = 300
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
