@@ -17,3 +17,13 @@ expect class ImagePicker {
 
 @Composable
 expect fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePicker
+
+/**
+ * [#202] 端末のメディアピッカーから動画を1本選ぶ抽象。
+ * 受け渡しは画像と同じ [PickedImage]（生バイト + MIME + ファイル名）を流用し、
+ * アップロード経路(NIP-96)を共用する。動画は圧縮しない（原バイトのまま送る）。
+ *
+ * Android は PickVisualMedia(VideoOnly・単一選択)。iOS は当面 no-op スタブ（TODO）。
+ */
+@Composable
+expect fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker
