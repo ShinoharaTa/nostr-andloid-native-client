@@ -300,6 +300,8 @@ fun ComposeSheet(
             dismissOnBackPress = !sending,
         ),
     ) {
+      // [#196] Dialog は LocalDensity を再供給するので、老眼スケールを再適用する。
+      DeckScaled {
         // 画面上部に固定して浮くカード。imePadding で（ドッキング型）キーボード分だけ領域を詰める。
         // フローティングキーボードは下端に浮くだけなので、上寄せのこのカードには重ならない。
         // コンテンツが Dialog ウィンドウ全面を占めるため dismissOnClickOutside は発火しない。
@@ -493,6 +495,7 @@ fun ComposeSheet(
                 }
             }
         }
+      }
     }
 
     // 絵文字ピッカー（リアクションと同じ UI）。選択したものをカーソル位置へ挿入する。

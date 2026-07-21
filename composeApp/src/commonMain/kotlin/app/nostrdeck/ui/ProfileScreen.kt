@@ -442,7 +442,7 @@ private fun ProfileHeaderCard(
                 // [#95/#99] …メニュー: 共有用コピー（自分にも有用）＋ 他人にはミュート/通報。
                 Box {
                     CircleIconButton(Icons.Outlined.MoreHoriz, stringResource(Res.string.menu)) { moreMenu = true }
-                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                    DeckDropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                         // nprofile は対象の NIP-65 リレー（受信済みキャッシュ・最大3件）をヒントに含める。
                         val nprofile = {
                             runCatching {

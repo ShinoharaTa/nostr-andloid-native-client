@@ -30,6 +30,7 @@ import app.nostrdeck.state.ExternalIntents
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckTheme
 import app.nostrdeck.ui.AppScaffold
+import app.nostrdeck.ui.LocalDeckDensity
 import app.nostrdeck.ui.LocalNoteNav
 import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
@@ -122,14 +123,18 @@ fun App(repository: EventRepository? = null) {
         val uiScale by (repository?.uiScaleFlow()?.collectAsState()
             ?: remember { mutableStateOf(UiScale.SMALL) })
         val density = LocalDensity.current
+        // [#196] スケール込み density を1つ作り、LocalDensity と（Dialog へ伝播させる用の）
+        // LocalDeckDensity の両方へ供給する。Dialog/Popup 内では DeckScaled で再適用する。
+        val scaledDensity = Density(
+            density.density * uiScale.factor,
+            density.fontScale * textScale.factor,
+        )
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,
             LocalNoteNav provides noteNav,
-            LocalDensity provides Density(
-                density.density * uiScale.factor,
-                density.fontScale * textScale.factor,
-            ),
+            LocalDensity provides scaledDensity,
+            LocalDeckDensity provides scaledDensity,
         ) {
             // システムバー裏まで暗色で塗る（iOS はウィンドウ既定が白でステータスバー裏が白帯に
             // なるため）。子は systemBars 分を padding するので、この背景が最上端まで敷かれる。
