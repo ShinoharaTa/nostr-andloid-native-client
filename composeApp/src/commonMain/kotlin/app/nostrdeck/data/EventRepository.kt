@@ -779,13 +779,14 @@ class EventRepository(
         // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
         // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
         if (filter.words.isNotEmpty()) {
-            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = 100))
+            subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT))
             return
         }
         val proto = filter.toProtocol(limit = 100)
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
-            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), proto)
+            // [#210] 検索は取りこぼしが多いので取得上限を増やす（表示は feedBySearch 側で LIMIT）。
+            !filter.search.isNullOrBlank() -> subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), filter.toProtocol(limit = SEARCH_FETCH_LIMIT))
             filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
             // [#209] プロフィール/指定npub（少数著者）は著者の書き込みリレー(NIP-65)からも取得（アウトボックス）。
             filter.authors.isNotEmpty() && filter.authors.size <= 3 -> subscribeAuthorOutbox(columnId, filter, proto)
@@ -854,9 +855,9 @@ class EventRepository(
             // [#135] 複合検索: 条件フィルタ群に until を付けて NIP-50 リレーへ。
             filter.words.isNotEmpty() -> subscribeTargeted(
                 subId, SEARCH_RELAYS.toSet(),
-                *filter.toSearchProtocols(limit = 100).map { it.copy(until = untilSec) }.toTypedArray(),
+                *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT).map { it.copy(until = untilSec) }.toTypedArray(),
             )
-            !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), proto)
+            !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), filter.toProtocol(limit = SEARCH_FETCH_LIMIT).copy(until = untilSec))
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
             else -> subscribeAll(subId, proto)
         }
@@ -3661,6 +3662,8 @@ class EventRepository(
             "wss://relay.noswhere.sh",
             "wss://search.nos.today",
         )
+        // [#210] 検索の取得上限。ローカル LIKE 表示（feedBySearch, LIMIT 300）に十分載るよう多めに取る。
+        const val SEARCH_FETCH_LIMIT = 300
 
         /** NIP-28 チャンネル一覧の取得元（運用中のインデクサ。latest 順・上限つきを返す）。 */
         const val CHANNELS_ENDPOINT = "https://thread.nchan.vip/channels"
