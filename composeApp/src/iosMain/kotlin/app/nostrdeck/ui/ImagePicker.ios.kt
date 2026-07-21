@@ -14,6 +14,7 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
 import platform.UniformTypeIdentifiers.UTType
 import platform.UniformTypeIdentifiers.UTTypeImage
+import platform.UniformTypeIdentifiers.UTTypeMovie
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -31,12 +32,11 @@ actual class ImagePicker(private val onLaunch: () -> Unit) {
 actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePicker =
     remember { ImagePicker { presentPhotoPicker(onPicked) } }
 
-// [#202] TODO(iOS): 動画ピッカー未実装。当面 no-op（動画添付ボタンを押しても何も起きない）。
-// 実装時は PHPickerFilter.videosFilter() で PHPicker を出し、loadFileRepresentation 等で
-// 動画バイトを取り出して onPicked(PickedImage(...)) を呼ぶ。
+// [#202] iOS 実装。PHPickerFilter.videosFilter() で PHPicker を出し、選択1本の動画バイトを
+// NSData→ByteArray で取り出して onPicked(PickedImage) を呼ぶ。動画は圧縮しない（原バイトのまま）。
 @Composable
 actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker =
-    remember { ImagePicker { /* no-op: iOS video picker not implemented yet */ } }
+    remember { ImagePicker { presentVideoPicker(onPicked) } }
 
 // 提示中のデリゲートを強参照で保持する（picker.delegate は weak なので、これが無いと
 // 選択完了前に解放されてコールバックが飛ばない）。完了時に自身を外す。
@@ -100,6 +100,57 @@ private class PickerDelegate(
                     if (picked != null) collected.add(picked)
                     finishOne()
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun presentVideoPicker(onPicked: (PickedImage) -> Unit) {
+    val root = topViewController() ?: return
+    val config = PHPickerConfiguration().apply {
+        selectionLimit = 1                       // 動画は1本だけ選ばせる
+        filter = PHPickerFilter.videosFilter()   // 動画のみ（画像/Live Photo を除外）
+    }
+    val picker = PHPickerViewController(configuration = config)
+    val delegate = VideoPickerDelegate(onPicked) { activeDelegates.remove(it) }
+    activeDelegates.add(delegate)
+    picker.delegate = delegate
+    root.presentViewController(picker, animated = true, completion = null)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private class VideoPickerDelegate(
+    private val onPicked: (PickedImage) -> Unit,
+    private val onDone: (NSObject) -> Unit,
+) : NSObject(), PHPickerViewControllerDelegateProtocol {
+
+    override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
+        picker.dismissViewControllerAnimated(true, completion = null)
+        @Suppress("UNCHECKED_CAST")
+        val results = didFinishPicking as List<PHPickerResult>
+        // 空選択（キャンセル）は no-op。画像ピッカーと同じ扱い。
+        val provider = results.firstOrNull()?.itemProvider ?: run { onDone(this); return }
+
+        // 元の動画型（registered type）を優先。無ければ汎用 public.movie に変換させる。
+        // 動画判定は MIME が video/ 始まりか否かで行う（conformsToType のバインドが無いため）。
+        val typeId = provider.registeredTypeIdentifiers.firstOrNull {
+            UTType.typeWithIdentifier(it as String)?.preferredMIMEType?.startsWith("video/") == true
+        } as? String ?: UTTypeMovie.identifier
+
+        // loadDataRepresentation は全バイトをメモリに載せる（画像ピッカーと同じ経路）。
+        provider.loadDataRepresentationForTypeIdentifier(typeId) { data, _ ->
+            val picked = data?.let { nsData ->
+                val ut = UTType.typeWithIdentifier(typeId)
+                val mime = ut?.preferredMIMEType ?: "video/mp4"
+                val ext = ut?.preferredFilenameExtension ?: "mp4"
+                val base = provider.suggestedName ?: "video"
+                PickedImage(nsData.toByteArray(), mime, "$base.$ext")
+            }
+            // コールバックは任意スレッド。UI/呼び出し元へはメインキューで寄せて渡す。
+            dispatch_async(dispatch_get_main_queue()) {
+                if (picked != null) onPicked(picked)
+                onDone(this)
             }
         }
     }
