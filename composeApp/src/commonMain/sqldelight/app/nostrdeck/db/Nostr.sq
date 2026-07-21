@@ -22,10 +22,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 clearEvents:
 DELETE FROM event;
 
--- [M15] 起動時のタイムライン・キャッシュ解放。DM(kind:14)だけ残して他は消し、
--- 毎起動でリレーから読み直す（過去TLを溜め込まない・コールド起動を軽くする）。
+-- [M15] 起動時のタイムライン・キャッシュ解放。過去TLは溜め込まずリレーから読み直す。
+-- [#211] DM(kind:14) と kind:0(プロフィール, 更新頻度が低い) は残す。プロフィールは別テーブルに
+-- dedup 保存もされるが、event 側の kind:0 も保持して起動直後のプロフィール解決を軽くする。
 clearTimelineEvents:
-DELETE FROM event WHERE kind != 14;
+DELETE FROM event WHERE kind NOT IN (14, 0);
 
 -- タイムライン消去後に残ったイベントに紐づかない孤児タグを掃除する（DMのpタグは残る）。
 clearOrphanTags:
