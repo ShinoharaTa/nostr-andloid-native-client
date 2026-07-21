@@ -1,7 +1,6 @@
-- Post videos (Android)
-- Open article (naddr) links in-app; open the app from nostr: links in other apps
-- Added a "Paste" button when importing a private key (nsec)
-- Display size / font size settings now also apply to the composer and menus
-- Improved the search field layout
-- iOS: save images to Photos; swipe from the left edge to go back
+- Share an image from another app/gallery to post it (Android)
+- iOS: post videos; tapping a nostr: link opens the app
+- Fewer missing posts on profiles (outbox model)
+- More search results
+- Clearer loading indicator; faster profile display via cached profiles
 - Stability improvements and minor bug fixes
