@@ -1,8 +1,11 @@
 package app.nostrdeck
 
 import androidx.compose.ui.window.ComposeUIViewController
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.defaultRelaysFor
+import app.nostrdeck.state.ExternalIntent
+import app.nostrdeck.state.ExternalIntents
 import app.nostrdeck.ui.IosBackDispatcher
 import platform.Foundation.NSLocale
 import platform.Foundation.NSSelectorFromString
@@ -68,4 +71,32 @@ fun MainViewController(): UIViewController {
     edge.edges = UIRectEdgeLeft
     vc.view.addGestureRecognizer(edge)
     return vc
+}
+
+/**
+ * [#200] iOS の `nostr:` ディープリンク受け口。Swift 側の `.onOpenURL` から URL 文字列で呼ぶ。
+ * Android の MainActivity.handleExternalIntent（ACTION_VIEW）と同じ解析で ExternalIntents に流す。
+ * 消費（画面遷移）はログイン状態を見られる App 側が行う。
+ *
+ * `nostr:npub1…` / `nostr://npub1…` の両形式を許容。未対応タイプ・壊れた bech32 は握りつぶす。
+ */
+fun handleDeepLink(url: String) {
+    // scheme が nostr のときだけ処理（大小無視）。それ以外の URL は無視。
+    if (!url.trim().lowercase().startsWith("nostr:")) return
+    // "nostr:" を外し、続く "//"（authority 形式）も許容して bech 本体を取り出す。
+    val bech = url.trim().substring("nostr:".length).removePrefix("//").trim()
+    val external = when {
+        bech.startsWith("npub1") || bech.startsWith("nprofile1") ->
+            Nip19.mentionBechToHex(bech)?.let { ExternalIntent.OpenProfile(it) }
+        bech.startsWith("note1") || bech.startsWith("nevent1") ->
+            Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
+                ExternalIntent.OpenEvent(id, relays)
+            }
+        bech.startsWith("naddr1") ->
+            Nip19.naddrDecode(bech)?.let { a ->
+                ExternalIntent.OpenAddr(a.kind, a.pubkey, a.dTag, a.relays)
+            }
+        else -> null
+    }
+    if (external != null) ExternalIntents.post(external)
 }
