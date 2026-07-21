@@ -213,7 +213,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
 
             // 長押しメニュー（画像を保存 / URLをコピー）。中央付近にアンカーする。
             Box(Modifier.align(Alignment.Center)) {
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DeckDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
                         text = { Text(stringResource(Res.string.img_save)) },
                         leadingIcon = { Icon(Icons.Outlined.Download, null, modifier = Modifier.size(DeckDimens.IconMd)) },

@@ -448,7 +448,7 @@ private fun Bubble(
                     CollapsibleText(bodyText, emojis = emojis, color = textColor, linkColor = linkColor)
                 }
                 // 長押しメニュー: リアクション / リプライ。
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DeckDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (onReact != null) {
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.section_reaction)) },

@@ -143,7 +143,7 @@ private fun ColumnMenuButton(menu: ColumnMenuActions) {
     var open by remember { mutableStateOf(false) }
     Box {
         HeaderIconButton(Icons.Outlined.MoreHoriz, stringResource(Res.string.col_menu), DeckColors.Text3, onClick = { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DeckDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // 移動: 1行に ◀▶ を並べる（端では該当方向を無効化）。
             Row(
                 Modifier.padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),

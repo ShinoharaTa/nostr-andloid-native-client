@@ -162,18 +162,22 @@ fun DeckConfirmDialog(
     destructive: Boolean = false,
     dismissLabel: String? = stringResource(Res.string.common_cancel),
 ) {
+    // [#196] AlertDialog は独自ウィンドウで LocalDensity を再供給するため、各スロットで
+    // DeckScaled を適用して老眼スケール（表示サイズ/文字サイズ）を復活させる。
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { TitleText(title) },
-        text = { Text(text, color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = DeckType.LineTitle) },
+        title = { DeckScaled { TitleText(title) } },
+        text = { DeckScaled { Text(text, color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = DeckType.LineTitle) } },
         confirmButton = {
-            DeckTextButton(confirmLabel, onClick = onConfirm,
-                color = if (destructive) DeckColors.Warn else DeckColors.Text)
+            DeckScaled {
+                DeckTextButton(confirmLabel, onClick = onConfirm,
+                    color = if (destructive) DeckColors.Warn else DeckColors.Text)
+            }
         },
         dismissButton = dismissLabel?.let {
-            { DeckTextButton(it, onClick = onDismiss, color = DeckColors.Text3) }
+            { DeckScaled { DeckTextButton(it, onClick = onDismiss, color = DeckColors.Text3) } }
         },
     )
 }
@@ -194,19 +198,23 @@ fun DeckInputDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
-        title = { TitleText(title) },
+        title = { DeckScaled { TitleText(title) } },
         text = {
-            // [#172] ダイアログを開いたら即入力できるよう自動フォーカス（iOS はリトライ式）。
-            val focus = remember { FocusRequester() }
-            AutoFocusOnShown(focus)
-            DeckTextField(value = value, onValueChange = onValueChange, placeholder = placeholder,
-                inputModifier = Modifier.focusRequester(focus),
-                modifier = Modifier.fillMaxWidth())
+            DeckScaled {
+                // [#172] ダイアログを開いたら即入力できるよう自動フォーカス（iOS はリトライ式）。
+                val focus = remember { FocusRequester() }
+                AutoFocusOnShown(focus)
+                DeckTextField(value = value, onValueChange = onValueChange, placeholder = placeholder,
+                    inputModifier = Modifier.focusRequester(focus),
+                    modifier = Modifier.fillMaxWidth())
+            }
         },
         confirmButton = {
-            DeckTextButton(confirmLabel, onClick = { if (confirmEnabled) onConfirm() },
-                color = if (confirmEnabled) DeckColors.Text else DeckColors.Text3)
+            DeckScaled {
+                DeckTextButton(confirmLabel, onClick = { if (confirmEnabled) onConfirm() },
+                    color = if (confirmEnabled) DeckColors.Text else DeckColors.Text3)
+            }
         },
-        dismissButton = { DeckTextButton(stringResource(Res.string.common_cancel), onClick = onDismiss, color = DeckColors.Text3) },
+        dismissButton = { DeckScaled { DeckTextButton(stringResource(Res.string.common_cancel), onClick = onDismiss, color = DeckColors.Text3) } },
     )
 }

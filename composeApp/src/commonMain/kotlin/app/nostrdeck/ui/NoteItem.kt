@@ -188,7 +188,7 @@ fun NoteItem(
                         if (note.mineReposted) DeckColors.Boost else DeckColors.Text3,
                         onClick = { repostMenu = true },
                     )
-                    DropdownMenu(expanded = repostMenu, onDismissRequest = { repostMenu = false }) {
+                    DeckDropdownMenu(expanded = repostMenu, onDismissRequest = { repostMenu = false }) {
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.note_repost)) },
                             onClick = { repostMenu = false; scope.launch { repo?.publishRepost(note.event) } },
@@ -229,7 +229,7 @@ fun NoteItem(
                     val isBookmarked = note.event.id in bookmarks
                     val isPinned = note.event.id in pinned
                     val isMine = note.event.pubkey == me
-                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                    DeckDropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                         // --- 操作系 ---
                         // [#93] 他人の投稿はフォロー状態に応じてトグル表示。フォローは即実行、
                         // 解除は kind:3 の再発行で破壊的なため確認ダイアログを挟む。
