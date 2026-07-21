@@ -33,7 +33,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PlaylistAdd
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -150,6 +152,8 @@ fun ComposeSheet(
     // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
     val images = remember { mutableStateListOf<ComposeAttachment>() }
     var resolution by remember { mutableStateOf(ImageResolution.MID) }
+    // [#202] 添付動画（原バイトのまま保持・圧縮しない）。送信時に画像の後で NIP-96 アップロード。
+    val videos = remember { mutableStateListOf<PickedImage>() }
     var sending by remember { mutableStateOf(false) }
     var sendJob by remember { mutableStateOf<Job?>(null) }        // 送信ジョブ（強制キャンセル用）
     val uploadProgress = remember { MutableStateFlow(0) }          // アップロード完了枚数（並列更新するので Flow）
@@ -164,6 +168,9 @@ fun ComposeSheet(
             scope.launch { att.compress(resolution) }
         }
     }
+    // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。圧縮はせず送信時にそのままアップロード。
+    // iOS は当面 no-op（rememberVideoPicker のスタブ）。
+    val videoPicker = rememberVideoPicker { picked -> videos.add(picked) }
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
     LaunchedEffect(resolution) {
         images.forEach { att -> scope.launch { att.compress(resolution) } }
@@ -233,7 +240,7 @@ fun ComposeSheet(
         customEmojis.filter { it.shortcode.startsWith(activeEmoji, ignoreCase = true) }.take(12)
     } else emptyList()
 
-    val canSend = !sending && (text.isNotBlank() || images.isNotEmpty() || quoting != null || threadSegments.isNotEmpty())
+    val canSend = !sending && (text.isNotBlank() || images.isNotEmpty() || videos.isNotEmpty() || quoting != null || threadSegments.isNotEmpty())
     val doSend: () -> Unit = {
         if (canSend) {
             sending = true; sendError = null; uploadProgress.value = 0
@@ -251,13 +258,29 @@ fun ComposeSheet(
                             }
                         }
                     }.awaitAll()
-                    // 画像があるのに1枚でも失敗したら投稿を中止（画像欠けの投稿を避ける）。
+                    // [#202] 動画は圧縮せず原バイトのまま同じ NIP-96 経路でアップロード（画像と同スロット）。
+                    val videoUrls = videos.map { v ->
+                        async {
+                            slots.withPermit {
+                                val url = repo?.uploadImage(v.bytes, v.mime, v.name)
+                                uploadProgress.update { n -> n + 1 }
+                                url
+                            }
+                        }
+                    }.awaitAll()
+                    // 画像/動画があるのに1件でも失敗したら投稿を中止（メディア欠けの投稿を避ける）。
                     if (images.isNotEmpty() && urls.any { it.isNullOrBlank() }) {
                         throw RuntimeException("image upload failed")
+                    }
+                    if (videos.isNotEmpty() && videoUrls.any { it.isNullOrBlank() }) {
+                        throw RuntimeException("video upload failed")
                     }
                     val parts = buildList {
                         if (text.isNotBlank()) add(text.trimEnd())
                         addAll(urls.filterNotNull())
+                        // TODO(#202): NIP-92 imeta（動画の m=video/... や dim/blurhash）を tags に付与。
+                        //   現状は本文末尾に URL を並べるだけ（画像と同じ扱い）。
+                        addAll(videoUrls.filterNotNull())
                     }
                     val body = parts.joinToString("\n")
                     when {
@@ -288,7 +311,7 @@ fun ComposeSheet(
     var confirmDiscard by remember { mutableStateOf(false) }
     val attemptClose: () -> Unit = {
         if (!sending) {
-            if (text.isNotBlank() || images.isNotEmpty()) confirmDiscard = true else onDismiss()
+            if (text.isNotBlank() || images.isNotEmpty() || videos.isNotEmpty()) confirmDiscard = true else onDismiss()
         }
     }
 
@@ -401,6 +424,12 @@ fun ComposeSheet(
                             ResolutionSelector(resolution, onSelect = { resolution = it })
                         }
                     }
+
+                    // [#202] 添付動画カルーセル（サムネは出さず、アイコン + 容量のプレースホルダ）。
+                    if (videos.isNotEmpty()) {
+                        Spacer(Modifier.height(DeckSpace.Md))
+                        VideoCarousel(videos, onRemove = { videos.removeAt(it) })
+                    }
                 }
 
                 // 返信先/引用元は入力フォームの外、下部に固定して文脈を明示する（境界は余白で）。
@@ -428,8 +457,9 @@ fun ComposeSheet(
                         CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp, color = DeckColors.Text2)
                         Spacer(Modifier.width(DeckSpace.Sm))
                         val done by uploadProgress.collectAsState()
+                        val mediaCount = images.size + videos.size
                         Text(
-                            if (images.isNotEmpty()) stringResource(Res.string.compose_uploading_fmt, done, images.size) else stringResource(Res.string.compose_posting),
+                            if (mediaCount > 0) stringResource(Res.string.compose_uploading_fmt, done, mediaCount) else stringResource(Res.string.compose_posting),
                             color = DeckColors.Text2, fontSize = DeckType.Caption,
                         )
                         Spacer(Modifier.weight(1f))
@@ -442,6 +472,12 @@ fun ComposeSheet(
                                 .clickable { picker.launch() },
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Outlined.Image, stringResource(Res.string.compose_attach_image), tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
+                        // [#202] 動画添付（システムの動画ピッカー・1本ずつ）。iOS は当面 no-op。
+                        Box(
+                            Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
+                                .clickable { videoPicker.launch() },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Outlined.Videocam, stringResource(Res.string.compose_attach_video), tint = DeckColors.Text, modifier = Modifier.size(DeckDimens.IconLg)) }
                         // 絵文字ピッカー（Unicode + 自分のカスタム絵文字）。カーソル位置に挿入。
                         Box(
                             Modifier.size(DeckDimens.TouchTargetSm).clip(RoundedCornerShape(DeckRadius.Sm))
@@ -621,6 +657,38 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                         )
                         else -> Text(humanSize(att.src.bytes.size), color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * [#202] 添付動画の横スクロール・カルーセル。動画は圧縮しないので容量はそのまま表示。
+ * サムネイル生成はしていない（TODO: 先頭フレーム抽出）。アイコン + ファイル名 + 容量のプレースホルダ。
+ */
+@Composable
+private fun VideoCarousel(videos: List<PickedImage>, onRemove: (Int) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(videos.size) { i ->
+            val v = videos[i]
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Movie, stringResource(Res.string.compose_attach_video), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconLg))
+                    // 添付削除（インライン補助操作・32dp 実タップ領域）。
+                    Box(
+                        Modifier.align(Alignment.TopEnd).size(DeckDimens.TouchTargetXs)
+                            .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { onRemove(i) },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Outlined.Close, stringResource(Res.string.common_delete), tint = Color.White, modifier = Modifier.size(DeckDimens.IconSm)) }
+                }
+                Spacer(Modifier.height(DeckSpace.Xs))
+                Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
+                    Text(humanSize(v.bytes.size), color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                 }
             }
         }

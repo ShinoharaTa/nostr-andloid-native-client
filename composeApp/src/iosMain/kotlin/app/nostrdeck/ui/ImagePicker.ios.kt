@@ -31,6 +31,13 @@ actual class ImagePicker(private val onLaunch: () -> Unit) {
 actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePicker =
     remember { ImagePicker { presentPhotoPicker(onPicked) } }
 
+// [#202] TODO(iOS): 動画ピッカー未実装。当面 no-op（動画添付ボタンを押しても何も起きない）。
+// 実装時は PHPickerFilter.videosFilter() で PHPicker を出し、loadFileRepresentation 等で
+// 動画バイトを取り出して onPicked(PickedImage(...)) を呼ぶ。
+@Composable
+actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker =
+    remember { ImagePicker { /* no-op: iOS video picker not implemented yet */ } }
+
 // 提示中のデリゲートを強参照で保持する（picker.delegate は weak なので、これが無いと
 // 選択完了前に解放されてコールバックが飛ばない）。完了時に自身を外す。
 private val activeDelegates = mutableListOf<NSObject>()

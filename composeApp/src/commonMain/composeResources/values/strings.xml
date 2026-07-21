@@ -314,6 +314,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="compose_uploading_fmt">Uploading image %1$d/%2$d…</string>
     <string name="compose_posting">Posting…</string>
     <string name="compose_attach_image">Attach image</string>
+    <string name="compose_attach_video">Attach video</string>
     <string name="compose_insert_emoji">Insert emoji</string>
     <string name="compose_sensitive_on">Sensitive: ON</string>
     <string name="compose_sensitive">Mark sensitive</string>

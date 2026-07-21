@@ -34,11 +34,37 @@ actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePick
     }
 }
 
+/**
+ * [#202] Android 実装。PickVisualMedia(VideoOnly・単一選択)で動画を1本選び、
+ * bytes + MIME を読み出して onPicked へ渡す。動画は圧縮しない（原バイトのまま送る）。
+ */
+@Composable
+actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        uri?.let { readPicked(context, it, fallbackMime = "video/mp4", fallbackName = "video") }?.let(onPicked)
+    }
+    return remember(launcher) {
+        ImagePicker {
+            launcher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
+            )
+        }
+    }
+}
+
 /** content Uri から bytes + MIME + ファイル名を読み出す（失敗時 null）。 */
-private fun readPicked(context: Context, uri: Uri): PickedImage? = runCatching {
+private fun readPicked(
+    context: Context,
+    uri: Uri,
+    fallbackMime: String = "image/jpeg",
+    fallbackName: String = "image",
+): PickedImage? = runCatching {
     val resolver = context.contentResolver
-    val mime = resolver.getType(uri) ?: "image/jpeg"
+    val mime = resolver.getType(uri) ?: fallbackMime
     val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-    val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "image"
+    val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: fallbackName
     PickedImage(bytes, mime, name)
 }.getOrNull()
