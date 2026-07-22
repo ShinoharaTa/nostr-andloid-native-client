@@ -131,6 +131,7 @@ private val SHORTCUTS: List<Pair<String, String>> = listOf(
     "t" to "リポスト",
     "f" to "いいね / リアクション",
     "n" to "新規投稿",
+    "⌘/Ctrl + Enter" to "投稿する（作成中）",
     "/" to "検索",
     "." to "先頭へ（新着）",
     "⌘/Ctrl + R" to "再接続（タイムライン再構築）",
