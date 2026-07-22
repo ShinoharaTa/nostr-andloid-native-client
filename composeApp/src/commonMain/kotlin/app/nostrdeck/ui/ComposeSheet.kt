@@ -58,6 +58,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
@@ -393,7 +400,8 @@ fun ComposeSheet(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = DeckSpace.Lg).padding(top = DeckSpace.Xs, bottom = DeckSpace.Md),
                 ) {
-                    BodyField(field, onChange = { field = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth())
+                    BodyField(field, onChange = { field = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth(),
+                        onSubmit = { if (canSend) doSend() })
 
                     // 入力中の候補（本文直下）。絵文字 > メンション > ハッシュタグ の優先で1種のみ出す。
                     if (emojiCandidates.isNotEmpty()) {
@@ -604,6 +612,7 @@ private fun BodyField(
     onChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    onSubmit: () -> Unit = {},   // [#14] Cmd/Ctrl+Enter で投稿
 ) {
     Box(modifier.padding(vertical = DeckSpace.Sm)) {
         if (value.text.isEmpty()) {
@@ -614,7 +623,17 @@ private fun BodyField(
             textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
             cursorBrush = SolidColor(DeckColors.Text),
             modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
-                .focusRequester(focusRequester),
+                .focusRequester(focusRequester)
+                // [#14] Cmd(Mac)/Ctrl+Enter で送信。改行は素の Enter のまま。
+                .onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown && (e.isMetaPressed || e.isCtrlPressed) &&
+                        (e.key == Key.Enter || e.key == Key.NumPadEnter)
+                    ) {
+                        onSubmit(); true
+                    } else {
+                        false
+                    }
+                },
         )
     }
 }

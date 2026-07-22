@@ -44,7 +44,11 @@ import kotlinx.coroutines.launch
  * [repository] が渡されれば実データ、null なら SampleData にフォールバック。
  */
 @Composable
-fun App(repository: EventRepository? = null) {
+fun App(
+    repository: EventRepository? = null,
+    // [#14] Desktop が Window レベルでキーを拾えるよう、生成した DeckState を渡す（既定は無視）。
+    onDeckState: (DeckState) -> Unit = {},
+) {
     // [#152] テーマ設定（OSに合わせる/ライト/ダーク）。既定はダーク（従来挙動）。
     val themeMode by (repository?.themeModeFlow()?.collectAsState()
         ?: remember { mutableStateOf(ThemeMode.DARK) })
@@ -57,6 +61,7 @@ fun App(repository: EventRepository? = null) {
             if (persisted.isEmpty()) repository?.persistPinnedColumns(SampleData.columns.filter { it.pinned })
             DeckState(initial, onPinnedChanged = { cols -> repository?.persistPinnedColumns(cols) })
         }
+        LaunchedEffect(state) { onDeckState(state) }
         // 本文メンション(@npub…)解決用の pubkey→name マップを供給（実データ時のみ）。
         val names by (repository?.profileNames()?.collectAsState(emptyMap<String, String>())
             ?: remember { mutableStateOf(emptyMap<String, String>()) })
