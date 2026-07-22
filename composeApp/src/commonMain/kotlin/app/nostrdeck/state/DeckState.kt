@@ -3,6 +3,7 @@ package app.nostrdeck.state
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.nostrdeck.model.ColumnKind
@@ -13,6 +14,9 @@ import app.nostrdeck.model.build
 
 /** 左レール/下タブのグローバル宛先（アプリ機能）。コンテンツはカラム側。 */
 enum class NavDest { HOME, SEARCH, NOTIFICATIONS, DM, CHANNELS, SETTINGS }
+
+/** [#14] キーボードショートカットで選択中の投稿に対して行うアクション。 */
+enum class KbAction { OPEN, REPLY, REPOST, REACT }
 
 /**
  * 全幅で重ねる詳細ルート（どの宛先からでもプロフィール/スレッドを開ける）。
@@ -77,6 +81,48 @@ class DeckState(
 
     /** 引用リポスト対象（非null なら ComposeSheet は引用モード）。送信/破棄でクリアする。 */
     var quoting by mutableStateOf<NostrEvent?>(null)
+
+    // [#14] キーボードショートカット状態。ハイライトはキー操作で出現（マウス操作の邪魔をしない）。
+    /** 選択ハイライトを表示中か（j/k 等の初回操作で true）。 */
+    var kbActive by mutableStateOf(false)
+    /** キーボードフォーカス中のカラム id（h/l で移動）。 */
+    var kbFocusColumnId by mutableStateOf<String?>(null)
+    /** カラム id → 選択中インデックス。 */
+    val kbSelected = mutableStateMapOf<String, Int>()
+    /** カラム id → 可視件数（各カラムが自分の件数を書き込む。クランプ用）。 */
+    val kbCount = mutableStateMapOf<String, Int>()
+    /** アクション実行要求 (カラム id, 種別)。対象カラムが実行して null に戻す。 */
+    var kbAction by mutableStateOf<Pair<String, KbAction>?>(null)
+    /** ショートカット一覧オーバーレイの表示（? キー）。 */
+    var showShortcutsHelp by mutableStateOf(false)
+
+    /** 選択を delta ぶん動かす（範囲内にクランプ）。件数0なら何もしない。 */
+    fun kbMoveSelection(columnId: String, delta: Int) {
+        val count = kbCount[columnId] ?: 0
+        if (count == 0) return
+        val cur = kbSelected[columnId] ?: -1
+        kbSelected[columnId] = (cur + delta).coerceIn(0, count - 1)
+        kbActive = true
+    }
+
+    /** 選択を先頭/末尾へ。 */
+    fun kbSelectEdge(columnId: String, toBottom: Boolean) {
+        val count = kbCount[columnId] ?: 0
+        if (count == 0) return
+        kbSelected[columnId] = if (toBottom) count - 1 else 0
+        kbActive = true
+    }
+
+    /** カラムフォーカスを移動し、そのカラムを表示範囲へスクロールする。 */
+    fun kbFocusColumn(index: Int) {
+        if (columns.isEmpty()) return
+        val i = index.coerceIn(0, columns.lastIndex)
+        val id = columns[i].id
+        kbFocusColumnId = id
+        kbActive = true
+        if (kbSelected[id] == null) kbSelected[id] = 0
+        jumpTo(id)
+    }
 
     /**
      * 全幅詳細ルートのスタック（プロフィール/スレッド）。非空ならコンテンツ領域に重ねて表示。

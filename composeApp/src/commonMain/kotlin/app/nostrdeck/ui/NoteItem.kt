@@ -58,6 +58,8 @@ import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.ReactionUi
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -91,6 +93,8 @@ fun NoteItem(
     onReply: (() -> Unit)? = null,
     onQuote: (() -> Unit)? = null,
     onAuthorClick: ((String) -> Unit)? = null,
+    // [#14] キーボードショートカットで選択中のとき、背景を強調＋左にアクセントバーを描く。
+    selected: Boolean = false,
 ) {
   val repo = LocalRepository.current
   val scope = rememberCoroutineScope()
@@ -121,7 +125,15 @@ fun NoteItem(
   var cwRevealed by remember(note.event.id) { mutableStateOf(false) }
   // 著者(アバター/名前)タップでプロフィールを開く。
   val authorTap: Modifier = if (onAuthorClick != null) Modifier.clickable { onAuthorClick(note.event.pubkey) } else Modifier
-  Column(if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()) {
+  // [#14] 選択ハイライト（背景 Surface2 ＋ 左 3dp アクセントバー）。キー操作時のみ true。
+  val selFill = DeckColors.Surface2
+  val selBar = DeckColors.Accent
+  val base = if (onClick != null) modifier.fillMaxWidth().clickable(onClick = onClick) else modifier.fillMaxWidth()
+  val rootModifier = if (selected) base.drawBehind {
+      drawRect(selFill)
+      drawRect(color = selBar, size = Size(3.dp.toPx(), size.height))
+  } else base
+  Column(rootModifier) {
     note.repostedBy?.let {  // [M8-repost] 🔁 {name} がリポスト
         RepostHeader(it.name, Modifier.padding(start = DeckSpace.Md, top = DeckSpace.Sm))
     }

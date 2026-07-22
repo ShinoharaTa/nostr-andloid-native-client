@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.height
@@ -72,6 +73,7 @@ fun FeedColumn(
     onQuote: (NoteUi) -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
     onRefresh: (() -> Unit)? = null,   // [#53] プルリフレッシュ（非nullで有効。REQ張り直し）
+    selectedIndex: Int = -1,           // [#14] キーボード選択中のインデックス（-1=なし）
 ) {
     // 新着が先頭(index 0)に来たとき、ユーザーが先頭付近にいれば自動で最上部へスクロール。
     // 下までスクロールしている場合は読書位置を保つため動かさない。
@@ -120,10 +122,11 @@ fun FeedColumn(
         RefreshableBox(onRefresh) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 if (offline) item { OfflineBanner(pendingCount = 3) }
-                items(notes, key = { it.event.id }) { note ->
+                itemsIndexed(notes, key = { _, it -> it.event.id }) { index, note ->
                     NoteItem(
                         note, onClick = { onNoteClick(note) },
                         onReply = { onReply(note) }, onQuote = { onQuote(note) }, onAuthorClick = onAuthorClick,
+                        selected = index == selectedIndex,
                     )
                 }
                 if (loadingOlder && notes.isNotEmpty()) item("load_older") { LoadMoreFooter() }
@@ -179,6 +182,7 @@ fun FollowingFeedColumn(
     onAuthorClick: (String) -> Unit = {},
     onNoticeClick: (String) -> Unit = {},
     onRefresh: (() -> Unit)? = null,   // [#53] プルリフレッシュ（非nullで有効。REQ張り直し）
+    selectedIndex: Int = -1,           // [#14] キーボード選択中のインデックス（-1=なし）
 ) {
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
         if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
@@ -195,12 +199,13 @@ fun FollowingFeedColumn(
         HorizontalDivider(color = DeckColors.Border)
         RefreshableBox(onRefresh) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(entries, key = { feedEntryKey(it) }) { entry ->
+                itemsIndexed(entries, key = { _, it -> feedEntryKey(it) }) { index, entry ->
                     when (entry) {
                         is FeedEntry.Post -> NoteItem(
                             entry.note, onClick = { onNoteClick(entry.note) },
                             onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
                             onAuthorClick = onAuthorClick,
+                            selected = index == selectedIndex,
                         )
                         is FeedEntry.Notice -> NoticeRow(
                             entry.notif,

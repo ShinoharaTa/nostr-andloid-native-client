@@ -1,6 +1,11 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import app.nostrdeck.state.KbAction
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -66,9 +71,68 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(DeckColors.Bg)) {
-        if (isCompact) CompactPager(state) else ExpandedDeck(state)
+    // [#14] キーボードショートカット。ルートを focusable にして onPreviewKeyEvent で受ける。
+    // 起動時と投稿シートを閉じた時にフォーカスを取り戻す（テキスト入力中は handleDeckKey 側で譲る）。
+    val kbFocus = remember { FocusRequester() }
+    LaunchedEffect(state.showCompose) {
+        if (!state.showCompose) runCatching { kbFocus.requestFocus() }
     }
+    Box(
+        modifier.fillMaxSize().background(DeckColors.Bg)
+            .focusRequester(kbFocus)
+            .focusable()
+            .onPreviewKeyEvent { handleDeckKey(state, it) },
+    ) {
+        if (isCompact) CompactPager(state) else ExpandedDeck(state)
+        if (state.showShortcutsHelp) ShortcutsHelpOverlay(onDismiss = { state.showShortcutsHelp = false })
+    }
+}
+
+/**
+ * [#14] カラムのキーボード選択配線。件数を [DeckState.kbCount] に通知し、選択追従スクロールと
+ * アクション要求([DeckState.kbAction])の実行（このカラムが対象のときのみ）を行う。戻り値=選択index。
+ */
+@Composable
+private fun kbColumnSelection(
+    state: DeckState,
+    columnId: String,
+    count: Int,
+    listState: LazyListState,
+    resolve: (Int) -> NoteUi?,
+    onOpen: (NoteUi) -> Unit,
+    onReply: (NoteUi) -> Unit,
+    onRepost: (NoteUi) -> Unit,
+): Int {
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    val focused = state.kbFocusColumnId == columnId
+    val raw = state.kbSelected[columnId] ?: -1
+    val selectedIndex = if (focused && state.kbActive && raw in 0 until count) raw else -1
+
+    LaunchedEffect(columnId, count) { state.kbCount[columnId] = count }
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex >= 0) runCatching { listState.animateScrollToItem(selectedIndex) }
+    }
+    LaunchedEffect(state.kbAction) {
+        val act = state.kbAction ?: return@LaunchedEffect
+        if (act.first != columnId) return@LaunchedEffect
+        val note = resolve(state.kbSelected[columnId] ?: -1)
+        if (note != null) when (act.second) {
+            KbAction.OPEN -> onOpen(note)
+            KbAction.REPLY -> onReply(note)
+            KbAction.REPOST -> onRepost(note)
+            KbAction.REACT -> scope.launch { repo?.reactWithDefault(note.event) }
+        }
+        state.kbAction = null
+    }
+    return selectedIndex
+}
+
+/** [#14] キーボード選択の対象イベント。通知行は対象外(null)。 */
+private fun feedEntryNote(entry: FeedEntry?): NoteUi? = when (entry) {
+    is FeedEntry.Post -> entry.note
+    is FeedEntry.MyReaction -> entry.target
+    else -> null
 }
 
 @Composable
@@ -265,11 +329,17 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         }
                     }
                     SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })
+                    val selIdx = kbColumnSelection(
+                        state, spec.id, entries.size, listState,
+                        resolve = { i -> feedEntryNote(entries.getOrNull(i)) },
+                        onOpen = openThread, onReply = doReply, onRepost = doQuote,
+                    )
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onNoticeClick = { id -> state.openThreadDetail(id) },
                         onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
+                        selectedIndex = selIdx,
                     )
                 }
                 isNotifications -> {
@@ -283,10 +353,16 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val entries = if (revealed) all
                     else all.filterNot { it is FeedEntry.MyReaction && matcher.muted(it.target) }
                     SubscribeZaps(repo, spec.id, all.filterIsInstance<FeedEntry.MyReaction>().map { it.target.event.id })
+                    val selIdx = kbColumnSelection(
+                        state, spec.id, entries.size, listState,
+                        resolve = { i -> feedEntryNote(entries.getOrNull(i)) },
+                        onOpen = openThread, onReply = doReply, onRepost = doQuote,
+                    )
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onNoticeClick = { id -> state.openThreadDetail(id) },
+                        selectedIndex = selIdx,
                     )
                 }
                 isProfile && profilePubkey != null -> {
@@ -312,11 +388,17 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     else SampleData.feedFor(spec)
                     val notes = if (revealed) raw else raw.filterNot { matcher.muted(it) }
                     if (live) SubscribeZaps(repo, spec.id, notes.map { it.event.id })
+                    val selIdx = kbColumnSelection(
+                        state, spec.id, notes.size, listState,
+                        resolve = { notes.getOrNull(it) },
+                        onOpen = openThread, onReply = doReply, onRepost = doQuote,
+                    )
                     FeedColumn(
                         spec, notes, modifier, listState,
                         menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
                         onRefresh = if (live) ({ repo!!.refreshColumn(spec.id, spec.filter) }) else null,  // [#53]
+                        selectedIndex = selIdx,
                     )
                 }
             }
