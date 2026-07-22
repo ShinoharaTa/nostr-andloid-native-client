@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import java.util.Properties
 
 // リリース署名の資格情報は keystore.properties（.gitignore 済み）から読む。無ければ未署名。
@@ -31,6 +32,12 @@ kotlin {
             baseName = "ComposeApp"
             isStatic = true
         }
+    }
+
+    // [#218] Desktop(Mac/JVM) ターゲット。commonMain の Compose デッキ UI をそのまま動かす。
+    jvm("desktop") {
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
 
     sourceSets {
@@ -73,8 +80,29 @@ kotlin {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native)
         }
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(libs.ktor.client.cio)
+                implementation(libs.sqldelight.sqlite.driver)
+                implementation(libs.secp256k1.jni.jvm)
+                implementation(libs.kotlinx.coroutines.swing)   // Dispatchers.Main（Compose Desktop）
+            }
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
+        }
+    }
+}
+
+// [#218] Compose Desktop 配布設定。`./gradlew :composeApp:run` で起動、packageDmg で .dmg。
+compose.desktop {
+    application {
+        mainClass = "app.nostrdeck.MainKt"
+        nativeDistributions {
+            targetFormats(TargetFormat.Dmg)
+            packageName = "Nostrism"
+            packageVersion = "1.0.0"
         }
     }
 }
