@@ -46,7 +46,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
@@ -180,7 +184,12 @@ fun NoteItem(
             // アクションはアイコンのみ・左揃え。返信/リポスト/♡/絵文字を左に密に、Zap だけ右端へ。
             // 40dpタッチ箱の内側余白ぶん左へ寄せ、先頭アイコンの左端を本文テキストに光学的に揃える。
             val iconInset = (DeckDimens.TouchTargetSm - DeckDimens.IconMd) / 2
-            Row(Modifier.fillMaxWidth().offset(x = -iconInset), verticalAlignment = Alignment.CenterVertically) {
+            // [reaction] アクションボタンの左右間隔を +20%（DeckSpace.Xs）広げる。
+            Row(
+                Modifier.fillMaxWidth().offset(x = -iconInset),
+                horizontalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 ActionButton(Icons.AutoMirrored.Outlined.Reply, DeckColors.Text3, onClick = onReply)
                 Box {
                     ActionButton(
@@ -478,20 +487,48 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
     }
 }
 
+// [reaction] リアクション付与時の色。モノクロUIの例外として、判別性を上げるため
+// ♡＝ピンク / ☆＝ゴールド にする（明/暗どちらの背景でも視認できる鮮色）。
+private val ReactHeartColor = Color(0xFFE0245E)
+private val ReactStarColor = Color(0xFFF5B301)
+
 /**
- * デフォルトリアクションのボタン。設定に応じて ♡（ハート）か ☆（スター）の単色アイコンを出す。
- * 付与済み（[active]）は塗り＋濃色、未付与は枠線＋淡色で「押された状態」を示す（絵文字は使わない）。
+ * デフォルトリアクションのボタン。設定に応じて ♡（ハート）か ☆（スター）を出す。
+ * [reaction] タップ直後に色を反映（楽観的更新でラグ体感を消す）。kind:7 送信中はスピナー、
+ * リレーからのエコーで [active]=true になったら pending 解除（remember(active) の再初期化）。
+ * 送信失敗時は数秒で pending を解除して元に戻す。付与済み＝塗り＋鮮色、未付与＝枠線＋淡色。
  */
 @Composable
 private fun DefaultReactionButton(content: String, active: Boolean, onClick: () -> Unit) {
     val isStar = content == "⭐" || content == "★"
+    var pending by remember(active) { mutableStateOf(false) }
+    LaunchedEffect(pending) { if (pending && !active) { delay(6000); pending = false } }
+    val on = active || pending
+    val color = when {
+        !on -> DeckColors.Text3
+        isStar -> ReactStarColor
+        else -> ReactHeartColor
+    }
     val icon = when {
-        isStar && active -> Icons.Filled.Star
+        isStar && on -> Icons.Filled.Star
         isStar -> Icons.Outlined.StarBorder
-        active -> Icons.Filled.Favorite
+        on -> Icons.Filled.Favorite
         else -> Icons.Outlined.FavoriteBorder
     }
-    ActionButton(icon, if (active) DeckColors.Like else DeckColors.Text3, onClick)
+    Box(
+        Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape).clickable {
+            if (!active) pending = true   // 楽観的に押下状態へ
+            onClick()
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (pending && !active) {
+            // 送信中はスピナー（色は反映済みなので「押せてない?」の連打を防ぐ）。
+            CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), color = color, strokeWidth = 2.dp)
+        } else {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(DeckDimens.IconMd))
+        }
+    }
 }
 
 private fun relativeTime(createdAt: Long): String {
