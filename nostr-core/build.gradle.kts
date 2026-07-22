@@ -15,6 +15,12 @@ kotlin {
     }
     listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { it }
 
+    // [#218] Desktop(Mac/JVM) ターゲット。composeApp の jvm("desktop") から参照される。
+    jvm("desktop") {
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+
     sourceSets {
         commonMain.dependencies {
             // crypto/ が使う暗号プリミティブ（NIP-01 署名 / SHA-256 / NIP-04・44 の JSON 解釈）
@@ -24,6 +30,11 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体（Android）
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.secp256k1.jni.jvm)     // secp256k1 ネイティブ実体（JVM/Mac）
+            }
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
