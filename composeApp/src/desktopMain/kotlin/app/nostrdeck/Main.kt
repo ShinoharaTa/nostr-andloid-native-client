@@ -1,11 +1,16 @@
 package app.nostrdeck
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.state.DeckState
+import app.nostrdeck.ui.handleDeckKey
 import app.nostrdeck.data.defaultRelaysFor
 import app.nostrdeck.db.DriverFactory
 import app.nostrdeck.db.createDatabase
@@ -38,11 +43,15 @@ private val repository: EventRepository by lazy {
 
 fun main() = application {
     val repo = remember { repository }
+    // [#14] Desktop はウィンドウレベルでキーを拾う（フォーカス非依存＝マウス操作後も確実）。
+    // DeckState は App() 生成後にコールバックで受け取る。
+    var deck by remember { mutableStateOf<DeckState?>(null) }
     Window(
         onCloseRequest = ::exitApplication,
         title = "Nostrism",
         state = rememberWindowState(width = 1280.dp, height = 860.dp),
+        onPreviewKeyEvent = { e -> deck?.let { handleDeckKey(it, e) { repo.reconnectAll() } } ?: false },
     ) {
-        App(repo)
+        App(repo, onDeckState = { deck = it })
     }
 }
