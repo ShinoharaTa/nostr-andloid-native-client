@@ -5,6 +5,7 @@ import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,8 @@ class RelayClient(
     private val outgoing = Channel<String>(Channel.BUFFERED)
     private val activeReqs = mutableMapOf<String, String>()  // subId → REQ json
     private var job: Job? = null
+    // 現在の WebSocket セッション。強制再接続([forceReconnect])で閉じるために保持する。
+    private var currentSession: DefaultClientWebSocketSession? = null
     // バックオフ待機中に即再接続させるためのシグナル（フォアグラウンド復帰時に wake()）。
     private val wakeSignal = Channel<Unit>(Channel.CONFLATED)
 
@@ -77,6 +80,7 @@ class RelayClient(
 
     private suspend fun runSession(session: DefaultClientWebSocketSession) {
         _state.value = RelayConnState.CONNECTED
+        currentSession = session
         // (再)接続時に購読中の REQ を張り直す
         activeReqs.values.forEach { outgoing.trySend(it) }
         val sender = scope.launch {
@@ -96,6 +100,7 @@ class RelayClient(
             }
         } finally {
             sender.cancel()
+            currentSession = null
         }
     }
 
@@ -125,6 +130,17 @@ class RelayClient(
     /** バックオフ待機中なら即再接続を促す（フォアグラウンド復帰時に呼ぶ）。接続中なら無害。 */
     fun wake() {
         wakeSignal.trySend(Unit)
+    }
+
+    /**
+     * [#14] 現在の接続を破棄して即再接続する（Cmd+R 等の「タイムライン再構築」用）。
+     * セッションを閉じると受信ループが終わり、start() の再接続ループが復帰して
+     * [activeReqs]（購読中の REQ）を張り直す。切断中なら wake で即リトライさせる。
+     */
+    fun forceReconnect() {
+        val s = currentSession
+        if (s != null) scope.launch { runCatching { s.close() } }
+        wake()
     }
 
     fun stop() {

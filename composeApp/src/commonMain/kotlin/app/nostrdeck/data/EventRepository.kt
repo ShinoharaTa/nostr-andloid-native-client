@@ -384,6 +384,14 @@ class EventRepository(
         scope.launch(relayDispatcher) { relays.values.forEach { it.wake() } }
     }
 
+    /**
+     * [#14] 既存のリレー接続を破棄して即再接続し、購読中の REQ を張り直す（タイムライン再構築）。
+     * Cmd+R 等から呼ぶ。各接続が切れて張り直るため、取りこぼしや詰まりをリセットできる。
+     */
+    fun reconnectAll() {
+        scope.launch(relayDispatcher) { relays.values.forEach { it.forceReconnect() } }
+    }
+
     /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
     private fun refreshRelayConns() {
         // [#50] N/M と一覧は設定リスト(read 有効)のリレーだけを対象にする。

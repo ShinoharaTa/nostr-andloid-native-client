@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -46,10 +48,18 @@ import app.nostrdeck.theme.DeckWeight
  *
  * @return このキーを消費したら true。
  */
-fun handleDeckKey(state: DeckState, event: KeyEvent): Boolean {
+fun handleDeckKey(state: DeckState, event: KeyEvent, onReload: () -> Unit = {}): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     // 投稿作成シート表示中は全キーをそちら（テキスト入力）に譲る。
     if (state.showCompose) return false
+
+    // [#14] 修飾キー（Mac=Cmd / それ以外=Ctrl）付きは一般的なキーバインドに寄せる。
+    //  - Cmd/Ctrl+R = 接続を破棄して再接続（タイムライン再構築）。
+    // それ以外の Cmd/Ctrl 併用はシステム（Cmd+Q 等）へ委ねるため未消費で通す。
+    if (event.isMetaPressed || event.isCtrlPressed) {
+        return if (event.key == Key.R) { onReload(); true } else false
+    }
+
     val cols = state.columns
     if (cols.isEmpty()) return false
     val focusId = state.kbFocusColumnId ?: cols.first().id.also { state.kbFocusColumnId = it }
@@ -123,6 +133,7 @@ private val SHORTCUTS: List<Pair<String, String>> = listOf(
     "n" to "新規投稿",
     "/" to "検索",
     "." to "先頭へ（新着）",
+    "⌘/Ctrl + R" to "再接続（タイムライン再構築）",
     "?" to "このヘルプ",
     "Esc" to "戻る / 閉じる",
 )

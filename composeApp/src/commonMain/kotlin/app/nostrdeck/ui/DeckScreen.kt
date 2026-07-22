@@ -74,6 +74,7 @@ fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier
     // [#14] キーボードショートカット。ルートを focusable にして onPreviewKeyEvent で受ける。
     // 起動時と投稿シートを閉じた時にフォーカスを取り戻す（テキスト入力中は handleDeckKey 側で譲る）。
     val kbFocus = remember { FocusRequester() }
+    val kbRepo = LocalRepository.current
     LaunchedEffect(state.showCompose) {
         if (!state.showCompose) runCatching { kbFocus.requestFocus() }
     }
@@ -81,7 +82,7 @@ fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier
         modifier.fillMaxSize().background(DeckColors.Bg)
             .focusRequester(kbFocus)
             .focusable()
-            .onPreviewKeyEvent { handleDeckKey(state, it) },
+            .onPreviewKeyEvent { handleDeckKey(state, it, onReload = { kbRepo?.reconnectAll() }) },
     ) {
         if (isCompact) CompactPager(state) else ExpandedDeck(state)
         if (state.showShortcutsHelp) ShortcutsHelpOverlay(onDismiss = { state.showShortcutsHelp = false })
