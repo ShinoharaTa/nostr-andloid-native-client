@@ -178,6 +178,8 @@ fun NoteItem(
             }
             // [M14] リンク埋め込み（YouTube/Spotify/OGP）。設定で表示可否/画像読込を制御。
             LinkEmbeds(note.text ?: note.event.content, tags = note.event.tags, modifier = Modifier.padding(top = DeckSpace.Sm))
+            // [#217] 本文が参照する naddr(kind:30023 長文記事)を OGP 風カードで展開。
+            NoteNaddrEmbeds(note.text ?: note.event.content)
             }
             // [施策4] 本文/メディア↔アクション群は Md で明確に分離（別ブロック化）。
             Spacer(Modifier.size(DeckSpace.Md))
