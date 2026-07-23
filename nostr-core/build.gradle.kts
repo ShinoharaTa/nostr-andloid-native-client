@@ -13,7 +13,7 @@ kotlin {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
-    listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { it }
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { it }   // [#215] iosX64 廃止(CMP 1.11)
 
     // [#218] Desktop(Mac/JVM) ターゲット。composeApp の jvm("desktop") から参照される。
     jvm("desktop") {

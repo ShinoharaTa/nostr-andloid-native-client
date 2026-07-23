@@ -27,7 +27,8 @@ kotlin {
     // expect/actual class は Beta 警告が出る。意図的な利用なので抑制。
     compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
 
-    listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { target ->
+    // [#215] CMP 1.11 は iosX64(Intel シミュ)を廃止。arm64 実機＋arm64 シミュのみ。
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
