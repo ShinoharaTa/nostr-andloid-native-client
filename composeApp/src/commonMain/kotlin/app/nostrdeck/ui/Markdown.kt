@@ -21,20 +21,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import app.nostrdeck.crypto.Nip19
 import kotlinx.coroutines.launch
@@ -278,70 +280,62 @@ private fun QuoteBlock(text: String) {
 
 // ---- インライン装飾 ----
 
-private data class LinkSpan(val start: Int, val end: Int, val url: String)
-
-/** **bold** / *italic* / `code` / [text](url) / 素URL を AnnotatedString へ。 */
-private fun renderInline(text: String, linkColor: androidx.compose.ui.graphics.Color): Pair<AnnotatedString, List<LinkSpan>> {
-    val links = mutableListOf<LinkSpan>()
-    val annotated = buildAnnotatedString {
-        var rest = text
-        // 処理順: リンク → 太字 → 斜体 → code。単純化のため逐次置換で走査する。
-        val tokenRegex = Regex(
-            """\[([^\]]+)]\(([^)\s]+)[^)]*\)""" +      // [text](url)
-                """|\*\*([^*]+)\*\*""" +                 // **bold**
-                """|\*([^*\s][^*]*)\*""" +               // *italic*
-                """|`([^`]+)`""" +                        // `code`
-                """|(https?://[^\s)\]}>,、。」]+)""" +    // bare URL
-                """|(?:nostr:)?((?:note|nevent|naddr)1[a-z0-9]+)""",  // 段落中のノート/記事参照（短縮表示）
-        )
-        var idx = 0
-        while (idx < rest.length) {
-            val m = tokenRegex.find(rest, idx)
-            if (m == null) { append(rest.substring(idx)); break }
-            append(rest.substring(idx, m.range.first))
-            val g = m.groupValues
-            when {
-                g[1].isNotEmpty() -> {  // [text](url)
-                    val s = length
-                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                    append(g[1]); pop()
-                    links.add(LinkSpan(s, length, g[2]))
-                }
-                g[3].isNotEmpty() -> { pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append(g[3]); pop() }
-                g[4].isNotEmpty() -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(g[4]); pop() }
-                g[5].isNotEmpty() -> {
-                    // `nostr:naddr…` のようにコードで包まれた参照は、生の bech32 を出さず
-                    // 短縮リンクにする（タップでアプリ内遷移）。それ以外は従来どおり code 表示。
-                    val refMatch = nostrRefOnly.find(g[5])
-                    if (refMatch != null) {
-                        val bech = refMatch.groupValues[1]
-                        val s = length
-                        pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                        append(bech.take(12) + "…"); pop()
-                        links.add(LinkSpan(s, length, "nostr:$bech"))
-                    } else {
-                        pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = androidx.compose.ui.graphics.Color(0x22FFFFFF)))
-                        append(g[5]); pop()
-                    }
-                }
-                g[6].isNotEmpty() -> {
-                    val s = length
-                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                    append(g[6]); pop()
-                    links.add(LinkSpan(s, length, g[6]))
-                }
-                g[7].isNotEmpty() -> {
-                    // ノート参照は全長 bech32 を出さず短縮表示。タップでスレッド/記事を開く（nostr: スキーム）。
-                    val s = length
-                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                    append(g[7].take(12) + "…"); pop()
-                    links.add(LinkSpan(s, length, "nostr:${g[7]}"))
-                }
-            }
-            idx = m.range.last + 1
+/**
+ * **bold** / *italic* / `code` / [text](url) / 素URL を AnnotatedString へ。
+ * [#231] CMP 1.11 で非推奨の ClickableText を廃し、リンクは [LinkAnnotation.Clickable] を
+ * 直接 [withLink] で埋め込む。タップは [onLink]（url 文字列を受け取る）へ委譲する。
+ */
+private fun renderInline(
+    text: String,
+    linkColor: androidx.compose.ui.graphics.Color,
+    onLink: (String) -> Unit,
+): AnnotatedString = buildAnnotatedString {
+    // リンク区間に色 + 下線を付けつつ、タップを onLink(url) に流す共通ヘルパ。
+    fun appendLink(display: String, url: String) {
+        withLink(LinkAnnotation.Clickable(tag = url, linkInteractionListener = { onLink(url) })) {
+            pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+            append(display); pop()
         }
     }
-    return annotated to links
+
+    val rest = text
+    // 処理順: リンク → 太字 → 斜体 → code。単純化のため逐次置換で走査する。
+    val tokenRegex = Regex(
+        """\[([^\]]+)]\(([^)\s]+)[^)]*\)""" +      // [text](url)
+            """|\*\*([^*]+)\*\*""" +                 // **bold**
+            """|\*([^*\s][^*]*)\*""" +               // *italic*
+            """|`([^`]+)`""" +                        // `code`
+            """|(https?://[^\s)\]}>,、。」]+)""" +    // bare URL
+            """|(?:nostr:)?((?:note|nevent|naddr)1[a-z0-9]+)""",  // 段落中のノート/記事参照（短縮表示）
+    )
+    var idx = 0
+    while (idx < rest.length) {
+        val m = tokenRegex.find(rest, idx)
+        if (m == null) { append(rest.substring(idx)); break }
+        append(rest.substring(idx, m.range.first))
+        val g = m.groupValues
+        when {
+            g[1].isNotEmpty() -> appendLink(g[1], g[2])  // [text](url)
+            g[3].isNotEmpty() -> { pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append(g[3]); pop() }
+            g[4].isNotEmpty() -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(g[4]); pop() }
+            g[5].isNotEmpty() -> {
+                // `nostr:naddr…` のようにコードで包まれた参照は、生の bech32 を出さず
+                // 短縮リンクにする（タップでアプリ内遷移）。それ以外は従来どおり code 表示。
+                val refMatch = nostrRefOnly.find(g[5])
+                if (refMatch != null) {
+                    val bech = refMatch.groupValues[1]
+                    appendLink(bech.take(12) + "…", "nostr:$bech")
+                } else {
+                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = androidx.compose.ui.graphics.Color(0x22FFFFFF)))
+                    append(g[5]); pop()
+                }
+            }
+            g[6].isNotEmpty() -> appendLink(g[6], g[6])  // bare URL
+            // ノート参照は全長 bech32 を出さず短縮表示。タップでスレッド/記事を開く（nostr: スキーム）。
+            g[7].isNotEmpty() -> appendLink(g[7].take(12) + "…", "nostr:${g[7]}")
+        }
+        idx = m.range.last + 1
+    }
 }
 
 @Composable
@@ -352,45 +346,35 @@ private fun InlineText(
     fontWeight: FontWeight? = null,
     color: androidx.compose.ui.graphics.Color = DeckColors.Text,
 ) {
-    val (annotated, links) = remember(text) { renderInline(text, DeckColors.Accent) }
     val uriHandler = LocalUriHandler.current
     val nav = LocalNoteNav.current
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
-    if (links.isEmpty()) {
-        Text(annotated, color = color, fontSize = fontSize, fontWeight = fontWeight,
-            lineHeight = fontSize * 1.55, modifier = modifier)
-    } else {
-        ClickableText(
-            text = annotated,
-            style = androidx.compose.ui.text.TextStyle(
-                color = color, fontSize = fontSize, fontWeight = fontWeight, lineHeight = fontSize * 1.55,
-            ),
-            modifier = modifier,
-            onClick = { offset ->
-                links.firstOrNull { offset in it.start until it.end }?.let { span ->
-                    if (span.url.startsWith("nostr:")) {
-                        // nostr 参照はアプリ内で開く（スレッド / kind:30023 なら記事ビューワー）。
-                        // [参考リンク](nostr:naddr1…) のような markdown リンク形式もここに来る。
-                        val bech = span.url.removePrefix("nostr:")
-                        if (bech.startsWith("naddr1")) {
-                            Nip19.naddrDecode(bech)?.let { a ->
-                                scope.launch {
-                                    repo?.resolveAddress(a.kind, a.pubkey, a.dTag, a.relays)
-                                        ?.let { id -> nav?.onEvent?.invoke(id) }
-                                }
-                            }
-                        } else {
-                            Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
-                                repo?.requestEvent(id, relays)  // 未取得でも先に取得を出しておく
-                                nav?.onEvent?.invoke(id)
-                            }
-                        }
-                    } else {
-                        runCatching { uriHandler.openUri(span.url) }
+    // クリック処理はリンク注釈に埋め込むため、最新のハンドラ群を参照できるよう保持する。
+    // （annotated は text 変化時のみ再生成されるので、注釈内から常に最新値を読めるようにする）
+    val onLink by rememberUpdatedState<(String) -> Unit> { url ->
+        if (url.startsWith("nostr:")) {
+            // nostr 参照はアプリ内で開く（スレッド / kind:30023 なら記事ビューワー）。
+            // [参考リンク](nostr:naddr1…) のような markdown リンク形式もここに来る。
+            val bech = url.removePrefix("nostr:")
+            if (bech.startsWith("naddr1")) {
+                Nip19.naddrDecode(bech)?.let { a ->
+                    scope.launch {
+                        repo?.resolveAddress(a.kind, a.pubkey, a.dTag, a.relays)
+                            ?.let { id -> nav?.onEvent?.invoke(id) }
                     }
                 }
-            },
-        )
+            } else {
+                Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
+                    repo?.requestEvent(id, relays)  // 未取得でも先に取得を出しておく
+                    nav?.onEvent?.invoke(id)
+                }
+            }
+        } else {
+            runCatching { uriHandler.openUri(url) }
+        }
     }
+    val annotated = remember(text) { renderInline(text, DeckColors.Accent) { onLink(it) } }
+    Text(annotated, color = color, fontSize = fontSize, fontWeight = fontWeight,
+        lineHeight = fontSize * 1.55, modifier = modifier)
 }
