@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -355,7 +355,10 @@ fun ComposeSheet(
         // コンテンツが Dialog ウィンドウ全面を占めるため dismissOnClickOutside は発火しない。
         // オーバーレイ（カード外）のタップは自前で拾って attemptClose する。
         BoxWithConstraints(
-            Modifier.fillMaxSize().imePadding()
+            // [#226] セーフエリア（ステータスバー/時計・下部バー・ノッチ）＋キーボードを避ける。
+            // 従来は imePadding のみで、上寄せカードが iOS のステータスバー領域に潜り込んでいた。
+            // safeDrawing は systemBars + displayCutout + IME を含むため、これ1つで両方を満たす。
+            Modifier.fillMaxSize().safeDrawingPadding()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
