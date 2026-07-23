@@ -1607,7 +1607,7 @@ private fun LocalSignerLogin() {
         // PasswordVisualTransformation で担保し、貼り付けは trailing の「貼り付け」でも行える。
         visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-        inputModifier = Modifier.secretAutofill { nsecInput = it; error = null },
+        inputModifier = Modifier.secretAutofill(),   // [#229] 補完値は onValueChange 経由で入る
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // クリップボードから直接充填。iOS の secure entry 挙動に依存せず確実に貼り付けられる。
