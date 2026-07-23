@@ -43,8 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.CircularProgressIndicator
@@ -98,7 +96,7 @@ fun NoteItem(
 ) {
   val repo = LocalRepository.current
   val scope = rememberCoroutineScope()
-  val clipboard = LocalClipboardManager.current
+  val clipboard = rememberClipboardCopy()
   val me by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
   val bookmarks by (repo?.bookmarkIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
   val pinned by (repo?.pinnedIdsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) })
@@ -306,7 +304,7 @@ fun NoteItem(
                             text = { Text(stringResource(Res.string.note_copy_text)) },
                             onClick = {
                                 moreMenu = false
-                                clipboard.setText(AnnotatedString(note.text ?: note.event.content))
+                                clipboard(note.text ?: note.event.content)
                             },
                         )
                         if (nevent != null || note1 != null) {
@@ -314,24 +312,24 @@ fun NoteItem(
                                 text = { Text(stringResource(Res.string.note_copy_link)) },
                                 onClick = {
                                     moreMenu = false
-                                    clipboard.setText(AnnotatedString("https://njump.me/${nevent ?: note1}"))
+                                    clipboard("https://njump.me/${nevent ?: note1}")
                                 },
                             )
                         }
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.note_copy_id)) },
-                            onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note.event.id)) },
+                            onClick = { moreMenu = false; clipboard(note.event.id) },
                         )
                         if (note1 != null) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(Res.string.note_copy_fmt, note1.take(12))) },
-                                onClick = { moreMenu = false; clipboard.setText(AnnotatedString(note1)) },
+                                onClick = { moreMenu = false; clipboard(note1) },
                             )
                         }
                         if (nevent != null) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(Res.string.note_copy_fmt, nevent.take(12))) },
-                                onClick = { moreMenu = false; clipboard.setText(AnnotatedString(nevent)) },
+                                onClick = { moreMenu = false; clipboard(nevent) },
                             )
                         }
                     }

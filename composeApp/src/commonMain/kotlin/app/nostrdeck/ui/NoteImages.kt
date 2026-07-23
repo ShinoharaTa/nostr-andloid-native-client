@@ -48,8 +48,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -159,7 +157,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
         // 画像保存（端末ギャラリーへ）とトースト通知。
         val saveImage = rememberImageSaver()
         val toast = rememberToaster()
-        val clipboard = LocalClipboardManager.current
+        val clipboard = rememberClipboardCopy()
     val urlCopiedMsg = stringResource(Res.string.img_url_copied)
         // 二重タップ連打での多重保存を防ぐ。
         var saving by remember { mutableStateOf(false) }
@@ -224,7 +222,7 @@ private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit)
                         leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(DeckDimens.IconMd)) },
                         onClick = {
                             menuOpen = false
-                            clipboard.setText(AnnotatedString(urls[pager.currentPage]))
+                            clipboard(urls[pager.currentPage])
                             toast(urlCopiedMsg)
                         },
                     )
