@@ -67,6 +67,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -101,6 +102,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -171,6 +173,11 @@ fun ComposeSheet(
     val uploadProgress = remember { MutableStateFlow(0) }          // アップロード完了枚数（並列更新するので Flow）
     var sendError by remember { mutableStateOf<String?>(null) }    // 失敗表示（判定するまで再入力させない）
     val bodyFocus = remember { FocusRequester() }                  // 起動時に本文へフォーカス
+    val keyboard = LocalSoftwareKeyboardController.current
+    // 画像/動画ピッカー（システムモーダル）から戻るとキーボードが消えるが、本文は「フォーカス継続」
+    // 判定のままなので requestFocus だけでは再表示されない（iOS で顕著、Android でも起きうる）。
+    // このカウンタを上げたら一度クリア→再フォーカス＋show でキーボードを確実に戻す。
+    var reassertKb by remember { mutableStateOf(0) }
 
     // 複数選択ピッカー → 添付リストへ追加し、即圧縮を走らせる（アップロードは送信時）。
     val picker = rememberImagePicker { picked ->
@@ -179,10 +186,25 @@ fun ComposeSheet(
             images.add(att)
             scope.launch { att.compress(resolution) }
         }
+        reassertKb++   // 選択後にキーボードを戻す
     }
     // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。圧縮はせず送信時にそのままアップロード。
     // iOS は当面 no-op（rememberVideoPicker のスタブ）。
-    val videoPicker = rememberVideoPicker { picked -> videos.add(picked) }
+    val videoPicker = rememberVideoPicker { picked -> videos.add(picked); reassertKb++ }
+
+    // [#224] ピッカー復帰後のキーボード復帰。一度フォーカスを外してから取り直す（＝ユーザーが
+    // 手動でやっていた「フォーカスを外して戻す」操作を自動化）。iOS の無視対策でリトライ式。
+    LaunchedEffect(reassertKb) {
+        if (reassertKb == 0) return@LaunchedEffect
+        // モーダル(ピッカー)の dismiss アニメ完了を待つ。早すぎる要求は無視される。
+        delay(450)
+        // フォーカスは継続しているので、再フォーカス（保険）＋キーボード表示をリトライで叩く。
+        repeat(6) {
+            runCatching { bodyFocus.requestFocus() }
+            runCatching { keyboard?.show() }
+            delay(150)
+        }
+    }
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
     LaunchedEffect(resolution) {
         images.forEach { att -> scope.launch { att.compress(resolution) } }
