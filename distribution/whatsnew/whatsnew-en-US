@@ -1,4 +1,4 @@
-- Reactions feel instant: tap turns colored right away, with a spinner while sending (♡ pink / ☆ gold)
-- Long-form article links now show a card (title, image, preview; tap to open)
-- Tweaked spacing of action buttons for easier tapping
+- Keyboard shortcuts (hardware keyboard): j/k to move between posts, h/l between columns, r/t/f for reply/repost/like, n to compose, ? for help
+- ⌘/Ctrl+R to reconnect (rebuild timeline), ⌘/Ctrl+Enter to post
+- iOS: play videos and YouTube inline in the app
 - Stability improvements and minor bug fixes
