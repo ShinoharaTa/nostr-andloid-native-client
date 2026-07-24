@@ -34,7 +34,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material.icons.outlined.PlaylistAdd
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -555,7 +555,7 @@ fun ComposeSheet(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    Icons.Outlined.PlaylistAdd, stringResource(Res.string.compose_add_thread),
+                                    Icons.AutoMirrored.Outlined.PlaylistAdd, stringResource(Res.string.compose_add_thread),
                                     tint = if (text.isNotBlank()) DeckColors.Text else DeckColors.Text3,
                                     modifier = Modifier.size(DeckDimens.IconLg),
                                 )
