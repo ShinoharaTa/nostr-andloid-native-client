@@ -1417,6 +1417,10 @@ class EventRepository(
     // ---- [M9-profile] プロフィール表示 / フォロー操作 ----
 
     /** 指定 pubkey の解決済みプロフィール（kind:0）を流す。未取得なら null。 */
+    // [#244] プロフィール明示オープン時の一時 sub 連番（UI スレッドからのみ触る。
+    // バッチループ側の profileReqSeq とは分離してレースを避ける）。
+    private var profileOpenSeq = 0
+
     fun profileFlow(pubkey: String): Flow<Profile?> =
         q.profileByPubkey(pubkey).asFlow().mapToList(Dispatchers.Default).map { rows ->
             rows.firstOrNull()?.let {
@@ -1424,8 +1428,19 @@ class EventRepository(
             }
         }
 
-    /** プロフィール画面を開いたとき等に kind:0 の取得を促す（バッチ REQ に投入）。 */
-    fun loadProfile(pubkey: String) = requestProfile(pubkey)
+    /**
+     * プロフィール画面を開いたとき等に kind:0 の取得を促す。
+     * [#244] バッチ REQ（セッション内 dedup あり）に加えて、明示的に開いた相手は
+     * 毎回強制再取得する（接続中リレー全体 + インデクサ）。キャッシュ済みでも
+     * 相手が kind:0 を更新していれば updateProfileIfNewer で反映される。
+     */
+    fun loadProfile(pubkey: String) {
+        requestProfile(pubkey)
+        val subId = "profile-open-${profileOpenSeq++}"
+        subscribeAll(subId, Filter(kinds = listOf(0, 10002), authors = listOf(pubkey), limit = 4))
+        scope.launch { delay(10_000); unsubscribeAll(subId) }
+        requestProfileFromIndexers(listOf(pubkey))
+    }
 
     /**
      * NIP-05 検証。`nip05`（kind:0 の handle, 例: name@example.com）を
@@ -1987,6 +2002,8 @@ class EventRepository(
         }
     }
 
+    private var profileReqSeq = 0
+
     private suspend fun profileBatchLoop() {
         val requested = mutableSetOf<String>()
         val pending = mutableSetOf<String>()
@@ -2000,9 +2017,19 @@ class EventRepository(
                 }
             }
             if (pending.isEmpty()) continue
+            val batch = pending.toList()
             requested.addAll(pending)
             pending.clear()
-            subscribeAll("profiles", Filter(kinds = listOf(0), authors = requested.toList()))
+            // 「今回の新規 pubkey だけ」を一意の subId で取得する（id 解決ループと同じ理由）。
+            // 累積 authors を1つの "profiles" sub に積み続けるとフィルタが肥大化し、リレーの
+            // フィルタ要素上限（strfry 等 ~1000）を超えた時点で REQ ごと拒否され、以降の
+            // kind:0 解決が全滅する＝プロフィールが二度と更新されなくなる（実報告 #244）。
+            batch.chunked(500).forEach { chunk ->
+                val subId = "profiles-${profileReqSeq++}"
+                subscribeAll(subId, Filter(kinds = listOf(0), authors = chunk, limit = chunk.size))
+                // 蓄積イベント（kind:0）は EOSE 後すぐ届く。一定時間で CLOSE して sub を溜めない。
+                scope.launch { delay(10_000); unsubscribeAll(subId) }
+            }
         }
     }
 
