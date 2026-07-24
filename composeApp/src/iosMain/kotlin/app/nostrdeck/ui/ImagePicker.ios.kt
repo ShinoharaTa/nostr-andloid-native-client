@@ -34,8 +34,9 @@ actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePick
 
 // [#202] iOS 実装。PHPickerFilter.videosFilter() で PHPicker を出し、選択1本の動画バイトを
 // NSData→ByteArray で取り出して onPicked(PickedImage) を呼ぶ。動画は圧縮しない（原バイトのまま）。
+// [#224] キャンセル時は null で呼ぶ（呼び出し側のキーボード復帰を走らせるため）。
 @Composable
-actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker =
+actual fun rememberVideoPicker(onPicked: (PickedImage?) -> Unit): ImagePicker =
     remember { ImagePicker { presentVideoPicker(onPicked) } }
 
 // 提示中のデリゲートを強参照で保持する（picker.delegate は weak なので、これが無いと
@@ -63,20 +64,36 @@ private class PickerDelegate(
 ) : NSObject(), PHPickerViewControllerDelegateProtocol {
 
     override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
-        picker.dismissViewControllerAnimated(true, completion = null)
         @Suppress("UNCHECKED_CAST")
         val results = didFinishPicking as List<PHPickerResult>
-        if (results.isEmpty()) { onDone(this); return }
+
+        // [#224] onPicked は「モーダルの dismiss アニメ完了」と「全アイテムのロード完了」の
+        // 両方がそろってから呼ぶ。dismiss 前に呼ぶと、呼び出し側のキーボード復帰処理が
+        // モーダル解体と競合して無視される（実機で顕在化）。
+        // キャンセル（空選択）でもキーボードは失われるため、onPicked(空リスト) は必ず呼ぶ。
+        var dismissed = false
+        var loaded = false
+        var payload: List<PickedImage> = emptyList()
+        val maybeFinish = {
+            if (dismissed && loaded) {
+                onPicked(payload)
+                onDone(this)
+            }
+        }
+        // completion はメインスレッドで呼ばれる。
+        picker.dismissViewControllerAnimated(true, completion = { dismissed = true; maybeFinish() })
+        if (results.isEmpty()) { loaded = true; return }   // キャンセル: dismiss 完了時に空で通知
 
         // 各アイテムのロードは任意スレッドの並列コールバック。集約は必ずメインキューへ寄せて
-        // 直列化し、全件そろったら一度だけ onPicked を呼ぶ（race を避ける）。
+        // 直列化し、全件そろったら loaded を立てる（race を避ける）。
         val collected = mutableListOf<PickedImage>()
         var remaining = results.size
         val finishOne = {
             remaining -= 1
             if (remaining == 0) {
-                onPicked(collected.toList())
-                onDone(this)
+                payload = collected.toList()
+                loaded = true
+                maybeFinish()
             }
         }
 
@@ -106,7 +123,7 @@ private class PickerDelegate(
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun presentVideoPicker(onPicked: (PickedImage) -> Unit) {
+private fun presentVideoPicker(onPicked: (PickedImage?) -> Unit) {
     val root = topViewController() ?: return
     val config = PHPickerConfiguration().apply {
         selectionLimit = 1                       // 動画は1本だけ選ばせる
@@ -121,16 +138,27 @@ private fun presentVideoPicker(onPicked: (PickedImage) -> Unit) {
 
 @OptIn(ExperimentalForeignApi::class)
 private class VideoPickerDelegate(
-    private val onPicked: (PickedImage) -> Unit,
+    private val onPicked: (PickedImage?) -> Unit,
     private val onDone: (NSObject) -> Unit,
 ) : NSObject(), PHPickerViewControllerDelegateProtocol {
 
     override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
-        picker.dismissViewControllerAnimated(true, completion = null)
         @Suppress("UNCHECKED_CAST")
         val results = didFinishPicking as List<PHPickerResult>
-        // 空選択（キャンセル）は no-op。画像ピッカーと同じ扱い。
-        val provider = results.firstOrNull()?.itemProvider ?: run { onDone(this); return }
+
+        // [#224] 画像ピッカーと同じく dismiss 完了 + ロード完了の両方を待って通知する。
+        // キャンセル（空選択）は null で通知（呼び出し側のキーボード復帰を走らせる）。
+        var dismissed = false
+        var loaded = false
+        var payload: PickedImage? = null
+        val maybeFinish = {
+            if (dismissed && loaded) {
+                onPicked(payload)
+                onDone(this)
+            }
+        }
+        picker.dismissViewControllerAnimated(true, completion = { dismissed = true; maybeFinish() })
+        val provider = results.firstOrNull()?.itemProvider ?: run { loaded = true; return }
 
         // 元の動画型（registered type）を優先。無ければ汎用 public.movie に変換させる。
         // 動画判定は MIME が video/ 始まりか否かで行う（conformsToType のバインドが無いため）。
@@ -149,8 +177,9 @@ private class VideoPickerDelegate(
             }
             // コールバックは任意スレッド。UI/呼び出し元へはメインキューで寄せて渡す。
             dispatch_async(dispatch_get_main_queue()) {
-                if (picked != null) onPicked(picked)
-                onDone(this)
+                payload = picked
+                loaded = true
+                maybeFinish()
             }
         }
     }

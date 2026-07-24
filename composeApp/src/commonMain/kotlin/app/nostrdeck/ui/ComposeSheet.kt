@@ -189,22 +189,10 @@ fun ComposeSheet(
         reassertKb++   // 選択後にキーボードを戻す
     }
     // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。圧縮はせず送信時にそのままアップロード。
-    // iOS は当面 no-op（rememberVideoPicker のスタブ）。
-    val videoPicker = rememberVideoPicker { picked -> videos.add(picked); reassertKb++ }
+    // [#224] キャンセル(null)でも reassertKb は上げてキーボード復帰だけは走らせる。
+    val videoPicker = rememberVideoPicker { picked -> picked?.let { videos.add(it) }; reassertKb++ }
 
-    // [#224] ピッカー復帰後のキーボード復帰。一度フォーカスを外してから取り直す（＝ユーザーが
-    // 手動でやっていた「フォーカスを外して戻す」操作を自動化）。iOS の無視対策でリトライ式。
-    LaunchedEffect(reassertKb) {
-        if (reassertKb == 0) return@LaunchedEffect
-        // モーダル(ピッカー)の dismiss アニメ完了を待つ。早すぎる要求は無視される。
-        delay(450)
-        // フォーカスは継続しているので、再フォーカス（保険）＋キーボード表示をリトライで叩く。
-        repeat(6) {
-            runCatching { bodyFocus.requestFocus() }
-            runCatching { keyboard?.show() }
-            delay(150)
-        }
-    }
+    // [#224] ピッカー復帰後のキーボード復帰は Dialog コンテンツ内（cardFocus の傍）で行う。
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
     LaunchedEffect(resolution) {
         images.forEach { att -> scope.launch { att.compress(resolution) } }
@@ -389,6 +377,28 @@ fun ComposeSheet(
             // [#177] カード内の空白（本文余白など）タップでキーボードを閉じる。Dialog は
             // ルートの背景タップ処理が届かないため、ここにも入れる。
             val cardFocus = LocalFocusManager.current
+            // [#224] ピッカー（システムモーダル）復帰後のキーボード復帰。
+            // iOS: 本文の入力セッションは生きたまま（キャレット・文脈メニューは出る）キーボード
+            // だけが出ない。フォーカス変化が無いと becomeFirstResponder が再要求されないため、
+            // requestFocus/show() をいくら叩いても無視される（実機動画で「別ダイアログの開閉＝
+            // フォーカスの喪失→復帰」だけが復旧させることを確認）。そこで本物のフォーカス
+            // サイクル（clearFocus→requestFocus）を再現する。ピッカー側は dismiss アニメ完了後に
+            // 通知してくる（ImagePicker.ios.kt）ので、ここの待ちは短い保険のみ。
+            // Android: clearFocus すると requestFocus で戻せなくなる実測（#225）のため、
+            // 従来どおりフォーカス維持のまま show() リトライ。
+            LaunchedEffect(reassertKb) {
+                if (reassertKb == 0) return@LaunchedEffect
+                delay(if (isIosPlatform) 150 else 450)
+                if (isIosPlatform) {
+                    runCatching { cardFocus.clearFocus(force = true) }
+                    delay(100)   // フォーカス喪失を1フレーム以上定着させてから取り直す
+                }
+                repeat(6) {
+                    runCatching { bodyFocus.requestFocus() }
+                    runCatching { keyboard?.show() }
+                    delay(150)
+                }
+            }
             Column(
                 Modifier
                     .padding(horizontal = DeckSpace.Lg, vertical = DeckSpace.Md)

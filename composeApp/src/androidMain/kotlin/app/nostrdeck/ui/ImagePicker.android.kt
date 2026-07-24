@@ -23,7 +23,9 @@ actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePick
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(),
     ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) onPicked(uris.mapNotNull { readPicked(context, it) })
+        // [#224] キャンセル（空）でも通知する。呼び出し側がキーボード復帰などの
+        // 「ピッカーから戻った」後処理をキャンセル時にも実行できるようにするため。
+        onPicked(uris.mapNotNull { readPicked(context, it) })
     }
     return remember(launcher) {
         ImagePicker {
@@ -39,12 +41,13 @@ actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePick
  * bytes + MIME を読み出して onPicked へ渡す。動画は圧縮しない（原バイトのまま送る）。
  */
 @Composable
-actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker {
+actual fun rememberVideoPicker(onPicked: (PickedImage?) -> Unit): ImagePicker {
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
-        uri?.let { readPicked(context, it, fallbackMime = "video/mp4", fallbackName = "video") }?.let(onPicked)
+        // [#224] キャンセル（null）でも通知する（画像ピッカーと同じ理由）。
+        onPicked(uri?.let { readPicked(context, it, fallbackMime = "video/mp4", fallbackName = "video") })
     }
     return remember(launcher) {
         ImagePicker {
