@@ -16,8 +16,8 @@ actual fun rememberImagePicker(onPicked: (List<PickedImage>) -> Unit): ImagePick
     remember { ImagePicker { pickFiles(multiple = true) { onPicked(it) } } }
 
 @Composable
-actual fun rememberVideoPicker(onPicked: (PickedImage) -> Unit): ImagePicker =
-    remember { ImagePicker { pickFiles(multiple = false) { it.firstOrNull()?.let(onPicked) } } }
+actual fun rememberVideoPicker(onPicked: (PickedImage?) -> Unit): ImagePicker =
+    remember { ImagePicker { pickFiles(multiple = false) { onPicked(it.firstOrNull()) } } }
 
 private fun pickFiles(multiple: Boolean, onResult: (List<PickedImage>) -> Unit) {
     val dialog = FileDialog(null as Frame?, "ファイルを選択", FileDialog.LOAD).apply {
