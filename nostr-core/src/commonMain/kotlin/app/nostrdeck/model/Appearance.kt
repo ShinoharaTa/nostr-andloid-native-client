@@ -32,6 +32,61 @@ enum class UiScale(val id: String, val factor: Float) {
 }
 
 /**
+ * [#247] 画像アップロード圧縮の設定（設定 > メディアサーバー）。
+ * 投稿の「低/中」プリセットの長辺pxと再エンコード品質を変更できる（「高」は常に原寸・無加工）。
+ * 既定: 低=640px / 中=1200px / 品質=85%。
+ */
+data class ImageCompressionPrefs(
+    val lowMaxDim: Int = DEFAULT_LOW_DIM,
+    val midMaxDim: Int = DEFAULT_MID_DIM,
+    val quality: Int = DEFAULT_QUALITY,
+) {
+    companion object {
+        const val DEFAULT_LOW_DIM = 640
+        const val DEFAULT_MID_DIM = 1200
+        const val DEFAULT_QUALITY = 85
+        // 設定入力の許容範囲（外れた値は保存時にクランプする）
+        const val MIN_DIM = 128
+        const val MAX_DIM = 8192
+        const val MIN_QUALITY = 30
+        const val MAX_QUALITY = 100
+        val DEFAULT = ImageCompressionPrefs()
+
+        /** KV 保存値（不正/未設定は既定へ）からの復元。 */
+        fun from(low: String?, mid: String?, quality: String?): ImageCompressionPrefs = ImageCompressionPrefs(
+            lowMaxDim = low?.toIntOrNull()?.coerceIn(MIN_DIM, MAX_DIM) ?: DEFAULT_LOW_DIM,
+            midMaxDim = mid?.toIntOrNull()?.coerceIn(MIN_DIM, MAX_DIM) ?: DEFAULT_MID_DIM,
+            quality = quality?.toIntOrNull()?.coerceIn(MIN_QUALITY, MAX_QUALITY) ?: DEFAULT_QUALITY,
+        )
+    }
+}
+
+/**
+ * [#248] 動画アップロード圧縮の設定（設定 > メディアサーバー）。
+ * 投稿の「低/中」プリセットの縦解像度(p)を変更できる（「高」は常に無変換）。
+ * 既定: 低=480p / 中=720p。iOS は最も近い標準プリセット（480/540/720/1080p）に丸められる。
+ */
+data class VideoCompressionPrefs(
+    val lowHeight: Int = DEFAULT_LOW_HEIGHT,
+    val midHeight: Int = DEFAULT_MID_HEIGHT,
+) {
+    companion object {
+        const val DEFAULT_LOW_HEIGHT = 480
+        const val DEFAULT_MID_HEIGHT = 720
+        // 設定入力の許容範囲（外れた値は保存時にクランプする）
+        const val MIN_HEIGHT = 240
+        const val MAX_HEIGHT = 2160
+        val DEFAULT = VideoCompressionPrefs()
+
+        /** KV 保存値（不正/未設定は既定へ）からの復元。 */
+        fun from(low: String?, mid: String?): VideoCompressionPrefs = VideoCompressionPrefs(
+            lowHeight = low?.toIntOrNull()?.coerceIn(MIN_HEIGHT, MAX_HEIGHT) ?: DEFAULT_LOW_HEIGHT,
+            midHeight = mid?.toIntOrNull()?.coerceIn(MIN_HEIGHT, MAX_HEIGHT) ?: DEFAULT_MID_HEIGHT,
+        )
+    }
+}
+
+/**
  * [#152] テーマ（設定 > 表示）。既定はダーク（従来挙動そのまま）。
  * SYSTEM は OS のダークモード設定に追従する。
  */

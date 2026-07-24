@@ -161,6 +161,16 @@
     <string name="media_unavailable">Media servers are unavailable</string>
     <string name="media_title">Image upload servers (NIP-96 / auth via NIP-98)</string>
     <string name="media_desc">Images attached to a post are uploaded to the selected server.</string>
+    <string name="img_compress_title">Image upload compression</string>
+    <string name="img_compress_desc">When posting, "Low/Mid" images are resized to the max long edge below and re-encoded (Android=WebP, iOS=JPEG). "High" always uploads the original. Defaults: Low=640px, Mid=1200px, Quality=85%. Ranges: 128–8192px / 30–100%.</string>
+    <string name="img_low_dim_label">"Low" max long edge (px)</string>
+    <string name="img_mid_dim_label">"Mid" max long edge (px)</string>
+    <string name="img_quality_label">Re-encode quality (%)</string>
+    <string name="img_reset_defaults">Reset to defaults</string>
+    <string name="video_compress_desc">Videos are transcoded to H.264/mp4 at the heights below when "Low/Mid" is selected ("High" keeps the original). Defaults: Low=480p, Mid=720p. Range: 240–2160p. On iOS the value is rounded to the nearest standard preset (480/540/720/1080p).</string>
+    <string name="video_low_h_label">Video "Low" height (p)</string>
+    <string name="video_mid_h_label">Video "Mid" height (p)</string>
+    <string name="video_resolution_label">Video</string>
     <string name="media_delete_title">Remove this media server?</string>
     <string name="favs_unavailable">Favorites are unavailable</string>
     <string name="favs_empty">No favorites yet.</string>

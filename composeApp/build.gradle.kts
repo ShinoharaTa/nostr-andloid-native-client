@@ -71,6 +71,8 @@ kotlin {
             implementation(libs.coil.gif)                  // アニメGIF/WebP デコーダ
             implementation(libs.androidx.media3.exoplayer)  // 動画インライン再生
             implementation(libs.androidx.media3.ui)         // PlayerView（コントローラ付き）
+            implementation(libs.androidx.media3.transformer) // [#248] 動画トランスコード
+            implementation(libs.androidx.media3.effect)      // [#248] Presentation(解像度変更)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android)
             implementation(libs.secp256k1.jni.android)     // secp256k1 ネイティブ実体
