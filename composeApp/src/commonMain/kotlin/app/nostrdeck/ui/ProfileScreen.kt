@@ -48,8 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -402,7 +400,7 @@ private fun ProfileHeaderCard(
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
-    val clipboard = LocalClipboardManager.current
+    val clipboard = rememberClipboardCopy()
     // [#162] 非コルーチンの onClick で使うトースト文言はコンポジション中に解決しておく。
     val nprofileCopiedMsg = stringResource(Res.string.nprofile_copied)
     val linkCopiedMsg = stringResource(Res.string.link_copied)
@@ -453,7 +451,7 @@ private fun ProfileHeaderCard(
                             text = { Text(stringResource(Res.string.copy_nprofile)) },
                             onClick = {
                                 moreMenu = false
-                                nprofile()?.let { clipboard.setText(AnnotatedString(it)); toast(nprofileCopiedMsg) }
+                                nprofile()?.let { clipboard(it); toast(nprofileCopiedMsg) }
                             },
                         )
                         DropdownMenuItem(
@@ -462,7 +460,7 @@ private fun ProfileHeaderCard(
                                 moreMenu = false
                                 val bech = nprofile() ?: runCatching { Nip19.hexToNpub(pubkey) }.getOrNull()
                                 bech?.let {
-                                    clipboard.setText(AnnotatedString("https://njump.me/$it"))
+                                    clipboard("https://njump.me/$it")
                                     toast(linkCopiedMsg)
                                 }
                             },
@@ -519,7 +517,7 @@ private fun ProfileHeaderCard(
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))
                     CircleIconButton(Icons.Outlined.ContentCopy, stringResource(Res.string.npub_copy), tint = DeckColors.Text3) {
-                        clipboard.setText(AnnotatedString(bech)); toast(npubCopiedMsg)
+                        clipboard(bech); toast(npubCopiedMsg)
                     }
                 }
             }
