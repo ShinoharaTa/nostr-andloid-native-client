@@ -337,6 +337,12 @@ private fun MediaSettings() {
     var input by remember { mutableStateOf("") }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
 
+    // [#247] 画像圧縮パラメータ（低/中の長辺px + 品質%）。既定: 640/1200/85。
+    ImageCompressionBlock(repo)
+    Spacer(Modifier.size(DeckSpace.Lg))
+    HorizontalDivider(color = DeckColors.Border)
+    Spacer(Modifier.size(DeckSpace.Lg))
+
     SectionCaption(stringResource(Res.string.media_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
@@ -408,6 +414,63 @@ private fun MediaSettings() {
             onConfirm = { repo.removeMediaServer(url); confirmRemove = null },
             onDismiss = { confirmRemove = null },
         )
+    }
+}
+
+/**
+ * [#247] 画像アップロード圧縮の設定。投稿の「低/中」プリセットの長辺pxと再エンコード品質を
+ * 変更できる（「高」は常に原寸・無加工）。既定: 低=640px / 中=1200px / 品質=85%。
+ * 保存時に範囲へクランプ（長辺128〜8192 / 品質30〜100）。
+ */
+@Composable
+private fun ImageCompressionBlock(repo: app.nostrdeck.data.EventRepository) {
+    val prefs by repo.imageCompressionFlow().collectAsState()
+    var low by remember(prefs) { mutableStateOf(prefs.lowMaxDim.toString()) }
+    var mid by remember(prefs) { mutableStateOf(prefs.midMaxDim.toString()) }
+    var quality by remember(prefs) { mutableStateOf(prefs.quality.toString()) }
+    var saved by remember { mutableStateOf(false) }
+    val dirty = low != prefs.lowMaxDim.toString() || mid != prefs.midMaxDim.toString() ||
+        quality != prefs.quality.toString()
+
+    SectionCaption(stringResource(Res.string.img_compress_title))
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(stringResource(Res.string.img_compress_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Md))
+
+    @Composable
+    fun numField(label: String, value: String, onChange: (String) -> Unit) {
+        Text(label, color = DeckColors.Text2, fontSize = DeckType.Label)
+        Spacer(Modifier.size(DeckSpace.Xs))
+        DeckTextField(
+            value = value,
+            onValueChange = { s -> onChange(s.filter { it.isDigit() }.take(4)); saved = false },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        Spacer(Modifier.size(DeckSpace.Sm))
+    }
+    numField(stringResource(Res.string.img_low_dim_label), low) { low = it }
+    numField(stringResource(Res.string.img_mid_dim_label), mid) { mid = it }
+    numField(stringResource(Res.string.img_quality_label), quality) { quality = it }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        DeckButton(
+            if (saved) stringResource(Res.string.saved_check) else stringResource(Res.string.common_save),
+            enabled = dirty || !saved,
+            onClick = {
+                repo.setImageCompression(app.nostrdeck.model.ImageCompressionPrefs(
+                    lowMaxDim = low.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_LOW_DIM,
+                    midMaxDim = mid.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_MID_DIM,
+                    quality = quality.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_QUALITY,
+                ))
+                saved = true
+            },
+        )
+        Spacer(Modifier.size(DeckSpace.Sm))
+        DeckGhostButton(stringResource(Res.string.img_reset_defaults), onClick = {
+            repo.setImageCompression(app.nostrdeck.model.ImageCompressionPrefs.DEFAULT)
+            saved = true
+        })
     }
 }
 

@@ -32,6 +32,36 @@ enum class UiScale(val id: String, val factor: Float) {
 }
 
 /**
+ * [#247] 画像アップロード圧縮の設定（設定 > メディアサーバー）。
+ * 投稿の「低/中」プリセットの長辺pxと再エンコード品質を変更できる（「高」は常に原寸・無加工）。
+ * 既定: 低=640px / 中=1200px / 品質=85%。
+ */
+data class ImageCompressionPrefs(
+    val lowMaxDim: Int = DEFAULT_LOW_DIM,
+    val midMaxDim: Int = DEFAULT_MID_DIM,
+    val quality: Int = DEFAULT_QUALITY,
+) {
+    companion object {
+        const val DEFAULT_LOW_DIM = 640
+        const val DEFAULT_MID_DIM = 1200
+        const val DEFAULT_QUALITY = 85
+        // 設定入力の許容範囲（外れた値は保存時にクランプする）
+        const val MIN_DIM = 128
+        const val MAX_DIM = 8192
+        const val MIN_QUALITY = 30
+        const val MAX_QUALITY = 100
+        val DEFAULT = ImageCompressionPrefs()
+
+        /** KV 保存値（不正/未設定は既定へ）からの復元。 */
+        fun from(low: String?, mid: String?, quality: String?): ImageCompressionPrefs = ImageCompressionPrefs(
+            lowMaxDim = low?.toIntOrNull()?.coerceIn(MIN_DIM, MAX_DIM) ?: DEFAULT_LOW_DIM,
+            midMaxDim = mid?.toIntOrNull()?.coerceIn(MIN_DIM, MAX_DIM) ?: DEFAULT_MID_DIM,
+            quality = quality?.toIntOrNull()?.coerceIn(MIN_QUALITY, MAX_QUALITY) ?: DEFAULT_QUALITY,
+        )
+    }
+}
+
+/**
  * [#152] テーマ（設定 > 表示）。既定はダーク（従来挙動そのまま）。
  * SYSTEM は OS のダークモード設定に追従する。
  */
