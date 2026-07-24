@@ -1,14 +1,16 @@
 package app.nostrdeck.ui
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 
 /**
- * パスワードマネージャ（Bitwarden / 1Password / Google パスワード等）の自動入力に欄を登録する。
- * Android では Autofill フレームワークへ「パスワード欄」として登録し、補完が選ばれたら [onFill] を呼ぶ。
- * iOS では no-op（Compose Multiplatform 1.7 に共通の autofill セマンティクスが無いため）。
+ * [#229] パスワードマネージャ（Bitwarden / 1Password / iCloud キーチェーン / Google パスワード等）の
+ * 自動入力に欄を登録する。CMP 1.11 の semantics ベース Autofill（[ContentType.Password]）は
+ * Android/iOS 共通対応のため、expect/actual を廃して単一の common 実装にした。
  *
- * nsec は秘密情報なのでパスワード扱いにし、保存・補完をマネージャに委ねられるようにする。
+ * 補完で選ばれた値は欄の `onValueChange` 経由で入る（旧 API の `onFill` コールバックは不要）。
+ * nsec は秘密情報なのでパスワード欄として扱い、保存・補完をマネージャに委ねられるようにする。
  */
-@Composable
-expect fun Modifier.secretAutofill(onFill: (String) -> Unit): Modifier
+fun Modifier.secretAutofill(): Modifier = semantics { contentType = ContentType.Password }
