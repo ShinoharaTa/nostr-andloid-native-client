@@ -166,6 +166,9 @@ fun ComposeSheet(
     // 添付画像。選択した時点で（送信を待たず）バックグラウンドで圧縮を開始する。
     val images = remember { mutableStateListOf<ComposeAttachment>() }
     var resolution by remember { mutableStateOf(ImageResolution.MID) }
+    // [#247] 圧縮パラメータ（低/中の長辺px・品質%）は設定から。repo 無し（プレビュー等）は既定値。
+    val imgPrefs by (repo?.imageCompressionFlow()?.collectAsState()
+        ?: remember { mutableStateOf(app.nostrdeck.model.ImageCompressionPrefs.DEFAULT) })
     // [#202] 添付動画（原バイトのまま保持・圧縮しない）。送信時に画像の後で NIP-96 アップロード。
     val videos = remember { mutableStateListOf<PickedImage>() }
     var sending by remember { mutableStateOf(false) }
@@ -184,7 +187,7 @@ fun ComposeSheet(
         picked.forEach { p ->
             val att = ComposeAttachment(p)
             images.add(att)
-            scope.launch { att.compress(resolution) }
+            scope.launch { att.compress(resolution, imgPrefs) }
         }
         reassertKb++   // 選択後にキーボードを戻す
     }
@@ -194,8 +197,8 @@ fun ComposeSheet(
 
     // [#224] ピッカー復帰後のキーボード復帰は Dialog コンテンツ内（cardFocus の傍）で行う。
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
-    LaunchedEffect(resolution) {
-        images.forEach { att -> scope.launch { att.compress(resolution) } }
+    LaunchedEffect(resolution, imgPrefs) {
+        images.forEach { att -> scope.launch { att.compress(resolution, imgPrefs) } }
     }
     // [#201] 共有シート経由の初期画像を添付する。content URI を PickedImage に読み出し、
     // ピッカー選択時と同じく即圧縮を開始する（読み出しは重いので Default へ退避）。iOS は常に空。
@@ -207,7 +210,7 @@ fun ComposeSheet(
         picked.forEach { p ->
             val att = ComposeAttachment(p)
             images.add(att)
-            scope.launch { att.compress(resolution) }
+            scope.launch { att.compress(resolution, imgPrefs) }
         }
     }
     // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。[#13] 新規は下書きを復元。
@@ -286,7 +289,7 @@ fun ComposeSheet(
                     val urls = images.map { att ->
                         async {
                             slots.withPermit {
-                                val p = att.processed ?: processImage(att.src, resolution)
+                                val p = att.processed ?: processImage(att.src, imgPrefs.maxDimFor(resolution), imgPrefs.quality)
                                 val url = repo?.uploadImage(p.bytes, p.mime, p.name)
                                 uploadProgress.update { n -> n + 1 }  // 完了枚数（並列でも CAS で安全）
                                 url
@@ -775,10 +778,10 @@ class ComposeAttachment(val src: PickedImage) {
     var processing by mutableStateOf(true)
         private set
 
-    /** 指定解像度で圧縮し直す（解像度変更や追加時に呼ぶ）。失敗時は原画像を保持。 */
-    suspend fun compress(resolution: ImageResolution) {
+    /** 指定解像度で圧縮し直す（解像度変更・設定変更・追加時に呼ぶ）。失敗時は原画像を保持。 */
+    suspend fun compress(resolution: ImageResolution, prefs: app.nostrdeck.model.ImageCompressionPrefs) {
         processing = true
-        processed = processImage(src, resolution)
+        processed = processImage(src, prefs.maxDimFor(resolution), prefs.quality)
         processing = false
     }
 }

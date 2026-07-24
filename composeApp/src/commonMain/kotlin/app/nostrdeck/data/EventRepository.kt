@@ -41,6 +41,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
+import app.nostrdeck.model.ImageCompressionPrefs
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
@@ -272,6 +273,7 @@ class EventRepository(
         loadTextScale()
         // 表示サイズ（標準/大きめ/最大）を KV から復元。
         loadUiScale()
+        loadImageCompression()
         // テーマ（OSに合わせる/ライト/ダーク）を KV から復元。
         loadThemeMode()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -3139,6 +3141,34 @@ class EventRepository(
         textScaleState.value = TextScale.fromId(q.getSetting(TEXT_SCALE_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#247] 画像アップロード圧縮（低/中の長辺px + 再エンコード品質）----
+
+    private val imageCompressionState = MutableStateFlow(ImageCompressionPrefs.DEFAULT)
+    /** 画像圧縮設定（設定 > メディアサーバー）。投稿の圧縮パラメータとして ComposeSheet が参照。 */
+    fun imageCompressionFlow(): StateFlow<ImageCompressionPrefs> = imageCompressionState
+
+    fun setImageCompression(prefs: ImageCompressionPrefs) {
+        // 範囲外はここでクランプして保存（UI 側の入力検証に依存しない）。
+        val clamped = ImageCompressionPrefs(
+            lowMaxDim = prefs.lowMaxDim.coerceIn(ImageCompressionPrefs.MIN_DIM, ImageCompressionPrefs.MAX_DIM),
+            midMaxDim = prefs.midMaxDim.coerceIn(ImageCompressionPrefs.MIN_DIM, ImageCompressionPrefs.MAX_DIM),
+            quality = prefs.quality.coerceIn(ImageCompressionPrefs.MIN_QUALITY, ImageCompressionPrefs.MAX_QUALITY),
+        )
+        imageCompressionState.value = clamped
+        putSettingAsync(IMG_LOW_DIM_KEY, clamped.lowMaxDim.toString())
+        putSettingAsync(IMG_MID_DIM_KEY, clamped.midMaxDim.toString())
+        putSettingAsync(IMG_QUALITY_KEY, clamped.quality.toString())
+    }
+
+    /** KV から画像圧縮設定を復元（未設定/不正値は既定）。start() から呼ぶ。 */
+    private fun loadImageCompression() {
+        imageCompressionState.value = ImageCompressionPrefs.from(
+            q.getSetting(IMG_LOW_DIM_KEY).executeAsOneOrNull(),
+            q.getSetting(IMG_MID_DIM_KEY).executeAsOneOrNull(),
+            q.getSetting(IMG_QUALITY_KEY).executeAsOneOrNull(),
+        )
+    }
+
     // ---- [#appearance] 表示サイズ（標準/大きめ/最大。標準=従来）----
 
     private val uiScaleState = MutableStateFlow(UiScale.SMALL)
@@ -3739,6 +3769,9 @@ class EventRepository(
         const val EMBED_PREFIX = "embed:"
         const val TEXT_SCALE_KEY = "ui:text_scale"   // [#appearance] 文字サイズ（s/m/l）
         const val UI_SCALE_KEY = "ui:ui_scale"       // [#appearance] 表示サイズ（s/m/l）
+        const val IMG_LOW_DIM_KEY = "media:img_low_dim"   // [#247] 画像圧縮「低」長辺px
+        const val IMG_MID_DIM_KEY = "media:img_mid_dim"   // [#247] 画像圧縮「中」長辺px
+        const val IMG_QUALITY_KEY = "media:img_quality"   // [#247] 画像圧縮 品質%（30-100）
         const val THEME_MODE_KEY = "ui:theme"        // [#152] テーマ（system/light/dark）
 
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */

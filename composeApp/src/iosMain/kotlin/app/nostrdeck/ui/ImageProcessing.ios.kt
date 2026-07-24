@@ -18,20 +18,18 @@ import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 
 /**
- * iOS 実装。LOW/MID は長辺を [ImageResolution.maxDim]px 以下へ縮小して **JPEG** で再エンコード。
- * HIGH（maxDim=null）は無加工。
+ * iOS 実装。長辺を [maxDim]px 以下へ縮小して **JPEG** 品質 [quality]% で再エンコード。
+ * maxDim=null（HIGH）は無加工。
  *
  * Android は WebP だが、iOS の ImageIO は **WebP エンコード非対応**（デコードのみ）のため JPEG にする。
  * アップロード先メディアサーバー側で最終的に WebP へ変換されるため実用上の差は無い。
  * 併せて HEIC など非互換フォーマットも JPEG 化され、サーバー互換性が上がる副次効果もある。
  * 失敗時（デコード不可など）は元画像をそのまま返す。
  */
-private const val JPEG_QUALITY = 0.85
-
 @OptIn(ExperimentalForeignApi::class)
-actual suspend fun processImage(img: PickedImage, resolution: ImageResolution): PickedImage =
+actual suspend fun processImage(img: PickedImage, maxDim: Int?, quality: Int): PickedImage =
     withContext(Dispatchers.Default) {
-        val maxDim = resolution.maxDim ?: return@withContext img  // HIGH = 原寸
+        if (maxDim == null) return@withContext img  // HIGH = 原寸
         runCatching {
             val source = UIImage(data = img.bytes.toNSData()) ?: return@withContext img
             val (srcW, srcH) = source.size.useContents { width to height }
@@ -52,7 +50,8 @@ actual suspend fun processImage(img: PickedImage, resolution: ImageResolution): 
                 source.drawInRect(CGRectMake(0.0, 0.0, targetW, targetH))
             }
 
-            val jpeg = UIImageJPEGRepresentation(resized, JPEG_QUALITY) ?: return@withContext img
+            val jpeg = UIImageJPEGRepresentation(resized, quality.coerceIn(1, 100) / 100.0)
+                ?: return@withContext img
             val name = img.name.substringBeforeLast('.', img.name) + ".jpg"
             PickedImage(jpeg.toByteArray(), "image/jpeg", name)
         }.getOrDefault(img)
