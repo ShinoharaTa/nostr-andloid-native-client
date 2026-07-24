@@ -1,3 +1,3 @@
-- iOS: Fixed an issue where the keyboard would not reappear after picking an image or video
-- Major update to the app's rendering engine for improved overall stability
+- iOS: Fixed the keyboard not reappearing after picking (or canceling) an image or video
+- Android: The keyboard now also returns after canceling the image picker
 - Minor bug fixes
