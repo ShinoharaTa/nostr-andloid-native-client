@@ -425,16 +425,22 @@ private fun MediaSettings() {
 @Composable
 private fun ImageCompressionBlock(repo: app.nostrdeck.data.EventRepository) {
     val prefs by repo.imageCompressionFlow().collectAsState()
+    val vPrefs by repo.videoCompressionFlow().collectAsState()
     var low by remember(prefs) { mutableStateOf(prefs.lowMaxDim.toString()) }
     var mid by remember(prefs) { mutableStateOf(prefs.midMaxDim.toString()) }
     var quality by remember(prefs) { mutableStateOf(prefs.quality.toString()) }
+    var vLow by remember(vPrefs) { mutableStateOf(vPrefs.lowHeight.toString()) }
+    var vMid by remember(vPrefs) { mutableStateOf(vPrefs.midHeight.toString()) }
     var saved by remember { mutableStateOf(false) }
-    val dirty = low != prefs.lowMaxDim.toString() || mid != prefs.midMaxDim.toString() ||
-        quality != prefs.quality.toString()
 
     SectionCaption(stringResource(Res.string.img_compress_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(stringResource(Res.string.img_compress_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
+    // [#248] 動画（対応プラットフォームのみ表示: Android/iOS）。
+    if (videoCompressionSupported) {
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(stringResource(Res.string.video_compress_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
+    }
     Spacer(Modifier.size(DeckSpace.Md))
 
     @Composable
@@ -452,16 +458,24 @@ private fun ImageCompressionBlock(repo: app.nostrdeck.data.EventRepository) {
     numField(stringResource(Res.string.img_low_dim_label), low) { low = it }
     numField(stringResource(Res.string.img_mid_dim_label), mid) { mid = it }
     numField(stringResource(Res.string.img_quality_label), quality) { quality = it }
+    // [#248] 動画の縦解像度（対応プラットフォームのみ）。
+    if (videoCompressionSupported) {
+        numField(stringResource(Res.string.video_low_h_label), vLow) { vLow = it }
+        numField(stringResource(Res.string.video_mid_h_label), vMid) { vMid = it }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         DeckButton(
             if (saved) stringResource(Res.string.saved_check) else stringResource(Res.string.common_save),
-            enabled = dirty || !saved,
             onClick = {
                 repo.setImageCompression(app.nostrdeck.model.ImageCompressionPrefs(
                     lowMaxDim = low.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_LOW_DIM,
                     midMaxDim = mid.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_MID_DIM,
                     quality = quality.toIntOrNull() ?: app.nostrdeck.model.ImageCompressionPrefs.DEFAULT_QUALITY,
+                ))
+                repo.setVideoCompression(app.nostrdeck.model.VideoCompressionPrefs(
+                    lowHeight = vLow.toIntOrNull() ?: app.nostrdeck.model.VideoCompressionPrefs.DEFAULT_LOW_HEIGHT,
+                    midHeight = vMid.toIntOrNull() ?: app.nostrdeck.model.VideoCompressionPrefs.DEFAULT_MID_HEIGHT,
                 ))
                 saved = true
             },
@@ -469,6 +483,7 @@ private fun ImageCompressionBlock(repo: app.nostrdeck.data.EventRepository) {
         Spacer(Modifier.size(DeckSpace.Sm))
         DeckGhostButton(stringResource(Res.string.img_reset_defaults), onClick = {
             repo.setImageCompression(app.nostrdeck.model.ImageCompressionPrefs.DEFAULT)
+            repo.setVideoCompression(app.nostrdeck.model.VideoCompressionPrefs.DEFAULT)
             saved = true
         })
     }

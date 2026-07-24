@@ -42,6 +42,7 @@ import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
 import app.nostrdeck.model.ImageCompressionPrefs
+import app.nostrdeck.model.VideoCompressionPrefs
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
@@ -274,6 +275,7 @@ class EventRepository(
         // 表示サイズ（標準/大きめ/最大）を KV から復元。
         loadUiScale()
         loadImageCompression()
+        loadVideoCompression()
         // テーマ（OSに合わせる/ライト/ダーク）を KV から復元。
         loadThemeMode()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
@@ -3169,6 +3171,30 @@ class EventRepository(
         )
     }
 
+    // ---- [#248] 動画アップロード圧縮（低/中の縦解像度p）----
+
+    private val videoCompressionState = MutableStateFlow(VideoCompressionPrefs.DEFAULT)
+    /** 動画圧縮設定（設定 > メディアサーバー）。投稿のトランスコード先解像度として ComposeSheet が参照。 */
+    fun videoCompressionFlow(): StateFlow<VideoCompressionPrefs> = videoCompressionState
+
+    fun setVideoCompression(prefs: VideoCompressionPrefs) {
+        val clamped = VideoCompressionPrefs(
+            lowHeight = prefs.lowHeight.coerceIn(VideoCompressionPrefs.MIN_HEIGHT, VideoCompressionPrefs.MAX_HEIGHT),
+            midHeight = prefs.midHeight.coerceIn(VideoCompressionPrefs.MIN_HEIGHT, VideoCompressionPrefs.MAX_HEIGHT),
+        )
+        videoCompressionState.value = clamped
+        putSettingAsync(VIDEO_LOW_H_KEY, clamped.lowHeight.toString())
+        putSettingAsync(VIDEO_MID_H_KEY, clamped.midHeight.toString())
+    }
+
+    /** KV から動画圧縮設定を復元（未設定/不正値は既定）。start() から呼ぶ。 */
+    private fun loadVideoCompression() {
+        videoCompressionState.value = VideoCompressionPrefs.from(
+            q.getSetting(VIDEO_LOW_H_KEY).executeAsOneOrNull(),
+            q.getSetting(VIDEO_MID_H_KEY).executeAsOneOrNull(),
+        )
+    }
+
     // ---- [#appearance] 表示サイズ（標準/大きめ/最大。標準=従来）----
 
     private val uiScaleState = MutableStateFlow(UiScale.SMALL)
@@ -3772,6 +3798,8 @@ class EventRepository(
         const val IMG_LOW_DIM_KEY = "media:img_low_dim"   // [#247] 画像圧縮「低」長辺px
         const val IMG_MID_DIM_KEY = "media:img_mid_dim"   // [#247] 画像圧縮「中」長辺px
         const val IMG_QUALITY_KEY = "media:img_quality"   // [#247] 画像圧縮 品質%（30-100）
+        const val VIDEO_LOW_H_KEY = "media:video_low_h"   // [#248] 動画圧縮「低」縦解像度p
+        const val VIDEO_MID_H_KEY = "media:video_mid_h"   // [#248] 動画圧縮「中」縦解像度p
         const val THEME_MODE_KEY = "ui:theme"        // [#152] テーマ（system/light/dark）
 
         /** デフォルトリアクション（♡ボタンの送信内容）の KV キー。 */

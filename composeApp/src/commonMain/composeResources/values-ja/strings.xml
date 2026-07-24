@@ -163,6 +163,10 @@
     <string name="img_mid_dim_label">「中」の長辺（px）</string>
     <string name="img_quality_label">再エンコード品質（%）</string>
     <string name="img_reset_defaults">既定に戻す</string>
+    <string name="video_compress_desc">動画は「低/中」選択時に下の縦解像度で H.264/mp4 へ変換します（「高」は無変換）。既定値: 低=480p・中=720p（範囲: 240〜2160）。iOS は最も近い標準プリセット（480/540/720/1080p）に丸められます。</string>
+    <string name="video_low_h_label">動画「低」の縦解像度（p）</string>
+    <string name="video_mid_h_label">動画「中」の縦解像度（p）</string>
+    <string name="video_resolution_label">動画</string>
     <string name="media_delete_title">メディアサーバーを削除しますか？</string>
     <string name="favs_unavailable">ふぁぼを利用できません</string>
     <string name="favs_empty">ふぁぼした投稿はまだありません。</string>

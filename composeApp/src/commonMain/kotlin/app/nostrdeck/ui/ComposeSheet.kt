@@ -169,8 +169,13 @@ fun ComposeSheet(
     // [#247] 圧縮パラメータ（低/中の長辺px・品質%）は設定から。repo 無し（プレビュー等）は既定値。
     val imgPrefs by (repo?.imageCompressionFlow()?.collectAsState()
         ?: remember { mutableStateOf(app.nostrdeck.model.ImageCompressionPrefs.DEFAULT) })
-    // [#202] 添付動画（原バイトのまま保持・圧縮しない）。送信時に画像の後で NIP-96 アップロード。
-    val videos = remember { mutableStateListOf<PickedImage>() }
+    // [#202] 添付動画。送信時に画像の後で NIP-96 アップロード。
+    // [#248] 低/中は選択時にトランスコード（H.264/mp4）。高は無変換（従来挙動）。
+    val videos = remember { mutableStateListOf<VideoAttachment>() }
+    var videoResolution by remember { mutableStateOf(ImageResolution.MID) }
+    val videoProcessor = rememberVideoProcessor()
+    val videoPrefs by (repo?.videoCompressionFlow()?.collectAsState()
+        ?: remember { mutableStateOf(app.nostrdeck.model.VideoCompressionPrefs.DEFAULT) })
     var sending by remember { mutableStateOf(false) }
     var sendJob by remember { mutableStateOf<Job?>(null) }        // 送信ジョブ（強制キャンセル用）
     val uploadProgress = remember { MutableStateFlow(0) }          // アップロード完了枚数（並列更新するので Flow）
@@ -191,9 +196,20 @@ fun ComposeSheet(
         }
         reassertKb++   // 選択後にキーボードを戻す
     }
-    // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。圧縮はせず送信時にそのままアップロード。
+    // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。[#248] 追加時に即トランスコード開始。
     // [#224] キャンセル(null)でも reassertKb は上げてキーボード復帰だけは走らせる。
-    val videoPicker = rememberVideoPicker { picked -> picked?.let { videos.add(it) }; reassertKb++ }
+    val videoPicker = rememberVideoPicker { picked ->
+        picked?.let { p ->
+            val att = VideoAttachment(p)
+            videos.add(att)
+            scope.launch { att.compress(videoProcessor, videoPrefs.heightFor(videoResolution)) }
+        }
+        reassertKb++
+    }
+    // [#248] 動画の解像度チップや設定を変えたら添付済み全件を再トランスコード。
+    LaunchedEffect(videoResolution, videoPrefs) {
+        videos.forEach { att -> scope.launch { att.compress(videoProcessor, videoPrefs.heightFor(videoResolution)) } }
+    }
 
     // [#224] ピッカー復帰後のキーボード復帰は Dialog コンテンツ内（cardFocus の傍）で行う。
     // 解像度を変えたら添付済み全件を新しい解像度で圧縮し直す（初回構成時は no-op）。
@@ -296,11 +312,14 @@ fun ComposeSheet(
                             }
                         }
                     }.awaitAll()
-                    // [#202] 動画は圧縮せず原バイトのまま同じ NIP-96 経路でアップロード（画像と同スロット）。
+                    // [#202] 動画は同じ NIP-96 経路でアップロード（画像と同スロット）。
+                    // [#248] トランスコード済みがあればそれを使う。未完了なら送信時に変換して待つ。
                     val videoUrls = videos.map { v ->
                         async {
                             slots.withPermit {
-                                val url = repo?.uploadImage(v.bytes, v.mime, v.name)
+                                val p = v.processed
+                                    ?: videoProcessor(v.src, videoPrefs.heightFor(videoResolution))
+                                val url = repo?.uploadImage(p.bytes, p.mime, p.name)
                                 uploadProgress.update { n -> n + 1 }
                                 url
                             }
@@ -490,6 +509,16 @@ fun ComposeSheet(
                     if (videos.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Md))
                         VideoCarousel(videos, onRemove = { videos.removeAt(it) })
+                        // [#248] 動画の解像度チップ（対応プラットフォームのみ。高=無変換）。
+                        if (videoCompressionSupported) {
+                            Spacer(Modifier.height(DeckSpace.Sm))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(Res.string.video_resolution_label),
+                                    color = DeckColors.Text3, fontSize = DeckType.Label)
+                                Spacer(Modifier.width(DeckSpace.Sm))
+                                ResolutionSelector(videoResolution, onSelect = { videoResolution = it })
+                            }
+                        }
                     }
                 }
 
@@ -736,11 +765,12 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
 }
 
 /**
- * [#202] 添付動画の横スクロール・カルーセル。動画は圧縮しないので容量はそのまま表示。
- * サムネイル生成はしていない（TODO: 先頭フレーム抽出）。アイコン + ファイル名 + 容量のプレースホルダ。
+ * [#202] 添付動画の横スクロール・カルーセル。
+ * [#248] トランスコード対応: 変換中はスピナー、完了後は「元→変換後」の容量を表示。
+ * サムネイル生成はしていない（TODO: 先頭フレーム抽出）。アイコン + 容量のプレースホルダ。
  */
 @Composable
-private fun VideoCarousel(videos: List<PickedImage>, onRemove: (Int) -> Unit) {
+private fun VideoCarousel(videos: List<VideoAttachment>, onRemove: (Int) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(videos.size) { i ->
             val v = videos[i]
@@ -749,7 +779,14 @@ private fun VideoCarousel(videos: List<PickedImage>, onRemove: (Int) -> Unit) {
                     Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Outlined.Movie, stringResource(Res.string.compose_attach_video), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconLg))
+                    if (v.processing) {
+                        CircularProgressIndicator(
+                            color = DeckColors.Text3, strokeWidth = 2.dp,
+                            modifier = Modifier.size(DeckDimens.IconLg),
+                        )
+                    } else {
+                        Icon(Icons.Outlined.Movie, stringResource(Res.string.compose_attach_video), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconLg))
+                    }
                     // 添付削除（インライン補助操作・32dp 実タップ領域）。
                     Box(
                         Modifier.align(Alignment.TopEnd).size(DeckDimens.TouchTargetXs)
@@ -760,10 +797,39 @@ private fun VideoCarousel(videos: List<PickedImage>, onRemove: (Int) -> Unit) {
                 }
                 Spacer(Modifier.height(DeckSpace.Xs))
                 Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
-                    Text(humanSize(v.bytes.size), color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
+                    val p = v.processed
+                    val label = when {
+                        v.processing -> humanSize(v.src.bytes.size)
+                        p != null && p.bytes.size < v.src.bytes.size ->
+                            "${humanSize(v.src.bytes.size)}→${humanSize(p.bytes.size)}"
+                        else -> humanSize(v.src.bytes.size)
+                    }
+                    Text(label, color = DeckColors.Text3, fontSize = DeckType.Micro, maxLines = 1)
                 }
             }
         }
+    }
+}
+
+/**
+ * [#248] 添付動画1本の状態。選択時・チップ/設定変更時に [compress]（トランスコード）を走らせ、
+ * 結果と変換中フラグを Compose 状態で保持する。アップロードは [processed]（無ければ src）を使う。
+ */
+@Stable
+class VideoAttachment(val src: PickedImage) {
+    var processed by mutableStateOf<PickedImage?>(null)
+        private set
+    var processing by mutableStateOf(false)
+        private set
+
+    /** 指定の縦解像度でトランスコードし直す。null（高）は無変換。失敗時は原バイトを保持。 */
+    suspend fun compress(
+        processor: suspend (PickedImage, Int?) -> PickedImage,
+        targetHeight: Int?,
+    ) {
+        processing = true
+        processed = processor(src, targetHeight)
+        processing = false
     }
 }
 
