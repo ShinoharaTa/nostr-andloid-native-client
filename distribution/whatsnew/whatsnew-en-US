@@ -1,3 +1,3 @@
-- iOS: Fixed the keyboard not reappearing after picking (or canceling) an image or video
-- Android: The keyboard now also returns after canceling the image picker
+- Fixed profiles not refreshing (stale profiles for everyone after long-term use)
+- Fixed profile editing: you can now create and save your profile even for the first time; added "Edit profile" to Settings
 - Minor bug fixes
