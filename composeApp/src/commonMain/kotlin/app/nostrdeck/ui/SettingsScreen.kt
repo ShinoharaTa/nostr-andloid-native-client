@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Block
@@ -194,6 +195,9 @@ private val paletteGroups = listOf(
         SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
     ),
     Res.string.group_connection to listOf(
+        // [#246] kind:0 編集への導線。従来は自分プロフィールの「編集」ボタン経由のみで
+        // 発見しにくかった（設定に項目が無い＝「編集できない」と誤認される）。
+        SItem("account", Res.string.section_account, Icons.Outlined.Edit),
         SItem("signer", Res.string.section_signer, Icons.Outlined.Key),
         SItem("relays", Res.string.section_relays, Icons.Outlined.Cloud),
         SItem("dmrelays", Res.string.section_dm_relays, Icons.Outlined.MailOutline),
@@ -603,14 +607,33 @@ private fun AccountSettings() {
     var lud16 by remember { mutableStateOf("") }
     var nip05 by remember { mutableStateOf("") }
     var initialized by remember { mutableStateOf(false) }
+    // [#246] 差分検出用の初期値スナップショット。保存時は「初期値から変わったフィールド
+    // だけ」を publishProfile に渡す（空欄のままの未変更項目を送って、既存フィールドを
+    // 誤って削除しないため。publishProfile は空文字=キー削除の契約）。
+    val initial = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    var loadedFromProfile by remember { mutableStateOf(false) }
+    fun snapshotInitial() {
+        initial["name"] = name; initial["about"] = about; initial["picture"] = picture
+        initial["banner"] = banner; initial["website"] = website; initial["lud16"] = lud16
+        initial["nip05"] = nip05
+    }
     // 取得済みプロフィールで初期値を一度だけ埋める（以後の編集は上書きしない）。
     LaunchedEffect(profile) {
         val p = profile
         if (!initialized && p != null) {
             name = p.name; about = p.about; picture = p.pictureUrl ?: ""; banner = p.banner ?: ""
             website = p.website ?: ""; lud16 = p.lud16 ?: ""; nip05 = p.handle
+            snapshotInitial()
+            loadedFromProfile = true
             initialized = true
         }
+    }
+    // [#246] 自分の kind:0 が無い（初回作成）/まだ取得できていない場合でも編集・保存できる
+    // ように、一定時間で編集可能へ倒す。従来は profile 行が現れるまで保存が永久に無効で、
+    // 新規ユーザーがプロフィールを作成できず、既存ユーザーも取得失敗中は保存不能だった。
+    LaunchedEffect(pubkey) {
+        kotlinx.coroutines.delay(5_000)
+        if (!initialized) { snapshotInitial(); initialized = true }
     }
     var uploadingPic by remember { mutableStateOf(false) }
     var uploadingBanner by remember { mutableStateOf(false) }
@@ -630,6 +653,12 @@ private fun AccountSettings() {
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(stringResource(Res.string.profile_publish_note),
         color = DeckColors.Text3, fontSize = DeckType.Label)
+    // [#246] 既存プロフィールを読み込めないまま編集可能化した場合の注意（新規作成 or 取得失敗）。
+    if (initialized && !loadedFromProfile) {
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(stringResource(Res.string.profile_not_loaded_note),
+            color = DeckColors.Warn, fontSize = DeckType.Label)
+    }
     Spacer(Modifier.size(DeckSpace.Md))
 
     ProfileField(stringResource(Res.string.field_display_name), name) { name = it; saved = false }
@@ -647,11 +676,17 @@ private fun AccountSettings() {
         onClick = {
             saving = true
             scope.launch {
-                val ok = repo.publishProfile(mapOf(
+                // [#246] 初期値から変わったフィールドだけ送る。空欄のままの未変更項目は
+                // publishProfile に渡さない（渡すと空文字=キー削除の契約により、読み込めて
+                // いない既存プロフィールを丸ごと消してしまうため）。
+                val current = mapOf(
                     "name" to name.trim(), "about" to about.trim(), "picture" to picture.trim(),
                     "banner" to banner.trim(), "website" to website.trim(),
                     "lud16" to lud16.trim(), "nip05" to nip05.trim(),
-                ))
+                )
+                val changed = current.filterKeys { k -> (initial[k] ?: "").trim() != current.getValue(k) }
+                val ok = if (changed.isEmpty()) true else repo.publishProfile(changed)
+                if (ok) initial.putAll(current)   // 次回保存の差分基準を更新
                 saving = false
                 // [#171] 成功時のみ「保存しました ✓」。失敗はトーストで明示（黙って成功表示にしない）。
                 if (ok) saved = true else toast(saveFailedMsg)
