@@ -180,6 +180,7 @@
     <string name="account_edit_unavailable">Account settings are unavailable</string>
     <string name="profile_section">Profile</string>
     <string name="profile_publish_note">Saving publishes kind:0. Existing custom fields are preserved.</string>
+    <string name="profile_not_loaded_note">Couldn't load your current profile yet. Only the fields you change will be published.</string>
     <string name="field_display_name">Display name</string>
     <string name="field_about">About</string>
     <string name="field_icon">Icon image</string>

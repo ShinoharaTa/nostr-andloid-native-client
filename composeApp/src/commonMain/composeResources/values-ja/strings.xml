@@ -176,6 +176,7 @@
     <string name="account_edit_unavailable">アカウント設定を利用できません</string>
     <string name="profile_section">プロフィール</string>
     <string name="profile_publish_note">変更を保存すると kind:0 を発行します。既存の独自項目は保持されます。</string>
+    <string name="profile_not_loaded_note">現在のプロフィールを読み込めていません。変更した項目だけが発行されます。</string>
     <string name="field_display_name">表示名</string>
     <string name="field_about">自己紹介</string>
     <string name="field_icon">アイコン画像</string>
