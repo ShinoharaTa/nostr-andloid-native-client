@@ -197,6 +197,23 @@ private fun CompactPager(state: DeckState) {
         state.consumeJump()
     }
 
+    // [#324] 並べ替えで表示中カラムが替わらないように。Pager は index しか知らないため、
+    // ⋯ の「移動 ◀▶」で並びが変わると**同じ index の別カラム**が映ってしまい、
+    // 入れ替え作業のたびに手元からカラムが逃げていた。表示中カラムの id を覚えておき、
+    // 並びが変わったら同じ id のページへ**瞬時に**合わせ直す（アニメーションさせない。
+    // 見た目はタブの並びだけが変わり、本文は動かないのが正しい）。
+    val shownColumnId = remember { mutableStateOf(state.columns.getOrNull(pager.currentPage)?.id) }
+    LaunchedEffect(state.columns.map { it.id }) {
+        val target = shownColumnId.value ?: return@LaunchedEffect
+        val idx = state.columns.indexOfFirst { it.id == target }
+        if (idx >= 0 && idx != pager.currentPage) pager.scrollToPage(idx)
+    }
+    // ユーザー操作（スワイプ/タブタップ）でページが確定したら追従対象を更新する。
+    // 上の合わせ直しで currentPage が動いた場合も、同じ id に更新されるだけで害はない。
+    LaunchedEffect(pager.currentPage) {
+        shownColumnId.value = state.columns.getOrNull(pager.currentPage)?.id
+    }
+
     Column(Modifier.fillMaxSize()) {
         // 上部バー: カラムタブ（横スクロール）＋ 右端にリレー接続ステータス（折り畳み時はレールが
         // 出ないため、ここに常設して一目で状態が分かるようにする）。
