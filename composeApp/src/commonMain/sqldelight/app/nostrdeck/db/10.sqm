@@ -1,0 +1,12 @@
+-- v10 -> v11: [#368] OGP キャッシュの永続化。再起動のたびにタイムライン上の全URLを
+-- 取り直さないため、取得結果(失敗含む)を TTL 付きで保存する。
+-- 新規テーブルなので CREATE IF NOT EXISTS のみ。
+CREATE TABLE IF NOT EXISTS ogp_cache (
+    url         TEXT NOT NULL PRIMARY KEY,
+    fetched_at  INTEGER NOT NULL,
+    ok          INTEGER NOT NULL,
+    title       TEXT,
+    description TEXT,
+    image       TEXT,
+    site_name   TEXT
+);

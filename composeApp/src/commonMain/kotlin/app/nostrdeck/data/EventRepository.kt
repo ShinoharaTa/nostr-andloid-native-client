@@ -20,12 +20,16 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
+import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
@@ -265,6 +269,8 @@ class EventRepository(
         q.transaction { q.clearTimelineEvents(); q.clearOrphanTags() }
         // 末尾スラッシュ違い（例: nos.lol と nos.lol/）で二重登録された既存行を一度だけ統合する。
         dedupeRelayUrls()
+        // [#368] 古い OGP キャッシュを掃除（14日超。TL に流れた URL の数だけ増えるため）。
+        q.purgeOgpCache(currentUnixTime() - OGP_PURGE_SEC)
         // ブートストラップ・リレーは**初回（リレー表が空）のみ** seed する。
         // 以前は毎回 insert+接続していたため、設定で削除した default リレーが再起動で復活していた。
         if (q.allRelays().executeAsList().isEmpty()) {
@@ -3869,16 +3875,47 @@ class EventRepository(
     /**
      * URL の OGP(OpenGraph) メタを取得する。成功/失敗ともメモリキャッシュ（null もキャッシュ）。
      * HTML 先頭のみを走査して og:title/og:description/og:image/og:site_name を拾う簡易実装。
+     * [#368] ボディは先頭のみ読んで打ち切り（通常200KB / Amazonは画像JSONが後半のため512KB）、
+     * 結果は DB にも TTL 付きで永続化する（成功7日・失敗1日。再起動時の全URL再取得を防ぐ）。
      */
     suspend fun fetchOgp(url: String): OgpData? {
         ogpMutex.withLock { if (ogpCache.containsKey(url)) return ogpCache[url] }
+        // [#368] DB キャッシュ。TTL 内ならネットワークへ行かない。
+        val cached = withContext(Dispatchers.Default) { q.getOgpCache(url).executeAsOneOrNull() }
+        if (cached != null) {
+            val ttl = if (cached.ok != 0L) OGP_TTL_OK_SEC else OGP_TTL_NG_SEC
+            if (currentUnixTime() - cached.fetched_at < ttl) {
+                val data = if (cached.ok == 0L) null else OgpData(
+                    url, title = cached.title, description = cached.description,
+                    image = cached.image, siteName = cached.site_name,
+                )
+                ogpMutex.withLock { putOgpMemory(url, data) }
+                return data
+            }
+        }
         val data = runCatching {
             withContext(Dispatchers.Default) {
+                // [#368] 全量ダウンロードをやめ、先頭 cap バイトで打ち切る（数MBのページ対策）。
+                // OG タグは <head> にあるため通常は 200KB で足りる。Amazon の商品画像 JSON は
+                // ページ後半に来る構成があるため 512KB まで緩和（それでも無ければ画像なしに劣化）。
+                val cap = if (isAmazonUrl(url)) 512_000 else 200_000
                 // [#137] ブラウザ風 UA を名乗らないと Amazon 等がボット扱いで 404/簡易ページを返す。
-                val html = uploadHttp.get(url) {
+                val html = uploadHttp.prepareGet(url) {
                     header(HttpHeaders.UserAgent, OGP_UA)
                     header(HttpHeaders.AcceptLanguage, "ja-JP,ja;q=0.9,en;q=0.5")
-                }.bodyAsText()
+                }.execute { resp ->
+                    val ch = resp.bodyAsChannel()
+                    val buf = ByteArray(cap)
+                    var read = 0
+                    while (read < cap) {
+                        val n = ch.readAvailable(buf, read, cap - read)
+                        if (n == -1) break
+                        read += n
+                    }
+                    runCatching { ch.cancel(null) }   // 残りは読まない（execute を抜けると接続ごと破棄される）
+                    // 途中で切れた多バイト文字は decodeToString が置換文字にするだけで走査には影響しない。
+                    buf.decodeToString(0, read)
+                }
                 val head = html.take(200_000)  // <head> を含む先頭のみ
                 fun meta(prop: String): String? {
                     // property="og:x" content="..." と content="..." property="og:x" の両順序に対応。
@@ -3906,12 +3943,21 @@ class EventRepository(
                 else OgpData(url, title = title, description = meta("og:description"), image = image, siteName = meta("og:site_name"))
             }
         }.getOrNull()
-        ogpMutex.withLock {
-            ogpCache[url] = data
-            // [#80] TL に流れた URL の数だけ無制限に増えるので上限を設ける（挿入順で最古を破棄）。
-            if (ogpCache.size > 256) ogpCache.remove(ogpCache.keys.first())
+        ogpMutex.withLock { putOgpMemory(url, data) }
+        // [#368] DB へも保存。失敗も記録して、取れない URL の再試行を TTL(1日)に抑える。
+        scope.launch(relayDispatcher) {
+            q.putOgpCache(
+                url, currentUnixTime(), if (data != null) 1L else 0L,
+                data?.title, data?.description, data?.image, data?.siteName,
+            )
         }
         return data
+    }
+
+    /** [#80] メモリ側 OGP キャッシュへの追加（呼び出し側で ogpMutex を取ること）。上限256件。 */
+    private fun putOgpMemory(url: String, data: OgpData?) {
+        ogpCache[url] = data
+        if (ogpCache.size > 256) ogpCache.remove(ogpCache.keys.first())
     }
 
     private fun decodeHtmlEntities(s: String): String = s
@@ -4444,6 +4490,11 @@ class EventRepository(
         const val SEARCH_FETCH_LIMIT = 300
         // [#358] バックグラウンドでリレーを一時停止するまでの猶予（5分）。
         const val BG_PAUSE_DELAY_MS = 5 * 60 * 1000L
+        // [#368] OGP の DB キャッシュ TTL（秒）。成功は7日、失敗は1日で取り直す。
+        const val OGP_TTL_OK_SEC = 7L * 24 * 3600
+        const val OGP_TTL_NG_SEC = 24L * 3600
+        // [#368] 起動時に消す古い OGP キャッシュのしきい値（14日）。
+        const val OGP_PURGE_SEC = 14L * 24 * 3600
         // [#259] キーワード検索のローカル読み出し上限。1条件あたり / 合成後の総数。
         const val SEARCH_ROWS_PER_QUERY = 300L
         const val SEARCH_ROWS_TOTAL = 300

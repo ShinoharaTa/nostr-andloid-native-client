@@ -625,3 +625,24 @@ SELECT deleted_at FROM deleted_addr WHERE coord = ?;
 deleteAddrEvents:
 DELETE FROM event WHERE kind = ? AND pubkey = ? AND created_at <= ?
   AND id IN (SELECT event_id FROM event_tag WHERE tag = 'd' AND value = ?);
+
+-- [#368] OGP キャッシュ。成功/失敗とも TTL 付きで永続化し、再起動時の全URL再取得を防ぐ。
+CREATE TABLE ogp_cache (
+    url         TEXT NOT NULL PRIMARY KEY,
+    fetched_at  INTEGER NOT NULL,
+    ok          INTEGER NOT NULL,
+    title       TEXT,
+    description TEXT,
+    image       TEXT,
+    site_name   TEXT
+);
+
+getOgpCache:
+SELECT * FROM ogp_cache WHERE url = ?;
+
+putOgpCache:
+INSERT OR REPLACE INTO ogp_cache(url, fetched_at, ok, title, description, image, site_name)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+purgeOgpCache:
+DELETE FROM ogp_cache WHERE fetched_at < ?;
