@@ -111,11 +111,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                 if (t == ColumnTemplate.HASHTAG && repo != null) {
                     val pinned by repo.pinnedHashtagsFlow().collectAsState()
                     val used by remember(repo) { repo.usedHashtagsFlow() }.collectAsState(emptyList())
-                    HashtagChipRows(
-                        pinned = pinned,
-                        recent = used.filterNot { it in pinned }.take(8),
-                        onTap = { text = it },
-                    )
+                    HashtagChipRows(pinned = pinned, used = used, onTap = { text = it })
                 }
             }
             ColumnConfig.RELAY_SET -> RelaySetEditor(initial = emptyList(), onChange = { relays = it })

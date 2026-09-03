@@ -2396,14 +2396,14 @@ class EventRepository(
         }
     }
 
-    /** 投稿で使ったハッシュタグ（最近順）。ComposeSheet のレコメンド/最近のチップに使う。 */
-    fun usedHashtagsFlow(): Flow<List<String>> =
-        q.usedHashtagsByRecency().asFlow().mapToList(Dispatchers.Default)
-
     /** [#393] 使ったことのあるハッシュタグ（最終使用日つき・新しい順）。整理画面の一覧用。 */
     fun usedHashtagsWithTimeFlow(): Flow<List<UsedHashtag>> =
         q.usedHashtagsWithTime().asFlow().mapToList(Dispatchers.Default)
             .map { rows -> rows.map { UsedHashtag(it.tag, it.last_used) } }
+
+    /** 投稿で使ったハッシュタグ（最近順・タグのみ）。ComposeSheet のサジェスト/チップに使う。[#395] 同じクエリから導出。 */
+    fun usedHashtagsFlow(): Flow<List<String>> =
+        usedHashtagsWithTimeFlow().map { rows -> rows.map { it.tag } }
 
     // ---- [#393] ピン留めハッシュタグ（NIP-51 kind:30015 / d=pinned）----
 

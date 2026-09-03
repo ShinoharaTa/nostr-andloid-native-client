@@ -296,8 +296,6 @@ fun ComposeSheet(
     } else {
         emptyList()
     }
-    // [#393] 最近使った（新しい順・ピン留め済みは除外・8件）。頻度の重み付けはしない。
-    val recent = used.filterNot { it in pinned }.take(8)
     // [#393] チップのタップ: 入力中の "#…" に前方一致するなら補完、そうでなければ末尾に足す。
     val insertTag: (String) -> Unit = { tag ->
         field = if (activeTagPrefix != null && tag.startsWith(activeTagPrefix)) completeHashtag(field, tag) else appendHashtag(field, tag)
@@ -572,7 +570,7 @@ fun ComposeSheet(
                         }
                         // [#393] 「📌 ピン留め」→「最近使った」の2段。長押しでピン留め/解除、末尾に「整理…」。
                         HashtagChipRows(
-                            pinned = pinned, recent = recent, onTap = insertTag,
+                            pinned = pinned, used = used, onTap = insertTag,
                             onPin = { tag ->
                                 // 上限到達時はピン留めせず、整理画面へ案内する。
                                 if (pinned.size >= PinnedHashtags.MAX) { toast(pinLimitMsg); showTagManage = true }

@@ -33,22 +33,33 @@ import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
+/** [#393] 「最近使った」チップの件数。 */
+internal const val RECENT_HASHTAG_CHIPS = 8
+
+/**
+ * [#393] 「最近使った」チップの導出（新しい順・ピン留め済みは除外・[RECENT_HASHTAG_CHIPS] 件）。
+ * 頻度の重み付けはしない。[#395] 投稿画面とカラム作成で同じ規則を1箇所に。
+ */
+internal fun recentHashtagChips(used: List<String>, pinned: List<String>): List<String> =
+    used.filterNot { it in pinned }.take(RECENT_HASHTAG_CHIPS)
+
 /**
  * [#393] ハッシュタグのクイック入力チップ。投稿画面とハッシュタグカラム作成ダイアログで共用。
  *
- * 「📌 ピン留め」（kind:30015 の順・常時）→「最近使った」（新しい順・ピン留め済みは除外）の2段。
- * 頻度の重み付けはしない。[onPin]/[onUnpin] を渡すと長押しメニューでピン留め/解除できる。
+ * 「📌 ピン留め」（kind:30015 の順・常時）→「最近使った」（[used] 新しい順からピン留め済みを除外して
+ * [RECENT_HASHTAG_CHIPS] 件）の2段。[onPin]/[onUnpin] を渡すと長押しメニューでピン留め/解除できる。
  * [onManage] を渡すとピン留め行の末尾に「整理…」チップを出す（整理画面への誘導）。
  */
 @Composable
 internal fun HashtagChipRows(
     pinned: List<String>,
-    recent: List<String>,
+    used: List<String>,
     onTap: (String) -> Unit,
     onPin: ((String) -> Unit)? = null,
     onUnpin: ((String) -> Unit)? = null,
     onManage: (() -> Unit)? = null,
 ) {
+    val recent = recentHashtagChips(used, pinned)
     if (pinned.isNotEmpty() || onManage != null) {
         Spacer(Modifier.height(DeckSpace.Sm))
         HintText(stringResource(Res.string.compose_pinned_tags))

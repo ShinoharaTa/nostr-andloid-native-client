@@ -331,10 +331,7 @@ INSERT OR IGNORE INTO used_hashtag(tag, last_used, uses) VALUES (?, ?, 1);
 touchHashtag:
 UPDATE used_hashtag SET last_used = ?, uses = uses + 1 WHERE tag = ?;
 
-usedHashtagsByRecency:
-SELECT tag FROM used_hashtag ORDER BY last_used DESC;
-
--- [#393] 整理画面「使ったことのあるタグ」用（最終使用日つき・新しい順）。
+-- [#393][#395] 最近順の一覧（投稿画面のチップ/サジェスト・整理画面）。タグだけ欲しい側は tag を取り出す。
 usedHashtagsWithTime:
 SELECT tag, last_used FROM used_hashtag ORDER BY last_used DESC;
 
