@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,14 +97,27 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
     var text by remember { mutableStateOf("") }
     var relays by remember { mutableStateOf<List<String>>(emptyList()) }
     val notif = remember { mutableStateMapOf<NotifKind, Boolean>().apply { NotifKind.entries.forEach { put(it, true) } } }
+    val repo = LocalRepository.current
 
     Column(Modifier.fillMaxWidth().padding(DeckSpace.Lg)) {
         when (t.config) {
-            ColumnConfig.TEXT -> DeckTextField(
-                value = text, onValueChange = { text = it },
-                placeholder = t.hint?.let { stringResource(it) } ?: "",
-                modifier = Modifier.fillMaxWidth(),
-            )
+            ColumnConfig.TEXT -> {
+                DeckTextField(
+                    value = text, onValueChange = { text = it },
+                    placeholder = t.hint?.let { stringResource(it) } ?: "",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // [#393] ハッシュタグカラムは投稿画面と同じチップ（ピン留め + 最近使った）。タップで入力欄へ。
+                if (t == ColumnTemplate.HASHTAG && repo != null) {
+                    val pinned by repo.pinnedHashtagsFlow().collectAsState()
+                    val used by remember(repo) { repo.usedHashtagsFlow() }.collectAsState(emptyList())
+                    HashtagChipRows(
+                        pinned = pinned,
+                        recent = used.filterNot { it in pinned }.take(8),
+                        onTap = { text = it },
+                    )
+                }
+            }
             ColumnConfig.RELAY_SET -> RelaySetEditor(initial = emptyList(), onChange = { relays = it })
             ColumnConfig.NOTIF_FILTER -> Column {
                 SectionCaption(stringResource(Res.string.add_column_kinds))
