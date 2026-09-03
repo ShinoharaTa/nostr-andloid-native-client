@@ -1,5 +1,7 @@
 package app.nostrdeck.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * [#393] ピン留めハッシュタグ（NIP-51 Interest set, kind:30015, `d="pinned"`）。
  *
@@ -44,6 +46,37 @@ object PinnedHashtags {
     fun parse(event: NostrEvent): List<String>? {
         if (!isPinnedSet(event)) return null
         return normalizeList(event.tags.filter { it.size >= 2 && it[0] == "t" }.map { it[1] })
+    }
+}
+
+/**
+ * [#393] ピン留めのローカルキャッシュ（一覧 + その版の created_at）。KV に丸ごと保存する。
+ * [at] は「この一覧が確定した時刻」。楽観更新では発行前に「今」へ進め、古いエコーが編集を上書きしないようにする。
+ */
+@Serializable
+data class PinnedCache(val tags: List<String> = emptyList(), val at: Long = 0L)
+
+/** 受信した 30015 をローカルキャッシュへどう反映するか（[PinnedHashtags.reconcile]）。 */
+sealed class PinnedReconcile {
+    /** 受信版が新しい（または同時刻）。キャッシュを置き換える。 */
+    data class Accept(val cache: PinnedCache) : PinnedReconcile()
+    /** 対象外（他人/別の d/古い版で内容も同じ）。何もしない。 */
+    data object Ignore : PinnedReconcile()
+    /** 受信版が古く内容も違う＝ローカルが正（未発行のまま終了した等）。自分のキャッシュを再発行する。 */
+    data object Republish : PinnedReconcile()
+}
+
+/**
+ * 受信した 30015 とローカルキャッシュを突き合わせる（純関数。呼び出し側が再発行の回数を抑える）。
+ * [me] が null（未ログイン）なら常に [PinnedReconcile.Ignore]。
+ */
+fun PinnedHashtags.reconcile(cache: PinnedCache, event: NostrEvent, me: String?): PinnedReconcile {
+    if (me == null || event.pubkey != me) return PinnedReconcile.Ignore
+    val tags = parse(event) ?: return PinnedReconcile.Ignore
+    return when {
+        event.createdAt >= cache.at -> PinnedReconcile.Accept(PinnedCache(tags, event.createdAt))
+        tags == cache.tags -> PinnedReconcile.Ignore
+        else -> PinnedReconcile.Republish
     }
 }
 

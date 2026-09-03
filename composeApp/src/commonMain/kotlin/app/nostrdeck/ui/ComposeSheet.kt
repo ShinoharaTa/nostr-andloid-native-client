@@ -305,6 +305,9 @@ fun ComposeSheet(
     var showTagManage by remember { mutableStateOf(false) }
     val toast = rememberToaster()
     val pinLimitMsg = stringResource(Res.string.tag_pin_limit_fmt, PinnedHashtags.MAX)
+    // [#393] 長押しピン留めのデバウンス発行が失敗したら（署名不可等）、Repository が編集前に戻す。ここは通知だけ。
+    val pinFailedMsg = stringResource(Res.string.hashtags_save_failed)
+    LaunchedEffect(repo) { repo?.pinnedHashtagsErrors()?.collect { toast(pinFailedMsg) } }
 
     // 入力中のメンション（カーソル直前の "@…" 断片）。
     val activeMention: String? = run {

@@ -65,7 +65,10 @@ import app.nostrdeck.model.ContentToken
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.latestByDTag
 import app.nostrdeck.model.Nip51Set
+import app.nostrdeck.model.PinnedCache
 import app.nostrdeck.model.PinnedHashtags
+import app.nostrdeck.model.PinnedReconcile
+import app.nostrdeck.model.reconcile
 import app.nostrdeck.model.UsedHashtag
 import app.nostrdeck.model.parseNip51Sets
 import app.nostrdeck.model.NoteUi
@@ -271,8 +274,14 @@ class EventRepository(
 
     // [#393] 自分のピン留めハッシュタグ（kind:30015 / d=pinned）。KV にキャッシュし、受信で更新。
     private val pinnedHashtagsState = MutableStateFlow<List<String>>(emptyList())
+    /** キャッシュ中の一覧が確定した created_at。楽観更新では発行前に「今」へ進める（KV にも保存）。 */
     private var pinnedHashtagsAt = 0L
     private var pinnedPublishJob: Job? = null
+    /** デバウンス発行が失敗したときに戻す版（未発行の編集が始まった時点の確定版）。発行成功で null。 */
+    private var pinnedRollback: PinnedCache? = null
+    /** KV 復元直後は「ローカルが正」の可能性がある（未発行のまま終了）。初回受信で1回だけ再発行を許す。 */
+    private var pinnedRepublishArmed = false
+    private val pinnedHashtagsErrors = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // [#359] 回線種別（Wi-Fi/モバイル）。画質・埋め込みの節約分岐が購読する。
     private val networkPolicy = NetworkPolicy()
@@ -682,9 +691,9 @@ class EventRepository(
             emojiListAt = 0L
             // [#393] ピン留めはアカウント別。旧アカウントのキャッシュを新アカウントで見せない。
             pinnedPublishJob?.cancel()
-            pinnedHashtagsAt = 0L
-            pinnedHashtagsState.value = emptyList()
-            putSettingAsync(PINNED_HASHTAGS_KEY, "[]")
+            pinnedRollback = null
+            pinnedRepublishArmed = false
+            cachePinnedHashtags(PinnedCache())
             // [#374] 旧アカウントの 30078 スナップショットを新アカウントで見せないように。
             syncEventByD.value = emptyMap()
 
@@ -2407,29 +2416,52 @@ class EventRepository(
     )
 
     private fun loadPinnedHashtagsBackup() {
-        q.getSetting(PINNED_HASHTAGS_KEY).executeAsOneOrNull()?.let { raw ->
-            runCatching { json.decodeFromString(ListSerializer(String.serializer()), raw) }
-                .getOrNull()?.let { pinnedHashtagsState.value = PinnedHashtags.normalizeList(it) }
-        }
+        val raw = q.getSetting(PINNED_HASHTAGS_KEY).executeAsOneOrNull() ?: return
+        // 旧形式（タグ一覧のみの JSON 配列）も読めるようにしておく（at=0 扱い）。
+        val cache = runCatching { json.decodeFromString(PinnedCache.serializer(), raw) }
+            .recoverCatching { PinnedCache(json.decodeFromString(ListSerializer(String.serializer()), raw), 0L) }
+            .getOrNull() ?: return
+        pinnedHashtagsState.value = PinnedHashtags.normalizeList(cache.tags)
+        pinnedHashtagsAt = cache.at
+        // 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
+        pinnedRepublishArmed = cache.at > 0L
     }
 
-    private fun cachePinnedHashtags(tags: List<String>) {
-        pinnedHashtagsState.value = tags
-        putSettingAsync(PINNED_HASHTAGS_KEY, json.encodeToString(ListSerializer(String.serializer()), tags))
+    /** State・created_at・KV を同時に更新する（絵文字リストと同じく State と At を一緒に動かす）。 */
+    private fun cachePinnedHashtags(cache: PinnedCache) {
+        pinnedHashtagsState.value = cache.tags
+        pinnedHashtagsAt = cache.at
+        putSettingAsync(PINNED_HASHTAGS_KEY, json.encodeToString(PinnedCache.serializer(), cache))
     }
+
+    /** デバウンス発行の失敗通知（ComposeSheet がトーストする）。 */
+    fun pinnedHashtagsErrors(): SharedFlow<Unit> = pinnedHashtagsErrors
 
     /**
      * ピン留めを置き換える（チップ長押し用）。正規化・重複除去・上限 [PinnedHashtags.MAX] で切り詰めて
      * 即時に StateFlow/KV へ反映し、30015 の発行は連打対策に 300ms デバウンスする。
+     *
+     * 楽観更新では created_at も「今」へ進める。これで 300ms 内に届く古い 30015 のエコーが
+     * [updatePinnedHashtags] のゲートで弾かれ、編集を上書き・再発行する競合が起きない。
+     * 発行は呼び出し時に捕捉した一覧を使う（発行時に State を読み直さない）。
+     * 発行に失敗したら（署名不可等）編集前の版へ戻し、[pinnedHashtagsErrors] へ通知する。
      */
     fun setPinnedHashtags(tags: List<String>) {
         val norm = PinnedHashtags.normalizeList(tags)
         if (norm == pinnedHashtagsState.value) return
-        cachePinnedHashtags(norm)
+        if (pinnedRollback == null) pinnedRollback = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
+        cachePinnedHashtags(PinnedCache(norm, maxOf(currentUnixTime(), pinnedHashtagsAt)))
         pinnedPublishJob?.cancel()
         pinnedPublishJob = scope.launch {
             delay(300)
-            publishPinnedHashtagsNow(pinnedHashtagsState.value)
+            val ok = publishPinnedHashtagsNow(norm)
+            if (ok) {
+                pinnedRollback = null
+            } else {
+                pinnedRollback?.let { cachePinnedHashtags(it) }
+                pinnedRollback = null
+                pinnedHashtagsErrors.tryEmit(Unit)
+            }
         }
     }
 
@@ -2437,28 +2469,44 @@ class EventRepository(
     suspend fun savePinnedHashtags(tags: List<String>): Boolean {
         val norm = PinnedHashtags.normalizeList(tags)
         pinnedPublishJob?.cancel()
-        val ok = publishPinnedHashtagsNow(norm)
-        if (ok) cachePinnedHashtags(norm)
-        return ok
+        pinnedRollback = null
+        return publishPinnedHashtagsNow(norm)
     }
 
+    /** 30015 を発行し、成功なら署名時刻でキャッシュを確定する。 */
     private suspend fun publishPinnedHashtagsNow(tags: List<String>): Boolean = runCatching {
         if (!SignerProvider.hasSession()) return@runCatching false
         val signed = publishSigned(
             UnsignedEvent(kind = PinnedHashtags.KIND, content = "", tags = PinnedHashtags.toTags(tags)),
         )
         // 自分の最新版として記録し、購読エコーで古い扱いされないようにする。
-        pinnedHashtagsAt = signed.createdAt
+        cachePinnedHashtags(PinnedCache(tags, signed.createdAt))
+        pinnedRepublishArmed = false
         true
     }.getOrDefault(false)
 
-    /** 受信した自分の 30015（d=pinned）。古い版は無視し、最新ならキャッシュを置き換える。 */
+    /**
+     * 受信した自分の 30015（d=pinned）。新しい版ならキャッシュを置き換え、古い版は無視する。
+     * KV 復元直後の初回受信でローカルの方が新しく内容も違えば（未発行のまま終了した等）、
+     * ローカルを正として1回だけ再発行する（2回目以降は古いエコーが来ても無視＝再発行ループを防ぐ）。
+     */
     private fun updatePinnedHashtags(e: NostrEvent) {
-        if (e.pubkey != myPubkey) return
-        val tags = PinnedHashtags.parse(e) ?: return
-        if (e.createdAt < pinnedHashtagsAt) return
-        pinnedHashtagsAt = e.createdAt
-        cachePinnedHashtags(tags)
+        val cache = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
+        when (PinnedHashtags.reconcile(cache, e, myPubkey)) {
+            is PinnedReconcile.Accept -> {
+                pinnedRepublishArmed = false
+                // 楽観更新中（未発行）の編集を、同時刻以降の受信で潰さない。
+                if (pinnedRollback != null && pinnedPublishJob?.isActive == true) return
+                cachePinnedHashtags(PinnedCache(PinnedHashtags.parse(e)!!, e.createdAt))
+            }
+            PinnedReconcile.Republish -> {
+                if (!pinnedRepublishArmed) return
+                pinnedRepublishArmed = false
+                val local = cache.tags
+                scope.launch { publishPinnedHashtagsNow(local) }
+            }
+            PinnedReconcile.Ignore -> Unit
+        }
     }
 
     /**
