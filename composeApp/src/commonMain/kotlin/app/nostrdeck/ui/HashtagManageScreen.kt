@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -107,13 +108,21 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
     val published by repo.pinnedHashtagsFlow().collectAsState()
-    val used by repo.usedHashtagsWithTimeFlow().collectAsState(emptyList())
+    // [#250] Flow は remember しないと再コンポーズごとに購読し直して SQLite クエリが走る。
+    val used by remember(repo) { repo.usedHashtagsWithTimeFlow() }.collectAsState(emptyList())
+
+    val listState = rememberLazyListState()
+    val drag = remember { DragState() }
 
     // 下書き。リレーから最新の 30015 が届いたら（＝published が変わったら）追従する（絵文字エディタと同じ作法）。
     val draft = remember { mutableStateListOf<String>().apply { addAll(published) } }
     var loadedFrom by remember { mutableStateOf(published) }
     LaunchedEffect(published) {
-        if (loadedFrom != published) { draft.clear(); draft.addAll(published); loadedFrom = published }
+        if (loadedFrom != published) {
+            // 進行中のドラッグは中断する（index が新しい draft を指さなくなるため）。
+            drag.index = null; drag.offset = 0f
+            draft.clear(); draft.addAll(published); loadedFrom = published
+        }
     }
     val dirty = draft.toList() != published
     LaunchedEffect(dirty) { onDirtyChange(dirty) }
@@ -140,9 +149,6 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
         draft.add(tag)
         return true
     }
-
-    val listState = rememberLazyListState()
-    val drag = remember { DragState() }
 
     LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth()) {
         // ---- ピン留め ----
@@ -261,8 +267,8 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
 }
 
 /**
- * ピン留め1行。左のハンドル（行全体）を長押しするとドラッグ開始。ドラッグ中は指に追従して浮かせ、
- * 中心が別のピン留め行に入ったら draft を入れ替える。
+ * ピン留め1行。左のハンドル（DragIndicator）を長押しするとドラッグ開始。ドラッグ中は指に追従して浮かせ、
+ * 中心が別のピン留め行に入ったら draft を入れ替える。ジェスチャはハンドルに限定し、× ボタンと干渉させない。
  */
 @Composable
 private fun PinnedRow(
@@ -281,7 +287,11 @@ private fun PinnedRow(
             .padding(vertical = 2.dp)
             .clip(RoundedCornerShape(DeckRadius.Md))
             .background(if (dragging) DeckColors.Surface3 else DeckColors.Surface2)
-            .pointerInput(tag) {
+            .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(DeckDimens.TouchTargetSm).pointerInput(tag) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { drag.index = draft.indexOf(tag).takeIf { it >= 0 }; drag.offset = 0f },
                     onDragEnd = { drag.index = null; drag.offset = 0f },
@@ -289,6 +299,8 @@ private fun PinnedRow(
                     onDrag = { change, amount ->
                         change.consume()
                         val from = drag.index ?: return@detectDragGesturesAfterLongPress
+                        // published の追従で draft が差し替わった等、index が指す先が無ければ中断。
+                        if (from !in draft.indices) { drag.index = null; drag.offset = 0f; return@detectDragGesturesAfterLongPress }
                         drag.offset += amount.y
                         val visible = listState.layoutInfo.visibleItemsInfo
                         val cur = visible.firstOrNull { it.key == pinKey(draft[from]) } ?: return@detectDragGesturesAfterLongPress
@@ -307,15 +319,15 @@ private fun PinnedRow(
                         }
                     },
                 )
-            }
-            .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Outlined.DragIndicator, contentDescription = null,
-            tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
-        )
-        Spacer(Modifier.width(DeckSpace.Sm))
+            },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Outlined.DragIndicator, contentDescription = null,
+                tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+            )
+        }
+        Spacer(Modifier.width(DeckSpace.Xs))
         Text(
             "#$tag", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
