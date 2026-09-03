@@ -4880,6 +4880,8 @@ class EventRepository(
          */
         fun indexableTagKeys(kind: Int): Set<String> = when (kind) {
             30000, 30003 -> TAG_KEYS - "p"
+            // [#393] ピン留め(30015)の t は一覧そのもので、「このタグをピン留めした人」の逆引きは使わない。
+            30015 -> TAG_KEYS - "t"
             else -> TAG_KEYS
         }
 
