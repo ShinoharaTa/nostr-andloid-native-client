@@ -707,4 +707,34 @@
     <string name="json_refs">参照先イベント</string>
     <string name="json_copied_toast">JSONをコピーしました</string>
     <string name="open_profile">プロフィールを開く</string>
+
+    <!-- [#393] ハッシュタグのピン留め(kind:30015 / d=pinned)と整理画面 -->
+    <string name="compose_pinned_tags">📌 ピン留め</string>
+    <string name="compose_manage_tags">整理…</string>
+    <string name="tag_pin">ピン留め</string>
+    <string name="tag_unpin">ピン留めを解除</string>
+    <string name="tag_pin_limit_fmt">ピン留めは%1$d件までです。整理画面で整理してください。</string>
+    <string name="section_hashtags">ハッシュタグ</string>
+    <string name="hashtags_note">ピン留めしたタグ（NIP-51 kind:30015）は投稿画面とハッシュタグカラム作成のチップに常に表示され、端末をまたいで同期されます。使ったことのあるタグはこの端末で記憶され、# 入力時の候補になります。</string>
+    <string name="hashtags_open_manager">ハッシュタグの整理画面を開く</string>
+    <string name="hashtags_pinned_count_fmt">ピン留め %1$d / %2$d 件</string>
+    <string name="hashtags_manage_title">ハッシュタグの整理</string>
+    <string name="hashtags_pinned_section">ピン留め</string>
+    <string name="hashtags_pinned_hint">長押ししてドラッグで並べ替え。ここでの順番がチップの順番になります。</string>
+    <string name="hashtags_pinned_empty">ピン留めはまだありません。下から追加するか、使ったことのあるタグをピン留めしてください。</string>
+    <string name="hashtags_add_hint">タグを追加（例: nostr）</string>
+    <string name="hashtags_add_invalid">タグに使えるのは文字・数字・_ だけです。</string>
+    <string name="hashtags_add_duplicate">そのタグはすでにピン留めされています。</string>
+    <string name="hashtags_used_section">使ったことのあるタグ</string>
+    <string name="hashtags_used_filter_hint">絞り込み</string>
+    <string name="hashtags_used_empty">まだ使ったタグがありません。</string>
+    <string name="hashtags_used_none_match">一致するタグがありません。</string>
+    <string name="hashtags_last_used_fmt">最終使用 %1$s</string>
+    <string name="hashtags_pinned_badge">ピン留め中</string>
+    <string name="hashtags_saved">ピン留めを保存しました</string>
+    <string name="hashtags_save_failed">ピン留めを保存できませんでした</string>
+    <string name="hashtags_discard_title">変更を破棄しますか？</string>
+    <string name="hashtags_discard_text">ピン留めの変更はまだ保存されていません。</string>
+    <string name="hashtags_discard_confirm">破棄する</string>
+    <string name="hashtags_unavailable">ピン留めを管理するにはログインしてください。</string>
 </resources>
