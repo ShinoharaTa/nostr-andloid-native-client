@@ -265,17 +265,51 @@ class EventRepository(
     private val follows = MutableStateFlow<List<String>>(emptyList())
     private var followsAt = 0L
 
-    /** 自分の kind:10002（NIP-65）由来のリレーリスト。Settings で編集・表示する。 */
-    val relayList = MutableStateFlow<List<RelayPref>>(emptyList())
-    private var relayListAt = 0L
+    // ---- [#396] 自分の replaceable リスト（購読・受信ゲート・State+KV・リセットを OwnReplaceable に共通化）----
 
-    /** 自分の kind:10030（NIP-51 絵文字リスト）の最新 created_at（古い版を無視）。 */
-    private var emojiListAt = 0L
+    private val ownListStore = object : OwnListStore {
+        override fun get(key: String): String? = q.getSetting(key).executeAsOneOrNull()
+        override fun put(key: String, value: String) = putSettingAsync(key, value)
+    }
 
-    // [#393] 自分のピン留めハッシュタグ（kind:30015 / d=pinned）。KV にキャッシュし、受信で更新。
-    private val pinnedHashtagsState = MutableStateFlow<List<String>>(emptyList())
-    /** キャッシュ中の一覧が確定した created_at。楽観更新では発行前に「今」へ進める（KV にも保存）。 */
-    private var pinnedHashtagsAt = 0L
+    /**
+     * 自分の kind:10002（NIP-65）。State は受信/発行した版の r タグから導出（Settings の編集は DB の relay 表）。
+     * KV バックアップは持たない（relay 表が置き場）。
+     */
+    private val relayListRep = OwnReplaceable(kind = 10002, subId = "relaylist") { tags ->
+        // [#390] 他人の 10002 表示と同じ解釈（marker の trim+lowercase / URL の重複畳み）。
+        // 自分の設定はローカル開発リレー（ws://）を壊さないよう wss:// 以外も従来どおり通す。
+        nip65PrefsFromTags(tags, requireWss = false) { normalizeRelayUrl(it) }
+    }
+
+    /** 自分の kind:10002（NIP-65）由来のリレーリスト（受信/発行した版の r タグから導出）。 */
+    val relayList: StateFlow<List<RelayPref>> get() = relayListRep.state
+
+    /**
+     * 自分の kind:10030（NIP-51 絵文字リスト）。[#287] 生タグを保持して再発行時に a タグ等の未知タグを
+     * 失わない。KV に永続し起動時に復元（旧形式＝タグ配列のみ、も読める）。
+     */
+    private val emojiListRep = OwnReplaceable(
+        kind = 10030, subId = "emojilist",
+        backupKey = EMOJI_LIST_TAGS_KEY, store = ownListStore, json = json,
+        legacyDecode = { raw -> OwnListBackup(json.decodeFromString(ListSerializer(ListSerializer(String.serializer())), raw), 0L) },
+        derive = ::emojiTagsToList,
+    )
+
+    /**
+     * [#393] 自分のピン留めハッシュタグ（kind:30015 / d=pinned）。KV に永続し起動時に復元
+     * （旧形式＝PinnedCache も読める）。楽観更新では発行前に at を「今」へ進める。
+     */
+    private val pinnedRep = OwnReplaceable(
+        kind = PinnedHashtags.KIND, subId = "pinnedtags", dTag = PinnedHashtags.D_TAG,
+        backupKey = PINNED_HASHTAGS_KEY, store = ownListStore, json = json,
+        legacyDecode = { raw ->
+            json.decodeFromString(PinnedCache.serializer(), raw).let { OwnListBackup(PinnedHashtags.toTags(it.tags), it.at) }
+        },
+        derive = { PinnedHashtags.fromTags(it) },
+    )
+    private val ownLists: List<OwnReplaceable<*>> get() = listOf(relayListRep, emojiListRep, pinnedRep)
+
     private var pinnedPublishJob: Job? = null
     /** デバウンス発行が失敗したときに戻す版（未発行の編集が始まった時点の確定版）。発行成功で null。 */
     private var pinnedRollback: PinnedCache? = null
@@ -363,10 +397,8 @@ class EventRepository(
         loadThemeMode()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
-        // [#287] 絵文字リストの生タグを KV から復元。
-        loadEmojiListBackup()
-        // [#393] ピン留めハッシュタグを KV から復元（オフラインでも投稿画面のチップに出す）。
-        loadPinnedHashtagsBackup()
+        // [#287][#393] 絵文字リスト / ピン留めハッシュタグを KV から復元（リレーから届く前・オフラインでも使える）。
+        restoreOwnLists()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
@@ -383,9 +415,7 @@ class EventRepository(
             val me = SignerProvider.current().publicKeyHex()
             myPubkey = me; myPubkeyFlow.value = me
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
-            subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
-            subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
-            subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
+            subscribeOwnLists(me)   // [#396] 10002 / 10030 / 30015
             // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
@@ -667,9 +697,7 @@ class EventRepository(
         return runCatching {
             val signed = publishSigned(UnsignedEvent(kind = 10002, content = "", tags = tags))
             // 自分の最新版として記録し、購読エコーで古い扱いされないようにする。
-            relayListAt = signed.createdAt
-            relayList.value = rows.filter { it.read != 0L || it.write != 0L }
-                .map { RelayPref(it.url, it.read != 0L, it.write != 0L, it.source) }
+            relayListRep.commit(tags, signed.createdAt)
             true
         }.getOrElse { false }
     }
@@ -687,13 +715,8 @@ class EventRepository(
 
             // 旧アカウント依存の解決済み状態をリセット。
             follows.value = emptyList(); followsAt = 0L
-            relayList.value = emptyList(); relayListAt = 0L
-            emojiListAt = 0L
-            // [#393] ピン留めはアカウント別。旧アカウントのキャッシュを新アカウントで見せない。
-            pinnedPublishJob?.cancel()
-            pinnedRollback = null
-            pinnedRepublishArmed = false
-            cachePinnedHashtags(PinnedCache())
+            // [#396] 自分のリスト（10002/10030/30015）は State・at・KV ごと空に戻す（旧アカウントの版を見せない）。
+            resetOwnLists()
             // [#374] 旧アカウントの 30078 スナップショットを新アカウントで見せないように。
             syncEventByD.value = emptyMap()
 
@@ -708,11 +731,9 @@ class EventRepository(
                 q.clearCustomEmojis()  // カスタム絵文字リストはアカウント別なので消す。
             }
 
-            // 新しい鍵でフォロー(kind:3)・リレーリスト(kind:10002)・絵文字リスト(kind:10030)を取り直す。
+            // 新しい鍵でフォロー(kind:3)と自分のリスト(10002/10030/30015)を取り直す。
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
-            subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
-            subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
-            subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
+            subscribeOwnLists(me)   // [#396]
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
@@ -746,12 +767,12 @@ class EventRepository(
                 q.clearChannels()
                 q.clearPublishQueue()
             }
-            // 自分のフォロー(kind:3)・リレーリスト(kind:10002)と開いているカラムを張り直して再構築。
+            // 自分のフォロー(kind:3)・自分のリスト(10002/10030/30015)と開いているカラムを張り直して再構築。
+            // [#396] 従来は emojilist だけ張り直していなかった（漏れ）。
             val me = myPubkey
             if (me != null) {
                 subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
-                subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
-                subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
+                subscribeOwnLists(me)
             }
             withContext(relayDispatcher) {
                 activeSubs.forEach { (subId, filters) ->
@@ -930,12 +951,28 @@ class EventRepository(
         scope.launch { remoteColumnsFlow.emit(specs) }
     }
 
-    /** [#287] 絵文字リストの生タグを KV から復元（リレーから 10030 が届く前でも編集を壊さない）。 */
-    private fun loadEmojiListBackup() {
-        q.getSetting(EMOJI_LIST_TAGS_KEY).executeAsOneOrNull()?.let { raw ->
-            runCatching { json.decodeFromString(ListSerializer(ListSerializer(String.serializer())), raw) }
-                .getOrNull()?.let { emojiListTags = it; myEmojiState.value = emojiTagsToList(it) }
+    // ---- [#396] 自分のリストの共通操作（起動 / アカウント切替 / キャッシュ消去はこれを呼ぶだけ）----
+
+    /** 自分の replaceable リスト（10002 / 10030 / 30015）を購読する。 */
+    private fun subscribeOwnLists(me: String) {
+        ownLists.forEach { subscribeAll(it.subId, it.filter(me)) }
+    }
+
+    /** KV バックアップを復元する（絵文字リスト / ピン留め。10002 は relay 表が置き場なので対象外）。 */
+    private fun restoreOwnLists() {
+        emojiListRep.restore()
+        if (pinnedRep.restore()) {
+            // [#393] 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
+            pinnedRepublishArmed = pinnedRep.at > 0L
         }
+    }
+
+    /** アカウント切替: State・at・KV を空に戻し、ピン留めの未発行編集も捨てる。 */
+    private fun resetOwnLists() {
+        pinnedPublishJob?.cancel()
+        pinnedRollback = null
+        pinnedRepublishArmed = false
+        ownLists.forEach { it.reset() }
     }
 
     // ---- カラム = REQ ライフサイクル ----
@@ -2406,33 +2443,15 @@ class EventRepository(
         usedHashtagsWithTimeFlow().map { rows -> rows.map { it.tag } }
 
     // ---- [#393] ピン留めハッシュタグ（NIP-51 kind:30015 / d=pinned）----
+    // 購読・受信ゲート・State+KV は [pinnedRep]（OwnReplaceable）。ここは発行方式（楽観+デバウンス）だけ。
 
     /** 自分のピン留めハッシュタグ（表示順）。KV キャッシュ → 受信した 30015 で更新。 */
-    fun pinnedHashtagsFlow(): StateFlow<List<String>> = pinnedHashtagsState
+    fun pinnedHashtagsFlow(): StateFlow<List<String>> = pinnedRep.state
 
-    private fun pinnedHashtagsFilter(me: String) = Filter(
-        kinds = listOf(PinnedHashtags.KIND), authors = listOf(me),
-        dTags = listOf(PinnedHashtags.D_TAG), limit = 1,
-    )
+    /** 手元の版（一覧 + at）。reconcile とロールバックの単位。 */
+    private fun pinnedCache() = PinnedCache(pinnedRep.state.value, pinnedRep.at)
 
-    private fun loadPinnedHashtagsBackup() {
-        val raw = q.getSetting(PINNED_HASHTAGS_KEY).executeAsOneOrNull() ?: return
-        // 旧形式（タグ一覧のみの JSON 配列）も読めるようにしておく（at=0 扱い）。
-        val cache = runCatching { json.decodeFromString(PinnedCache.serializer(), raw) }
-            .recoverCatching { PinnedCache(json.decodeFromString(ListSerializer(String.serializer()), raw), 0L) }
-            .getOrNull() ?: return
-        pinnedHashtagsState.value = PinnedHashtags.normalizeList(cache.tags)
-        pinnedHashtagsAt = cache.at
-        // 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
-        pinnedRepublishArmed = cache.at > 0L
-    }
-
-    /** State・created_at・KV を同時に更新する（絵文字リストと同じく State と At を一緒に動かす）。 */
-    private fun cachePinnedHashtags(cache: PinnedCache) {
-        pinnedHashtagsState.value = cache.tags
-        pinnedHashtagsAt = cache.at
-        putSettingAsync(PINNED_HASHTAGS_KEY, json.encodeToString(PinnedCache.serializer(), cache))
-    }
+    private fun commitPinned(cache: PinnedCache) = pinnedRep.commit(PinnedHashtags.toTags(cache.tags), cache.at)
 
     /** デバウンス発行の失敗通知（ComposeSheet がトーストする）。 */
     fun pinnedHashtagsErrors(): SharedFlow<Unit> = pinnedHashtagsErrors
@@ -2448,9 +2467,9 @@ class EventRepository(
      */
     fun setPinnedHashtags(tags: List<String>) {
         val norm = PinnedHashtags.normalizeList(tags)
-        if (norm == pinnedHashtagsState.value) return
-        if (pinnedRollback == null) pinnedRollback = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
-        cachePinnedHashtags(PinnedCache(norm, maxOf(currentUnixTime(), pinnedHashtagsAt)))
+        if (norm == pinnedRep.state.value) return
+        if (pinnedRollback == null) pinnedRollback = pinnedCache()
+        commitPinned(PinnedCache(norm, maxOf(currentUnixTime(), pinnedRep.at)))
         pinnedPublishJob?.cancel()
         pinnedPublishJob = scope.launch {
             delay(300)
@@ -2458,7 +2477,7 @@ class EventRepository(
             if (ok) {
                 pinnedRollback = null
             } else {
-                pinnedRollback?.let { cachePinnedHashtags(it) }
+                pinnedRollback?.let { commitPinned(it) }
                 pinnedRollback = null
                 pinnedHashtagsErrors.tryEmit(Unit)
             }
@@ -2480,7 +2499,7 @@ class EventRepository(
             UnsignedEvent(kind = PinnedHashtags.KIND, content = "", tags = PinnedHashtags.toTags(tags)),
         )
         // 自分の最新版として記録し、購読エコーで古い扱いされないようにする。
-        cachePinnedHashtags(PinnedCache(tags, signed.createdAt))
+        commitPinned(PinnedCache(tags, signed.createdAt))
         pinnedRepublishArmed = false
         true
     }.getOrDefault(false)
@@ -2489,15 +2508,16 @@ class EventRepository(
      * 受信した自分の 30015（d=pinned）。新しい版ならキャッシュを置き換え、古い版は無視する。
      * KV 復元直後の初回受信でローカルの方が新しく内容も違えば（未発行のまま終了した等）、
      * ローカルを正として1回だけ再発行する（2回目以降は古いエコーが来ても無視＝再発行ループを防ぐ）。
+     * 共通ゲート（[OwnReplaceable.accept]）ではなく [PinnedHashtags.reconcile] を使うのは、この再発行判定のため。
      */
     private fun updatePinnedHashtags(e: NostrEvent) {
-        val cache = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
+        val cache = pinnedCache()
         when (PinnedHashtags.reconcile(cache, e, myPubkey)) {
             is PinnedReconcile.Accept -> {
                 pinnedRepublishArmed = false
                 // 楽観更新中（未発行）の編集を、同時刻以降の受信で潰さない。
                 if (pinnedRollback != null && pinnedPublishJob?.isActive == true) return
-                cachePinnedHashtags(PinnedCache(PinnedHashtags.parse(e)!!, e.createdAt))
+                pinnedRep.commit(e.tags, e.createdAt)
             }
             PinnedReconcile.Republish -> {
                 if (!pinnedRepublishArmed) return
@@ -2864,7 +2884,7 @@ class EventRepository(
             }
             0 -> upsertProfile(e)
             3 -> { updateFollows(e); captureContacts(e) }  // 自分のフォロー更新＋全 pubkey の集計[#96/#97/#98]
-            10002 -> { captureNip65(e); updateRelayList(e) }
+            10002 -> { captureNip65(e); if (relayListRep.accept(e, myPubkey)) applyRelayList(relayListRep.state.value) }
             10000 -> updateMuteList(e)    // NIP-51 ミュートリスト
             10001 -> updatePinnedList(e)  // NIP-51 固定投稿（プロフィール上部）
             10003 -> updateBookmarkList(e) // NIP-51 ブックマーク
@@ -3240,13 +3260,8 @@ class EventRepository(
      * 自分の kind:10030（NIP-51 絵文字リスト）。直接の `emoji` タグを取り込み、
      * `a`(=30030:pubkey:dtag) 参照のセット作者へ購読を張って kind:30030 を取りに行く。古い版は無視。
      */
-    // [#287] 自分の kind:10030 の生タグ。再発行（絵文字エディタ）時に a タグ等の未知タグを
-    // 失わないよう保持する（ミュートリストと同じ作法）。KV に永続し起動時に復元。
-    private var emojiListTags: List<List<String>> = emptyList()
-    private val myEmojiState = MutableStateFlow<List<CustomEmoji>>(emptyList())
-
     /** [#287] 自分の絵文字リスト（kind:10030 直下の emoji タグのみ。30030 セット由来は含まない）。 */
-    fun myEmojiListFlow(): StateFlow<List<CustomEmoji>> = myEmojiState
+    fun myEmojiListFlow(): StateFlow<List<CustomEmoji>> = emojiListRep.state
 
     private fun emojiTagsToList(tags: List<List<String>>): List<CustomEmoji> =
         tags.filter { it.size >= 3 && it[0] == "emoji" && it[1].isNotBlank() && it[2].isNotBlank() }
@@ -3257,14 +3272,12 @@ class EventRepository(
      * それ以外のタグ（30030 参照の a タグ等）はそのまま維持する。
      */
     suspend fun publishEmojiList(emojis: List<CustomEmoji>): Boolean = runCatching {
-        val keep = emojiListTags.filter { !(it.size >= 3 && it[0] == "emoji") }
+        val keep = emojiListRep.tags.filter { !(it.size >= 3 && it[0] == "emoji") }
         val tags = keep + emojis.map { listOf("emoji", it.shortcode, it.url) }
-        val removed = myEmojiState.value.map { it.shortcode }.toSet() - emojis.map { it.shortcode }.toSet()
+        val removed = emojiListRep.state.value.map { it.shortcode }.toSet() - emojis.map { it.shortcode }.toSet()
         val signed = publishSigned(UnsignedEvent(kind = 10030, content = "", tags = tags))
-        emojiListAt = signed.createdAt
-        emojiListTags = tags
-        putSettingAsync(EMOJI_LIST_TAGS_KEY, json.encodeToString(ListSerializer(ListSerializer(String.serializer())), tags))
-        myEmojiState.value = emojis
+        // 自分の最新版として記録（State/at/KV を同時に確定）し、購読エコーで古い扱いされないようにする。
+        emojiListRep.commit(tags, signed.createdAt)
         val now = currentUnixTime()
         emojis.forEach { q.upsertCustomEmoji(it.shortcode, it.url, now) }
         removed.forEach { q.deleteCustomEmoji(it) }
@@ -3272,12 +3285,8 @@ class EventRepository(
     }.getOrDefault(false)
 
     private fun updateEmojiList(e: NostrEvent) {
-        if (e.pubkey != myPubkey) return
-        if (e.createdAt < emojiListAt) return
-        emojiListAt = e.createdAt
-        emojiListTags = e.tags
-        putSettingAsync(EMOJI_LIST_TAGS_KEY, json.encodeToString(ListSerializer(ListSerializer(String.serializer())), e.tags))
-        myEmojiState.value = emojiTagsToList(e.tags)
+        // [#396] 受信ゲート（自分の・手元の版以上）と State/at/KV の更新は共通処理。
+        if (!emojiListRep.accept(e, myPubkey)) return
         importEmojiTags(e)
         e.tags.filter { it.size >= 2 && it[0] == "a" && it[1].startsWith("30030:") }.forEach { t ->
             val author = t[1].split(":").getOrNull(1) ?: return@forEach
@@ -3538,18 +3547,15 @@ class EventRepository(
             .map { it.key to it.value }
     }
 
-    private fun updateRelayList(e: NostrEvent) {
-        if (e.pubkey != myPubkey) return
-        if (e.createdAt < relayListAt) return
-        relayListAt = e.createdAt
-        // [#390] 他人の 10002 表示と同じ解釈（marker の trim+lowercase / URL の重複畳み）。
-        // 自分の設定はローカル開発リレー（ws://）を壊さないよう wss:// 以外も従来どおり通す。
-        val entries = nip65PrefsFromTags(e.tags, requireWss = false) { normalizeRelayUrl(it) }
+    /**
+     * 受信した自分の kind:10002 を relay 表と接続に反映する（受信ゲートと State は [relayListRep]）。
+     * [entries] は受け入れた版の r タグから導出したリレー設定。
+     */
+    private fun applyRelayList(entries: List<RelayPref>) {
         entries.forEach {
             q.upsertRelay(it.url, if (it.read) 1 else 0, if (it.write) 1 else 0, "nip65")
             if (it.read) ensureRelay(it.url)
         }
-        relayList.value = entries
         // [#default-purge] 自分の NIP-65 が取れたら、ブートストラップ用 default リレーは用済み。
         // 一覧から削除し接続も閉じる（同じ URL が NIP-65 にあれば upsert で nip65 へ昇格済みなので対象外）。
         // read できるリレーが1つも無いリストの場合だけは、接続手段を失わないよう default を残す。
