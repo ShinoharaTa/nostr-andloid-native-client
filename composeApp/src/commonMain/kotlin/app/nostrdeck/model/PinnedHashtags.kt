@@ -45,8 +45,12 @@ object PinnedHashtags {
      */
     fun parse(event: NostrEvent): List<String>? {
         if (!isPinnedSet(event)) return null
-        return normalizeList(event.tags.filter { it.size >= 2 && it[0] == "t" }.map { it[1] })
+        return fromTags(event.tags)
     }
+
+    /** タグ配列から `t` の値を表示順で取り出す（kind/d の検査はしない。キャッシュの生タグから導出する用）。 */
+    fun fromTags(tags: List<List<String>>): List<String> =
+        normalizeList(tags.filter { it.size >= 2 && it[0] == "t" }.map { it[1] })
 }
 
 /**
