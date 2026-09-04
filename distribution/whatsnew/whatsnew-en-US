@@ -1,2 +1,4 @@
-- New "Nyanyanya virus" mode: cat ears on avatars and な→にゃ text play. Pick off / yourself only / everyone in Settings → Display
-- Display only — your posts themselves are unchanged
+- Pin your favorite hashtags: long-press a chip in the composer to pin it, or open "Manage" to reorder and add. Pins sync across your devices
+- Profile revamp: browse a user's long-form articles, public lists and relays; posts and replies are now one tab
+- Open a person's profile straight from a DM by tapping their name or avatar
+- Read and reply to comments other clients leave on articles (NIP-22)
