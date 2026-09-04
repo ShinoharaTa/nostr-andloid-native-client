@@ -19,6 +19,14 @@ class TagIndexRulesTest {
     }
 
     @Test
+    fun pinned_hashtag_set_skips_t_tags() {
+        // [#393] 30015 の t はピン留め一覧そのもの。逆引きの読み手が無いので索引しない。
+        val keys = EventRepository.indexableTagKeys(30015)
+        assertFalse("t" in keys)
+        assertTrue("e" in keys)
+    }
+
+    @Test
     fun other_kinds_index_all_tag_keys() {
         for (kind in listOf(1, 6, 7, 1111, 30023, 30078)) {
             assertEquals(EventRepository.TAG_KEYS, EventRepository.indexableTagKeys(kind))

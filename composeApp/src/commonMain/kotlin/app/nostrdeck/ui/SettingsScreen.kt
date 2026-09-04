@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.StarBorder
@@ -221,6 +222,7 @@ private val paletteGroups = listOf(
     Res.string.group_customize to listOf(
         SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
         SItem("emoji", Res.string.section_emoji, Icons.Outlined.Mood),
+        SItem("hashtags", Res.string.section_hashtags, Icons.Outlined.Tag),   // [#393]
         SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
     ),
     Res.string.group_connection to listOf(
@@ -346,6 +348,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "dmrelays" -> DmRelaySettings()
                 "reaction" -> ReactionSettings()
                 "emoji" -> EmojiEditorSettings()
+                "hashtags" -> HashtagSettings()   // [#393]
                 "media" -> MediaSettings()
                 "wallet" -> WalletSettings()
                 "data" -> DataSettings()
@@ -1107,6 +1110,7 @@ private fun sectionTitle(sectionId: String): String = when (sectionId) {
     "wallet" -> stringResource(Res.string.section_wallet)
     "reaction" -> stringResource(Res.string.section_reaction)
     "emoji" -> stringResource(Res.string.section_emoji)
+    "hashtags" -> stringResource(Res.string.section_hashtags)
     "appearance" -> stringResource(Res.string.section_appearance)
     "data" -> stringResource(Res.string.section_data)
     "about" -> stringResource(Res.string.section_about)

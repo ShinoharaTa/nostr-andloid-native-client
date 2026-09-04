@@ -65,6 +65,11 @@ import app.nostrdeck.model.ContentToken
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.latestByDTag
 import app.nostrdeck.model.Nip51Set
+import app.nostrdeck.model.PinnedCache
+import app.nostrdeck.model.PinnedHashtags
+import app.nostrdeck.model.PinnedReconcile
+import app.nostrdeck.model.reconcile
+import app.nostrdeck.model.UsedHashtag
 import app.nostrdeck.model.parseNip51Sets
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.tokenizeNostrContent
@@ -267,6 +272,17 @@ class EventRepository(
     /** 自分の kind:10030（NIP-51 絵文字リスト）の最新 created_at（古い版を無視）。 */
     private var emojiListAt = 0L
 
+    // [#393] 自分のピン留めハッシュタグ（kind:30015 / d=pinned）。KV にキャッシュし、受信で更新。
+    private val pinnedHashtagsState = MutableStateFlow<List<String>>(emptyList())
+    /** キャッシュ中の一覧が確定した created_at。楽観更新では発行前に「今」へ進める（KV にも保存）。 */
+    private var pinnedHashtagsAt = 0L
+    private var pinnedPublishJob: Job? = null
+    /** デバウンス発行が失敗したときに戻す版（未発行の編集が始まった時点の確定版）。発行成功で null。 */
+    private var pinnedRollback: PinnedCache? = null
+    /** KV 復元直後は「ローカルが正」の可能性がある（未発行のまま終了）。初回受信で1回だけ再発行を許す。 */
+    private var pinnedRepublishArmed = false
+    private val pinnedHashtagsErrors = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     // [#359] 回線種別（Wi-Fi/モバイル）。画質・埋め込みの節約分岐が購読する。
     private val networkPolicy = NetworkPolicy()
     private val _networkTier = MutableStateFlow(NetworkTier.UNMETERED)
@@ -349,6 +365,8 @@ class EventRepository(
         loadDefaultReaction()
         // [#287] 絵文字リストの生タグを KV から復元。
         loadEmojiListBackup()
+        // [#393] ピン留めハッシュタグを KV から復元（オフラインでも投稿画面のチップに出す）。
+        loadPinnedHashtagsBackup()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
@@ -367,6 +385,7 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
+            subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
             // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
@@ -670,6 +689,11 @@ class EventRepository(
             follows.value = emptyList(); followsAt = 0L
             relayList.value = emptyList(); relayListAt = 0L
             emojiListAt = 0L
+            // [#393] ピン留めはアカウント別。旧アカウントのキャッシュを新アカウントで見せない。
+            pinnedPublishJob?.cancel()
+            pinnedRollback = null
+            pinnedRepublishArmed = false
+            cachePinnedHashtags(PinnedCache())
             // [#374] 旧アカウントの 30078 スナップショットを新アカウントで見せないように。
             syncEventByD.value = emptyMap()
 
@@ -688,6 +712,7 @@ class EventRepository(
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
             subscribeAll("emojilist", Filter(kinds = listOf(10030), authors = listOf(me)))
+            subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
@@ -726,6 +751,7 @@ class EventRepository(
             if (me != null) {
                 subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
                 subscribeAll("relaylist", Filter(kinds = listOf(10002), authors = listOf(me)))
+                subscribeAll("pinnedtags", pinnedHashtagsFilter(me))   // [#393]
             }
             withContext(relayDispatcher) {
                 activeSubs.forEach { (subId, filters) ->
@@ -2370,9 +2396,118 @@ class EventRepository(
         }
     }
 
-    /** 投稿で使ったハッシュタグ（最近順）。ComposeSheet のレコメンド/最近5件に使う。 */
+    /** 投稿で使ったハッシュタグ（最近順）。ComposeSheet のレコメンド/最近のチップに使う。 */
     fun usedHashtagsFlow(): Flow<List<String>> =
         q.usedHashtagsByRecency().asFlow().mapToList(Dispatchers.Default)
+
+    /** [#393] 使ったことのあるハッシュタグ（最終使用日つき・新しい順）。整理画面の一覧用。 */
+    fun usedHashtagsWithTimeFlow(): Flow<List<UsedHashtag>> =
+        q.usedHashtagsWithTime().asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.map { UsedHashtag(it.tag, it.last_used) } }
+
+    // ---- [#393] ピン留めハッシュタグ（NIP-51 kind:30015 / d=pinned）----
+
+    /** 自分のピン留めハッシュタグ（表示順）。KV キャッシュ → 受信した 30015 で更新。 */
+    fun pinnedHashtagsFlow(): StateFlow<List<String>> = pinnedHashtagsState
+
+    private fun pinnedHashtagsFilter(me: String) = Filter(
+        kinds = listOf(PinnedHashtags.KIND), authors = listOf(me),
+        dTags = listOf(PinnedHashtags.D_TAG), limit = 1,
+    )
+
+    private fun loadPinnedHashtagsBackup() {
+        val raw = q.getSetting(PINNED_HASHTAGS_KEY).executeAsOneOrNull() ?: return
+        // 旧形式（タグ一覧のみの JSON 配列）も読めるようにしておく（at=0 扱い）。
+        val cache = runCatching { json.decodeFromString(PinnedCache.serializer(), raw) }
+            .recoverCatching { PinnedCache(json.decodeFromString(ListSerializer(String.serializer()), raw), 0L) }
+            .getOrNull() ?: return
+        pinnedHashtagsState.value = PinnedHashtags.normalizeList(cache.tags)
+        pinnedHashtagsAt = cache.at
+        // 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
+        pinnedRepublishArmed = cache.at > 0L
+    }
+
+    /** State・created_at・KV を同時に更新する（絵文字リストと同じく State と At を一緒に動かす）。 */
+    private fun cachePinnedHashtags(cache: PinnedCache) {
+        pinnedHashtagsState.value = cache.tags
+        pinnedHashtagsAt = cache.at
+        putSettingAsync(PINNED_HASHTAGS_KEY, json.encodeToString(PinnedCache.serializer(), cache))
+    }
+
+    /** デバウンス発行の失敗通知（ComposeSheet がトーストする）。 */
+    fun pinnedHashtagsErrors(): SharedFlow<Unit> = pinnedHashtagsErrors
+
+    /**
+     * ピン留めを置き換える（チップ長押し用）。正規化・重複除去・上限 [PinnedHashtags.MAX] で切り詰めて
+     * 即時に StateFlow/KV へ反映し、30015 の発行は連打対策に 300ms デバウンスする。
+     *
+     * 楽観更新では created_at も「今」へ進める。これで 300ms 内に届く古い 30015 のエコーが
+     * [updatePinnedHashtags] のゲートで弾かれ、編集を上書き・再発行する競合が起きない。
+     * 発行は呼び出し時に捕捉した一覧を使う（発行時に State を読み直さない）。
+     * 発行に失敗したら（署名不可等）編集前の版へ戻し、[pinnedHashtagsErrors] へ通知する。
+     */
+    fun setPinnedHashtags(tags: List<String>) {
+        val norm = PinnedHashtags.normalizeList(tags)
+        if (norm == pinnedHashtagsState.value) return
+        if (pinnedRollback == null) pinnedRollback = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
+        cachePinnedHashtags(PinnedCache(norm, maxOf(currentUnixTime(), pinnedHashtagsAt)))
+        pinnedPublishJob?.cancel()
+        pinnedPublishJob = scope.launch {
+            delay(300)
+            val ok = publishPinnedHashtagsNow(norm)
+            if (ok) {
+                pinnedRollback = null
+            } else {
+                pinnedRollback?.let { cachePinnedHashtags(it) }
+                pinnedRollback = null
+                pinnedHashtagsErrors.tryEmit(Unit)
+            }
+        }
+    }
+
+    /** 整理画面の「保存」。即時に 30015 を発行し、成否を返す（成功時はキャッシュも更新）。 */
+    suspend fun savePinnedHashtags(tags: List<String>): Boolean {
+        val norm = PinnedHashtags.normalizeList(tags)
+        pinnedPublishJob?.cancel()
+        pinnedRollback = null
+        return publishPinnedHashtagsNow(norm)
+    }
+
+    /** 30015 を発行し、成功なら署名時刻でキャッシュを確定する。 */
+    private suspend fun publishPinnedHashtagsNow(tags: List<String>): Boolean = runCatching {
+        if (!SignerProvider.hasSession()) return@runCatching false
+        val signed = publishSigned(
+            UnsignedEvent(kind = PinnedHashtags.KIND, content = "", tags = PinnedHashtags.toTags(tags)),
+        )
+        // 自分の最新版として記録し、購読エコーで古い扱いされないようにする。
+        cachePinnedHashtags(PinnedCache(tags, signed.createdAt))
+        pinnedRepublishArmed = false
+        true
+    }.getOrDefault(false)
+
+    /**
+     * 受信した自分の 30015（d=pinned）。新しい版ならキャッシュを置き換え、古い版は無視する。
+     * KV 復元直後の初回受信でローカルの方が新しく内容も違えば（未発行のまま終了した等）、
+     * ローカルを正として1回だけ再発行する（2回目以降は古いエコーが来ても無視＝再発行ループを防ぐ）。
+     */
+    private fun updatePinnedHashtags(e: NostrEvent) {
+        val cache = PinnedCache(pinnedHashtagsState.value, pinnedHashtagsAt)
+        when (PinnedHashtags.reconcile(cache, e, myPubkey)) {
+            is PinnedReconcile.Accept -> {
+                pinnedRepublishArmed = false
+                // 楽観更新中（未発行）の編集を、同時刻以降の受信で潰さない。
+                if (pinnedRollback != null && pinnedPublishJob?.isActive == true) return
+                cachePinnedHashtags(PinnedCache(PinnedHashtags.parse(e)!!, e.createdAt))
+            }
+            PinnedReconcile.Republish -> {
+                if (!pinnedRepublishArmed) return
+                pinnedRepublishArmed = false
+                val local = cache.tags
+                scope.launch { publishPinnedHashtagsNow(local) }
+            }
+            PinnedReconcile.Ignore -> Unit
+        }
+    }
 
     /**
      * 本文から #ハッシュタグ を抽出（小文字化・重複除去・順序保持）。
@@ -2758,10 +2893,12 @@ class EventRepository(
             // [#124] NIP-23 長文記事。nevent 参照から記事ビューワーで開けるよう本体を保存する。
             // [#389] NIP-51 セット（30000 フォローセット / 30003 ブックマークセット）も同じ経路。
             // p タグ数百件のセットで event_tag が肥大しないよう、索引は kind 別に絞る（indexTags）。
-            30000, 30003, 30023 -> {
+            // [#393] 30015 Interest set（自分の d=pinned はピン留めハッシュタグとして取り込む）。
+            30000, 30003, 30015, 30023 -> {
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
                 indexTags(e)
                 requestProfile(e.pubkey)
+                if (e.kind == PinnedHashtags.KIND) updatePinnedHashtags(e)
             }
             // [#124] naddr 解決中の addressable kind（3xxxx）だけ一時的に保存する。
             else -> if (e.kind in 30000..39999 && e.kind in addressKindsWanted) {
@@ -4743,6 +4880,8 @@ class EventRepository(
          */
         fun indexableTagKeys(kind: Int): Set<String> = when (kind) {
             30000, 30003 -> TAG_KEYS - "p"
+            // [#393] ピン留め(30015)の t は一覧そのもので、「このタグをピン留めした人」の逆引きは使わない。
+            30015 -> TAG_KEYS - "t"
             else -> TAG_KEYS
         }
 
@@ -4853,6 +4992,7 @@ class EventRepository(
 
 
         const val EMOJI_LIST_TAGS_KEY = "emoji_list_tags"
+        const val PINNED_HASHTAGS_KEY = "pinned_hashtags"   // [#393] kind:30015(d=pinned) の t タグ順キャッシュ
         /** [#122][#374] 30078 の d タグ（このアプリのカラム構成を示す識別子）。#122 発行分と互換。 */
         const val DECK_COLUMNS_D = "app.nostrdeck:deck-columns"
         /** [#374] 30078 の d タグ（設定スナップショット）。 */

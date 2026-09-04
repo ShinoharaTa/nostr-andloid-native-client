@@ -711,4 +711,34 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="json_refs">Referenced events</string>
     <string name="json_copied_toast">JSON copied</string>
     <string name="open_profile">Open profile</string>
+
+    <!-- [#393] Hashtag pins (kind:30015 / d=pinned) and the hashtag manager -->
+    <string name="compose_pinned_tags">📌 Pinned</string>
+    <string name="compose_manage_tags">Manage…</string>
+    <string name="tag_pin">Pin</string>
+    <string name="tag_unpin">Unpin</string>
+    <string name="tag_pin_limit_fmt">Up to %1$d pinned tags. Tidy them up in the hashtag manager.</string>
+    <string name="section_hashtags">Hashtags</string>
+    <string name="hashtags_note">Pinned tags (NIP-51 kind:30015) always show as chips in the composer and the hashtag column dialog, and sync across devices. Tags you have used are remembered on this device and suggested when you type #.</string>
+    <string name="hashtags_open_manager">Open the hashtag manager</string>
+    <string name="hashtags_pinned_count_fmt">%1$d / %2$d pinned</string>
+    <string name="hashtags_manage_title">Manage hashtags</string>
+    <string name="hashtags_pinned_section">Pinned</string>
+    <string name="hashtags_pinned_hint">Long-press and drag to reorder. The order here is the order of the chips.</string>
+    <string name="hashtags_pinned_empty">No pinned tags yet. Add one below or pin a tag you have used.</string>
+    <string name="hashtags_add_hint">Add a tag (e.g. nostr)</string>
+    <string name="hashtags_add_invalid">Tags can only contain letters, digits and _.</string>
+    <string name="hashtags_add_duplicate">That tag is already pinned.</string>
+    <string name="hashtags_used_section">Tags you have used</string>
+    <string name="hashtags_used_filter_hint">Filter</string>
+    <string name="hashtags_used_empty">No tags used yet.</string>
+    <string name="hashtags_used_none_match">No matching tags.</string>
+    <string name="hashtags_last_used_fmt">Last used %1$s</string>
+    <string name="hashtags_pinned_badge">Pinned</string>
+    <string name="hashtags_saved">Pinned tags saved</string>
+    <string name="hashtags_save_failed">Couldn’t save pinned tags</string>
+    <string name="hashtags_discard_title">Discard changes?</string>
+    <string name="hashtags_discard_text">Your changes to the pinned tags have not been saved.</string>
+    <string name="hashtags_discard_confirm">Discard</string>
+    <string name="hashtags_unavailable">Sign in to manage pinned tags.</string>
 </resources>

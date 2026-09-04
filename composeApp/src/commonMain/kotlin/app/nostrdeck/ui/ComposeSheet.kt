@@ -82,6 +82,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.NostrEvent
+import app.nostrdeck.model.PinnedHashtags
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -282,6 +283,8 @@ fun ComposeSheet(
     // [#250] Flow を remember しないと、入力1文字ごと（再コンポーズごと）に新しい Flow を
     // 作って購読し直し、その都度 SQLite クエリが走る（実測 2000字入力で 500回超）。
     val used = (repo?.let { r -> remember(r) { r.usedHashtagsFlow() } })?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#393] ピン留め（kind:30015 / d=pinned の順）。チップ常時表示 + 前方一致候補の先頭。
+    val pinned = repo?.pinnedHashtagsFlow()?.collectAsState()?.value ?: emptyList()
     val activeTagPrefix: String? = run {
         val idx = before.lastIndexOf('#')
         if (idx < 0) return@run null
@@ -289,15 +292,22 @@ fun ComposeSheet(
         if (frag.all { it.isLetterOrDigit() || it == '_' }) frag.lowercase() else null
     }
     val tagSuggestions = if (activeTagPrefix != null) {
-        used.filter { it.startsWith(activeTagPrefix) && it != activeTagPrefix }.take(8)
+        (pinned + used).distinct().filter { it.startsWith(activeTagPrefix) && it != activeTagPrefix }.take(8)
     } else {
         emptyList()
     }
-    val recent = if (activeTagPrefix != null) {
-        used.sortedByDescending { it.startsWith(activeTagPrefix) }.take(5)
-    } else {
-        used.take(5)
+    // [#393] 最近使った（新しい順・ピン留め済みは除外・8件）。頻度の重み付けはしない。
+    val recent = used.filterNot { it in pinned }.take(8)
+    // [#393] チップのタップ: 入力中の "#…" に前方一致するなら補完、そうでなければ末尾に足す。
+    val insertTag: (String) -> Unit = { tag ->
+        field = if (activeTagPrefix != null && tag.startsWith(activeTagPrefix)) completeHashtag(field, tag) else appendHashtag(field, tag)
     }
+    var showTagManage by remember { mutableStateOf(false) }
+    val toast = rememberToaster()
+    val pinLimitMsg = stringResource(Res.string.tag_pin_limit_fmt, PinnedHashtags.MAX)
+    // [#393] 長押しピン留めのデバウンス発行が失敗したら（署名不可等）、Repository が編集前に戻す。ここは通知だけ。
+    val pinFailedMsg = stringResource(Res.string.hashtags_save_failed)
+    LaunchedEffect(repo) { repo?.pinnedHashtagsErrors()?.collect { toast(pinFailedMsg) } }
 
     // 入力中のメンション（カーソル直前の "@…" 断片）。
     val activeMention: String? = run {
@@ -560,14 +570,17 @@ fun ComposeSheet(
                                 tagSuggestions.forEach { tag -> TagChip(tag) { field = completeHashtag(field, tag) } }
                             }
                         }
-                        if (recent.isNotEmpty()) {
-                            Spacer(Modifier.height(DeckSpace.Sm))
-                            HintText(stringResource(Res.string.compose_recent_tags))
-                            Spacer(Modifier.height(DeckSpace.Xs))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                recent.forEach { tag -> TagChip(tag) { field = appendHashtag(field, tag) } }
-                            }
-                        }
+                        // [#393] 「📌 ピン留め」→「最近使った」の2段。長押しでピン留め/解除、末尾に「整理…」。
+                        HashtagChipRows(
+                            pinned = pinned, recent = recent, onTap = insertTag,
+                            onPin = { tag ->
+                                // 上限到達時はピン留めせず、整理画面へ案内する。
+                                if (pinned.size >= PinnedHashtags.MAX) { toast(pinLimitMsg); showTagManage = true }
+                                else repo?.setPinnedHashtags(pinned + tag)
+                            },
+                            onUnpin = { tag -> repo?.setPinnedHashtags(pinned - tag) },
+                            onManage = { showTagManage = true },
+                        )
                     }
 
                     // 添付画像カルーセル + 解像度（画像があるときだけ表示）。
@@ -749,6 +762,11 @@ fun ComposeSheet(
             onPick = { content, _ -> field = insertAtCursor(field, if (content.endsWith(":")) "$content " else content) },
             onDismiss = { showEmojiPicker = false },
         )
+    }
+
+    // [#393] ハッシュタグ整理画面（「整理…」チップ / 上限到達時の案内）。
+    if (showTagManage) {
+        HashtagManageSheet(onDismiss = { showTagManage = false })
     }
 
     // 入力内容がある状態で閉じようとしたら破棄確認（オーバーレイ/✗/戻る共通）。
@@ -1117,19 +1135,6 @@ internal fun MentionRow(profile: Profile, onClick: () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun TagChip(tag: String, onClick: () -> Unit) {
-    Text(
-        "#$tag",
-        color = DeckColors.Text2, fontSize = DeckType.Caption,
-        modifier = Modifier
-            .clip(RoundedCornerShape(DeckRadius.Full))
-            .background(DeckColors.Surface2)
-            .clickable(onClick = onClick)
-            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
-    )
 }
 
 /** カーソル位置に文字列を挿入し、カーソルを挿入後の末尾へ移す。チャット Composer と共用。 */
