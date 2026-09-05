@@ -2442,6 +2442,15 @@ class EventRepository(
     fun usedHashtagsFlow(): Flow<List<String>> =
         usedHashtagsWithTimeFlow().map { rows -> rows.map { it.tag } }
 
+    /**
+     * [#399] 使ったタグの履歴を1件消す（整理画面のゴミ箱）。ピン留め（kind:30015）は別管理なので影響しない。
+     * 再度そのタグで投稿すれば履歴には戻る。
+     */
+    fun deleteUsedHashtag(tag: String) {
+        val t = tag.trim().removePrefix("#").lowercase()
+        if (t.isNotBlank()) q.deleteUsedHashtag(t)
+    }
+
     // ---- [#393] ピン留めハッシュタグ（NIP-51 kind:30015 / d=pinned）----
     // 購読・受信ゲート・State+KV は [pinnedRep]（OwnReplaceable）。ここは発行方式（楽観+デバウンス）だけ。
 
