@@ -735,6 +735,8 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="hashtags_used_none_match">No matching tags.</string>
     <string name="hashtags_last_used_fmt">Last used %1$s</string>
     <string name="hashtags_pinned_badge">Pinned</string>
+    <string name="hashtags_used_delete">Remove from history</string>
+    <string name="hashtags_used_deleted">Removed from history</string>
     <string name="hashtags_saved">Pinned tags saved</string>
     <string name="hashtags_save_failed">Couldn’t save pinned tags</string>
     <string name="hashtags_discard_title">Discard changes?</string>

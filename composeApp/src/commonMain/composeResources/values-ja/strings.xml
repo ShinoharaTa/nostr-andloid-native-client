@@ -731,6 +731,8 @@
     <string name="hashtags_used_none_match">一致するタグがありません。</string>
     <string name="hashtags_last_used_fmt">最終使用 %1$s</string>
     <string name="hashtags_pinned_badge">ピン留め中</string>
+    <string name="hashtags_used_delete">履歴から削除</string>
+    <string name="hashtags_used_deleted">履歴から削除しました</string>
     <string name="hashtags_saved">ピン留めを保存しました</string>
     <string name="hashtags_save_failed">ピン留めを保存できませんでした</string>
     <string name="hashtags_discard_title">変更を破棄しますか？</string>
