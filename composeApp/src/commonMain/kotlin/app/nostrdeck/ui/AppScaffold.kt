@@ -35,6 +35,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +46,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.DetailRoute
 import app.nostrdeck.state.NavDest
+import app.nostrdeck.state.detailRouteKey
+import app.nostrdeck.state.detailStackKeys
+import app.nostrdeck.state.obsoleteDetailKeys
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import nostr_deck_client.composeapp.generated.resources.nav_home
@@ -67,6 +74,19 @@ fun AppScaffold(state: DeckState) {
     // キーボードが残って操作できなくなるため）。Android では従来挙動に影響しない。
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     androidx.compose.runtime.LaunchedEffect(state.navDest) { focusManager.clearFocus() }
+    // [#401] 詳細スタックの各エントリの rememberSaveable 状態（スクロール位置・選択中タブ）を、
+    // 別の詳細を重ねている間も保持するホルダ。DetailOverlay は末尾しか描かないので、
+    // **スタックの切り替えでコンポジションから外れない階層**＝幅で分岐する前のここで作る。
+    val detailStateHolder = rememberSaveableStateHolder()
+    val detailKeys = detailStackKeys(state.detailStack)
+    // 直前のキー一覧。pop/clear で消えたエントリの保存状態は破棄する（溜め込むと、
+    // 詳細を閉じて同じプロフィールを開き直したときに前回位置が復元されてしまう）。
+    val lastDetailKeys = remember { mutableListOf<String>() }
+    SideEffect {
+        obsoleteDetailKeys(lastDetailKeys, detailKeys).forEach { detailStateHolder.removeState(it) }
+        lastDetailKeys.clear()
+        lastDetailKeys.addAll(detailKeys)
+    }
     // 上端＋左右のみシステムバー分を確保する。下端インセット（ホームインジケータ帯）は
     // ここで消費せず、Compact では BottomBar(NavigationBar) 自身に処理させて**バーを最下端まで
     // 伸ばす**（アイコンはインジケータの上）。Expanded では下の Row で改めて下端を確保する。
@@ -106,7 +126,7 @@ fun AppScaffold(state: DeckState) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state)
                 CompositionLocalProvider(LocalHasNavRail provides true) {
-                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f))
+                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder)
                 }
             }
         } else if (isCompact) {
@@ -121,6 +141,7 @@ fun AppScaffold(state: DeckState) {
                 ContentWithCompose(
                     state, isCompact = true,
                     Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bottomBarHeight)),
+                    detailStateHolder,
                 )
                 Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
                     BottomBar(state)
@@ -131,7 +152,7 @@ fun AppScaffold(state: DeckState) {
             // ここで下端インセットを padding して内容がインジケータ帯に潜らないようにする（従来挙動を維持）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state)
-                ContentWithCompose(state, isCompact = false, Modifier.weight(1f))
+                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder)
             }
         }
 
@@ -179,11 +200,16 @@ val LocalHasNavRail = staticCompositionLocalOf { false }
  * （Home Deck）の操作なので HOME でのみ表示する。
  */
 @Composable
-private fun ContentWithCompose(state: DeckState, isCompact: Boolean, modifier: Modifier) {
+private fun ContentWithCompose(
+    state: DeckState,
+    isCompact: Boolean,
+    modifier: Modifier,
+    detailStateHolder: SaveableStateHolder,
+) {
     Box(modifier.fillMaxSize()) {
         Destination(state, isCompact = isCompact)
         // 全幅の詳細ルート（プロフィール/スレッド）。非空なら宛先の上に重ねる。
-        if (state.hasDetail) DetailOverlay(state, isCompact = isCompact)
+        if (state.hasDetail) DetailOverlay(state, isCompact = isCompact, stateHolder = detailStateHolder)
         // 投稿 FAB はホームのタイムライン操作。詳細ルート表示中は隠す。
         if (state.navDest == NavDest.HOME && !state.hasDetail) {
             FloatingActionButton(
@@ -240,14 +266,19 @@ private fun SingleColumnPane(
  *    背景はスクリムで暗転し、外側タップで閉じる。Compact では従来通り全画面。
  */
 @Composable
-private fun DetailOverlay(state: DeckState, isCompact: Boolean) {
-    when (val top = state.detailStack.last()) {
-        is app.nostrdeck.state.DetailRoute.ProfileView ->
-            ProfileScreen(state, isCompact, top.pubkey)
-        is app.nostrdeck.state.DetailRoute.ThreadView ->
-            ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
-                ThreadDetail(state, top.eventId)
-            }
+private fun DetailOverlay(state: DeckState, isCompact: Boolean, stateHolder: SaveableStateHolder) {
+    val index = state.detailStack.lastIndex
+    val top = state.detailStack[index]
+    // [#401] スタックの位置込みのキーで包み、隠れている間もスクロール位置/選択タブを保つ。
+    stateHolder.SaveableStateProvider(detailRouteKey(index, top)) {
+        when (top) {
+            is DetailRoute.ProfileView ->
+                ProfileScreen(state, isCompact, top.pubkey)
+            is DetailRoute.ThreadView ->
+                ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
+                    ThreadDetail(state, top.eventId)
+                }
+        }
     }
 }
 
