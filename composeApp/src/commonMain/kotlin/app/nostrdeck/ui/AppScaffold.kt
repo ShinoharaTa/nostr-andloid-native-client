@@ -300,10 +300,18 @@ private fun BottomBar(state: DeckState) {
     ) {
         // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（レールと同順）。
         // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-        NavItem(state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home))
+        // [#405] 通知カラムを開いている間は「通知」側を選択表示にする（ホームは非選択）。
+        NavItem(
+            state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
+            selected = state.navDest == NavDest.HOME && !state.notificationsActive,
+        )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
         NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat))
-        NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications))
+        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
+        NavItem(
+            state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications),
+            selected = state.notificationsActive, onClick = { state.openNotifications() },
+        )
         val pk = myPubkey
         NavigationBarItem(
             selected = state.navDest == NavDest.SETTINGS,
@@ -316,10 +324,12 @@ private fun BottomBar(state: DeckState) {
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.NavItem(
     state: DeckState, dest: NavDest, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String,
+    selected: Boolean = state.navDest == dest,
+    onClick: () -> Unit = { state.clearDetail(); state.navDest = dest },
 ) {
     NavigationBarItem(
-        selected = state.navDest == dest,
-        onClick = { state.clearDetail(); state.navDest = dest },
+        selected = selected,
+        onClick = onClick,
         icon = { Icon(icon, label) },
     )
 }

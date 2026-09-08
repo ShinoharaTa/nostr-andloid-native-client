@@ -66,15 +66,12 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
-    // [#9] 通知/DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
-    val notifUnread by (repo?.notifUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
+    // [#9] DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
+    // [#405] 通知の未読バッジは廃止（通知はカラムに一本化、ナビの「通知」はカラムへのジャンプ）。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    LaunchedEffect(state.navDest, notifUnread) {
-        if (state.navDest == NavDest.NOTIFICATIONS && notifUnread > 0) repo?.markNotificationsSeen()
-    }
     LaunchedEffect(state.navDest, dmUnread) {
         if (state.navDest == NavDest.DM && dmUnread > 0) repo?.markDmSeen()
     }
@@ -95,13 +92,14 @@ fun DeckRail(state: DeckState) {
 
             // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（下部ナビと同順）。
             // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME && !state.notificationsActive) { state.clearDetail(); state.navDest = NavDest.HOME }
             NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
             NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
                 state.clearDetail(); state.navDest = NavDest.CHANNELS
             }
-            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
-                state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
+            // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。未読バッジは廃止。
+            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.notificationsActive) {
+                state.openNotifications()
             }
         }
 

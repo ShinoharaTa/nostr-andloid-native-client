@@ -176,6 +176,8 @@ private fun ExpandedDeck(state: DeckState) {
         if (idx >= 0) scroll.animateScrollTo(offsetTo(idx))
         state.consumeJump()
     }
+    // [#405] Deck では全カラムが見えるので「表示中カラム」は該当なし。
+    LaunchedEffect(Unit) { state.visibleColumnId = null }
 
     // [#336][#346] 並べ替え。「操作中のカラムが常にスクロールの錨。動くものは必ず滑って動く」。
     //
@@ -259,6 +261,10 @@ private fun CompactPager(state: DeckState) {
         val idx = state.columns.indexOfFirst { it.id == target }
         if (idx >= 0) pager.animateScrollToPage(idx)
         state.consumeJump()
+    }
+    // [#405] 表示中カラムを公開（「通知」ナビの選択状態判定用）。
+    LaunchedEffect(pager.currentPage, state.columns.size) {
+        state.visibleColumnId = state.columns.getOrNull(pager.currentPage)?.id
     }
 
     // [#346] 並べ替えの実行係。変異と同フレームで Pager に追従を要求し、
