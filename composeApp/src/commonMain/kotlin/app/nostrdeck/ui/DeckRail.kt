@@ -38,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
@@ -92,20 +91,25 @@ fun DeckRail(state: DeckState) {
             RailSlot {
                 AppMark(Modifier.size(DeckDimens.RailMark))
             }
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME && !state.notificationsActive) { state.clearDetail(); state.navDest = NavDest.HOME }
+            // [#409] 現在のカラムは下の目次側で点灯させる（選択箇所は常に1つ）。
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.clearDetail(); state.navDest = NavDest.HOME }
         }
 
         RailDivider()
 
         // ── 中央: ピン留めカラムの目次（ここだけスクロール） ──
-        // [#409] 通知カラムは下の「通知」ナビが担うので除外（同じベルが2つ並ぶのを避ける）。
+        // [#409] タブと同じ順序で並べ、いま見えているカラムを点灯する。タブを左から順に押すと
+        // 目次の点灯が上から順に下りていく（通知カラムも目次に含めて順序を崩さない）。
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
-            state.pinnedColumns.filter { it.kind != ColumnKind.NOTIFICATIONS }
-                .forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
+            state.pinnedColumns.forEach { col ->
+                PinnedShortcut(col, active = state.navDest == NavDest.HOME && col.id == state.visibleColumnId) {
+                    state.clearDetail(); state.jumpTo(col.id)
+                }
+            }
         }
 
         // カラム追加（常設アクション・固定）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
@@ -126,10 +130,12 @@ fun DeckRail(state: DeckState) {
             NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
                 state.clearDetail(); state.navDest = NavDest.CHANNELS
             }
-            // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。未読バッジは廃止。
-            // [#409] Deck でも左端に見えているカラムが通知なら点灯する（DeckState.notificationsActive）。
-            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.notificationsActive) {
-                state.openNotifications()
+            // [#405][#409] 通知カラムがあるときは目次のベルがその役を担う（同じベルを2つ並べない）。
+            // 通知カラムを表示していないユーザーだけ、ここから従来の通知画面を開く。
+            if (state.notificationsColumnId == null) {
+                NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.navDest == NavDest.NOTIFICATIONS) {
+                    state.openNotifications()
+                }
             }
         }
 
@@ -182,8 +188,8 @@ private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int =
 }
 
 @Composable
-private fun PinnedShortcut(col: ColumnSpec, onClick: () -> Unit) {
-    RailSlot(onClick = onClick) {
+private fun PinnedShortcut(col: ColumnSpec, active: Boolean = false, onClick: () -> Unit) {
+    RailSlot(active = active, onClick = onClick) {
         val content: @Composable () -> Unit = {
             Icon(columnIcon(col.kind), col.title, tint = DeckColors.Text2, modifier = Modifier.size(DeckDimens.RailIcon))
         }

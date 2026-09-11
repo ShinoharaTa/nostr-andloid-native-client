@@ -80,6 +80,15 @@ class DeckState(
             (navDest == NavDest.HOME && visibleColumnId != null && visibleColumnId == notificationsColumnId)
 
     /**
+     * [#409] レールの「ホーム」の選択状態。現在のカラムがピン留め目次で示せるときは目次側だけを
+     * 点灯させ（選択箇所は常に1つ。タブを左から押すと目次が上から順に動く）、示せないとき
+     * （横スクロールしない Deck、一時カラムを表示中）はホームを点灯する。
+     */
+    val railHomeActive: Boolean
+        get() = navDest == NavDest.HOME &&
+            (visibleColumnId == null || pinnedColumns.none { it.id == visibleColumnId })
+
+    /**
      * [#405] 「通知」ナビのタップ。通知カラムがあればそこへジャンプし、無いユーザーだけ
      * 従来の通知画面（同じフィード）を開く。カラム一覧と通知タブの二重表示をやめる。
      */
