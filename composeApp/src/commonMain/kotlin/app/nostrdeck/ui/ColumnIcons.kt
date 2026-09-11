@@ -4,9 +4,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.automirrored.outlined.Reply
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Public
@@ -16,7 +16,8 @@ import app.nostrdeck.model.ColumnKind
 
 /** カラム種別 → ヘッダ/レールのアイコン。 */
 fun columnIcon(kind: ColumnKind): ImageVector = when (kind) {
-    ColumnKind.FOLLOWING -> Icons.Outlined.Home
+    // [#409] 「ホーム」ナビ(家)と同じ見た目だとレールで被るので、フォロー中は「人々」にする。
+    ColumnKind.FOLLOWING -> Icons.Outlined.People
     ColumnKind.HASHTAG -> Icons.Outlined.Tag
     ColumnKind.NOTIFICATIONS -> Icons.Outlined.Notifications
     ColumnKind.DM -> Icons.Outlined.MailOutline

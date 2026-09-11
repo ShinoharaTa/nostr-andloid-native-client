@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -176,8 +177,18 @@ private fun ExpandedDeck(state: DeckState) {
         if (idx >= 0) scroll.animateScrollTo(offsetTo(idx))
         state.consumeJump()
     }
-    // [#405] Deck では全カラムが見えるので「表示中カラム」は該当なし。
-    LaunchedEffect(Unit) { state.visibleColumnId = null }
+    // [#409] デッキの左端に見えているカラムを「現在のカラム」として公開（レールの「通知」点灯用）。
+    // 横スクロールしない（全カラムが収まっている）ときは該当なし＝null にして、カラム基準の
+    // 点灯はしない。左端の判定はガター半分の遊びを持たせる（ジャンプ直後の端数ずれ対策）。
+    LaunchedEffect(scroll) {
+        snapshotFlow { Triple(scroll.value, scroll.maxValue, state.columns.toList()) }.collect { (value, max, cols) ->
+            state.visibleColumnId = if (max == 0 || cols.isEmpty()) null else {
+                var idx = 0
+                for (i in cols.indices) if (offsetTo(i) <= value + gutterPx / 2) idx = i else break
+                cols[idx].id
+            }
+        }
+    }
 
     // [#336][#346] 並べ替え。「操作中のカラムが常にスクロールの錨。動くものは必ず滑って動く」。
     //
