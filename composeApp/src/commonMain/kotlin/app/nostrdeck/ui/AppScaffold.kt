@@ -28,6 +28,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -309,6 +310,7 @@ private fun BottomBar(state: DeckState) {
             selected = state.navDest == NavDest.SETTINGS,
             onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS },
             icon = { Avatar(myProfile?.name ?: pk ?: "me", myProfile?.pictureUrl, size = 24.dp, pubkey = pk) },
+            colors = bottomNavItemColors(),
         )
     }
 }
@@ -321,5 +323,18 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
         selected = state.navDest == dest,
         onClick = { state.clearDetail(); state.navDest = dest },
         icon = { Icon(icon, label) },
+        colors = bottomNavItemColors(),
     )
 }
+
+/**
+ * [#404] 下部ナビの選択色。M3 既定（secondaryContainer=Surface2 のピル + Text 色）だと
+ * 未選択(Text2)との差がわずかで現在タブが分からない。左レールの NavIcon と同じ
+ * 「Accent のアイコン + AccentWeak の下地」に揃える。
+ */
+@Composable
+private fun bottomNavItemColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = DeckColors.Accent,
+    unselectedIconColor = DeckColors.Text2,
+    indicatorColor = DeckColors.AccentWeak,
+)
