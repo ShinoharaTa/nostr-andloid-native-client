@@ -1566,14 +1566,15 @@ class EventRepository(
             else combine(
                 q.notificationsFor(me).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
-            ) { rows, profiles ->
+                noteMetaFlow,  // [#403] 自分の♡/リポスト状態。無いと通知内の投稿でボタン押下が反映されない
+            ) { rows, profiles, meta ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { toNotification(it, byPubkey) }
+                rows.map { toNotification(it, byPubkey, meta) }
             }.flowOn(Dispatchers.Default)
         }
 
     /** 自分宛イベント1件を通知行へ整形。種別は kind と #e の有無で判定（NIP-10/18/25）。 */
-    private fun toNotification(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>): NotificationUi {
+    private fun toNotification(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>, meta: NoteMeta): NotificationUi {
         val tags = parseTags(row.tags_json)
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
@@ -1599,10 +1600,11 @@ class EventRepository(
         //  - 対象（自分の投稿）は引用カードで出すので NoteUi 化しておく（引用/返信の再解決はしない＝安い）
         //  - 返信/メンションは相手の投稿そのものを投稿フォーマットで出す。返信元は見出し行が担うため
         //    replyParent は落とす（NoteItem の ◁ 行と二重になる）
-        val targetNote = targetEvent?.let { toNoteUi(it, byPubkey[it.pubkey]) }
+        // [#403] 他フィードと同じく applyMeta で自分の♡/リポスト状態を載せる（通知からのリアクション反映）。
+        val targetNote = targetEvent?.let { applyMeta(toNoteUi(it, byPubkey[it.pubkey]), meta) }
         // [#380] kind:1111（NIP-22 コメント）も返信と同じく相手の投稿そのものを本体に出す。
         val selfNote = if (row.kind.toInt() == 1 || row.kind.toInt() == Nip22.KIND) {
-            withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey).copy(replyParent = null)
+            applyMeta(withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey), meta).copy(replyParent = null)
         } else {
             null
         }
