@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
@@ -66,15 +67,12 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
-    // [#9] 通知/DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
-    val notifUnread by (repo?.notifUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
+    // [#9] DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
+    // [#405] 通知の未読バッジは廃止（通知はカラムに一本化、ナビの「通知」はカラムへのジャンプ）。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    LaunchedEffect(state.navDest, notifUnread) {
-        if (state.navDest == NavDest.NOTIFICATIONS && notifUnread > 0) repo?.markNotificationsSeen()
-    }
     LaunchedEffect(state.navDest, dmUnread) {
         if (state.navDest == NavDest.DM && dmUnread > 0) repo?.markDmSeen()
     }
@@ -82,7 +80,9 @@ fun DeckRail(state: DeckState) {
         Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // ── 上部固定: ブランド + ナビ ──
+        // ── 上部固定: ブランド + ホーム ──
+        // [#409] 遷移は基本ホーム(メインのフィード)から始まるので、ホームとその中身（ピン留め
+        // カラム）を上に、検索/チャット/通知はその下に置く（項目と順序は下部ナビと同一）。
         Column(
             Modifier.fillMaxWidth().padding(top = DeckSpace.Sm),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -92,33 +92,45 @@ fun DeckRail(state: DeckState) {
             RailSlot {
                 AppMark(Modifier.size(DeckDimens.RailMark))
             }
-
-            // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（下部ナビと同順）。
-            // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME) { state.clearDetail(); state.navDest = NavDest.HOME }
-            NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
-                state.clearDetail(); state.navDest = NavDest.CHANNELS
-            }
-            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.navDest == NavDest.NOTIFICATIONS, badge = notifUnread) {
-                state.clearDetail(); state.navDest = NavDest.NOTIFICATIONS
-            }
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.navDest == NavDest.HOME && !state.notificationsActive) { state.clearDetail(); state.navDest = NavDest.HOME }
         }
 
         RailDivider()
 
         // ── 中央: ピン留めカラムの目次（ここだけスクロール） ──
+        // [#409] 通知カラムは下の「通知」ナビが担うので除外（同じベルが2つ並ぶのを避ける）。
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
-            state.pinnedColumns.forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
+            state.pinnedColumns.filter { it.kind != ColumnKind.NOTIFICATIONS }
+                .forEach { col -> PinnedShortcut(col) { state.clearDetail(); state.jumpTo(col.id) } }
         }
 
         // カラム追加（常設アクション・固定）。持続 AccentWeak 下地で CTA を示すがサイズは他と同一。
         RailSlot(active = true, onClick = { state.showAddColumn = true }) {
             Icon(Icons.Outlined.Add, stringResource(Res.string.nav_add_column), tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.RailIcon))
+        }
+
+        RailDivider()
+
+        // ── 中段固定: 検索・パブリックチャット・通知（下部ナビと同順） ──
+        // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        ) {
+            NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
+            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
+                state.clearDetail(); state.navDest = NavDest.CHANNELS
+            }
+            // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。未読バッジは廃止。
+            // [#409] Deck でも左端に見えているカラムが通知なら点灯する（DeckState.notificationsActive）。
+            NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.notificationsActive) {
+                state.openNotifications()
+            }
         }
 
         RailDivider()

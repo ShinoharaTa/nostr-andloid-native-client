@@ -28,6 +28,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -300,15 +301,24 @@ private fun BottomBar(state: DeckState) {
     ) {
         // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（レールと同順）。
         // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
-        NavItem(state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home))
+        // [#405] 通知カラムを開いている間は「通知」側を選択表示にする（ホームは非選択）。
+        NavItem(
+            state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
+            selected = state.navDest == NavDest.HOME && !state.notificationsActive,
+        )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
         NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat))
-        NavItem(state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications))
+        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
+        NavItem(
+            state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications),
+            selected = state.notificationsActive, onClick = { state.openNotifications() },
+        )
         val pk = myPubkey
         NavigationBarItem(
             selected = state.navDest == NavDest.SETTINGS,
             onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS },
             icon = { Avatar(myProfile?.name ?: pk ?: "me", myProfile?.pictureUrl, size = 24.dp, pubkey = pk) },
+            colors = bottomNavItemColors(),
         )
     }
 }
@@ -316,10 +326,25 @@ private fun BottomBar(state: DeckState) {
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.NavItem(
     state: DeckState, dest: NavDest, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String,
+    selected: Boolean = state.navDest == dest,
+    onClick: () -> Unit = { state.clearDetail(); state.navDest = dest },
 ) {
     NavigationBarItem(
-        selected = state.navDest == dest,
-        onClick = { state.clearDetail(); state.navDest = dest },
+        selected = selected,
+        onClick = onClick,
         icon = { Icon(icon, label) },
+        colors = bottomNavItemColors(),
     )
 }
+
+/**
+ * [#404] 下部ナビの選択色。M3 既定（secondaryContainer=Surface2 のピル + Text 色）だと
+ * 未選択(Text2)との差がわずかで現在タブが分からない。左レールの NavIcon と同じ
+ * 「Accent のアイコン + AccentWeak の下地」に揃える。
+ */
+@Composable
+private fun bottomNavItemColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = DeckColors.Accent,
+    unselectedIconColor = DeckColors.Text2,
+    indicatorColor = DeckColors.AccentWeak,
+)
