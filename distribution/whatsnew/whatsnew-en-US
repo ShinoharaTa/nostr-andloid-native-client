@@ -1,4 +1,4 @@
-- Pin your favorite hashtags: long-press a chip in the composer to pin it, or open "Manage" to reorder and add. Pins sync across your devices
-- Profile revamp: browse a user's long-form articles, public lists and relays; posts and replies are now one tab
-- Open a person's profile straight from a DM by tapping their name or avatar
-- Read and reply to comments other clients leave on articles (NIP-22)
+- Reacting to a post inside Notifications now shows the pressed state right away
+- On phones, the bottom navigation clearly highlights the tab you're on
+- The Notifications button now takes you to your Notifications column (or the classic notifications screen if you don't have that column). The unread badge was removed
+- Cleaned up the side rail on foldables and tablets: same order as the bottom navigation, and the rail's column list now highlights the column you're viewing
