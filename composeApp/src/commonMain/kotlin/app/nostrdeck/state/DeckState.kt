@@ -62,6 +62,42 @@ class DeckState(
     var jumpTarget by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * [#405] コンパクト表示（Pager）で現在表示中のカラム id。Deck（横並び）では null。
+     * 「通知」ナビの選択状態判定に使う（通知カラムを開いている間は通知ボタンを選択表示）。
+     */
+    var visibleColumnId by mutableStateOf<String?>(null)
+
+    /** [#405] 通知カラム（あれば）。「通知」ナビのジャンプ先。 */
+    val notificationsColumnId: String? get() = columns.firstOrNull { it.kind == ColumnKind.NOTIFICATIONS }?.id
+
+    /**
+     * [#405] 「通知」ナビの選択状態。従来の通知画面を開いているか、コンパクト表示で
+     * 通知カラムがいま見えているとき。Deck ではカラムが全部見えるので後者は成立しない。
+     */
+    val notificationsActive: Boolean
+        get() = navDest == NavDest.NOTIFICATIONS ||
+            (navDest == NavDest.HOME && visibleColumnId != null && visibleColumnId == notificationsColumnId)
+
+    /**
+     * [#409] レールの「ホーム」の選択状態。現在のカラムがピン留め目次で示せるときは目次側だけを
+     * 点灯させ（選択箇所は常に1つ。タブを左から押すと目次が上から順に動く）、示せないとき
+     * （横スクロールしない Deck、一時カラムを表示中）はホームを点灯する。
+     */
+    val railHomeActive: Boolean
+        get() = navDest == NavDest.HOME &&
+            (visibleColumnId == null || pinnedColumns.none { it.id == visibleColumnId })
+
+    /**
+     * [#405] 「通知」ナビのタップ。通知カラムがあればそこへジャンプし、無いユーザーだけ
+     * 従来の通知画面（同じフィード）を開く。カラム一覧と通知タブの二重表示をやめる。
+     */
+    fun openNotifications() {
+        clearDetail()
+        val id = notificationsColumnId
+        if (id != null) jumpTo(id) else navDest = NavDest.NOTIFICATIONS
+    }
+
     val pinnedColumns: List<ColumnSpec> get() = columns.filter { it.pinned }
 
     /** カラム追加シート（テンプレ選択）の表示状態。 */

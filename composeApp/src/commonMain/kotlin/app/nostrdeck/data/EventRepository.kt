@@ -1522,26 +1522,13 @@ class EventRepository(
     }
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
 
-    // ---- [#9] 通知/DM の未読（最終閲覧時刻方式）----
-    private val notifLastSeen = MutableStateFlow(0L)
+    // ---- [#9] DM の未読（最終閲覧時刻方式）。[#405] 通知の未読カウントは廃止した ----
     private val dmLastSeen = MutableStateFlow(0L)
     private fun loadUnreadSeen() {
-        // 初回は「今」を既読基準にする（過去の全通知でバッジが巨大化するのを防ぐ）。
+        // 初回は「今」を既読基準にする（過去の全 DM でバッジが巨大化するのを防ぐ）。
         val now = currentUnixTime()
-        notifLastSeen.value = q.getSetting(NOTIF_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
-            ?: now.also { q.putSetting(NOTIF_LAST_SEEN, it.toString()) }
         dmLastSeen.value = q.getSetting(DM_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
             ?: now.also { q.putSetting(DM_LAST_SEEN, it.toString()) }
-    }
-
-    /** 通知の未読件数（最終閲覧時刻より新しい通知の数）。 */
-    fun notifUnreadFlow(): Flow<Int> =
-        combine(notificationsFeed(), notifLastSeen) { list, seen -> list.count { it.createdAt > seen } }
-
-    /** 通知を既読にする（最終閲覧時刻を現在時刻に進める）。 */
-    fun markNotificationsSeen() {
-        val now = currentUnixTime()
-        if (now > notifLastSeen.value) { notifLastSeen.value = now; putSettingAsync(NOTIF_LAST_SEEN, now.toString()) }
     }
 
     /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
@@ -5013,7 +5000,6 @@ class EventRepository(
         const val AUTH_POLICY = "nip42_auth_policy"
 
         /** [#9] 通知/DM の最終閲覧時刻（未読件数算出用）の KV キー。 */
-        const val NOTIF_LAST_SEEN = "notif_last_seen"
         const val DM_LAST_SEEN = "dm_last_seen"
     }
 }
