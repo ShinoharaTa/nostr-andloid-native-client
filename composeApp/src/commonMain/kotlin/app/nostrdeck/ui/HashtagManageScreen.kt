@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -139,6 +140,7 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
     val limitMsg = stringResource(Res.string.tag_pin_limit_fmt, PinnedHashtags.MAX)
     val savedMsg = stringResource(Res.string.hashtags_saved)
     val saveFailedMsg = stringResource(Res.string.hashtags_save_failed)
+    val usedDeletedMsg = stringResource(Res.string.hashtags_used_deleted)
 
     /** ピン留めへ追加（バリデーション: 空/不正文字・重複・上限）。追加できたら true。 */
     fun tryPin(raw: String): Boolean {
@@ -238,6 +240,14 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
                         onClick = { tryPin(u.tag) },
                     )
                 }
+                // [#399] 履歴から消す。確認は出さない（再度そのタグで投稿すれば戻る・ピン留めは消えない）。
+                IconButton(onClick = { repo.deleteUsedHashtag(u.tag); toast(usedDeletedMsg) }) {
+                    Icon(
+                        Icons.Outlined.DeleteOutline,
+                        contentDescription = stringResource(Res.string.hashtags_used_delete),
+                        tint = DeckColors.Text3,
+                    )
+                }
             }
         }
         item(key = "bottom_space") { Spacer(Modifier.height(DeckSpace.Lg)) }
@@ -267,8 +277,8 @@ private fun ColumnScope.HashtagManageBody(onDirtyChange: (Boolean) -> Unit) {
 }
 
 /**
- * ピン留め1行。左のハンドル（DragIndicator）を長押しするとドラッグ開始。ドラッグ中は指に追従して浮かせ、
- * 中心が別のピン留め行に入ったら draft を入れ替える。ジェスチャはハンドルに限定し、× ボタンと干渉させない。
+ * ピン留め1行。[#399] 右端のハンドル（DragIndicator）を長押しするとドラッグ開始。ドラッグ中は指に追従して浮かせ、
+ * 中心が別のピン留め行に入ったら draft を入れ替える。ジェスチャはハンドルに限定し、左端の × ボタンと干渉させない。
  */
 @Composable
 private fun PinnedRow(
@@ -290,6 +300,15 @@ private fun PinnedRow(
             .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // [#399] iOS の編集モードと同じ配置。削除（×）は左、並べ替えハンドルは右端に離して誤タップを防ぐ。
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Outlined.Close, contentDescription = stringResource(Res.string.tag_unpin), tint = DeckColors.Text3)
+        }
+        Text(
+            "#$tag", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(DeckSpace.Xs))
         Box(
             Modifier.size(DeckDimens.TouchTargetSm).pointerInput(tag) {
                 detectDragGesturesAfterLongPress(
@@ -326,14 +345,6 @@ private fun PinnedRow(
                 Icons.Outlined.DragIndicator, contentDescription = null,
                 tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
             )
-        }
-        Spacer(Modifier.width(DeckSpace.Xs))
-        Text(
-            "#$tag", color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Strong,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onRemove) {
-            Icon(Icons.Outlined.Close, contentDescription = stringResource(Res.string.tag_unpin), tint = DeckColors.Text3)
         }
     }
 }

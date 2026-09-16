@@ -335,6 +335,10 @@ UPDATE used_hashtag SET last_used = ?, uses = uses + 1 WHERE tag = ?;
 usedHashtagsWithTime:
 SELECT tag, last_used FROM used_hashtag ORDER BY last_used DESC;
 
+-- [#399] 整理画面から履歴を1件消す。再度そのタグで投稿すれば insertHashtagIfAbsent で戻る。
+deleteUsedHashtag:
+DELETE FROM used_hashtag WHERE tag = ?;
+
 -- [M8-react] kind:7 リアクション行を対象ノート(最後の e タグ=event_tag)単位で取得。
 -- 集約/カスタム絵文字URL解決(tags_json)は Kotlin 側で行う。
 reactionsForTargets:

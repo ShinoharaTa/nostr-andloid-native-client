@@ -78,6 +78,15 @@ fun ThreadColumn(
     // [#380] NIP-22 コメントスレッドの「根のカード」（ルートが記事/外部URL等の非ノートのとき）。
     rootCard: (@Composable () -> Unit)? = null,
 ) {
+    // [#254] 「リプライ風」に並べるコメント付き Zap。件数を [#401] の再適用判定にも使うので、
+    // LazyColumn の中ではなくここで絞り込む。
+    val commentedZaps = remember(zaps) { zaps.filter { it.comment.isNotBlank() } }
+    // [#401] 詳細スタックから戻った直後は DB の Flow が一度空を流すため、復元された
+    // スクロール位置が 0 に切り詰められる。件数が揃った時点で一度だけ再適用する。
+    RestoreScrollOnFirstData(
+        listState,
+        if (entries.isEmpty()) 0 else (if (rootCard != null) 1 else 0) + entries.size + commentedZaps.size,
+    )
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = columnSubtitleFor(spec),
@@ -100,9 +109,8 @@ fun ThreadColumn(
             }
             // [#254] Zap の合計＋誰が、は FocusNoteStats（⚡行）に統合。ここには
             // **コメント付き Zap だけ**を「リプライ風」に残す（コメントを失わないため）。
-            val commented = zaps.filter { it.comment.isNotBlank() }
-            if (commented.isNotEmpty()) {
-                items(commented, key = { "zap_" + it.id }) { z ->
+            if (commentedZaps.isNotEmpty()) {
+                items(commentedZaps, key = { "zap_" + it.id }) { z ->
                     ZapRow(z, onAuthorClick = onAuthorClick)
                     HorizontalDivider(color = DeckColors.Border)
                 }
