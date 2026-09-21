@@ -1285,6 +1285,14 @@ class EventRepository(
             if (map.size > cap) map.remove(map.keys.first())
             return v
         }
+        /** 触れずに読む（順序は変えない）。 */
+        operator fun get(key: K): V? = map[key]
+        /** 入れ直して末尾へ（最近使ったものとして残す）。 */
+        fun put(key: K, value: V) {
+            map.remove(key)
+            map[key] = value
+            if (map.size > cap) map.remove(map.keys.first())
+        }
     }
 
     /** カラムのフィルタに対応する DB フィードを NoteUi で返す（cache-first）。
@@ -2018,7 +2026,7 @@ class EventRepository(
         val tags = hashtagsIn(content).map { listOf("t", it) } + emojiTagsIn(content) +
             Nip27.mentionPTags(content) +
             (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList())
-        val signed = publishSigned(UnsignedEvent(kind = 1, content = content, tags = tags))
+        val signed = publishSigned(UnsignedEvent(kind = 1, content = content, tags = withRelayHints(tags)))
         recordHashtags(content, signed.createdAt)
     }
 
@@ -2051,7 +2059,7 @@ class EventRepository(
                 // タイムラインでは各セグメントが独立したノートとして流れるため意味を成さない。
                 if (contentWarning != null) add(listOf("content-warning", contentWarning))
             }
-            val signed = publishSigned(UnsignedEvent(kind = 1, content = seg, tags = tags))
+            val signed = publishSigned(UnsignedEvent(kind = 1, content = seg, tags = withRelayHints(tags)))
             recordHashtags(seg, signed.createdAt)
             if (rootId == null) { rootId = signed.id; myPk = signed.pubkey }
             prevId = signed.id
@@ -2104,7 +2112,7 @@ class EventRepository(
                 add(listOf("emoji", emoji.substring(1, emoji.length - 1), imageUrl))
             }
         }
-        publishSigned(UnsignedEvent(kind = 7, content = emoji, tags = tags))
+        publishSigned(UnsignedEvent(kind = 7, content = emoji, tags = withRelayHints(tags)))
         recordUsedEmoji(emoji, imageUrl)
     }
 
@@ -2190,12 +2198,15 @@ class EventRepository(
         putSettingAsync(DEFAULT_REACTION_IMAGE, imageUrl ?: "")
     }
 
-    /** [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。 */
+    /**
+     * [M8] NIP-18 リポスト（kind:6）。content は空でよく、表示側は e タグから元ノートを解決する。
+     * [#411] e タグの relay URL は NIP-18 で MUST（"That tag MUST include a relay URL as its third entry"）。
+     */
     suspend fun publishRepost(target: NostrEvent) {
         publishSigned(
             UnsignedEvent(
                 kind = 6, content = "",
-                tags = listOf(listOf("e", target.id), listOf("p", target.pubkey)),
+                tags = withRelayHints(listOf(listOf("e", target.id), listOf("p", target.pubkey))),
             ),
         )
     }
@@ -2205,13 +2216,20 @@ class EventRepository(
      * 表示側は q タグから引用元を解決して埋め込みカードにする（toFollowingNoteUi）。
      */
     suspend fun publishQuote(target: NostrEvent, text: String, contentWarning: String? = null) {
-        val note = runCatching { Nip19.hexToNote(target.id) }.getOrNull()
-        val body = if (note != null) (if (text.isBlank()) "nostr:$note" else "$text\nnostr:$note") else text
         // [#350] NIP-27 メンションの p タグ（引用先の作者と重複させない）。
-        val tags = listOf(listOf("q", target.id), listOf("p", target.pubkey)) +
-            hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(body) +
-            Nip27.mentionPTags(text, listOf(target.pubkey)) +
-            (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList())
+        // [#411] q タグは NIP-18 の `["q", id, relay, pubkey]`。ヒントを埋めてから、本文の参照にも
+        // 同じヒントを入れた nevent を使う（以前は note1 でリレー情報を持てなかった）。
+        val tags = withRelayHints(
+            listOf(listOf("q", target.id, "", target.pubkey), listOf("p", target.pubkey)) +
+                hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(text) +
+                Nip27.mentionPTags(text, listOf(target.pubkey)) +
+                (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList()),
+        )
+        val hint = tags.first().getOrNull(2)?.takeIf { it.isNotEmpty() }
+        val ref = runCatching {
+            Nip19.hexToNevent(target.id, author = target.pubkey, relays = listOfNotNull(hint), kind = target.kind)
+        }.getOrNull()
+        val body = if (ref != null) (if (text.isBlank()) "nostr:$ref" else "$text\nnostr:$ref") else text
         val signed = publishSigned(UnsignedEvent(kind = 1, content = body, tags = tags))
         recordHashtags(text, signed.createdAt)
     }
@@ -2324,7 +2342,7 @@ class EventRepository(
                 hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(text) +
                 Nip27.mentionPTags(text, inheritedPs22) +
                 (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList())
-            val signed = publishSigned(UnsignedEvent(kind = Nip22.KIND, content = text, tags = tags))
+            val signed = publishSigned(UnsignedEvent(kind = Nip22.KIND, content = text, tags = withRelayHints(tags)))
             recordHashtags(text, signed.createdAt)
             return
         }
@@ -2343,7 +2361,7 @@ class EventRepository(
             hashtagsIn(text).map { listOf("t", it) } + emojiTagsIn(text) +
             Nip27.mentionPTags(text, inheritedPs) +
             (if (contentWarning != null) listOf(listOf("content-warning", contentWarning)) else emptyList())
-        val signed = publishSigned(UnsignedEvent(kind = 1, content = text, tags = tags))
+        val signed = publishSigned(UnsignedEvent(kind = 1, content = text, tags = withRelayHints(tags)))
         recordHashtags(text, signed.createdAt)
     }
 
@@ -2593,6 +2611,49 @@ class EventRepository(
      */
     private val hintRelays = mutableSetOf<String>()
 
+    // ---- [#411] 発行イベントに載せるリレーヒント ----
+
+    /** 受信元の記録: event id → 受け取ったリレー（正規化 URL・重複なし）。relayDispatcher 上でのみ触る。 */
+    private val seenOnByEvent = LruCache<String, MutableList<String>>(SEEN_ON_CAP)
+    /** 著者 pubkey → 最後にその人のイベントを受け取ったリレー。`p` タグのヒントの最後の手がかり。 */
+    private val lastSeenByAuthor = LruCache<String, String>(SEEN_ON_CAP)
+    /** AUTH を要求してきたリレー。制限付きで他人が読めない可能性があるのでヒントには出さない。 */
+    private val authRequestedRelays = mutableSetOf<String>()
+
+    private suspend fun recordSeenOn(origins: List<Pair<NostrEvent, String>>) = withContext(relayDispatcher) {
+        for ((e, url) in origins) {
+            val list = seenOnByEvent[e.id] ?: mutableListOf<String>().also { seenOnByEvent.put(e.id, it) }
+            if (url !in list) list.add(url)
+            lastSeenByAuthor.put(e.pubkey, url)
+        }
+    }
+
+    /**
+     * タグ列の空いているヒント枠を埋める（[RelayHints.fill]）。ヒント元は
+     * 受信元∩著者write → 著者write → 受信元 の順（[RelayHints.pick]）。
+     * 自分のイベント/自分の p は、自分のリレー表で write 有効なものを著者 write として使う
+     * （自分の投稿は ingest を通らないので受信元の記録が無い）。
+     * 3要素目がヒントでないタグを持つイベント（kind:1984 通報の `["e", id, <type>]` 等）には使わない。
+     */
+    private suspend fun withRelayHints(tags: List<List<String>>): List<List<String>> {
+        val me = myPubkey
+        val myWrite = q.allRelays().executeAsList().filter { it.write != 0L }.map { normalizeRelayUrl(it.url) }
+        return withContext(relayDispatcher) {
+            val excluded = authRequestedRelays + SEARCH_RELAYS.map { normalizeRelayUrl(it) }
+            fun writeOf(pk: String) = if (pk == me) myWrite else nip65WriteByAuthor[pk].orEmpty()
+            fun eventHint(id: String): String {
+                val author = q.eventById(id).executeAsOneOrNull()?.pubkey
+                return RelayHints.pick(seenOnByEvent[id].orEmpty(), author?.let(::writeOf).orEmpty(), excluded)
+            }
+            fun pubkeyHint(pk: String) = RelayHints.pick(listOfNotNull(lastSeenByAuthor[pk]), writeOf(pk), excluded)
+            RelayHints.fill(tags, ::eventHint, ::pubkeyHint)
+        }
+    }
+
+    /** [#411] 共有用 nevent に入れるリレーヒント（最大1本）。取れなければ空。 */
+    suspend fun relayHintsFor(eventId: String): List<String> =
+        listOfNotNull(withRelayHints(listOf(listOf("e", eventId))).first().getOrNull(2)?.takeIf { it.isNotEmpty() })
+
     /**
      * [#124] naddr（kind+著者+dタグ）を event id へ解決する。
      * DB に既存ならそれを返し、無ければ接続中リレー + リレーヒントへ #d 付き REQ を投げて
@@ -2726,7 +2787,8 @@ class EventRepository(
 
     // 受信イベントの取り込みキュー。ソケット読取スレッドを塞がないよう trySend で流し込み、
     // [ingestLoop] がまとめて署名検証＋1トランザクション書き込みする。
-    private val ingestChannel = Channel<NostrEvent>(Channel.UNLIMITED)
+    // [#411] 受信元リレー URL を添える（発行イベントに載せるリレーヒントの元）。
+    private val ingestChannel = Channel<Pair<NostrEvent, String>>(Channel.UNLIMITED)
 
     // ---- [NIP-42] AUTH ----
     /** AUTH 応答ポリシー（既定=自分/DMリレーのみ）。KV 永続。 */
@@ -2780,9 +2842,12 @@ class EventRepository(
 
     private fun onMessage(msg: RelayMessage, client: RelayClient) {
         when (msg) {
-            is RelayMessage.Event -> ingestChannel.trySend(msg.event)
+            is RelayMessage.Event -> ingestChannel.trySend(msg.event to client.url)
             // [NIP-42] AUTH 応答は relayDispatcher(直列)で処理し、チャレンジ重複応答を dedup する。
-            is RelayMessage.Auth -> scope.launch(relayDispatcher) { handleAuthChallenge(client, msg.challenge) }
+            is RelayMessage.Auth -> scope.launch(relayDispatcher) {
+                authRequestedRelays.add(normalizeRelayUrl(client.url))   // [#411] ヒントには出さない
+                handleAuthChallenge(client, msg.challenge)
+            }
             // [#17] EOSE = 蓄積イベント送信完了。どこか1リレーから来たらそのカラムを「読込済み」に。
             is RelayMessage.Eose -> columnLoadedState.value = columnLoadedState.value + msg.subscriptionId
             else -> {}
@@ -2802,20 +2867,30 @@ class EventRepository(
     private suspend fun ingestLoop() {
         val batch = ArrayList<NostrEvent>(INGEST_BATCH)
         val seen = HashSet<String>()
+        // [#411] このバッチの受信元。同じイベントが複数リレーから届いたら全部覚える（dedup 前に積む）。
+        val origins = ArrayList<Pair<NostrEvent, String>>(INGEST_BATCH)
         while (true) {
-            batch.clear(); seen.clear()
+            batch.clear(); seen.clear(); origins.clear()
             val first = ingestChannel.receive()
-            if (seen.add(first.id)) batch.add(first)
+            origins.add(first)
+            if (seen.add(first.first.id)) batch.add(first.first)
             // 連続到着分を短い窓でまとめる。
             withTimeoutOrNull(80) {
                 while (batch.size < INGEST_BATCH) {
                     val e = ingestChannel.receive()
-                    if (seen.add(e.id)) batch.add(e)
+                    origins.add(e)
+                    if (seen.add(e.first.id)) batch.add(e.first)
                 }
             }
-            withContext(Dispatchers.Default) {
+            val valid = withContext(Dispatchers.Default) {
                 val valid = batch.filter { EventCrypto.verify(it) }   // 重い署名検証は Default で
                 if (valid.isNotEmpty()) q.transaction { valid.forEach { runCatching { ingest(it) } } }
+                valid
+            }
+            // 署名の通ったものだけ受信元を記録（ヒントに使うのは表示できるイベントだけ）。
+            if (valid.isNotEmpty()) {
+                val ok = valid.mapTo(HashSet()) { it.id }
+                recordSeenOn(origins.filter { it.first.id in ok })
             }
         }
     }
@@ -4885,6 +4960,9 @@ class EventRepository(
 
         /** 引用/返信ヒント + インデクサで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 16
+
+        /** [#411] 受信元リレーの記録（event id / 著者）を保持する上限。画面に出ている分が入れば足りる。 */
+        const val SEEN_ON_CAP = 4096
 
         /** [#386] メモリに保持する他人の NIP-65 リレーリストの著者数上限。 */
         const val NIP65_PREFS_AUTHOR_CAP = 128

@@ -7,7 +7,8 @@ package app.nostrdeck.data
  * 「返信先イベントのタグ」→「返信に付けるタグ」の変換をここに切り出している。
  *
  * marked "e" タグの形は `["e", <event-id>, <relay-url>, <marker>, <pubkey>]`。
- * relay-url は空文字にしている（イベントの取得元リレーを保存していないため入れられない）。
+ * relay-url はここでは空文字の枠だけ置く。[#411] 実際のヒントは発行直前に Repository が
+ * [RelayHints.fill] で埋める（受信元リレーと著者の NIP-65 を見るのは Repository の仕事）。
  */
 object Nip10 {
 
@@ -89,7 +90,7 @@ object Nip10 {
 
     /**
      * marked "e" タグ1本。[author] が分かるときだけ5番目に入れる（受信側がルート作者を
-     * 解決しやすくなる）。relay-url は保持していないので常に空文字。
+     * 解決しやすくなる）。relay-url は空枠（発行時に [RelayHints.fill] が埋める）。
      */
     private fun eTag(id: String, marker: String, author: String?): List<String> =
         if (author.isNullOrEmpty()) listOf("e", id, "", marker)
