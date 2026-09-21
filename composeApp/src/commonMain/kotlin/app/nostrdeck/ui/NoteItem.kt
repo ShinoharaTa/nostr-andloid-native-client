@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -354,9 +355,20 @@ fun NoteItem(
                 Box {
                     ActionButton(Icons.Outlined.MoreHoriz, DeckColors.Text3, onClick = { moreMenu = true })
                     val note1 = remember(note.event.id) { runCatching { Nip19.hexToNote(note.event.id) }.getOrNull() }
-                    val nevent = remember(note.event.id) {
-                        runCatching { Nip19.hexToNevent(note.event.id, author = note.event.pubkey, kind = note.event.kind) }.getOrNull()
+                    // [#411] 共有用 nevent にはリレーヒントを1本入れる。ヒントの解決は Repository 側
+                    // （suspend）なので、まずヒント無しで出しておき、取れ次第差し替える。
+                    val neventState = produceState(
+                        runCatching { Nip19.hexToNevent(note.event.id, author = note.event.pubkey, kind = note.event.kind) }.getOrNull(),
+                        note.event.id,
+                    ) {
+                        val relays = runCatching { repo?.relayHintsFor(note.event.id) }.getOrNull().orEmpty()
+                        if (relays.isNotEmpty()) {
+                            runCatching {
+                                Nip19.hexToNevent(note.event.id, author = note.event.pubkey, relays = relays, kind = note.event.kind)
+                            }.getOrNull()?.let { value = it }
+                        }
                     }
+                    val nevent = neventState.value
                     val isBookmarked = note.event.id in bookmarks
                     val isPinned = note.event.id in pinned
                     val isMine = note.event.pubkey == me
