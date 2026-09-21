@@ -1,4 +1,3 @@
-- Reacting to a post inside Notifications now shows the pressed state right away
-- On phones, the bottom navigation clearly highlights the tab you're on
-- The Notifications button now takes you to your Notifications column (or the classic notifications screen if you don't have that column). The unread badge was removed
-- Cleaned up the side rail on foldables and tablets: same order as the bottom navigation, and the rail's column list now highlights the column you're viewing
+- Replies, quotes, reposts and reactions now carry a relay hint, so other clients can find the referenced post more reliably
+- Shared post links (nevent) now include a relay hint too
+- Quotes now reference the quoted post as nevent in the body
