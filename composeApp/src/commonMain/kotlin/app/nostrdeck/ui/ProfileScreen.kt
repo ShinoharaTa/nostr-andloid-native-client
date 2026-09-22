@@ -651,17 +651,24 @@ private fun ProfileHeaderCard(
     var showReport by remember { mutableStateOf(false) }
     var showZap by remember { mutableStateOf(false) }
     val muted = social?.muted == true
+    // [#413] タップで拡大表示する画像（null=閉）。アイコン/バナーのどちらも原寸 URL を渡す。
+    var zoomUrl by remember { mutableStateOf<String?>(null) }
+    val picture = profile?.pictureUrl?.takeIf { it.isNotBlank() }
+    val banner = profile?.banner?.takeIf { it.isNotBlank() }
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
         // --- バナー（kind:0 banner）の上にアバターを重ねる ---
         Box(Modifier.fillMaxWidth()) {
             Column {
-                ProfileBanner(profile?.banner)
+                ProfileBanner(profile?.banner, onClick = banner?.let { url -> { zoomUrl = url } })
                 Spacer(Modifier.height(DeckSpace.Xl))  // アバター下半分 + フォローボタンの帯
             }
-            // アバター: バナー下端に重ねる（リング付き）
+            // アバター: バナー下端に重ねる（リング付き）。
+            // clickable は clip の後に置く（リップルが円に収まる）。未設定（イニシャル表示）は押せない。
             Box(
                 Modifier.align(Alignment.BottomStart).padding(start = DeckSpace.Lg)
-                    .clip(CircleShape).background(DeckColors.Surface).padding(DeckSpace.Xs),
+                    .clip(CircleShape)
+                    .then(if (picture != null) Modifier.clickable { zoomUrl = picture } else Modifier)
+                    .background(DeckColors.Surface).padding(DeckSpace.Xs),
             ) {
                 Avatar(profile?.name ?: pubkey, profile?.pictureUrl, size = 72.dp, pubkey = pubkey)
             }
@@ -720,6 +727,7 @@ private fun ProfileHeaderCard(
                 if (isMe) DeckGhostButton(stringResource(Res.string.edit), onClick = onEdit) else FollowButton(following, onFollowToggle)
             }
         }
+        zoomUrl?.let { url -> Lightbox(listOf(url), 0) { zoomUrl = null } }
         // --- テキスト情報 ---
         Column(Modifier.fillMaxWidth().padding(start = DeckSpace.Lg, end = DeckSpace.Lg, top = DeckSpace.Sm, bottom = DeckSpace.Md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -941,16 +949,20 @@ private fun ProfileBadge(label: String) {
     )
 }
 
-/** kind:0 banner。あれば画像、無ければモノクロのプレースホルダ帯。 */
+/**
+ * kind:0 banner。あれば画像、無ければモノクロのプレースホルダ帯。
+ * [#413] [onClick] があればタップで拡大表示（未設定のプレースホルダ帯は押せない）。
+ */
 @Composable
-private fun ProfileBanner(url: String?) {
+private fun ProfileBanner(url: String?, onClick: (() -> Unit)? = null) {
     if (!url.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalPlatformContext.current)
                 .data(ImageProxy.proxied(url, width = 900, quality = 80, animated = true))
                 .crossfade(true).build(),
             contentDescription = "banner",
-            modifier = Modifier.fillMaxWidth().height(120.dp).background(DeckColors.Surface3),
+            modifier = Modifier.fillMaxWidth().height(120.dp).background(DeckColors.Surface3)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
             contentScale = ContentScale.Crop,
         )
     } else {
