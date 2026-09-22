@@ -185,9 +185,12 @@ private fun Thumb(
  *  - 1倍       : 横スワイプで前/次の画像（HorizontalPager）。
  *  - 拡大中     : 1本指ドラッグでパン（スワイプ量に追従）。端まで来てさらにドラッグすると前/次へ。
  *  - ダブルタップでズームのトグル、シングルタップ/×で閉じる。
+ *
+ * [#413] 投稿画像以外（プロフィールのアイコン/バナー）からも開く。渡す URL は
+ * **プロキシを通さない原寸**にすること（表示中のサムネ URL を渡すと拡大しても縮小画像のまま）。
  */
 @Composable
-private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit) {
+internal fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val pager = rememberPagerState(initialPage = startIndex.coerceIn(0, urls.size - 1)) { urls.size }
         val scope = rememberCoroutineScope()
