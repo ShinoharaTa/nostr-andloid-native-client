@@ -536,6 +536,9 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="dm_new_title">New message</string>
     <string name="dm_open">Open</string>
     <string name="dm_title">Messages</string>
+    <string name="dm_send_failed">Couldn't send the message</string>
+    <string name="dm_no_relays_warn">This person hasn't published DM relays, so the message may not reach them</string>
+    <string name="dm_empty">No conversations yet</string>
     <string name="feed_empty">No posts</string>
     <string name="feed_loading_older">Loading older posts…</string>
     <string name="feed_you_reacted">You reacted</string>

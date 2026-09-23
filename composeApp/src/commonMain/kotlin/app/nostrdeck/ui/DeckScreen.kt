@@ -472,12 +472,15 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
     when (spec.renderer) {
         ColumnRenderer.FEED -> {
             // 実データ対象のフィード種別はカラム=REQ で購読し DB Flow を表示。
-            // 通知/DM はログイン pubkey や復号が要るため当面は仮データ。
+            // 通知(#M10)/DM(#415) は専用描画へ振り分ける（素の REQ では取れないため）。
             val repo = LocalRepository.current
             // FOLLOWING は自分の kind:3（フォロー先）を authors にして購読・表示する。
             val isFollowingFeed = repo != null && spec.kind == ColumnKind.FOLLOWING
             val isProfile = repo != null && spec.kind == ColumnKind.PROFILE
             val isNotifications = repo != null && spec.kind == ColumnKind.NOTIFICATIONS
+            // [#415] DM は会話一覧を出す専用描画。gift wrap は event テーブルに無いので
+            // 素の FEED では永久に空になり、以前はここが仮データに落ちていた。
+            val isDm = spec.kind == ColumnKind.DM
             val isFavs = repo != null && spec.kind == ColumnKind.FAVS  // [#12] ふぁぼ欄
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             val profilePubkey = spec.filter.authors.firstOrNull()
@@ -543,6 +546,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [M10] 通知カラム（通知タブと同じ実データを Deck カラムで表示）。ミュートを適用。
                     NotificationsColumn(state, spec, modifier, listState, menu = menu,
                         mute = matcher, revealMuted = revealed)
+                }
+                isDm -> {
+                    // [#415] DM カラム（会話一覧。タップで DM 画面をその相手で開く）。
+                    DmColumn(state, spec, modifier, listState, menu = menu)
                 }
                 isFavs -> {
                     // [#12] ふぁぼ欄: 自分がリアクションした投稿を「あなたがリアクション」＋対象で表示。
