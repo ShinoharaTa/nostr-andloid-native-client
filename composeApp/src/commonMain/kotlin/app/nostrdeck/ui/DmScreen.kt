@@ -81,6 +81,8 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         val ids = (convos.map { it.pubkey } + listOfNotNull(selected?.pubkey)).distinct()
         if (ids.isNotEmpty()) repo?.fetchProfilesNow(ids)
     }
+    // [#416] 開いている会話は既読にする（全体ではなくその相手ぶんだけ）。
+    LaunchedEffect(state.dmThread) { state.dmThread?.let { repo?.markDmSeen(it) } }
     var showNew by remember { mutableStateOf(false) }
     TwoPane(
         isCompact = isCompact,

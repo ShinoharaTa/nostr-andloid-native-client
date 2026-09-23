@@ -1531,27 +1531,45 @@ class EventRepository(
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
 
     // ---- [#9] DM の未読（最終閲覧時刻方式）。[#405] 通知の未読カウントは廃止した ----
+    //
+    // [#416] 既読は**会話ごと**に持つ。以前はアプリ全体で1つの時刻しか無く、DM 画面を
+    // 開いた瞬間に全会話が既読になっていた（3人から来ていて1人ぶん読んでも残り2人も既読）。
+    // 会話ごとの記録が無い相手は [dmLastSeen]（初回起動時刻）を基準にする。これが無いと
+    // 過去の全 DM が未読として出る。
     private val dmLastSeen = MutableStateFlow(0L)
+    private val dmSeenByPeer = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     private fun loadUnreadSeen() {
         // 初回は「今」を既読基準にする（過去の全 DM でバッジが巨大化するのを防ぐ）。
         val now = currentUnixTime()
         dmLastSeen.value = q.getSetting(DM_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
             ?: now.also { q.putSetting(DM_LAST_SEEN, it.toString()) }
+        dmSeenByPeer.value = q.settingsByPrefix(DM_SEEN_PREFIX).executeAsList()
+            .mapNotNull { r -> r.value_.toLongOrNull()?.let { r.key.removePrefix(DM_SEEN_PREFIX) to it } }
+            .toMap()
     }
 
-    /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
+    /** 相手ごとの既読基準時刻（未記録なら初回起動時刻）。 */
+    private fun dmSeenOf(peer: String, byPeer: Map<String, Long>): Long =
+        byPeer[peer] ?: dmLastSeen.value
+
+    /** DM の未読件数（全会話の合計）。レール/ナビのバッジ用。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun dmUnreadFlow(): Flow<Int> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(0)
-        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen) { rows, seen ->
-            rows.count { it.pubkey != me && it.created_at > seen }
+        else combine(
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen, dmSeenByPeer,
+        ) { rows, _, byPeer ->
+            rows.count { it.pubkey != me && it.created_at > dmSeenOf(it.pubkey, byPeer) }
         }
     }
 
-    /** DM を既読にする（最終閲覧時刻を現在時刻に進める）。 */
-    fun markDmSeen() {
+    /** [#416] 指定の会話を既読にする（その相手ぶんだけ進める）。会話を開いたときに呼ぶ。 */
+    fun markDmSeen(peer: String) {
         val now = currentUnixTime()
-        if (now > dmLastSeen.value) { dmLastSeen.value = now; putSettingAsync(DM_LAST_SEEN, now.toString()) }
+        if (now <= (dmSeenByPeer.value[peer] ?: 0L)) return
+        dmSeenByPeer.value = dmSeenByPeer.value + (peer to now)
+        putSettingAsync(DM_SEEN_PREFIX + peer, now.toString())
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -4812,8 +4830,14 @@ class EventRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun dmConversationsFlow(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
-        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+        else combine(
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer,
+        ) { rows, profiles, seenByPeer ->
             val byPk = profiles.associateBy { it.pubkey }
+            // [#416] 相手ごとの未読数（相手の発言のうち、その会話の既読基準より新しいもの）。
+            val unreadByPeer = rows
+                .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer) }
+                .groupingBy { it.pubkey }.eachCount()
             val seen = LinkedHashSet<String>()
             rows.mapNotNull { row ->
                 val other = if (row.pubkey == me)
@@ -4827,6 +4851,7 @@ class EventRepository(
                     handle = p?.handle.orEmpty(),
                     lastMessage = row.content,
                     pictureUrl = p?.picture_url,
+                    unread = unreadByPeer[other] ?: 0,
                 )
             }
         }.flowOn(Dispatchers.Default)
@@ -5079,5 +5104,8 @@ class EventRepository(
 
         /** [#9] 通知/DM の最終閲覧時刻（未読件数算出用）の KV キー。 */
         const val DM_LAST_SEEN = "dm_last_seen"
+
+        /** [#416] 会話ごとの既読基準時刻（`dm_seen:<pubkey>` = unix 秒）。 */
+        const val DM_SEEN_PREFIX = "dm_seen:"
     }
 }
