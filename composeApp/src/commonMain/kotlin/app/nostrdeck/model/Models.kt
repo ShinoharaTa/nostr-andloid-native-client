@@ -193,7 +193,8 @@ data class CustomEmoji(val shortcode: String, val url: String)
 data class UsedEmoji(val content: String, val imageUrl: String?)
 
 /** [M10-notif] 通知の種別。 */
-enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP }
+// [#419] DM = 自分宛の NIP-17/NIP-04 メッセージ受信（復号後の kind:14）。
+enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP, DM }
 
 /**
  * [NIP-42] リレーの AUTH 要求への応答ポリシー。

@@ -1234,6 +1234,8 @@ class EventRepository(
                     // リポスト/返信はフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
                     NotificationKind.REPOST -> n.actor.pubkey !in followSet
                     NotificationKind.REPLY, NotificationKind.MENTION -> n.actor.pubkey !in followSet
+                    // [#419] DM 受信は相手がフォロー中かに関わらず出す（見逃すと困る種別）。
+                    NotificationKind.DM -> true
                     else -> false
                 }
             }
@@ -1637,6 +1639,9 @@ class EventRepository(
             ?.takeIf { it.kind.toInt() == 42 }
             ?.let { rootOf(parseTags(it.tags_json)) }
         return when (row.kind.toInt()) {
+            // [#419] DM 受信。対象ノートは無い。本文は載せない（通知欄/フォロー中TLは
+            // 主画面で肩越しに見えるため、中身は DM 画面の中だけに留める）。行の文言は UI 側。
+            14 -> NotificationUi(row.id, NotificationKind.DM, actor, row.created_at)
             9735 -> NotificationUi(
                 row.id, NotificationKind.ZAP, actor, row.created_at,
                 zapSats = zapAmountSats(tags), targetNoteId = target, targetSnippet = snippet, targetAuthor = targetAuthor,

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Repeat
@@ -92,8 +93,16 @@ fun NotificationsScreen(state: DeckState) {
 }
 
 /** 通知の対象を開く。対象が kind:42 ならパブリックチャットのそのチャンネルを、他はスレッドを開く。 */
-private fun openNotificationTarget(state: DeckState, n: NotificationUi) =
+private fun openNotificationTarget(state: DeckState, n: NotificationUi) {
+    // [#419] DM 通知は相手との会話を開く（対象ノートが無いので id でスレッドを開いても空になる）。
+    if (n.kind == NotificationKind.DM) {
+        state.clearDetail()
+        state.dmThread = n.actor.pubkey
+        state.navDest = app.nostrdeck.state.NavDest.DM
+        return
+    }
     openNotificationTarget(state, n.targetNoteId ?: n.id, n.targetChannelId)
+}
 
 private fun openNotificationTarget(state: DeckState, noteId: String, channelId: String?) {
     if (channelId != null) {
@@ -309,6 +318,12 @@ fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
                 }
+            } else if (n.kind == NotificationKind.DM) {
+                // [#419] DM は本文を載せない。タップで会話へ飛ぶ。
+                Text(
+                    stringResource(Res.string.notif_dm_received), color = DeckColors.Text2,
+                    fontSize = DeckType.Caption, fontWeight = DeckWeight.Body, maxLines = 1,
+                )
             } else {
                 val target = n.targetNote
                 if (target != null) {
@@ -351,6 +366,7 @@ private fun kindIcon(k: NotificationKind): ImageVector = when (k) {
     NotificationKind.REACTION -> Icons.Outlined.Favorite
     NotificationKind.REPOST -> Icons.Outlined.Repeat
     NotificationKind.ZAP -> Icons.Outlined.Bolt
+    NotificationKind.DM -> Icons.Outlined.MailOutline
 }
 
 private fun kindTint(k: NotificationKind): Color = when (k) {
@@ -358,6 +374,7 @@ private fun kindTint(k: NotificationKind): Color = when (k) {
     NotificationKind.REACTION -> DeckColors.Like
     NotificationKind.REPOST -> DeckColors.Boost  // テーマに馴染む控えめなグリーン
     NotificationKind.ZAP -> DeckColors.Zap
+    NotificationKind.DM -> DeckColors.Accent
 }
 
 private fun relativeTime(createdAt: Long): String {

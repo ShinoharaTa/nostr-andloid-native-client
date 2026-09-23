@@ -180,6 +180,7 @@
     <string name="notif_reaction">リアクション</string>
     <string name="notif_zap">Zap</string>
     <string name="notif_repost">リポスト</string>
+    <string name="notif_dm_received">メッセージが届きました</string>
     <string name="col_pin">固定</string>
     <string name="col_unpin">固定を解除</string>
     <string name="col_reorder">並べ替え</string>

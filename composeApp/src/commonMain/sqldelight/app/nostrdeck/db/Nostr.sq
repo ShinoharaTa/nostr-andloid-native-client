@@ -444,11 +444,13 @@ GROUP BY e.kind;
 
 -- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
 -- リアクション(kind7)・NIP-22 コメント(kind1111)[#380] を新しい順に。自分自身の操作は除外。
+-- [#419] 14 = 復号済み DM。受信分は pubkey=送信者(≠自分) / p=自分 なので既存条件に乗る
+-- （自分が送った DM は pubkey=自分 で除外される）。
 notificationsFor:
 SELECT DISTINCT event.* FROM event
 JOIN event_tag ON event.id = event_tag.event_id
 WHERE event_tag.tag = 'p' AND event_tag.value = :me
-  AND event.kind IN (1, 1111, 6, 16, 7, 9735)
+  AND event.kind IN (1, 1111, 6, 16, 7, 9735, 14)
   AND event.pubkey != :me
 ORDER BY event.created_at DESC
 LIMIT 200;
