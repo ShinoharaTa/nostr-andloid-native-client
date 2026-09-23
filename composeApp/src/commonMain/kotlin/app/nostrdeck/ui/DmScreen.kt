@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -45,6 +47,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.DmConversation
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -170,46 +173,106 @@ private fun DmList(
             ) { Icon(Icons.Outlined.Add, stringResource(Res.string.dm_new_title), tint = DeckColors.Text) }
         }
         HorizontalDivider(color = DeckColors.Border)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(convos, key = { it.pubkey }) { c ->
-                val active = c.pubkey == selectedPubkey
-                Row(
-                    Modifier.fillMaxWidth()
-                        .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
-                        .clickable { onSelect(c) }.padding(DeckSpace.Md, DeckSpace.Sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // [#382] アバターだけ個別に clickable（行タップ＝会話を開く、は据え置き）。
-                    // 40dp = DeckDimens.TouchTargetSm（実用最小のタッチ領域）を実寸で確保する。
-                    // 呼び出し側で clip すると [#378] 猫耳の先端が切れる（非にゃん時は Avatar が
-                    // 自分で丸く clip する）ので clip はせず、リップルだけ非クリップの円にする。
-                    Avatar(
-                        c.name, c.pictureUrl,
-                        modifier = Modifier.size(DeckDimens.TouchTargetSm)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = false, radius = DeckDimens.TouchTargetSm / 2),
-                                onClickLabel = stringResource(Res.string.open_profile),
-                            ) { onOpenProfile(c) },
-                        pubkey = c.pubkey,
-                    )
+        DmConversationRows(convos, selectedPubkey, onSelect, onOpenProfile)
+    }
+}
+
+/**
+ * [#415] 会話一覧の行（DM 画面と Deck の DM カラムで共有）。
+ * ヘッダは呼び出し側が用意する（画面は自前のタイトル行、カラムは [ColumnHeader]）。
+ */
+@Composable
+private fun DmConversationRows(
+    convos: List<DmConversation>,
+    selectedPubkey: String?,
+    onSelect: (DmConversation) -> Unit,
+    onOpenProfile: (DmConversation) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+) {
+    if (convos.isEmpty()) {
+        DetailPlaceholder(stringResource(Res.string.dm_empty))
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
+        items(convos, key = { it.pubkey }) { c ->
+            val active = c.pubkey == selectedPubkey
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(if (active) DeckColors.AccentWeak else DeckColors.Surface)
+                    .clickable { onSelect(c) }.padding(DeckSpace.Md, DeckSpace.Sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // [#382] アバターだけ個別に clickable（行タップ＝会話を開く、は据え置き）。
+                // 40dp = DeckDimens.TouchTargetSm（実用最小のタッチ領域）を実寸で確保する。
+                // 呼び出し側で clip すると [#378] 猫耳の先端が切れる（非にゃん時は Avatar が
+                // 自分で丸く clip する）ので clip はせず、リップルだけ非クリップの円にする。
+                Avatar(
+                    c.name, c.pictureUrl,
+                    modifier = Modifier.size(DeckDimens.TouchTargetSm)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = false, radius = DeckDimens.TouchTargetSm / 2),
+                            onClickLabel = stringResource(Res.string.open_profile),
+                        ) { onOpenProfile(c) },
+                    pubkey = c.pubkey,
+                )
+                Spacer(Modifier.width(DeckSpace.Sm))
+                Column(Modifier.weight(1f)) {
+                    Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+                        lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(c.lastMessage, color = DeckColors.Text2, fontSize = DeckType.Caption,
+                        lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (c.unread > 0) {
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    Column(Modifier.weight(1f)) {
-                        Text(c.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                            lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(c.lastMessage, color = DeckColors.Text2, fontSize = DeckType.Caption,
-                            lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (c.unread > 0) {
-                        Spacer(Modifier.width(DeckSpace.Sm))
-                        Box(
-                            Modifier.clip(CircleShape).background(DeckColors.Accent)
-                                .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("${c.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = DeckWeight.Name) }
-                    }
+                    Box(
+                        Modifier.clip(CircleShape).background(DeckColors.Accent)
+                            .padding(horizontal = DeckSpace.Xs, vertical = 1.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("${c.unread}", color = DeckColors.Bg, fontSize = DeckType.Micro, fontWeight = DeckWeight.Name) }
                 }
             }
         }
+    }
+}
+
+/**
+ * [#415] Deck の DM カラム。会話一覧を出し、タップで DM 画面をその相手で開く。
+ *
+ * 以前はここが仮データ（SampleData の架空ノート）を描いていた。gift wrap(kind:1059) は
+ * event テーブルに保存されない（復号して kind:14 で持つ）ので、素の FEED では永久に空になる。
+ * そのため通知カラムと同じく kind ごとの専用描画にし、購読も起動時の `dm_inbox` に任せる
+ * （カラム側から kinds=[1059] を購読すると全 gift wrap を引いてしまう）。
+ */
+@Composable
+fun DmColumn(
+    state: DeckState,
+    spec: ColumnSpec,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    onPin: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
+    menu: ColumnMenuActions? = null,
+) {
+    val repo = LocalRepository.current
+    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState(emptyList()).value
+    else SampleData.dmConversations
+    // 一覧の相手ぶんのアイコン/名前をまとめて解決する（DM 相手は接続中リレーに居ないことが多い）。
+    LaunchedEffect(convos.map { it.pubkey }) {
+        if (convos.isNotEmpty()) repo?.fetchProfilesNow(convos.map { it.pubkey })
+    }
+    Column(modifier.background(DeckColors.Surface)) {
+        ColumnHeader(
+            title = spec.title, subtitle = columnSubtitleFor(spec),
+            leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
+            onPin = onPin, onClose = onClose, menu = menu,
+        )
+        HorizontalDivider(color = DeckColors.Border)
+        DmConversationRows(
+            convos, selectedPubkey = state.dmThread,
+            onSelect = { state.clearDetail(); state.dmThread = it.pubkey; state.navDest = NavDest.DM },
+            onOpenProfile = { state.openProfile(it.pubkey) },
+            listState = listState,
+        )
     }
 }
