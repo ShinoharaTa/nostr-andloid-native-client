@@ -4725,13 +4725,28 @@ class EventRepository(
         indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
     }
 
+    /** [#417] DM 送信の結果。UI はこれを見てトーストを出す。 */
+    enum class DmSendResult {
+        /** 相手の DM リレーへ送れた。 */
+        SENT,
+
+        /** 送れたが、相手が kind:10050 を公開しておらず read リレーへのフォールバックになった。
+         *  相手がそのリレーを見ていなければ届かない。 */
+        SENT_NO_PEER_RELAYS,
+
+        /** 署名/暗号化/配信に失敗した。 */
+        FAILED,
+    }
+
     /**
      * DM を送る（NIP-17）。受信者宛＋自分宛の2通を gift wrap する。
      * NIP-17 仕様に従い、gift wrap は**受信者の kind:10050 リレー**へ（自分宛は自分の 10050 へ）配信。
      * 相手/自分の 10050 が未取得なら接続中の read リレーへフォールバックする。
+     *
+     * [#417] 結果を返す。以前は例外が呼び出し側で握り潰され、失敗しても送れたように見えていた。
      */
-    suspend fun sendDm(peerPubkey: String, text: String) {
-        if (text.isBlank()) return
+    suspend fun sendDm(peerPubkey: String, text: String): DmSendResult = runCatching {
+        if (text.isBlank()) return DmSendResult.FAILED
         val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
         val signer = SignerProvider.current()
         val now = currentUnixTime()
@@ -4750,10 +4765,16 @@ class EventRepository(
         processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
         // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
         val fallback = connectedReadRelays()
-        val peerRelays = fetchDmRelaysFor(peerPubkey).ifEmpty { fallback }
+        val peerDmRelays = fetchDmRelaysFor(peerPubkey)
+        val peerRelays = peerDmRelays.ifEmpty { fallback }
         val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
+        if (peerRelays.isEmpty()) return DmSendResult.FAILED   // 配信先が1つも無い
         publishToRelays(RelayProtocol.event(toPeer), peerRelays)
         publishToRelays(RelayProtocol.event(toSelf), myRelays)
+        if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
+    }.getOrElse {
+        println("Nostrism sendDm failed: $it")
+        DmSendResult.FAILED
     }
 
     // ---- NIP-17 DM リレーリスト（kind:10050） ----

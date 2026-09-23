@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -66,6 +67,10 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
     val names = LocalProfileNames.current
+    // [#417] 送信結果の通知。非コルーチン文脈から使うので文言は先に解決しておく。
+    val toast = rememberToaster()
+    val sendFailedMsg = stringResource(Res.string.dm_send_failed)
+    val noRelaysMsg = stringResource(Res.string.dm_no_relays_warn)
     // 実データ（NIP-17）: repo があれば復号済み DM、無ければ SampleData。
     val convos = if (repo != null) repo.dmConversationsFlow().collectAsState(emptyList()).value
     else SampleData.dmConversations
@@ -111,12 +116,16 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     messages = messages,
                     names = names,
                     // 実データ時のみ送信可能（NIP-17 gift wrap を発行）。
-                    // 送信中の例外（暗号/リレー I/O 等）が rememberCoroutineScope で未捕捉のまま
-                    // 伝播するとアプリごと落ちうるので、ここで握ってログに留める（無音失敗に留める）。
+                    // [#417] 結果をトーストで返す。以前はここで例外を握り潰していたため、
+                    // 失敗しても入力欄がクリアされ自分のバブルも出て、送れたように見えていた。
+                    // （例外を投げっぱなしにすると appScope 直下の未捕捉例外で落ちるので握るのは維持）
                     onSend = if (repo != null) ({ text, _ ->
                         scope.launch {
-                            runCatching { repo.sendDm(selected.pubkey, text) }
-                                .onFailure { println("Nostrism sendDm failed: $it") }
+                            when (repo.sendDm(selected.pubkey, text)) {
+                                EventRepository.DmSendResult.SENT -> Unit
+                                EventRepository.DmSendResult.SENT_NO_PEER_RELAYS -> toast(noRelaysMsg)
+                                EventRepository.DmSendResult.FAILED -> toast(sendFailedMsg)
+                            }
                         }
                     }) else null,
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
