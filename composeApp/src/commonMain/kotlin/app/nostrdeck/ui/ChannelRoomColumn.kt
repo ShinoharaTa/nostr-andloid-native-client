@@ -364,6 +364,13 @@ private fun MessageBubble(
             if (m.reactions.isNotEmpty()) {
                 ReactionRow(m.reactions, modifier = Modifier.padding(top = DeckSpace.Xs))
             }
+            // [#423] 相手の DM リレーの受理を確認できていない自分のメッセージ。タップで送り直す。
+            if (m.unsent && m.isMine && repo != null) {
+                Text(
+                    stringResource(Res.string.unsent_tap_retry), color = DeckColors.Warn, fontSize = DeckType.Micro,
+                    modifier = Modifier.padding(top = DeckSpace.Xs).clickable { repo.retryUnsentNow(m.event.id) },
+                )
+            }
         }
         if (mineRight) AvatarSlot(m)
     }
