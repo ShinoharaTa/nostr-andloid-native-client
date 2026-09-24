@@ -94,6 +94,8 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
     LaunchedEffect(state.dmThread, openUnread) {
         if (openUnread > 0) state.dmThread?.let { repo?.markDmSeen(it) }
     }
+    // [#417] 「相手が DM リレーを公開していない」警告は相手ごとに1回だけ（毎回出すと雑音になる）。
+    val warnedNoRelays = remember { mutableSetOf<String>() }
     var showNew by remember { mutableStateOf(false) }
     TwoPane(
         isCompact = isCompact,
@@ -127,9 +129,11 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     // （例外を投げっぱなしにすると appScope 直下の未捕捉例外で落ちるので握るのは維持）
                     onSend = if (repo != null) ({ text, _ ->
                         scope.launch {
-                            when (repo.sendDm(selected.pubkey, text)) {
+                            val peer = selected.pubkey
+                            when (repo.sendDm(peer, text)) {
                                 EventRepository.DmSendResult.SENT -> Unit
-                                EventRepository.DmSendResult.SENT_NO_PEER_RELAYS -> toast(noRelaysMsg)
+                                EventRepository.DmSendResult.SENT_NO_PEER_RELAYS ->
+                                    if (warnedNoRelays.add(peer)) toast(noRelaysMsg)
                                 EventRepository.DmSendResult.FAILED -> toast(sendFailedMsg)
                             }
                         }

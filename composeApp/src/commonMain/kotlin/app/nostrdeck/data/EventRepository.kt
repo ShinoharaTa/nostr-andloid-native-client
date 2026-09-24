@@ -43,6 +43,7 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.async
 import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
@@ -4754,37 +4755,60 @@ class EventRepository(
      * 相手/自分の 10050 が未取得なら接続中の read リレーへフォールバックする。
      *
      * [#417] 結果を返す。以前は例外が呼び出し側で握り潰され、失敗しても送れたように見えていた。
+     *
+     * 送信本体はアプリのスコープで走らせる。画面のスコープで走らせると、相手の DM リレーを
+     * 引いている最中（最大 2.5 秒）に画面を離れただけで送信が中断され、楽観挿入したバブルだけが
+     * 残っていた。呼び出し元が先にいなくなっても送信は最後まで進む（結果の通知だけが届かない）。
      */
-    suspend fun sendDm(peerPubkey: String, text: String): DmSendResult = runCatching {
+    suspend fun sendDm(peerPubkey: String, text: String): DmSendResult =
+        scope.async { sendDmNow(peerPubkey, text) }.await()
+
+    private suspend fun sendDmNow(peerPubkey: String, text: String): DmSendResult {
         if (text.isBlank()) return DmSendResult.FAILED
-        val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
-        val signer = SignerProvider.current()
-        val now = currentUnixTime()
-        val rumorTags = listOf(listOf("p", peerPubkey))
-        val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
-        val rumorJson = buildJsonObject {
-            put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
-            putJsonArray("tags") { rumorTags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
-            put("content", text)
-        }.toString()
-        // メタデータ曖昧化のため seal/wrap の created_at を直近2日内でランダム化（NIP-17）。
-        fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
-        val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
-        val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
-        storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
-        processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
-        // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
-        val fallback = connectedReadRelays()
-        val peerDmRelays = fetchDmRelaysFor(peerPubkey)
-        val peerRelays = peerDmRelays.ifEmpty { fallback }
-        val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
-        if (peerRelays.isEmpty()) return DmSendResult.FAILED   // 配信先が1つも無い
-        publishToRelays(RelayProtocol.event(toPeer), peerRelays)
-        publishToRelays(RelayProtocol.event(toSelf), myRelays)
-        if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
-    }.getOrElse {
-        println("Nostrism sendDm failed: $it")
-        DmSendResult.FAILED
+        // 楽観挿入した行。送れなかったときに戻す（送れていないのに履歴に残り続けないように）。
+        var storedId: String? = null
+        try {
+            val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+            val signer = SignerProvider.current()
+            val now = currentUnixTime()
+            val rumorTags = listOf(listOf("p", peerPubkey))
+            val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
+            val rumorJson = buildJsonObject {
+                put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
+                putJsonArray("tags") { rumorTags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
+                put("content", text)
+            }.toString()
+            // メタデータ曖昧化のため seal/wrap の created_at を直近2日内でランダム化（NIP-17）。
+            fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
+            val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
+            val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
+            storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
+            storedId = rumorId
+            processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
+            // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
+            val fallback = connectedReadRelays()
+            val peerDmRelays = fetchDmRelaysFor(peerPubkey)
+            val peerRelays = peerDmRelays.ifEmpty { fallback }
+            val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
+            if (peerRelays.isEmpty()) {   // 配信先が1つも無い
+                dropLocalDm(rumorId)
+                return DmSendResult.FAILED
+            }
+            publishToRelays(RelayProtocol.event(toPeer), peerRelays)
+            publishToRelays(RelayProtocol.event(toSelf), myRelays)
+            return if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
+        } catch (e: CancellationException) {
+            throw e   // キャンセルは失敗として握らない（協調キャンセルを壊さない）
+        } catch (e: Throwable) {
+            println("Nostrism sendDm failed: $e")
+            storedId?.let { dropLocalDm(it) }
+            return DmSendResult.FAILED
+        }
+    }
+
+    /** 楽観挿入した DM を取り消す（送れなかったもの）。削除リクエストではないので deleted_event には残さない。 */
+    private fun dropLocalDm(id: String) {
+        q.transaction { q.deleteTagsForEvent(id); q.deleteEventById(id) }
     }
 
     // ---- NIP-17 DM リレーリスト（kind:10050） ----
