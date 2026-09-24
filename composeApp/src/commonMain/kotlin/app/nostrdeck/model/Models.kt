@@ -306,6 +306,7 @@ data class ChannelMessage(
     val isMine: Boolean = false,
     val continuation: Boolean = false,  // 直前と同一著者なら頭をまとめる
     val reactions: List<ReactionUi> = emptyList(),  // このメッセージへの集約リアクション（NIP-25）
+    val unsent: Boolean = false,  // [#423] 自分の DM で、相手の DM リレーの受理を確認できていない（再送待ち）
 )
 
 /**

@@ -4863,6 +4863,10 @@ class EventRepository(
          *  相手がそのリレーを見ていなければ届かない。 */
         SENT_NO_PEER_RELAYS,
 
+        /** [#423] 送ったが、相手の DM リレーが受理したことを確認できなかった。未送信として残し、
+         *  復帰時・再接続時に送り直す（バブルに「未送信」が出る）。 */
+        PENDING,
+
         /** 署名/暗号化/配信に失敗した。 */
         FAILED,
     }
@@ -4912,8 +4916,23 @@ class EventRepository(
                 dropLocalDm(rumorId)
                 return DmSendResult.FAILED
             }
-            publishToRelays(RelayProtocol.event(toPeer), peerRelays)
-            publishToRelays(RelayProtocol.event(toSelf), myRelays)
+            // [#423] 未送信として積んでから送り、相手宛の受理を確認する。配信先は wrap ごとに決まって
+            // いるので一緒に持つ。相手宛は画面の行（rumor id）と対応させ、確認できなければバブルに
+            // 「未送信」が出る。自分宛（他端末への控え）は画面に出さず裏で確認・再送する。
+            val peerPayload = RelayProtocol.event(toPeer)
+            val selfPayload = RelayProtocol.event(toSelf)
+            q.transaction {
+                q.enqueuePublishTo(toPeer.id, peerPayload, now, 0, json.encodeToString(peerRelays), rumorId)
+                q.enqueuePublishTo(toSelf.id, selfPayload, now, 0, json.encodeToString(myRelays), null)
+            }
+            // 積んだあとは未送信として追跡・再送されるので、以降で例外が出てもバブルは消さない
+            // （消すと、裏で再送が成功しても手元に残らない）。
+            storedId = null
+            registerAck(toPeer.id); registerAck(toSelf.id)
+            publishToRelays(peerPayload, peerRelays)
+            publishToRelays(selfPayload, myRelays)
+            scope.launch { confirmPublish(toSelf.id, notify = false) }
+            if (!confirmPublish(toPeer.id, notify = false)) return DmSendResult.PENDING
             return if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
         } catch (e: CancellationException) {
             throw e   // キャンセルは失敗として握らない（協調キャンセルを壊さない）
@@ -5049,7 +5068,9 @@ class EventRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun dmMessagesFlow(peer: String): Flow<List<ChannelMessage>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
-        else combine(q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+        else combine(
+            q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow, unsentIdsFlow,
+        ) { rows, profiles, unsent ->
             val byPk = profiles.associateBy { it.pubkey }
             rows.mapIndexed { i, row ->
                 val prev = rows.getOrNull(i - 1)
@@ -5062,6 +5083,7 @@ class EventRepository(
                     ),
                     isMine = row.pubkey == me,
                     continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                    unsent = row.id in unsent,   // [#423] 相手宛の wrap の受理を確認できていない
                 )
             }
         }.flowOn(Dispatchers.Default)

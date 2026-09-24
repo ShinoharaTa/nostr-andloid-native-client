@@ -71,6 +71,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
     val toast = rememberToaster()
     val sendFailedMsg = stringResource(Res.string.dm_send_failed)
     val noRelaysMsg = stringResource(Res.string.dm_no_relays_warn)
+    val unconfirmedMsg = stringResource(Res.string.publish_unconfirmed)
     // 実データ（NIP-17）: repo があれば復号済み DM、無ければ SampleData。null = 読み込み前。
     val loaded = if (repo != null) repo.dmConversationsFlow().collectAsState().value
     else SampleData.dmConversations
@@ -134,6 +135,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                                 EventRepository.DmSendResult.SENT -> Unit
                                 EventRepository.DmSendResult.SENT_NO_PEER_RELAYS ->
                                     if (warnedNoRelays.add(peer)) toast(noRelaysMsg)
+                                EventRepository.DmSendResult.PENDING -> toast(unconfirmedMsg)   // [#423]
                                 EventRepository.DmSendResult.FAILED -> toast(sendFailedMsg)
                             }
                         }
