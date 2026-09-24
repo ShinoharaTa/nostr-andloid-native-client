@@ -1549,27 +1549,37 @@ class EventRepository(
             .toMap()
     }
 
-    /** 相手ごとの既読基準時刻（未記録なら初回起動時刻）。 */
-    private fun dmSeenOf(peer: String, byPeer: Map<String, Long>): Long =
-        byPeer[peer] ?: dmLastSeen.value
+    /** 相手ごとの既読基準時刻（未記録なら初回起動時刻 [firstSeen]）。 */
+    private fun dmSeenOf(peer: String, byPeer: Map<String, Long>, firstSeen: Long): Long =
+        byPeer[peer] ?: firstSeen
 
-    /** DM の未読件数（全会話の合計）。レール/ナビのバッジ用。 */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun dmUnreadFlow(): Flow<Int> = myPubkeyFlow.flatMapLatest { me ->
-        if (me == null) flowOf(0)
-        else combine(
-            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen, dmSeenByPeer,
-        ) { rows, _, byPeer ->
-            rows.count { it.pubkey != me && it.created_at > dmSeenOf(it.pubkey, byPeer) }
-        }
+    /**
+     * DM の未読件数（全会話の合計）。レール/ナビのバッジ用。
+     * 会話一覧（[dmConversationsFlow]）の unread を足すだけにして、未読の判定規則を1か所に保つ。
+     */
+    private val dmUnreadCache: StateFlow<Int> by lazy {
+        dmConversationsCache.map { list -> list?.sumOf { it.unread } ?: 0 }
+            .stateIn(scope, feedSharing, 0)
     }
+    fun dmUnreadFlow(): StateFlow<Int> = dmUnreadCache
 
-    /** [#416] 指定の会話を既読にする（その相手ぶんだけ進める）。会話を開いたときに呼ぶ。 */
+    /**
+     * [#416] 指定の会話を既読にする（その相手ぶんだけ進める）。会話を開いたとき・開いている
+     * 会話に新着が来たときに呼ぶ。
+     *
+     * 基準は「今」と「その相手の最新発言時刻」の大きいほう。相手の時計が進んでいると
+     * created_at が未来になり、今を基準にすると開いたのに未読のまま残るため。
+     */
     fun markDmSeen(peer: String) {
-        val now = currentUnixTime()
-        if (now <= (dmSeenByPeer.value[peer] ?: 0L)) return
-        dmSeenByPeer.value = dmSeenByPeer.value + (peer to now)
-        putSettingAsync(DM_SEEN_PREFIX + peer, now.toString())
+        val me = myPubkey ?: return
+        // UI から呼ばれるので DB 読み出しはメインスレッドから外す。
+        scope.launch(Dispatchers.Default) {
+            val newest = q.dmNewestFrom(peer, me).executeAsOneOrNull()?.newest ?: 0L
+            val mark = maxOf(currentUnixTime(), newest)
+            if (mark <= (dmSeenByPeer.value[peer] ?: 0L)) return@launch
+            dmSeenByPeer.value = dmSeenByPeer.value + (peer to mark)
+            putSettingAsync(DM_SEEN_PREFIX + peer, mark.toString())
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -4847,17 +4857,28 @@ class EventRepository(
         requestProfileFromIndexers(pubkeys)
     }
 
-    /** DM 会話一覧（相手ごとに最新1件）。 */
+    /**
+     * DM 会話一覧（相手ごとに最新1件）。null = まだ読み込んでいない（空と区別する）。
+     *
+     * DM 画面・Deck の DM カラム・レールのバッジが同時に購読するので、通知フィードと同じく
+     * 共有の StateFlow にする（[feedSharing]）。以前は呼び出しごとに Flow を作っており、
+     * DB クエリと相手ごとの集計が購読者の数だけ、プロフィール更新のたびに走っていた。
+     */
+    private val dmConversationsCache: StateFlow<List<DmConversation>?> by lazy {
+        buildDmConversations().stateIn(scope, feedSharing, null)
+    }
+    fun dmConversationsFlow(): StateFlow<List<DmConversation>?> = dmConversationsCache
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun dmConversationsFlow(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
+    private fun buildDmConversations(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
         else combine(
-            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer,
-        ) { rows, profiles, seenByPeer ->
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen,
+        ) { rows, profiles, seenByPeer, firstSeen ->
             val byPk = profiles.associateBy { it.pubkey }
             // [#416] 相手ごとの未読数（相手の発言のうち、その会話の既読基準より新しいもの）。
             val unreadByPeer = rows
-                .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer) }
+                .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer, firstSeen) }
                 .groupingBy { it.pubkey }.eachCount()
             val seen = LinkedHashSet<String>()
             rows.mapNotNull { row ->

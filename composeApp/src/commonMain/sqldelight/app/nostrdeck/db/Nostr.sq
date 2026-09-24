@@ -377,6 +377,12 @@ SELECT * FROM event WHERE kind = 14 AND (
   OR (pubkey = :peer AND id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :me))
 ) ORDER BY created_at ASC;
 
+-- [#416] 相手から自分宛の DM の最新時刻（会話を既読にするときの基準。相手の時計が進んでいても
+-- 開いた会話が未読のまま残らないように、今と比べて大きいほうを使う）。
+dmNewestFrom:
+SELECT MAX(created_at) AS newest FROM event WHERE kind = 14 AND pubkey = :peer
+  AND id IN (SELECT event_id FROM event_tag WHERE tag = 'p' AND value = :me);
+
 -- 自分が関与する全 DM（会話一覧の構築用。相手判定は Kotlin 側）。新しい順。
 dmAllForMe:
 SELECT * FROM event WHERE kind = 14 AND (

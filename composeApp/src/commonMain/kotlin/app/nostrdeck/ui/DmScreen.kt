@@ -71,9 +71,10 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
     val toast = rememberToaster()
     val sendFailedMsg = stringResource(Res.string.dm_send_failed)
     val noRelaysMsg = stringResource(Res.string.dm_no_relays_warn)
-    // 実データ（NIP-17）: repo があれば復号済み DM、無ければ SampleData。
-    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState(emptyList()).value
+    // 実データ（NIP-17）: repo があれば復号済み DM、無ければ SampleData。null = 読み込み前。
+    val loaded = if (repo != null) repo.dmConversationsFlow().collectAsState().value
     else SampleData.dmConversations
+    val convos = loaded.orEmpty()
     // 既存会話に無い相手（新規メッセージ）でもスレッドを開けるよう、無ければ即席の会話を作る。
     val selected = convos.firstOrNull { it.pubkey == state.dmThread }
         ?: state.dmThread?.let { pk ->
@@ -86,15 +87,20 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         val ids = (convos.map { it.pubkey } + listOfNotNull(selected?.pubkey)).distinct()
         if (ids.isNotEmpty()) repo?.fetchProfilesNow(ids)
     }
-    // [#416] 開いている会話は既読にする（全体ではなくその相手ぶんだけ）。
-    LaunchedEffect(state.dmThread) { state.dmThread?.let { repo?.markDmSeen(it) } }
+    // [#416] 開いている会話は既読にする（全体ではなくその相手ぶんだけ）。開いた時だけでなく、
+    // 開いている間に届いた新着も既読にする（見ている会話に未読が積まれないように）。
+    val openUnread = selected?.unread ?: 0
+    // 未読が無ければ何もしない（既読基準は既に全発言を覆っている。無駄な KV 書き込みを避ける）。
+    LaunchedEffect(state.dmThread, openUnread) {
+        if (openUnread > 0) state.dmThread?.let { repo?.markDmSeen(it) }
+    }
     var showNew by remember { mutableStateOf(false) }
     TwoPane(
         isCompact = isCompact,
         showDetail = state.dmThread != null,
         list = {
             DmList(
-                convos, selectedPubkey = state.dmThread,
+                loaded, selectedPubkey = state.dmThread,
                 onNew = { showNew = true },
                 onSelect = { state.dmThread = it.pubkey },
                 onOpenProfile = { state.openProfile(it.pubkey) },
@@ -165,7 +171,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
 
 @Composable
 private fun DmList(
-    convos: List<DmConversation>,
+    convos: List<DmConversation>?,
     selectedPubkey: String?,
     onNew: () -> Unit,
     onSelect: (DmConversation) -> Unit,
@@ -194,12 +200,15 @@ private fun DmList(
  */
 @Composable
 private fun DmConversationRows(
-    convos: List<DmConversation>,
+    convos: List<DmConversation>?,
     selectedPubkey: String?,
     onSelect: (DmConversation) -> Unit,
     onOpenProfile: (DmConversation) -> Unit,
     listState: LazyListState = rememberLazyListState(),
 ) {
+    // null = まだ読み込んでいない。ここで「まだ会話がありません」を出すと、会話がある人にも
+    // 一瞬だけ空表示が出てしまう。
+    if (convos == null) return
     if (convos.isEmpty()) {
         DetailPlaceholder(stringResource(Res.string.dm_empty))
         return
@@ -266,11 +275,12 @@ fun DmColumn(
     menu: ColumnMenuActions? = null,
 ) {
     val repo = LocalRepository.current
-    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState(emptyList()).value
+    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState().value
     else SampleData.dmConversations
     // 一覧の相手ぶんのアイコン/名前をまとめて解決する（DM 相手は接続中リレーに居ないことが多い）。
-    LaunchedEffect(convos.map { it.pubkey }) {
-        if (convos.isNotEmpty()) repo?.fetchProfilesNow(convos.map { it.pubkey })
+    val peers = convos.orEmpty().map { it.pubkey }
+    LaunchedEffect(peers) {
+        if (peers.isNotEmpty()) repo?.fetchProfilesNow(peers)
     }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
