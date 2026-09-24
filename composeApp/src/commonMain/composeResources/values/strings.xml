@@ -540,6 +540,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="connecting_6">Tuning into the frequency…</string>
     <string name="dm_select_conversation">Select a conversation</string>
     <string name="dm_new_title">New message</string>
+    <string name="dm_new_row">Send a new message</string>
     <string name="dm_open">Open</string>
     <string name="dm_title">Messages</string>
     <string name="unsent_label">Not sent</string>

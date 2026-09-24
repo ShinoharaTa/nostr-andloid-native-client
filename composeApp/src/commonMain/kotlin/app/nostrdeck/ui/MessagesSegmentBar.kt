@@ -42,10 +42,11 @@ import org.jetbrains.compose.resources.stringResource
  *
  * DM とルームを1本の一覧に混ぜないのは流量が違いすぎるため（活発なルームが常に上に浮き、
  * 数日に1通の DM が沈む）。未読管理は DM だけなので、件数は DM 側にだけ出す。
- * [trailing] は選んでいる側の操作（DM は新規メッセージの＋。チャットの作成は一覧の先頭行にある）。
+ * 新規作成（DM の新しいメッセージ・チャットのスレッド作成）はどちらも一覧の先頭行に置く。
+ * 以前は DM 側だけ切り替えの右に＋があり、DM とチャットを行き来するたびに切り替えの幅が変わっていた。
  */
 @Composable
-fun MessagesSegmentBar(state: DeckState, trailing: (@Composable () -> Unit)? = null) {
+fun MessagesSegmentBar(state: DeckState) {
     val repo = LocalRepository.current
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState() ?: remember { mutableStateOf(0) })
     Row(
@@ -67,7 +68,6 @@ fun MessagesSegmentBar(state: DeckState, trailing: (@Composable () -> Unit)? = n
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             ) { state.switchMessages(NavDest.CHANNELS) }
         }
-        trailing?.invoke()
     }
 }
 

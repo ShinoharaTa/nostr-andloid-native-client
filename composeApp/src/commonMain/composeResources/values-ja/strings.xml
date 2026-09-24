@@ -536,6 +536,7 @@
     <string name="connecting_6">波長を合わせています…</string>
     <string name="dm_select_conversation">会話を選択</string>
     <string name="dm_new_title">新しいメッセージ</string>
+    <string name="dm_new_row">新しいメッセージを送る</string>
     <string name="dm_open">開く</string>
     <string name="dm_title">メッセージ</string>
     <string name="unsent_label">未送信</string>
