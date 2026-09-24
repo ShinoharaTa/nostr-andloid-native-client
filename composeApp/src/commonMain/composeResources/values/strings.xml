@@ -10,6 +10,9 @@
     <string name="nav_public_chat">Public chat</string>
     <string name="nav_notifications">Notifications</string>
     <string name="nav_dm">DM</string>
+    <string name="nav_messages">Messages</string>
+    <string name="seg_dm">DM</string>
+    <string name="seg_chat">Chats</string>
     <string name="nav_add_column">Add column</string>
     <string name="settings_title">Settings</string>
 
