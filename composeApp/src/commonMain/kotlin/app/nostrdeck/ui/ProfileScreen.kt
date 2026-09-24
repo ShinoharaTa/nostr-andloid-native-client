@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -655,6 +657,7 @@ private fun ProfileHeaderCard(
     var zoomUrl by remember { mutableStateOf<String?>(null) }
     val picture = profile?.pictureUrl?.takeIf { it.isNotBlank() }
     val banner = profile?.banner?.takeIf { it.isNotBlank() }
+    val viewImageLabel = stringResource(Res.string.img_view)
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface)) {
         // --- バナー（kind:0 banner）の上にアバターを重ねる ---
         Box(Modifier.fillMaxWidth()) {
@@ -664,10 +667,18 @@ private fun ProfileHeaderCard(
             }
             // アバター: バナー下端に重ねる（リング付き）。
             // clickable は clip の後に置く（リップルが円に収まる）。未設定（イニシャル表示）は押せない。
+            // 押せないときもタップは**ここで受け止める**。リングの上 7 割ほどがバナーに重なっており、
+            // 何も付けないとタップが下のバナーへ抜けてバナーが拡大表示されてしまう。
             Box(
                 Modifier.align(Alignment.BottomStart).padding(start = DeckSpace.Lg)
                     .clip(CircleShape)
-                    .then(if (picture != null) Modifier.clickable { zoomUrl = picture } else Modifier)
+                    .then(
+                        if (picture != null) {
+                            Modifier.clickable(onClickLabel = viewImageLabel) { zoomUrl = picture }
+                        } else {
+                            Modifier.pointerInput(Unit) { detectTapGestures { } }
+                        },
+                    )
                     .background(DeckColors.Surface).padding(DeckSpace.Xs),
             ) {
                 Avatar(profile?.name ?: pubkey, profile?.pictureUrl, size = 72.dp, pubkey = pubkey)
@@ -962,7 +973,13 @@ private fun ProfileBanner(url: String?, onClick: (() -> Unit)? = null) {
                 .crossfade(true).build(),
             contentDescription = "banner",
             modifier = Modifier.fillMaxWidth().height(120.dp).background(DeckColors.Surface3)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(onClickLabel = stringResource(Res.string.img_view), onClick = onClick)
+                    } else {
+                        Modifier
+                    },
+                ),
             contentScale = ContentScale.Crop,
         )
     } else {
