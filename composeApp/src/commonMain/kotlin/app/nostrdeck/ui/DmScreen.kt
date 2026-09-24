@@ -103,7 +103,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         showDetail = state.dmThread != null,
         list = {
             DmList(
-                loaded, selectedPubkey = state.dmThread,
+                state, loaded, selectedPubkey = state.dmThread,
                 onNew = { showNew = true },
                 onSelect = { state.dmThread = it.pubkey },
                 onOpenProfile = { state.openProfile(it.pubkey) },
@@ -177,6 +177,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
 
 @Composable
 private fun DmList(
+    state: DeckState,
     convos: List<DmConversation>?,
     selectedPubkey: String?,
     onNew: () -> Unit,
@@ -184,12 +185,8 @@ private fun DmList(
     onOpenProfile: (DmConversation) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        Row(
-            Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(stringResource(Res.string.dm_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
-                modifier = Modifier.weight(1f))
+        // [#422] 見出しはメッセージ画面の「DM | チャット」切り替え。DM 側の操作（新規）は右端の＋。
+        MessagesSegmentBar(state) {
             Box(
                 Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onNew),
                 contentAlignment = Alignment.Center,

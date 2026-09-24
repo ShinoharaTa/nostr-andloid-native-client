@@ -6,6 +6,9 @@
     <string name="nav_public_chat">パブリックチャット</string>
     <string name="nav_notifications">通知</string>
     <string name="nav_dm">DM</string>
+    <string name="nav_messages">メッセージ</string>
+    <string name="seg_dm">DM</string>
+    <string name="seg_chat">チャット</string>
     <string name="nav_add_column">カラム追加</string>
     <string name="settings_title">設定</string>
 
