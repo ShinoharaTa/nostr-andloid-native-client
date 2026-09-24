@@ -326,9 +326,11 @@ fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit,
                     )
                 }
             } else if (n.kind == NotificationKind.DM) {
-                // [#419] DM は本文を載せない。タップで会話へ飛ぶ。
+                // [#419] DM は本文を載せない。1会話=1行なので未読件数を添える。タップで会話へ飛ぶ。
                 Text(
-                    stringResource(Res.string.notif_dm_received), color = DeckColors.Text2,
+                    if (n.dmUnread > 1) stringResource(Res.string.notif_dm_received_n, n.dmUnread)
+                    else stringResource(Res.string.notif_dm_received),
+                    color = DeckColors.Text2,
                     fontSize = DeckType.Caption, fontWeight = DeckWeight.Body, maxLines = 1,
                 )
             } else {

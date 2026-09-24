@@ -185,6 +185,7 @@
     <string name="notif_zap">Zaps</string>
     <string name="notif_repost">Reposts</string>
     <string name="notif_dm_received">Sent you a message</string>
+    <string name="notif_dm_received_n">Sent you %1$d messages</string>
     <string name="col_pin">Pin</string>
     <string name="col_unpin">Unpin</string>
     <string name="col_reorder">Reorder</string>

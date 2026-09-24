@@ -1593,9 +1593,11 @@ class EventRepository(
                 q.notificationsFor(me).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
                 noteMetaFlow,  // [#403] 自分の♡/リポスト状態。無いと通知内の投稿でボタン押下が反映されない
-            ) { rows, profiles, meta ->
+                dmConversationsCache,  // [#419] 未読のある DM 会話を1件ずつ混ぜる
+            ) { rows, profiles, meta, convos ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { toNotification(it, byPubkey, meta) }
+                (rows.map { toNotification(it, byPubkey, meta) } + dmNotices(convos.orEmpty()))
+                    .sortedByDescending { it.createdAt }
             }.flowOn(Dispatchers.Default)
         }
 
@@ -1639,9 +1641,6 @@ class EventRepository(
             ?.takeIf { it.kind.toInt() == 42 }
             ?.let { rootOf(parseTags(it.tags_json)) }
         return when (row.kind.toInt()) {
-            // [#419] DM 受信。対象ノートは無い。本文は載せない（通知欄/フォロー中TLは
-            // 主画面で肩越しに見えるため、中身は DM 画面の中だけに留める）。行の文言は UI 側。
-            14 -> NotificationUi(row.id, NotificationKind.DM, actor, row.created_at)
             9735 -> NotificationUi(
                 row.id, NotificationKind.ZAP, actor, row.created_at,
                 zapSats = zapAmountSats(tags), targetNoteId = target, targetSnippet = snippet, targetAuthor = targetAuthor,
@@ -4909,6 +4908,9 @@ class EventRepository(
             val unreadByPeer = rows
                 .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer, firstSeen) }
                 .groupingBy { it.pubkey }.eachCount()
+            // [#419] 相手の最新発言の時刻（rows は新しい順なので最初に出てきたもの）。
+            val lastIncomingByPeer = HashMap<String, Long>()
+            rows.forEach { r -> if (r.pubkey != me) lastIncomingByPeer.getOrPut(r.pubkey) { r.created_at } }
             val seen = LinkedHashSet<String>()
             rows.mapNotNull { row ->
                 val other = if (row.pubkey == me)
@@ -4923,6 +4925,7 @@ class EventRepository(
                     lastMessage = row.content,
                     pictureUrl = p?.picture_url,
                     unread = unreadByPeer[other] ?: 0,
+                    lastIncomingAt = lastIncomingByPeer[other] ?: 0L,
                 )
             }
         }.flowOn(Dispatchers.Default)

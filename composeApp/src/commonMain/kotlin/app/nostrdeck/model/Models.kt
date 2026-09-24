@@ -241,6 +241,8 @@ data class NotificationUi(
     val targetChannelId: String? = null,
     /** ZAP 通知の金額(sats)。 */
     val zapSats: Long? = null,
+    /** [#419] DM 通知の未読件数（1会話=1行にまとめているので件数を持つ）。 */
+    val dmUnread: Int = 0,
 )
 
 /**
@@ -292,6 +294,8 @@ data class DmConversation(
     val lastMessage: String,
     val pictureUrl: String? = null,
     val unread: Int = 0,
+    /** [#419] 相手の最新発言の created_at（DM 通知を時系列に並べる位置）。 */
+    val lastIncomingAt: Long = 0,
 )
 
 /** NIP-28 チャンネルメッセージ（kind:42）の表示用。チャット行。 */
