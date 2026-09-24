@@ -1,0 +1,15 @@
+-- v11 -> v12: [#423] 未送信の保持と再送。publish_queue に配信先と画面上の行の対応を持たせる。
+--  relays : 配信先を限定するときの JSON 配列（DM の gift wrap は相手の DM リレーへ送る）。null = 通常の配信先
+--  ref_id : 画面上の行の id（DM は rumor id）。null = event_id そのもの
+--
+-- 4.sqm と同じく、publish_queue は基底スキーマ(Nostr.sq)側のテーブルで migration 連鎖には
+-- 現れないため、旧定義で CREATE IF NOT EXISTS して検証コンテキストに用意してから ALTER する。
+-- 実機の既存DBには publish_queue が既に在るので CREATE はスキップされ、ALTER のみ効く。
+CREATE TABLE IF NOT EXISTS publish_queue (
+    event_id    TEXT NOT NULL PRIMARY KEY,
+    payload     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE publish_queue ADD COLUMN relays TEXT;
+ALTER TABLE publish_queue ADD COLUMN ref_id TEXT;

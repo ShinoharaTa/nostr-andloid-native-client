@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -182,7 +183,8 @@ fun FollowingFeedColumn(
     onReply: (NoteUi) -> Unit = {},
     onQuote: (NoteUi) -> Unit = {},
     onAuthorClick: (String) -> Unit = {},
-    onNoticeClick: (String) -> Unit = {},
+    /** [#419] 通知行のタップ。種別ごとの行き先は [openNotificationTarget] で決めるので行ごと渡す。 */
+    onNoticeClick: (NotificationUi) -> Unit = {},
     onRefresh: (() -> Unit)? = null,   // [#53] プルリフレッシュ（非nullで有効。REQ張り直し）
     selectedIndex: Int = -1,           // [#14] キーボード選択中のインデックス（-1=なし）
 ) {
@@ -211,7 +213,7 @@ fun FollowingFeedColumn(
                         )
                         is FeedEntry.Notice -> NoticeRow(
                             entry.notif,
-                            onClick = { onNoticeClick(entry.notif.targetNoteId ?: entry.notif.id) },
+                            onClick = { onNoticeClick(entry.notif) },
                             onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
                         )
                         is FeedEntry.MyReaction -> MyReactionRow(
