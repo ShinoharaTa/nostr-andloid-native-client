@@ -25,8 +25,9 @@ DELETE FROM event;
 -- [M15] 起動時のタイムライン・キャッシュ解放。過去TLは溜め込まずリレーから読み直す。
 -- [#211] DM(kind:14) と kind:0(プロフィール, 更新頻度が低い) は残す。プロフィールは別テーブルに
 -- dedup 保存もされるが、event 側の kind:0 も保持して起動直後のプロフィール解決を軽くする。
+-- [#423] 未送信（publish_queue にあるもの）は残す。消すと画面から消え、再送も下書きへの戻しもできない。
 clearTimelineEvents:
-DELETE FROM event WHERE kind NOT IN (14, 0);
+DELETE FROM event WHERE kind NOT IN (14, 0) AND id NOT IN (SELECT event_id FROM publish_queue);
 
 -- タイムライン消去後に残ったイベントに紐づかない孤児タグを掃除する（DMのpタグは残る）。
 clearOrphanTags:
@@ -197,20 +198,50 @@ CREATE TABLE relay_status (
     supports_negentropy INTEGER NOT NULL DEFAULT 0  -- NIP-77
 );
 
--- ============ publish_queue: オフライン時の送信保留 ============
+-- ============ publish_queue: 未送信の保持（リレーの受理待ち・再送待ち） ============
+-- [#423] 送信したら積み、どれかのリレーが OK を返したら取り除く。受理を確認できなかったら
+-- attempts を増やして残し、復帰時・再接続時に同じ署名済みイベントを送り直す（同じ id なので
+-- 二重投稿にならない）。attempts = 0 は初回の確認待ち（画面には「未送信」を出さない）。
 CREATE TABLE publish_queue (
     event_id    TEXT NOT NULL PRIMARY KEY,
     payload     TEXT NOT NULL,      -- 署名済みイベント JSON
     created_at  INTEGER NOT NULL,
-    attempts    INTEGER NOT NULL DEFAULT 0
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    relays      TEXT,               -- [#423] 配信先を限定するときの JSON 配列（DM の gift wrap）。null = 通常の配信先
+    ref_id      TEXT                -- [#423] 画面上の行の id（DM は rumor id）。null = event_id そのもの
 );
 
 enqueuePublish:
 INSERT OR REPLACE INTO publish_queue(event_id, payload, created_at, attempts)
 VALUES (?, ?, ?, ?);
 
+-- [#423] 配信先・画面上の行を指定して積む（DM の gift wrap）。
+enqueuePublishTo:
+INSERT OR REPLACE INTO publish_queue(event_id, payload, created_at, attempts, relays, ref_id)
+VALUES (?, ?, ?, ?, ?, ?);
+
 pendingPublishes:
 SELECT * FROM publish_queue ORDER BY created_at ASC;
+
+-- [#423] 受理を確認できたので取り除く。
+dequeuePublish:
+DELETE FROM publish_queue WHERE event_id = ?;
+
+-- [#423] 受理を確認できなかった（未送信として残す）。
+bumpPublishAttempts:
+UPDATE publish_queue SET attempts = attempts + 1 WHERE event_id = ?;
+
+-- [#423] 起動時: 前回の確認待ち(attempts=0)のまま終了した分を、再送の対象に入れる。
+promoteOrphanPublishes:
+UPDATE publish_queue SET attempts = 1 WHERE attempts = 0;
+
+-- [#423] 画面上で「未送信」と出す行の id（確認待ちの間は含めない）。
+unsentLocalIds:
+SELECT DISTINCT COALESCE(ref_id, event_id) AS local_id FROM publish_queue WHERE attempts > 0;
+
+-- [#423] 画面上の行の id から、送り直す未送信を引く（DM は相手宛の wrap）。
+publishesByLocalId:
+SELECT * FROM publish_queue WHERE COALESCE(ref_id, event_id) = ?;
 
 -- カラムのフィードを created_at 降順で読む（since 以降の差分取得にも流用）
 feedByAuthors:

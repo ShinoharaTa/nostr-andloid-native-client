@@ -535,6 +535,12 @@
     <string name="dm_new_title">新しいメッセージ</string>
     <string name="dm_open">開く</string>
     <string name="dm_title">メッセージ</string>
+    <string name="unsent_label">未送信</string>
+    <string name="unsent_retry">再送</string>
+    <string name="unsent_to_draft">下書きに戻す</string>
+    <string name="unsent_moved_to_draft">下書きに戻しました</string>
+    <string name="unsent_tap_retry">未送信・タップで再送</string>
+    <string name="publish_unconfirmed">送信を確認できませんでした。接続が戻ったら自動で再送します</string>
     <string name="dm_send_failed">メッセージを送れませんでした</string>
     <string name="dm_no_relays_warn">相手がDMリレーを公開していないため、届かない可能性があります</string>
     <string name="dm_empty">まだ会話がありません</string>

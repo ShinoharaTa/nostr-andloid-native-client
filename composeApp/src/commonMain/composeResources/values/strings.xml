@@ -539,6 +539,12 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="dm_new_title">New message</string>
     <string name="dm_open">Open</string>
     <string name="dm_title">Messages</string>
+    <string name="unsent_label">Not sent</string>
+    <string name="unsent_retry">Retry</string>
+    <string name="unsent_to_draft">Move to draft</string>
+    <string name="unsent_moved_to_draft">Moved to draft</string>
+    <string name="unsent_tap_retry">Not sent · tap to retry</string>
+    <string name="publish_unconfirmed">Couldn't confirm sending. It will be retried when you're back online.</string>
     <string name="dm_send_failed">Couldn't send the message</string>
     <string name="dm_no_relays_warn">This person hasn't published DM relays, so the message may not reach them</string>
     <string name="dm_empty">No conversations yet</string>

@@ -126,6 +126,7 @@ data class NoteUi(
     val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
     val mineReaction: ReactionUi? = null, // 自分が付けたリアクション（非♡ならその絵文字をボタンに表示）
     val mineReposted: Boolean = false, // [M8-counts] 自分がリポスト済み
+    val unsent: Boolean = false,       // [#423] 自分の投稿で、リレーの受理を確認できていない（再送待ち）
     val isReply: Boolean = false,      // [M9-profile] kind:1 が #e を持つ返信か（プロフィールのタブ振り分け用）
     val customEmojis: Map<String, String> = emptyMap(), // [M10] NIP-30 本文カスタム絵文字 shortcode→画像URL
     val imeta: Map<String, ImetaInfo> = emptyMap(),     // [#140] NIP-92 メディアURL→(thumb/dim/blurhash)。プレースホルダ用
