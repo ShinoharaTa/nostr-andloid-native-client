@@ -515,6 +515,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                                 NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
                                 NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
                                 NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
+                                NotificationKind.DM -> FeedNoticeCategory.DMS  // [#419]
                                 else -> null
                             }
                             is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS

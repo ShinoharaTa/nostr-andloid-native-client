@@ -198,6 +198,7 @@
     <string name="cat_replies_to_me">自分への返信・メンション</string>
     <string name="cat_reposts_of_me">自分へのリポスト</string>
     <string name="cat_my_reactions">自分がしたリアクション</string>
+    <string name="cat_dms">未読のメッセージ</string>
     <string name="col_width">カラム幅</string>
     <string name="width_narrow">狭</string>
     <string name="width_default">標準</string>

@@ -207,7 +207,7 @@ enum class AuthPolicy { OFF, DM_AND_MINE, ALWAYS }
  * REACTIONS=自分へのリアクション / REPLIES=自分への返信・メンション / REPOSTS=自分へのリポスト /
  * MY_REACTIONS=自分がしたリアクション。
  */
-enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS }
+enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS, DMS }
 
 /**
  * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。

@@ -202,6 +202,7 @@
     <string name="cat_replies_to_me">Replies &amp; mentions to you</string>
     <string name="cat_reposts_of_me">Reposts of your posts</string>
     <string name="cat_my_reactions">Your reactions</string>
+    <string name="cat_dms">Unread messages</string>
     <string name="col_width">Column width</string>
     <string name="width_narrow">Narrow</string>
     <string name="width_default">Default</string>
