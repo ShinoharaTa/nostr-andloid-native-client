@@ -2452,6 +2452,21 @@ class EventRepository(
 
     // ---- [#423] 送信の受理確認（NIP-01 OK）と未送信の再送 ----
 
+    /**
+     * 自分が送ったイベントがリレーから返ってきたら、それも受理の証拠とみなす。
+     * NIP-01 はリレーに OK を返すよう求めているが、返さないリレーもある。そういうリレーだけに
+     * 書いている人は、届いているのに毎回「未送信」になってしまう。
+     *  - 待っている id なら受理として記録（[recordAck] は待っていない id を無視する）
+     *  - 自分のイベントなら未送信からも外す（再起動をまたいで待っていない分）
+     */
+    private fun confirmByEcho(origins: List<Pair<NostrEvent, String>>) {
+        val me = myPubkey
+        origins.forEach { (e, url) ->
+            recordAck(e.id, url)
+            if (e.pubkey == me) q.dequeuePublish(e.id)
+        }
+    }
+
     /** 受理を待っている event id → 受理したリレー。待っていない id の OK は記録しない。 */
     private val ackWaiters = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
@@ -3044,6 +3059,7 @@ class EventRepository(
             if (valid.isNotEmpty()) {
                 val ok = valid.mapTo(HashSet()) { it.id }
                 recordSeenOn(origins.filter { it.first.id in ok })
+                confirmByEcho(origins.filter { it.first.id in ok })
             }
         }
     }
