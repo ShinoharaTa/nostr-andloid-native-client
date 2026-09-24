@@ -2569,9 +2569,17 @@ class EventRepository(
     /** 未接続の write 専用リレーへ一時接続で1イベントを配信する（購読なし・送信後に閉じる）。 */
     private suspend fun publishTransient(url: String, payload: String) {
         val c = RelayClient(url, scope)
+        // [#423] 一時接続でも OK を拾う。以前は受信を誰も読んでおらず、書き込み専用リレーや
+        // 相手の DM リレー（ほぼ常に一時接続）の受理が見えなかった。DM は毎回「未送信」になっていた。
+        val okJob = scope.launch {
+            c.messages.collect { m ->
+                if (m is RelayMessage.Ok && PublishAck.isAccepted(m.accepted, m.message)) recordAck(m.eventId, c.url)
+            }
+        }
         c.start()
         c.publish(payload)  // outgoing は BUFFERED。接続確立後にフラッシュされる。
-        delay(8_000)         // 送信フレームを流す猶予を取ってから閉じる。
+        delay(PublishAck.TIMEOUT_MS)   // 受理を待つ間は開けておく（送信フレームを流す猶予も兼ねる）
+        okJob.cancel()
         c.stop()
     }
 
