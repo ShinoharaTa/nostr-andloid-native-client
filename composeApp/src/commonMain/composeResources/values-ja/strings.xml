@@ -6,6 +6,9 @@
     <string name="nav_public_chat">パブリックチャット</string>
     <string name="nav_notifications">通知</string>
     <string name="nav_dm">DM</string>
+    <string name="nav_messages">メッセージ</string>
+    <string name="seg_dm">DM</string>
+    <string name="seg_chat">チャット</string>
     <string name="nav_add_column">カラム追加</string>
     <string name="settings_title">設定</string>
 
@@ -180,6 +183,8 @@
     <string name="notif_reaction">リアクション</string>
     <string name="notif_zap">Zap</string>
     <string name="notif_repost">リポスト</string>
+    <string name="notif_dm_received">メッセージが届きました</string>
+    <string name="notif_dm_received_n">%1$d件のメッセージが届いています</string>
     <string name="col_pin">固定</string>
     <string name="col_unpin">固定を解除</string>
     <string name="col_reorder">並べ替え</string>
@@ -196,6 +201,7 @@
     <string name="cat_replies_to_me">自分への返信・メンション</string>
     <string name="cat_reposts_of_me">自分へのリポスト</string>
     <string name="cat_my_reactions">自分がしたリアクション</string>
+    <string name="cat_dms">未読のメッセージ</string>
     <string name="col_width">カラム幅</string>
     <string name="width_narrow">狭</string>
     <string name="width_default">標準</string>
@@ -532,8 +538,18 @@
     <string name="connecting_6">波長を合わせています…</string>
     <string name="dm_select_conversation">会話を選択</string>
     <string name="dm_new_title">新しいメッセージ</string>
+    <string name="dm_new_row">新しいメッセージを送る</string>
     <string name="dm_open">開く</string>
     <string name="dm_title">メッセージ</string>
+    <string name="unsent_label">未送信</string>
+    <string name="unsent_retry">再送</string>
+    <string name="unsent_to_draft">下書きに戻す</string>
+    <string name="unsent_moved_to_draft">下書きに戻しました</string>
+    <string name="unsent_tap_retry">未送信・タップで再送</string>
+    <string name="publish_unconfirmed">送信を確認できませんでした。接続が戻ったら自動で再送します</string>
+    <string name="dm_send_failed">メッセージを送れませんでした</string>
+    <string name="dm_no_relays_warn">相手がDMリレーを公開していないため、届かない可能性があります</string>
+    <string name="dm_empty">まだ会話がありません</string>
     <string name="feed_empty">投稿がありません</string>
     <string name="feed_loading_older">過去を読み込み中…</string>
     <string name="feed_you_reacted">あなたがリアクション</string>

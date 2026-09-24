@@ -1,0 +1,19 @@
+-- v12 -> v13: [#423] 受理確認より前に積まれた publish_queue を一度だけ捨てる（データのみの移行）。
+--
+-- 受理確認（#423）より前は、送信するたびに publish_queue へ積むだけで一度も取り除いていなかった。
+-- そのまま新しい仕組みに載せると、起動時に「前回の確認待ちのまま終了した分」とみなされて全件が
+-- 「未送信」になり、起動時のタイムライン消去からも外れて、過去の自分の投稿が全部「未送信」付きで
+-- 残ってしまう（rc2 で実際に起きた）。これらは当時の送信で届いているはずで、どれが本当に
+-- 届いていないかは分からないので、まとめて捨てる。
+--
+-- 4.sqm / 11.sqm と同じく、基底スキーマ側のテーブルは現行定義で CREATE IF NOT EXISTS して
+-- 検証コンテキストに用意する（実機の既存DBでは CREATE はスキップされ、DELETE のみ効く）。
+CREATE TABLE IF NOT EXISTS publish_queue (
+    event_id    TEXT NOT NULL PRIMARY KEY,
+    payload     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    relays      TEXT,
+    ref_id      TEXT
+);
+DELETE FROM publish_queue;

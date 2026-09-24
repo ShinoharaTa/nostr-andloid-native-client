@@ -69,11 +69,13 @@ fun ChannelListColumn(
     onCreateChannel: ((name: String, about: String, picture: String?) -> Unit)? = null,
     ownedChannelIds: Set<String> = emptySet(),
     onEditChannel: ((channelId: String, name: String, about: String, picture: String?) -> Unit)? = null,
+    /** [#422] 非null なら見出しの代わりに描く（メッセージ画面の「DM | チャット」切り替え）。 */
+    header: (@Composable () -> Unit)? = null,
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Channel?>(null) }
     Column(modifier.background(DeckColors.Surface)) {
-        ColumnHeader(
+        if (header != null) header() else ColumnHeader(
             title = spec.title, subtitle = columnSubtitleFor(spec),
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
@@ -82,7 +84,7 @@ fun ChannelListColumn(
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             if (onCreateChannel != null) {
                 item(key = "create_channel") {
-                    CreateChannelRow { showCreate = true }
+                    ListCreateRow(stringResource(Res.string.channel_create_row)) { showCreate = true }
                     HorizontalDivider(color = DeckColors.Border)
                 }
             }
@@ -113,7 +115,11 @@ fun ChannelListColumn(
 
 /** [#291] 一覧先頭の「＋ 新しいスレッドを作成」行。 */
 @Composable
-private fun CreateChannelRow(onClick: () -> Unit) {
+/**
+ * 一覧の先頭に置く「＋ 作成」行。チャットの「新しいスレッドを作成」と、[#422] DM の
+ * 「新しいメッセージを送る」で共有する（メッセージ画面の両側で操作の置き場所をそろえる）。
+ */
+internal fun ListCreateRow(label: String, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
             .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Md),
@@ -122,7 +128,7 @@ private fun CreateChannelRow(onClick: () -> Unit) {
         Icon(Icons.Outlined.Add, null, tint = DeckColors.Accent, modifier = Modifier.size(DeckDimens.IconMd))
         Spacer(Modifier.width(DeckSpace.Md))
         Text(
-            stringResource(Res.string.channel_create_row),
+            label,
             color = DeckColors.Accent, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
         )
     }

@@ -25,7 +25,6 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,8 +43,8 @@ import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.nav_add_column
 import nostr_deck_client.composeapp.generated.resources.nav_home
+import nostr_deck_client.composeapp.generated.resources.nav_messages
 import nostr_deck_client.composeapp.generated.resources.nav_notifications
-import nostr_deck_client.composeapp.generated.resources.nav_public_chat
 import nostr_deck_client.composeapp.generated.resources.nav_search
 import org.jetbrains.compose.resources.stringResource
 import app.nostrdeck.theme.DeckColors
@@ -66,15 +65,14 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
-    // [#9] DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
+    // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
+    // （ここで DM 画面に居るだけで既読にすると、読んでいない会話まで消えていた）。
+    // [#422] 件数は「メッセージ」に出す。
     // [#405] 通知の未読バッジは廃止（通知はカラムに一本化、ナビの「通知」はカラムへのジャンプ）。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    LaunchedEffect(state.navDest, dmUnread) {
-        if (state.navDest == NavDest.DM && dmUnread > 0) repo?.markDmSeen()
-    }
     Column(
         Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -92,7 +90,8 @@ fun DeckRail(state: DeckState) {
                 AppMark(Modifier.size(DeckDimens.RailMark))
             }
             // [#409] 現在のカラムは下の目次側で点灯させる（選択箇所は常に1つ）。
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.clearDetail(); state.navDest = NavDest.HOME }
+            // [#422] ホームは必ずフォロー中へ（最後に見ていたカラムではなく）。
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.openHome() }
         }
 
         RailDivider()
@@ -106,6 +105,8 @@ fun DeckRail(state: DeckState) {
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
             state.pinnedColumns.forEach { col ->
+                // [#422] 未読 DM の件数は「メッセージ」にだけ出す（DM カラムのアイコンには出さない。
+                // 同じ数字を2か所に出さない＝#405 の「同じベルを2つ並べない」と同じ考え方）。
                 PinnedShortcut(col, active = state.navDest == NavDest.HOME && col.id == state.visibleColumnId) {
                     state.clearDetail(); state.jumpTo(col.id)
                 }
@@ -119,16 +120,16 @@ fun DeckRail(state: DeckState) {
 
         RailDivider()
 
-        // ── 中段固定: 検索・パブリックチャット・通知（下部ナビと同順） ──
-        // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
+        // ── 中段固定: 検索・メッセージ・通知（下部ナビと同順） ──
+        // [#422] DM とパブリックチャットは「メッセージ」にまとめる（未読 DM の件数もここに出す）。
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
             NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
-                state.clearDetail(); state.navDest = NavDest.CHANNELS
+            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_messages), state.messagesActive, badge = dmUnread) {
+                state.openMessages(dmUnread)
             }
             // [#405][#409] 通知カラムがあるときは目次のベルがその役を担う（同じベルを2つ並べない）。
             // 通知カラムを表示していないユーザーだけ、ここから従来の通知画面を開く。
