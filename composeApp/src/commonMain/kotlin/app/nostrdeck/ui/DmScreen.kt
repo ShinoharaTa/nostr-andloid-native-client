@@ -119,7 +119,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     spec = ColumnSpec(
                         id = "dm_${selected.pubkey}", title = selected.name, subtitle = selected.handle,
                         kind = ColumnKind.DM, renderer = ColumnRenderer.ROOM,
-                        filter = ReqFilter(kinds = listOf(1059)),
+                        filter = ReqFilter(kinds = listOf(14)),   // [#415] 表示は復号後の kind:14
                     ),
                     messages = messages,
                     names = names,
