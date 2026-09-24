@@ -68,6 +68,16 @@ class DeckState(
      */
     var visibleColumnId by mutableStateOf<String?>(null)
 
+    /**
+     * [#422] 「ホーム」ナビのタップ。フォロー中カラムへジャンプし、無ければ先頭カラムへ。
+     * 以前は「最後に見ていたカラム」に戻るだけで、フォロー中へ一発で戻る手段が無かった。
+     */
+    fun openHome() {
+        clearDetail()
+        val target = columns.firstOrNull { it.kind == ColumnKind.FOLLOWING }?.id ?: columns.firstOrNull()?.id
+        if (target != null) jumpTo(target) else navDest = NavDest.HOME
+    }
+
     /** [#405] 通知カラム（あれば）。「通知」ナビのジャンプ先。 */
     val notificationsColumnId: String? get() = columns.firstOrNull { it.kind == ColumnKind.NOTIFICATIONS }?.id
 

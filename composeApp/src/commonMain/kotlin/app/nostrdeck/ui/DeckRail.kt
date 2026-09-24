@@ -90,7 +90,8 @@ fun DeckRail(state: DeckState) {
                 AppMark(Modifier.size(DeckDimens.RailMark))
             }
             // [#409] 現在のカラムは下の目次側で点灯させる（選択箇所は常に1つ）。
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.clearDetail(); state.navDest = NavDest.HOME }
+            // [#422] ホームは必ずフォロー中へ（最後に見ていたカラムではなく）。
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.openHome() }
         }
 
         RailDivider()

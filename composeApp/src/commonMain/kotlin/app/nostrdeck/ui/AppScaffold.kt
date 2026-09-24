@@ -305,6 +305,7 @@ private fun BottomBar(state: DeckState) {
         NavItem(
             state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
             selected = state.navDest == NavDest.HOME && !state.notificationsActive,
+            onClick = { state.openHome() },   // [#422] 必ずフォロー中へ
         )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
         NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat))
