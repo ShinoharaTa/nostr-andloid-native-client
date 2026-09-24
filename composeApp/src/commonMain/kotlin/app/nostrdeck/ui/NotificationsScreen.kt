@@ -92,8 +92,15 @@ fun NotificationsScreen(state: DeckState) {
     }
 }
 
-/** 通知の対象を開く。対象が kind:42 ならパブリックチャットのそのチャンネルを、他はスレッドを開く。 */
-private fun openNotificationTarget(state: DeckState, n: NotificationUi) {
+/**
+ * 通知の対象を開く。DM は相手との会話、対象が kind:42 ならパブリックチャットのそのチャンネル、
+ * 他はスレッドを開く。
+ *
+ * [#419] 通知の行をタップしたときの**唯一の振り分け口**。通知画面・通知カラムだけでなく、
+ * フォロー中TLに混ざった通知もここを通す（以前は TL 側が id だけ受け取って常にスレッドを
+ * 開いており、DM は本文がスレッドに出て、チャンネルの通知もルームではなくスレッドが開いていた）。
+ */
+internal fun openNotificationTarget(state: DeckState, n: NotificationUi) {
     // [#419] DM 通知は相手との会話を開く（対象ノートが無いので id でスレッドを開いても空になる）。
     if (n.kind == NotificationKind.DM) {
         state.clearDetail()

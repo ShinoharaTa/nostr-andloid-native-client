@@ -513,10 +513,12 @@ WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
 -- kind:6(リポスト)等が「返信」としてスレッドに混入する（購読側 Filter は kinds=[1] 済み）。
 -- [#380] NIP-22 コメント(kind:1111)も返信として含める。小文字 e=親 に加え、
 -- 大文字 E=ルート参照でツリー全体（孫コメント含む）が一括で載る。
+-- [#419] DM 本体(kind:14)は起点になっていても返さない。DM の id でスレッドを開くと、
+-- 復号済みの本文が公開ノートと同じ見た目（返信/リアクション付き）で出てしまうため。
 threadEvents:
 SELECT DISTINCT event.* FROM event
 LEFT JOIN event_tag ON event.id = event_tag.event_id
-WHERE event.id IN :ids
+WHERE (event.id IN :ids AND event.kind != 14)
    OR (event_tag.tag = 'e' AND event_tag.value IN :ids AND event.kind IN (1, 1111))
    OR (event_tag.tag = 'E' AND event_tag.value IN :ids AND event.kind = 1111)
 ORDER BY event.created_at ASC;
