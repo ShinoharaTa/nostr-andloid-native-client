@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -118,14 +119,16 @@ private fun ProfileHeaderCard(
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface).padding(DeckSpace.Lg)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 猫耳([#378])がアバター枠の上帯に描かれるので、ここでは clip しない
-            // （円でクリップすると耳が切れる）。リップルは出さず拡大だけ行う。
+            // （円でクリップすると耳が切れる）。リップルは DM 一覧(#382)と同じく
+            // 非クリップの円にして、押せることが分かるようにする。
             Avatar(
                 profile?.name ?: pubkey, profile?.pictureUrl,
                 Modifier.size(60.dp).then(
                     if (picture != null) {
                         Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
+                            indication = ripple(bounded = false, radius = 30.dp),
+                            onClickLabel = stringResource(Res.string.img_view),
                         ) { zoomUrl = picture }
                     } else {
                         Modifier
