@@ -1,3 +1,8 @@
-- Replies, quotes, reposts and reactions now carry a relay hint, so other clients can find the referenced post more reliably
-- Shared post links (nevent) now include a relay hint too
-- Quotes now reference the quoted post as nevent in the body
+- Navigation is now 5 fixed items; DMs and chats share Messages
+- Per-conversation DM unread counts, also in Notifications and Following
+- Undelivered posts show "Not sent" to retry or move to drafts, and resend when back online
+- Alerts when a DM fails to send
+- The deck's DM column lists your conversations
+- Tap a profile's avatar or banner to enlarge it
+- Scroll position is kept when returning from a detail view
+- Hashtags: remove tags from history; drag handle moved right
