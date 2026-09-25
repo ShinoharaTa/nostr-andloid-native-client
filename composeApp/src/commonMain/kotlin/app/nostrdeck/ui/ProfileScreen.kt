@@ -319,17 +319,23 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
             )
         })
     }
+    // [#401] 戻ってきたときのスクロール位置の再適用に使う、本文の item 数。
+    val bodyItemCount = when (tab) {
+        ProfileTab.POSTS, ProfileTab.MEDIA -> profileBodyItemCount(visibleNoPins.size, pinnedForTab.size)
+        ProfileTab.ARTICLES -> articles.size
+        ProfileTab.LISTS -> listSets.size
+    }
     if (isCompact) {
         ProfileCompact(
             pubkey, profile, following, tab, tabs, isMe,
             onTab = { tabName = it.name }, onFollowToggle = onFollowToggle, onEdit = onEdit, onBack = onBack,
-            social = social, onRefresh = onRefresh, body = tabBody,
+            social = social, onRefresh = onRefresh, bodyItemCount = bodyItemCount, body = tabBody,
         )
     } else {
         ProfileExpanded(
             pubkey, profile, following, tab, tabs, isMe,
             onTab = { tabName = it.name }, onFollowToggle = onFollowToggle, onEdit = onEdit, onBack = onBack,
-            social = social, onRefresh = onRefresh, body = tabBody,
+            social = social, onRefresh = onRefresh, bodyItemCount = bodyItemCount, body = tabBody,
         )
     }
 }
@@ -361,9 +367,12 @@ private fun ProfileCompact(
     social: ProfileSocial? = null,
     listState: LazyListState = rememberLazyListState(),
     onRefresh: (() -> Unit)? = null,   // [#254] 引っ張って更新
+    bodyItemCount: Int,                // [#401] スクロール位置の再適用判定に使う本文の件数
     // [#384] 選択中タブの中身（投稿 / 記事 …）。タブごとに要素の型が違うので呼び出し側で組む。
     body: LazyListScope.() -> Unit,
 ) {
+    // [#401] ヘッダ + スティッキータブのぶんを足した実 item 数で判定する（本文が空なら再適用しない）。
+    RestoreScrollOnFirstData(listState, if (bodyItemCount == 0) 0 else bodyItemCount + PROFILE_COMPACT_HEADER_ITEMS)
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ProfileTopBar(profile?.name?.takeIf { it.isNotBlank() } ?: pubkey.take(10), onBack)
         HorizontalDivider(color = DeckColors.Border)
@@ -400,8 +409,11 @@ private fun ProfileExpanded(
     social: ProfileSocial? = null,
     listState: LazyListState = rememberLazyListState(),
     onRefresh: (() -> Unit)? = null,   // [#254] 引っ張って更新
+    bodyItemCount: Int,                // [#401] スクロール位置の再適用判定に使う本文の件数
     body: LazyListScope.() -> Unit,    // [#384] 選択中タブの中身
 ) {
+    // [#401] 右ペインのリストは本文だけ（ヘッダ item は無い）。
+    RestoreScrollOnFirstData(listState, bodyItemCount)
     Row(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         // 左ペイン: プロフィール詳細（縦スクロール）
         Column(
@@ -426,6 +438,17 @@ private fun ProfileExpanded(
 }
 
 /* ---------- 共通パーツ ---------- */
+
+/** [#401] Compact レイアウトが本文の前に置く item 数（プロフィールヘッダ + スティッキータブ）。 */
+private const val PROFILE_COMPACT_HEADER_ITEMS = 2
+
+/**
+ * [#401] 投稿/メディアタブの本文 item 数。固定投稿があるときは「📌 固定された投稿」ラベルが
+ * 1件挟まる。0件のときに出る「投稿がありません」プレースホルダは**数えない**
+ * （データ未着とみなして、スクロール位置の再適用を待たせるため）。
+ */
+internal fun profileBodyItemCount(visibleCount: Int, pinnedCount: Int): Int =
+    visibleCount + if (pinnedCount > 0) pinnedCount + 1 else 0
 
 private fun LazyListScope.notesItems(
     visible: List<NoteUi>,
