@@ -25,8 +25,9 @@ DELETE FROM event;
 -- [M15] 起動時のタイムライン・キャッシュ解放。過去TLは溜め込まずリレーから読み直す。
 -- [#211] DM(kind:14) と kind:0(プロフィール, 更新頻度が低い) は残す。プロフィールは別テーブルに
 -- dedup 保存もされるが、event 側の kind:0 も保持して起動直後のプロフィール解決を軽くする。
+-- [#423] 未送信（publish_queue にあるもの）は残す。消すと画面から消え、再送も下書きへの戻しもできない。
 clearTimelineEvents:
-DELETE FROM event WHERE kind NOT IN (14, 0);
+DELETE FROM event WHERE kind NOT IN (14, 0) AND id NOT IN (SELECT event_id FROM publish_queue);
 
 -- タイムライン消去後に残ったイベントに紐づかない孤児タグを掃除する（DMのpタグは残る）。
 clearOrphanTags:
@@ -197,20 +198,50 @@ CREATE TABLE relay_status (
     supports_negentropy INTEGER NOT NULL DEFAULT 0  -- NIP-77
 );
 
--- ============ publish_queue: オフライン時の送信保留 ============
+-- ============ publish_queue: 未送信の保持（リレーの受理待ち・再送待ち） ============
+-- [#423] 送信したら積み、どれかのリレーが OK を返したら取り除く。受理を確認できなかったら
+-- attempts を増やして残し、復帰時・再接続時に同じ署名済みイベントを送り直す（同じ id なので
+-- 二重投稿にならない）。attempts = 0 は初回の確認待ち（画面には「未送信」を出さない）。
 CREATE TABLE publish_queue (
     event_id    TEXT NOT NULL PRIMARY KEY,
     payload     TEXT NOT NULL,      -- 署名済みイベント JSON
     created_at  INTEGER NOT NULL,
-    attempts    INTEGER NOT NULL DEFAULT 0
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    relays      TEXT,               -- [#423] 配信先を限定するときの JSON 配列（DM の gift wrap）。null = 通常の配信先
+    ref_id      TEXT                -- [#423] 画面上の行の id（DM は rumor id）。null = event_id そのもの
 );
 
 enqueuePublish:
 INSERT OR REPLACE INTO publish_queue(event_id, payload, created_at, attempts)
 VALUES (?, ?, ?, ?);
 
+-- [#423] 配信先・画面上の行を指定して積む（DM の gift wrap）。
+enqueuePublishTo:
+INSERT OR REPLACE INTO publish_queue(event_id, payload, created_at, attempts, relays, ref_id)
+VALUES (?, ?, ?, ?, ?, ?);
+
 pendingPublishes:
 SELECT * FROM publish_queue ORDER BY created_at ASC;
+
+-- [#423] 受理を確認できたので取り除く。
+dequeuePublish:
+DELETE FROM publish_queue WHERE event_id = ?;
+
+-- [#423] 受理を確認できなかった（未送信として残す）。
+bumpPublishAttempts:
+UPDATE publish_queue SET attempts = attempts + 1 WHERE event_id = ?;
+
+-- [#423] 起動時: 前回の確認待ち(attempts=0)のまま終了した分を、再送の対象に入れる。
+promoteOrphanPublishes:
+UPDATE publish_queue SET attempts = 1 WHERE attempts = 0;
+
+-- [#423] 画面上で「未送信」と出す行の id（確認待ちの間は含めない）。
+unsentLocalIds:
+SELECT DISTINCT COALESCE(ref_id, event_id) AS local_id FROM publish_queue WHERE attempts > 0;
+
+-- [#423] 画面上の行の id から、送り直す未送信を引く（DM は相手宛の wrap）。
+publishesByLocalId:
+SELECT * FROM publish_queue WHERE COALESCE(ref_id, event_id) = ?;
 
 -- カラムのフィードを created_at 降順で読む（since 以降の差分取得にも流用）
 feedByAuthors:
@@ -444,6 +475,8 @@ GROUP BY e.kind;
 
 -- [M10-notif] 通知一覧: 自分(#p)宛のリプライ/メンション(kind1)・リポスト(kind6/16)・
 -- リアクション(kind7)・NIP-22 コメント(kind1111)[#380] を新しい順に。自分自身の操作は除外。
+-- [#419] DM(kind:14) はここに入れない。1通ごとに出すと通知欄が埋まり、起動時に消されない DM の
+-- 履歴が LIMIT の枠を占めるため。未読のある会話だけを Kotlin 側で合流させる（dmNotices）。
 notificationsFor:
 SELECT DISTINCT event.* FROM event
 JOIN event_tag ON event.id = event_tag.event_id
@@ -511,10 +544,12 @@ WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
 -- kind:6(リポスト)等が「返信」としてスレッドに混入する（購読側 Filter は kinds=[1] 済み）。
 -- [#380] NIP-22 コメント(kind:1111)も返信として含める。小文字 e=親 に加え、
 -- 大文字 E=ルート参照でツリー全体（孫コメント含む）が一括で載る。
+-- [#419] DM 本体(kind:14)は起点になっていても返さない。DM の id でスレッドを開くと、
+-- 復号済みの本文が公開ノートと同じ見た目（返信/リアクション付き）で出てしまうため。
 threadEvents:
 SELECT DISTINCT event.* FROM event
 LEFT JOIN event_tag ON event.id = event_tag.event_id
-WHERE event.id IN :ids
+WHERE (event.id IN :ids AND event.kind != 14)
    OR (event_tag.tag = 'e' AND event_tag.value IN :ids AND event.kind IN (1, 1111))
    OR (event_tag.tag = 'E' AND event_tag.value IN :ids AND event.kind = 1111)
 ORDER BY event.created_at ASC;

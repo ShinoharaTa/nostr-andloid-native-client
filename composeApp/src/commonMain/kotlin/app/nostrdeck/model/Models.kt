@@ -126,6 +126,7 @@ data class NoteUi(
     val mineReacted: Boolean = false,  // [M8-counts] 自分が♡済み（ハイライト/トグル用）
     val mineReaction: ReactionUi? = null, // 自分が付けたリアクション（非♡ならその絵文字をボタンに表示）
     val mineReposted: Boolean = false, // [M8-counts] 自分がリポスト済み
+    val unsent: Boolean = false,       // [#423] 自分の投稿で、リレーの受理を確認できていない（再送待ち）
     val isReply: Boolean = false,      // [M9-profile] kind:1 が #e を持つ返信か（プロフィールのタブ振り分け用）
     val customEmojis: Map<String, String> = emptyMap(), // [M10] NIP-30 本文カスタム絵文字 shortcode→画像URL
     val imeta: Map<String, ImetaInfo> = emptyMap(),     // [#140] NIP-92 メディアURL→(thumb/dim/blurhash)。プレースホルダ用
@@ -193,7 +194,8 @@ data class CustomEmoji(val shortcode: String, val url: String)
 data class UsedEmoji(val content: String, val imageUrl: String?)
 
 /** [M10-notif] 通知の種別。 */
-enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP }
+// [#419] DM = 自分宛の NIP-17/NIP-04 メッセージ受信（復号後の kind:14）。
+enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP, DM }
 
 /**
  * [NIP-42] リレーの AUTH 要求への応答ポリシー。
@@ -206,7 +208,7 @@ enum class AuthPolicy { OFF, DM_AND_MINE, ALWAYS }
  * REACTIONS=自分へのリアクション / REPLIES=自分への返信・メンション / REPOSTS=自分へのリポスト /
  * MY_REACTIONS=自分がしたリアクション。
  */
-enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS }
+enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS, DMS }
 
 /**
  * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。
@@ -240,6 +242,8 @@ data class NotificationUi(
     val targetChannelId: String? = null,
     /** ZAP 通知の金額(sats)。 */
     val zapSats: Long? = null,
+    /** [#419] DM 通知の未読件数（1会話=1行にまとめているので件数を持つ）。 */
+    val dmUnread: Int = 0,
 )
 
 /**
@@ -291,6 +295,8 @@ data class DmConversation(
     val lastMessage: String,
     val pictureUrl: String? = null,
     val unread: Int = 0,
+    /** [#419] 相手の最新発言の created_at（DM 通知を時系列に並べる位置）。 */
+    val lastIncomingAt: Long = 0,
 )
 
 /** NIP-28 チャンネルメッセージ（kind:42）の表示用。チャット行。 */
@@ -300,6 +306,7 @@ data class ChannelMessage(
     val isMine: Boolean = false,
     val continuation: Boolean = false,  // 直前と同一著者なら頭をまとめる
     val reactions: List<ReactionUi> = emptyList(),  // このメッセージへの集約リアクション（NIP-25）
+    val unsent: Boolean = false,  // [#423] 自分の DM で、相手の DM リレーの受理を確認できていない（再送待ち）
 )
 
 /**

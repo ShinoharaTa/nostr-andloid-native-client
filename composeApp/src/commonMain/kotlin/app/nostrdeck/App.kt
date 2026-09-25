@@ -1,5 +1,6 @@
 package app.nostrdeck
 
+import nostr_deck_client.composeapp.generated.resources.publish_unconfirmed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,6 +99,14 @@ fun App(
         // [#374] リレー同期の差分適用で確定したカラム構成を UI に反映（ローカル保存は Repository 側で済み）。
         LaunchedEffect(state, repository) {
             repository?.remoteDeckColumnsFlow()?.collect { specs -> state.applyPinnedColumns(specs) }
+        }
+        // [#423] 送信の受理を確認できなかったことを知らせる（投稿・リアクション等。間引きは Repository 側）。
+        val toast = app.nostrdeck.ui.rememberToaster()
+        val unconfirmedMsg = org.jetbrains.compose.resources.stringResource(
+            nostr_deck_client.composeapp.generated.resources.Res.string.publish_unconfirmed,
+        )
+        LaunchedEffect(repository) {
+            repository?.publishUnconfirmedFlow()?.collect { toast(unconfirmedMsg) }
         }
         // [#100][#101] 外部 Intent（共有/ディープリンク）の消費。未ログイン中は値を保持したまま
         // 待ち、ログイン成立（session=true）で combine が再発火して処理される。

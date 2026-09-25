@@ -515,6 +515,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                                 NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
                                 NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
                                 NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
+                                NotificationKind.DM -> FeedNoticeCategory.DMS  // [#419]
                                 else -> null
                             }
                             is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS
@@ -537,7 +538,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
-                        onNoticeClick = { id -> state.openThreadDetail(id) },
+                        onNoticeClick = { n -> openNotificationTarget(state, n) },  // [#419]
                         onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
                         selectedIndex = selIdx,
                     )
@@ -565,7 +566,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
-                        onNoticeClick = { id -> state.openThreadDetail(id) },
+                        onNoticeClick = { n -> openNotificationTarget(state, n) },  // [#419]
                         selectedIndex = selIdx,
                     )
                 }

@@ -184,6 +184,8 @@
     <string name="notif_reaction">Reactions</string>
     <string name="notif_zap">Zaps</string>
     <string name="notif_repost">Reposts</string>
+    <string name="notif_dm_received">Sent you a message</string>
+    <string name="notif_dm_received_n">Sent you %1$d messages</string>
     <string name="col_pin">Pin</string>
     <string name="col_unpin">Unpin</string>
     <string name="col_reorder">Reorder</string>
@@ -200,6 +202,7 @@
     <string name="cat_replies_to_me">Replies &amp; mentions to you</string>
     <string name="cat_reposts_of_me">Reposts of your posts</string>
     <string name="cat_my_reactions">Your reactions</string>
+    <string name="cat_dms">Unread messages</string>
     <string name="col_width">Column width</string>
     <string name="width_narrow">Narrow</string>
     <string name="width_default">Default</string>
@@ -536,6 +539,12 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="dm_new_title">New message</string>
     <string name="dm_open">Open</string>
     <string name="dm_title">Messages</string>
+    <string name="unsent_label">Not sent</string>
+    <string name="unsent_retry">Retry</string>
+    <string name="unsent_to_draft">Move to draft</string>
+    <string name="unsent_moved_to_draft">Moved to draft</string>
+    <string name="unsent_tap_retry">Not sent · tap to retry</string>
+    <string name="publish_unconfirmed">Couldn't confirm sending. It will be retried when you're back online.</string>
     <string name="dm_send_failed">Couldn't send the message</string>
     <string name="dm_no_relays_warn">This person hasn't published DM relays, so the message may not reach them</string>
     <string name="dm_empty">No conversations yet</string>

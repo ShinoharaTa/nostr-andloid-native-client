@@ -223,6 +223,7 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
                 FeedCategoryItem(stringResource(Res.string.cat_replies_to_me), FeedNoticeCategory.REPLIES, menu.hiddenCategories, menu.onToggleCategory)
                 FeedCategoryItem(stringResource(Res.string.cat_reposts_of_me), FeedNoticeCategory.REPOSTS, menu.hiddenCategories, menu.onToggleCategory)
                 FeedCategoryItem(stringResource(Res.string.cat_my_reactions), FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
+                FeedCategoryItem(stringResource(Res.string.cat_dms), FeedNoticeCategory.DMS, menu.hiddenCategories, menu.onToggleCategory)
                 HorizontalDivider(color = DeckColors.Border)
             }
             // [#10] カラム幅（S/M/L）。タップしてもメニューは閉じない。

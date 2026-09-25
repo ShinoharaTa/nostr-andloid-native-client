@@ -104,6 +104,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -259,8 +262,14 @@ class EventRepository(
     }
 
     /** [M10] フィードに載せるメタ: 自分が♡/リポスト済みか + 自分のリアクション絵文字。 */
+    /** [#423] 画面上で「未送信」と出す行の id（確認待ちの間は含めない）。noteMetaFlow より前に置く。 */
+    private val unsentIdsFlow: Flow<Set<String>> =
+        q.unsentLocalIds().asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
+
     private val noteMetaFlow: Flow<NoteMeta> =
-        combine(myReactedFlow, myRepostedFlow, myReactionMapFlow) { mr, mp, rx -> NoteMeta(mr, mp, rx) }
+        combine(myReactedFlow, myRepostedFlow, myReactionMapFlow, unsentIdsFlow) { mr, mp, rx, unsent ->
+            NoteMeta(mr, mp, rx, unsent)
+        }
 
     /** 自分の kind:3 由来のフォロー集合（p タグ）。FOLLOWING カラムの authors。 */
     private val follows = MutableStateFlow<List<String>>(emptyList())
@@ -335,7 +344,9 @@ class EventRepository(
         }
         // [M15] 過去タイムラインはキャッシュしない: 起動毎に DM 以外のイベントを解放し、
         // リレーから読み直す。コールド起動を軽く保ち、DB を溜め込まない。
-        q.transaction { q.clearTimelineEvents(); q.clearOrphanTags() }
+        // [#423] 未送信（publish_queue にあるもの）は消さない。消すと画面から消え、再送も下書きへの
+        // 戻しもできなくなる。前回の確認待ちのまま終了した分は再送の対象に入れる。
+        q.transaction { q.clearTimelineEvents(); q.clearOrphanTags(); q.promoteOrphanPublishes() }
         // 末尾スラッシュ違い（例: nos.lol と nos.lol/）で二重登録された既存行を一度だけ統合する。
         dedupeRelayUrls()
         // [#368] 古い OGP キャッシュを掃除（14日超。TL に流れた URL の数だけ増えるため）。
@@ -480,6 +491,8 @@ class EventRepository(
             scope.launch {
                 client.state.collect { st ->
                     if (st == RelayConnState.DISCONNECTED) authChallengeByRelay.remove(key)
+                    // [#423] つながったら未送信を送り直す（間隔の制限つき。立て続けの再接続で暴発させない）。
+                    if (st == RelayConnState.CONNECTED) retryUnsent()
                     withContext(relayDispatcher) { refreshRelayConns() }
                 }
             }
@@ -513,6 +526,7 @@ class EventRepository(
                 it.wake()    // バックオフ待機中なら即リトライ
             }
         }
+        retryUnsent()   // [#423] 未送信を送り直す
     }
 
     /**
@@ -1234,6 +1248,8 @@ class EventRepository(
                     // リポスト/返信はフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
                     NotificationKind.REPOST -> n.actor.pubkey !in followSet
                     NotificationKind.REPLY, NotificationKind.MENTION -> n.actor.pubkey !in followSet
+                    // [#419] DM 受信は相手がフォロー中かに関わらず出す（見逃すと困る種別）。
+                    NotificationKind.DM -> true
                     else -> false
                 }
             }
@@ -1591,9 +1607,11 @@ class EventRepository(
                 q.notificationsFor(me).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
                 noteMetaFlow,  // [#403] 自分の♡/リポスト状態。無いと通知内の投稿でボタン押下が反映されない
-            ) { rows, profiles, meta ->
+                dmConversationsCache,  // [#419] 未読のある DM 会話を1件ずつ混ぜる
+            ) { rows, profiles, meta, convos ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                rows.map { toNotification(it, byPubkey, meta) }
+                (rows.map { toNotification(it, byPubkey, meta) } + dmNotices(convos.orEmpty()))
+                    .sortedByDescending { it.createdAt }
             }.flowOn(Dispatchers.Default)
         }
 
@@ -1811,6 +1829,7 @@ class EventRepository(
         mineReacted = ui.event.id in meta.myReacted,
         mineReaction = meta.myReaction[ui.event.id],
         mineReposted = ui.event.id in meta.myReposted,
+        unsent = ui.event.id in meta.unsent,
     )
 
     /**
@@ -2424,9 +2443,119 @@ class EventRepository(
             q.enqueuePublish(signed.id, payload, signed.createdAt, 0)
         }
         // NIP-65 outbox: write(Outbox) リレー ∪ 接続中(Inbox)リレーへ配信する。
+        // [#423] 送る前に受理待ちを登録する（先に OK が返ってきても取りこぼさない）。
+        registerAck(signed.id)
         publishTo(payload)
-        // TODO: handle OK/NIP-20, retry from publish_queue
+        scope.launch { confirmPublish(signed.id, notify = true) }
         return signed
+    }
+
+    // ---- [#423] 送信の受理確認（NIP-01 OK）と未送信の再送 ----
+
+    /**
+     * 自分が送ったイベントがリレーから返ってきたら、それも受理の証拠とみなす。
+     * NIP-01 はリレーに OK を返すよう求めているが、返さないリレーもある。そういうリレーだけに
+     * 書いている人は、届いているのに毎回「未送信」になってしまう。
+     *  - 待っている id なら受理として記録（[recordAck] は待っていない id を無視する）
+     *  - 自分のイベントなら未送信からも外す（再起動をまたいで待っていない分）
+     */
+    private fun confirmByEcho(origins: List<Pair<NostrEvent, String>>) {
+        val me = myPubkey
+        origins.forEach { (e, url) ->
+            recordAck(e.id, url)
+            if (e.pubkey == me) q.dequeuePublish(e.id)
+        }
+    }
+
+    /** 受理を待っている event id → 受理したリレー。待っていない id の OK は記録しない。 */
+    private val ackWaiters = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+
+    /** 受理待ちを登録する。**送る前に**呼ぶ（先に OK が返ってきても取りこぼさないように）。 */
+    private fun registerAck(id: String) = ackWaiters.update { it + (id to (it[id] ?: emptySet())) }
+
+    private fun recordAck(id: String, relay: String) =
+        ackWaiters.update { m -> m[id]?.let { m + (id to (it + relay)) } ?: m }
+
+    /** どれかのリレーが受理するのを最大 [timeoutMs] 待つ。受理されたら true。終わったら登録を外す。 */
+    private suspend fun awaitAck(id: String, timeoutMs: Long = PublishAck.TIMEOUT_MS): Boolean = try {
+        withTimeoutOrNull(timeoutMs) { ackWaiters.first { !it[id].isNullOrEmpty() } } != null
+    } finally {
+        ackWaiters.update { it - id }
+    }
+
+    /**
+     * 受理を確認できたら未送信から外し、できなければ試行回数を増やして残す。
+     * [notify] なら確認できなかったことを画面へ知らせる（トースト）。
+     */
+    private suspend fun confirmPublish(id: String, notify: Boolean): Boolean {
+        val ok = awaitAck(id)
+        if (ok) q.dequeuePublish(id) else {
+            q.bumpPublishAttempts(id)
+            if (notify) notifyPublishUnconfirmed()
+        }
+        return ok
+    }
+
+    /** 未送信の通知（画面側でトーストにする）。オフラインで連投したときに何度も出さないよう間引く。 */
+    private val _publishUnconfirmed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    fun publishUnconfirmedFlow(): SharedFlow<Unit> = _publishUnconfirmed.asSharedFlow()
+    private var lastUnconfirmedNoticeAt = 0L
+    private fun notifyPublishUnconfirmed() {
+        val now = currentUnixTime()
+        if (now - lastUnconfirmedNoticeAt < PublishAck.RETRY_MIN_INTERVAL_SEC) return
+        lastUnconfirmedNoticeAt = now
+        _publishUnconfirmed.tryEmit(Unit)
+    }
+
+    /** 1件を送り直して受理を確認する。配信先が決まっているもの（DM の gift wrap）はそこへ送る。 */
+    private suspend fun resend(row: app.nostrdeck.db.Publish_queue): Boolean {
+        registerAck(row.event_id)
+        val targets = row.relays?.let { runCatching { json.decodeFromString<List<String>>(it) }.getOrNull() }
+        if (targets != null) publishToRelays(row.payload, targets) else publishTo(row.payload)
+        return confirmPublish(row.event_id, notify = false)
+    }
+
+    private var lastRetryAt = 0L
+
+    /**
+     * 未送信を送り直す（復帰時・再接続時）。同じ署名済みイベントを送るので二重投稿にならない。
+     * 間隔の制限と試行回数の上限つき（上限を超えたものは手動の [retryUnsentNow] でだけ送る）。
+     */
+    fun retryUnsent() {
+        val now = currentUnixTime()
+        if (now - lastRetryAt < PublishAck.RETRY_MIN_INTERVAL_SEC) return
+        lastRetryAt = now
+        scope.launch(Dispatchers.Default) {
+            q.pendingPublishes().executeAsList()
+                .filter { PublishAck.shouldAutoRetry(it.attempts) }
+                .forEach { row -> launch { resend(row) } }
+        }
+    }
+
+    /** 画面の「再送」。[localId] は画面上の行の id（投稿は event id、DM は rumor id）。上限に関係なく送る。 */
+    fun retryUnsentNow(localId: String) {
+        scope.launch(Dispatchers.Default) {
+            q.publishesByLocalId(localId).executeAsList().forEach { row -> launch { resend(row) } }
+        }
+    }
+
+    /**
+     * 画面の「下書きに戻す」。未送信の投稿の本文を投稿画面の下書きへ移し、手元の投稿と未送信を消す。
+     * 既に下書きがあれば後ろに足す（上書きしない）。本文は publish_queue の署名済み JSON から取る
+     * （起動時のタイムライン消去は未送信を残すが、念のため event 表には頼らない）。
+     */
+    suspend fun unsentToDraft(localId: String): Boolean = withContext(Dispatchers.Default) {
+        val row = q.publishesByLocalId(localId).executeAsList().firstOrNull() ?: return@withContext false
+        val content = runCatching {
+            json.parseToJsonElement(row.payload).jsonObject["content"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull() ?: return@withContext false
+        val existing = loadDraft()
+        saveDraft(if (existing.isBlank()) content else "$existing\n\n$content")
+        q.transaction {
+            q.dequeuePublish(row.event_id)
+            q.deleteTagsForEvent(localId); q.deleteEventById(localId)
+        }
+        true
     }
 
     /**
@@ -2455,9 +2584,17 @@ class EventRepository(
     /** 未接続の write 専用リレーへ一時接続で1イベントを配信する（購読なし・送信後に閉じる）。 */
     private suspend fun publishTransient(url: String, payload: String) {
         val c = RelayClient(url, scope)
+        // [#423] 一時接続でも OK を拾う。以前は受信を誰も読んでおらず、書き込み専用リレーや
+        // 相手の DM リレー（ほぼ常に一時接続）の受理が見えなかった。DM は毎回「未送信」になっていた。
+        val okJob = scope.launch {
+            c.messages.collect { m ->
+                if (m is RelayMessage.Ok && PublishAck.isAccepted(m.accepted, m.message)) recordAck(m.eventId, c.url)
+            }
+        }
         c.start()
         c.publish(payload)  // outgoing は BUFFERED。接続確立後にフラッシュされる。
-        delay(8_000)         // 送信フレームを流す猶予を取ってから閉じる。
+        delay(PublishAck.TIMEOUT_MS)   // 受理を待つ間は開けておく（送信フレームを流す猶予も兼ねる）
+        okJob.cancel()
         c.stop()
     }
 
@@ -2879,6 +3016,8 @@ class EventRepository(
             }
             // [#17] EOSE = 蓄積イベント送信完了。どこか1リレーから来たらそのカラムを「読込済み」に。
             is RelayMessage.Eose -> columnLoadedState.value = columnLoadedState.value + msg.subscriptionId
+            // [#423] 送信の受理確認。待っている id だけ記録する。
+            is RelayMessage.Ok -> if (PublishAck.isAccepted(msg.accepted, msg.message)) recordAck(msg.eventId, client.url)
             else -> {}
         }
     }
@@ -2920,6 +3059,7 @@ class EventRepository(
             if (valid.isNotEmpty()) {
                 val ok = valid.mapTo(HashSet()) { it.id }
                 recordSeenOn(origins.filter { it.first.id in ok })
+                confirmByEcho(origins.filter { it.first.id in ok })
             }
         }
     }
@@ -3999,6 +4139,8 @@ class EventRepository(
         val myReacted: Set<String>,
         val myReposted: Set<String>,
         val myReaction: Map<String, ReactionUi> = emptyMap(),
+        /** [#423] 受理を確認できていない自分のイベント id（画面に「未送信」を出す）。 */
+        val unsent: Set<String> = emptySet(),
     )
 
     /** tags_json（[[..],[..]]）を List<List<String>> に復元。壊れていれば空。 */
@@ -4745,6 +4887,10 @@ class EventRepository(
          *  相手がそのリレーを見ていなければ届かない。 */
         SENT_NO_PEER_RELAYS,
 
+        /** [#423] 送ったが、相手の DM リレーが受理したことを確認できなかった。未送信として残し、
+         *  復帰時・再接続時に送り直す（バブルに「未送信」が出る）。 */
+        PENDING,
+
         /** 署名/暗号化/配信に失敗した。 */
         FAILED,
     }
@@ -4794,8 +4940,23 @@ class EventRepository(
                 dropLocalDm(rumorId)
                 return DmSendResult.FAILED
             }
-            publishToRelays(RelayProtocol.event(toPeer), peerRelays)
-            publishToRelays(RelayProtocol.event(toSelf), myRelays)
+            // [#423] 未送信として積んでから送り、相手宛の受理を確認する。配信先は wrap ごとに決まって
+            // いるので一緒に持つ。相手宛は画面の行（rumor id）と対応させ、確認できなければバブルに
+            // 「未送信」が出る。自分宛（他端末への控え）は画面に出さず裏で確認・再送する。
+            val peerPayload = RelayProtocol.event(toPeer)
+            val selfPayload = RelayProtocol.event(toSelf)
+            q.transaction {
+                q.enqueuePublishTo(toPeer.id, peerPayload, now, 0, json.encodeToString(peerRelays), rumorId)
+                q.enqueuePublishTo(toSelf.id, selfPayload, now, 0, json.encodeToString(myRelays), null)
+            }
+            // 積んだあとは未送信として追跡・再送されるので、以降で例外が出てもバブルは消さない
+            // （消すと、裏で再送が成功しても手元に残らない）。
+            storedId = null
+            registerAck(toPeer.id); registerAck(toSelf.id)
+            publishToRelays(peerPayload, peerRelays)
+            publishToRelays(selfPayload, myRelays)
+            scope.launch { confirmPublish(toSelf.id, notify = false) }
+            if (!confirmPublish(toPeer.id, notify = false)) return DmSendResult.PENDING
             return if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
         } catch (e: CancellationException) {
             throw e   // キャンセルは失敗として握らない（協調キャンセルを壊さない）
@@ -4904,6 +5065,9 @@ class EventRepository(
             val unreadByPeer = rows
                 .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer, firstSeen) }
                 .groupingBy { it.pubkey }.eachCount()
+            // [#419] 相手の最新発言の時刻（rows は新しい順なので最初に出てきたもの）。
+            val lastIncomingByPeer = HashMap<String, Long>()
+            rows.forEach { r -> if (r.pubkey != me) lastIncomingByPeer.getOrPut(r.pubkey) { r.created_at } }
             val seen = LinkedHashSet<String>()
             rows.mapNotNull { row ->
                 val other = if (row.pubkey == me)
@@ -4918,6 +5082,7 @@ class EventRepository(
                     lastMessage = row.content,
                     pictureUrl = p?.picture_url,
                     unread = unreadByPeer[other] ?: 0,
+                    lastIncomingAt = lastIncomingByPeer[other] ?: 0L,
                 )
             }
         }.flowOn(Dispatchers.Default)
@@ -4927,7 +5092,9 @@ class EventRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun dmMessagesFlow(peer: String): Flow<List<ChannelMessage>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
-        else combine(q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+        else combine(
+            q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow, unsentIdsFlow,
+        ) { rows, profiles, unsent ->
             val byPk = profiles.associateBy { it.pubkey }
             rows.mapIndexed { i, row ->
                 val prev = rows.getOrNull(i - 1)
@@ -4940,6 +5107,7 @@ class EventRepository(
                     ),
                     isMine = row.pubkey == me,
                     continuation = prev != null && prev.pubkey == row.pubkey && row.created_at - prev.created_at < 300,
+                    unsent = row.id in unsent,   // [#423] 相手宛の wrap の受理を確認できていない
                 )
             }
         }.flowOn(Dispatchers.Default)
