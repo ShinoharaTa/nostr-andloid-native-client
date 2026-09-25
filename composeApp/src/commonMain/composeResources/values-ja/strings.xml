@@ -506,6 +506,8 @@
     <string name="zap_invoice_failed">invoice を取得できませんでした。lud16/リレー設定を確認してください。</string>
     <string name="zap_wallet_failed">Lightning ウォレットを開けませんでした。</string>
     <string name="img_saved">画像を保存しました</string>
+    <string name="img_view">画像を表示</string>
+    <string name="img_load_failed">画像を読み込めませんでした</string>
     <string name="img_save_failed">保存に失敗しました</string>
     <string name="img_save">画像を保存</string>
     <string name="img_copy_url">URLをコピー</string>

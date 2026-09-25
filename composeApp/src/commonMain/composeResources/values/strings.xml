@@ -510,6 +510,8 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="zap_invoice_failed">Couldn’t get an invoice. Check lud16 / relay settings.</string>
     <string name="zap_wallet_failed">Couldn’t open a Lightning wallet.</string>
     <string name="img_saved">Image saved</string>
+    <string name="img_view">View image</string>
+    <string name="img_load_failed">Couldn't load the image</string>
     <string name="img_save_failed">Save failed</string>
     <string name="img_save">Save image</string>
     <string name="img_copy_url">Copy URL</string>

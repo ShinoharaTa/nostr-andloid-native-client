@@ -185,9 +185,12 @@ private fun Thumb(
  *  - 1倍       : 横スワイプで前/次の画像（HorizontalPager）。
  *  - 拡大中     : 1本指ドラッグでパン（スワイプ量に追従）。端まで来てさらにドラッグすると前/次へ。
  *  - ダブルタップでズームのトグル、シングルタップ/×で閉じる。
+ *
+ * [#413] 投稿画像以外（プロフィールのアイコン/バナー）からも開く。渡す URL は
+ * **プロキシを通さない原寸**にすること（表示中のサムネ URL を渡すと拡大しても縮小画像のまま）。
  */
 @Composable
-private fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit) {
+internal fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val pager = rememberPagerState(initialPage = startIndex.coerceIn(0, urls.size - 1)) { urls.size }
         val scope = rememberCoroutineScope()
@@ -307,6 +310,9 @@ private fun ZoomableImage(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
     var edgeAccum by remember { mutableStateOf(0f) }
+    // [#413] 読み込み失敗。原寸 URL はプロキシのフォールバックが無いので、リンク切れや
+    // ホットリンク拒否のホスト（プロフィール画像に多い）だと何も描かれず真っ黒な画面になる。
+    var failed by remember(url) { mutableStateOf(false) }
 
     LaunchedEffect(scale) { onZoomChange(scale > 1.01f) }
 
@@ -374,8 +380,13 @@ private fun ZoomableImage(
                 .data(url).crossfade(true).build(),
             contentDescription = null,
             contentScale = ContentScale.Fit,
+            onSuccess = { failed = false },
+            onError = { failed = true },
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
         )
+        if (failed) {
+            Text(stringResource(Res.string.img_load_failed), color = Color.White.copy(alpha = 0.7f))
+        }
     }
 }

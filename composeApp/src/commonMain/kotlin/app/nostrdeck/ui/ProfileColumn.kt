@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,8 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -108,9 +113,30 @@ private fun ProfileHeaderCard(
     onFollowToggle: () -> Unit,
 ) {
     val npub = remember(pubkey) { runCatching { Nip19.hexToNpub(pubkey) }.getOrNull() }
+    // [#413] アイコンをタップで拡大表示（null=閉）。原寸 URL を渡す。
+    var zoomUrl by remember { mutableStateOf<String?>(null) }
+    val picture = profile?.pictureUrl?.takeIf { it.isNotBlank() }
     Column(Modifier.fillMaxWidth().background(DeckColors.Surface).padding(DeckSpace.Lg)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(profile?.name ?: pubkey, profile?.pictureUrl, Modifier.size(60.dp), pubkey = pubkey)
+            // 猫耳([#378])がアバター枠の上帯に描かれるので、ここでは clip しない
+            // （円でクリップすると耳が切れる）。リップルは DM 一覧(#382)と同じく
+            // 非クリップの円にして、押せることが分かるようにする。
+            Avatar(
+                profile?.name ?: pubkey, profile?.pictureUrl,
+                Modifier.size(60.dp).then(
+                    if (picture != null) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = false, radius = 30.dp),
+                            onClickLabel = stringResource(Res.string.img_view),
+                        ) { zoomUrl = picture }
+                    } else {
+                        Modifier
+                    },
+                ),
+                pubkey = pubkey,
+            )
+            zoomUrl?.let { url -> Lightbox(listOf(url), 0) { zoomUrl = null } }
             Spacer(Modifier.width(DeckSpace.Md))
             Column(Modifier.weight(1f)) {
                 Text(
