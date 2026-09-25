@@ -43,6 +43,7 @@ import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.async
 import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
@@ -1531,27 +1532,55 @@ class EventRepository(
     fun notificationsFeed(): StateFlow<List<NotificationUi>> = notificationsCache
 
     // ---- [#9] DM の未読（最終閲覧時刻方式）。[#405] 通知の未読カウントは廃止した ----
+    //
+    // [#416] 既読は**会話ごと**に持つ。以前はアプリ全体で1つの時刻しか無く、DM 画面を
+    // 開いた瞬間に全会話が既読になっていた（3人から来ていて1人ぶん読んでも残り2人も既読）。
+    // 会話ごとの記録が無い相手は [dmLastSeen]（初回起動時刻）を基準にする。これが無いと
+    // 過去の全 DM が未読として出る。
     private val dmLastSeen = MutableStateFlow(0L)
+    private val dmSeenByPeer = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     private fun loadUnreadSeen() {
         // 初回は「今」を既読基準にする（過去の全 DM でバッジが巨大化するのを防ぐ）。
         val now = currentUnixTime()
         dmLastSeen.value = q.getSetting(DM_LAST_SEEN).executeAsOneOrNull()?.toLongOrNull()
             ?: now.also { q.putSetting(DM_LAST_SEEN, it.toString()) }
+        dmSeenByPeer.value = q.settingsByPrefix(DM_SEEN_PREFIX).executeAsList()
+            .mapNotNull { r -> r.value_.toLongOrNull()?.let { r.key.removePrefix(DM_SEEN_PREFIX) to it } }
+            .toMap()
     }
 
-    /** DM の未読件数（相手からの kind:14 のうち最終閲覧時刻より新しい数）。 */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun dmUnreadFlow(): Flow<Int> = myPubkeyFlow.flatMapLatest { me ->
-        if (me == null) flowOf(0)
-        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), dmLastSeen) { rows, seen ->
-            rows.count { it.pubkey != me && it.created_at > seen }
+    /** 相手ごとの既読基準時刻（未記録なら初回起動時刻 [firstSeen]）。 */
+    private fun dmSeenOf(peer: String, byPeer: Map<String, Long>, firstSeen: Long): Long =
+        byPeer[peer] ?: firstSeen
+
+    /**
+     * DM の未読件数（全会話の合計）。レール/ナビのバッジ用。
+     * 会話一覧（[dmConversationsFlow]）の unread を足すだけにして、未読の判定規則を1か所に保つ。
+     */
+    private val dmUnreadCache: StateFlow<Int> by lazy {
+        dmConversationsCache.map { list -> list?.sumOf { it.unread } ?: 0 }
+            .stateIn(scope, feedSharing, 0)
+    }
+    fun dmUnreadFlow(): StateFlow<Int> = dmUnreadCache
+
+    /**
+     * [#416] 指定の会話を既読にする（その相手ぶんだけ進める）。会話を開いたとき・開いている
+     * 会話に新着が来たときに呼ぶ。
+     *
+     * 基準は「今」と「その相手の最新発言時刻」の大きいほう。相手の時計が進んでいると
+     * created_at が未来になり、今を基準にすると開いたのに未読のまま残るため。
+     */
+    fun markDmSeen(peer: String) {
+        val me = myPubkey ?: return
+        // UI から呼ばれるので DB 読み出しはメインスレッドから外す。
+        scope.launch(Dispatchers.Default) {
+            val newest = q.dmNewestFrom(peer, me).executeAsOneOrNull()?.newest ?: 0L
+            val mark = maxOf(currentUnixTime(), newest)
+            if (mark <= (dmSeenByPeer.value[peer] ?: 0L)) return@launch
+            dmSeenByPeer.value = dmSeenByPeer.value + (peer to mark)
+            putSettingAsync(DM_SEEN_PREFIX + peer, mark.toString())
         }
-    }
-
-    /** DM を既読にする（最終閲覧時刻を現在時刻に進める）。 */
-    fun markDmSeen() {
-        val now = currentUnixTime()
-        if (now > dmLastSeen.value) { dmLastSeen.value = now; putSettingAsync(DM_LAST_SEEN, now.toString()) }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -4707,35 +4736,79 @@ class EventRepository(
         indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
     }
 
+    /** [#417] DM 送信の結果。UI はこれを見てトーストを出す。 */
+    enum class DmSendResult {
+        /** 相手の DM リレーへ送れた。 */
+        SENT,
+
+        /** 送れたが、相手が kind:10050 を公開しておらず read リレーへのフォールバックになった。
+         *  相手がそのリレーを見ていなければ届かない。 */
+        SENT_NO_PEER_RELAYS,
+
+        /** 署名/暗号化/配信に失敗した。 */
+        FAILED,
+    }
+
     /**
      * DM を送る（NIP-17）。受信者宛＋自分宛の2通を gift wrap する。
      * NIP-17 仕様に従い、gift wrap は**受信者の kind:10050 リレー**へ（自分宛は自分の 10050 へ）配信。
      * 相手/自分の 10050 が未取得なら接続中の read リレーへフォールバックする。
+     *
+     * [#417] 結果を返す。以前は例外が呼び出し側で握り潰され、失敗しても送れたように見えていた。
+     *
+     * 送信本体はアプリのスコープで走らせる。画面のスコープで走らせると、相手の DM リレーを
+     * 引いている最中（最大 2.5 秒）に画面を離れただけで送信が中断され、楽観挿入したバブルだけが
+     * 残っていた。呼び出し元が先にいなくなっても送信は最後まで進む（結果の通知だけが届かない）。
      */
-    suspend fun sendDm(peerPubkey: String, text: String) {
-        if (text.isBlank()) return
-        val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
-        val signer = SignerProvider.current()
-        val now = currentUnixTime()
-        val rumorTags = listOf(listOf("p", peerPubkey))
-        val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
-        val rumorJson = buildJsonObject {
-            put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
-            putJsonArray("tags") { rumorTags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
-            put("content", text)
-        }.toString()
-        // メタデータ曖昧化のため seal/wrap の created_at を直近2日内でランダム化（NIP-17）。
-        fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
-        val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
-        val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
-        storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
-        processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
-        // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
-        val fallback = connectedReadRelays()
-        val peerRelays = fetchDmRelaysFor(peerPubkey).ifEmpty { fallback }
-        val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
-        publishToRelays(RelayProtocol.event(toPeer), peerRelays)
-        publishToRelays(RelayProtocol.event(toSelf), myRelays)
+    suspend fun sendDm(peerPubkey: String, text: String): DmSendResult =
+        scope.async { sendDmNow(peerPubkey, text) }.await()
+
+    private suspend fun sendDmNow(peerPubkey: String, text: String): DmSendResult {
+        if (text.isBlank()) return DmSendResult.FAILED
+        // 楽観挿入した行。送れなかったときに戻す（送れていないのに履歴に残り続けないように）。
+        var storedId: String? = null
+        try {
+            val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
+            val signer = SignerProvider.current()
+            val now = currentUnixTime()
+            val rumorTags = listOf(listOf("p", peerPubkey))
+            val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
+            val rumorJson = buildJsonObject {
+                put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
+                putJsonArray("tags") { rumorTags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
+                put("content", text)
+            }.toString()
+            // メタデータ曖昧化のため seal/wrap の created_at を直近2日内でランダム化（NIP-17）。
+            fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
+            val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
+            val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
+            storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
+            storedId = rumorId
+            processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
+            // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
+            val fallback = connectedReadRelays()
+            val peerDmRelays = fetchDmRelaysFor(peerPubkey)
+            val peerRelays = peerDmRelays.ifEmpty { fallback }
+            val myRelays = myDmRelaysOrSeed().ifEmpty { fallback }
+            if (peerRelays.isEmpty()) {   // 配信先が1つも無い
+                dropLocalDm(rumorId)
+                return DmSendResult.FAILED
+            }
+            publishToRelays(RelayProtocol.event(toPeer), peerRelays)
+            publishToRelays(RelayProtocol.event(toSelf), myRelays)
+            return if (peerDmRelays.isEmpty()) DmSendResult.SENT_NO_PEER_RELAYS else DmSendResult.SENT
+        } catch (e: CancellationException) {
+            throw e   // キャンセルは失敗として握らない（協調キャンセルを壊さない）
+        } catch (e: Throwable) {
+            println("Nostrism sendDm failed: $e")
+            storedId?.let { dropLocalDm(it) }
+            return DmSendResult.FAILED
+        }
+    }
+
+    /** 楽観挿入した DM を取り消す（送れなかったもの）。削除リクエストではないので deleted_event には残さない。 */
+    private fun dropLocalDm(id: String) {
+        q.transaction { q.deleteTagsForEvent(id); q.deleteEventById(id) }
     }
 
     // ---- NIP-17 DM リレーリスト（kind:10050） ----
@@ -4808,12 +4881,29 @@ class EventRepository(
         requestProfileFromIndexers(pubkeys)
     }
 
-    /** DM 会話一覧（相手ごとに最新1件）。 */
+    /**
+     * DM 会話一覧（相手ごとに最新1件）。null = まだ読み込んでいない（空と区別する）。
+     *
+     * DM 画面・Deck の DM カラム・レールのバッジが同時に購読するので、通知フィードと同じく
+     * 共有の StateFlow にする（[feedSharing]）。以前は呼び出しごとに Flow を作っており、
+     * DB クエリと相手ごとの集計が購読者の数だけ、プロフィール更新のたびに走っていた。
+     */
+    private val dmConversationsCache: StateFlow<List<DmConversation>?> by lazy {
+        buildDmConversations().stateIn(scope, feedSharing, null)
+    }
+    fun dmConversationsFlow(): StateFlow<List<DmConversation>?> = dmConversationsCache
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun dmConversationsFlow(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
+    private fun buildDmConversations(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
-        else combine(q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow) { rows, profiles ->
+        else combine(
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen,
+        ) { rows, profiles, seenByPeer, firstSeen ->
             val byPk = profiles.associateBy { it.pubkey }
+            // [#416] 相手ごとの未読数（相手の発言のうち、その会話の既読基準より新しいもの）。
+            val unreadByPeer = rows
+                .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer, firstSeen) }
+                .groupingBy { it.pubkey }.eachCount()
             val seen = LinkedHashSet<String>()
             rows.mapNotNull { row ->
                 val other = if (row.pubkey == me)
@@ -4827,6 +4917,7 @@ class EventRepository(
                     handle = p?.handle.orEmpty(),
                     lastMessage = row.content,
                     pictureUrl = p?.picture_url,
+                    unread = unreadByPeer[other] ?: 0,
                 )
             }
         }.flowOn(Dispatchers.Default)
@@ -5079,5 +5170,8 @@ class EventRepository(
 
         /** [#9] 通知/DM の最終閲覧時刻（未読件数算出用）の KV キー。 */
         const val DM_LAST_SEEN = "dm_last_seen"
+
+        /** [#416] 会話ごとの既読基準時刻（`dm_seen:<pubkey>` = unix 秒）。 */
+        const val DM_SEEN_PREFIX = "dm_seen:"
     }
 }

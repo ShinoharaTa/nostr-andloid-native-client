@@ -25,7 +25,6 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
@@ -66,15 +66,13 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
-    // [#9] DM の未読バッジ（最終閲覧時刻方式）。表示中は既読化してバッジを消す。
+    // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
+    // （ここで DM 画面に居るだけで既読にすると、読んでいない会話まで消えていた）。
     // [#405] 通知の未読バッジは廃止（通知はカラムに一本化、ナビの「通知」はカラムへのジャンプ）。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    LaunchedEffect(state.navDest, dmUnread) {
-        if (state.navDest == NavDest.DM && dmUnread > 0) repo?.markDmSeen()
-    }
     Column(
         Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -106,7 +104,9 @@ fun DeckRail(state: DeckState) {
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
             state.pinnedColumns.forEach { col ->
-                PinnedShortcut(col, active = state.navDest == NavDest.HOME && col.id == state.visibleColumnId) {
+                // [#416] DM カラムのアイコンに未読バッジ（件数は会話ごとの未読の合計）。
+                val shown = if (col.kind == ColumnKind.DM) col.copy(unread = dmUnread) else col
+                PinnedShortcut(shown, active = state.navDest == NavDest.HOME && col.id == state.visibleColumnId) {
                     state.clearDetail(); state.jumpTo(col.id)
                 }
             }

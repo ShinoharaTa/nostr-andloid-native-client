@@ -60,8 +60,10 @@ fun ColumnTemplate.build(
             "mentions/zaps…", ColumnKind.NOTIFICATIONS,
             ReqFilter(kinds = notifKinds.ifEmpty { listOf(1, 7, 9735, 6) }))
 
+        // [#415] 表示は復号後の kind:14（gift wrap 1059 は event テーブルに保存しない）。
+        // カラム自身は REQ を張らず、起動時の dm_inbox 購読に相乗りする。
         ColumnTemplate.DM -> spec(id, "DM", "NIP-17", ColumnKind.DM,
-            ReqFilter(kinds = listOf(1059)))
+            ReqFilter(kinds = listOf(14)))
 
         ColumnTemplate.PROFILE -> spec(id, npubShort(text), "profile", ColumnKind.PROFILE,
             ReqFilter(kinds = listOf(1), authors = listOf(text)))
