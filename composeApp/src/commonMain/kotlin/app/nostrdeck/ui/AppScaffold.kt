@@ -318,6 +318,8 @@ private fun BottomBar(state: DeckState) {
     val repo = LocalRepository.current
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
+    // [#422] 「メッセージ」の件数（未読管理は DM のみ）。
+    val dmUnread by (repo?.dmUnreadFlow()?.collectAsState() ?: remember { mutableStateOf(0) })
     // 元の M3 NavigationBar（既定高さ80dp・選択インジケータ）を維持する。変更点は2つだけ:
     //  1) 色: containerColor=Bg + tonalElevation=0 → 左レール/セーフエリア裏と同色のモノクロに揃える
     //     （M3 既定の surfaceContainer は紫みのグレーで段差＆色味が出ていた）。
@@ -330,15 +332,19 @@ private fun BottomBar(state: DeckState) {
         tonalElevation = 0.dp,
         windowInsets = bottomBarInsets(),
     ) {
-        // [#nav] 並びは ホーム・検索・パブリックチャット・通知・ユーザー（レールと同順）。
-        // DM はナビから外し、ユーザー（設定ハブ）の「よく使う」から開く。
+        // [#422] 並びは ホーム・検索・メッセージ・通知・ユーザーの固定5枠（レールと同順）。
+        // ピン留め次第で項目が増減しない。DM とパブリックチャットは「メッセージ」にまとめる。
         // [#405] 通知カラムを開いている間は「通知」側を選択表示にする（ホームは非選択）。
         NavItem(
             state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
             selected = state.navDest == NavDest.HOME && !state.notificationsActive,
+            onClick = { state.openHome() },   // [#422] 必ずフォロー中へ
         )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
-        NavItem(state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat))
+        NavItem(
+            state, NavDest.DM, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_messages),
+            selected = state.messagesActive, onClick = { state.openMessages(dmUnread) }, badge = dmUnread,
+        )
         // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
         NavItem(
             state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications),
@@ -359,11 +365,19 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
     state: DeckState, dest: NavDest, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String,
     selected: Boolean = state.navDest == dest,
     onClick: () -> Unit = { state.clearDetail(); state.navDest = dest },
+    /** [#422] 件数バッジ（0 なら出さない）。「メッセージ」の未読 DM に使う。 */
+    badge: Int = 0,
 ) {
     NavigationBarItem(
         selected = selected,
         onClick = onClick,
-        icon = { Icon(icon, label) },
+        icon = {
+            if (badge > 0) {
+                androidx.compose.material3.BadgedBox(badge = { androidx.compose.material3.Badge { androidx.compose.material3.Text("$badge") } }) {
+                    Icon(icon, label)
+                }
+            } else Icon(icon, label)
+        },
         colors = bottomNavItemColors(),
     )
 }

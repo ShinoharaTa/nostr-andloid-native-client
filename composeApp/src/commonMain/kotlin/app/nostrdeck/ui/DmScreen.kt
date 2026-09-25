@@ -103,7 +103,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         showDetail = state.dmThread != null,
         list = {
             DmList(
-                loaded, selectedPubkey = state.dmThread,
+                state, loaded, selectedPubkey = state.dmThread,
                 onNew = { showNew = true },
                 onSelect = { state.dmThread = it.pubkey },
                 onOpenProfile = { state.openProfile(it.pubkey) },
@@ -177,6 +177,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
 
 @Composable
 private fun DmList(
+    state: DeckState,
     convos: List<DmConversation>?,
     selectedPubkey: String?,
     onNew: () -> Unit,
@@ -184,19 +185,10 @@ private fun DmList(
     onOpenProfile: (DmConversation) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        Row(
-            Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(stringResource(Res.string.dm_title), color = DeckColors.Text, fontSize = DeckType.Title, fontWeight = DeckWeight.Strong,
-                modifier = Modifier.weight(1f))
-            Box(
-                Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onNew),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.Add, stringResource(Res.string.dm_new_title), tint = DeckColors.Text) }
-        }
+        // [#422] 見出しはメッセージ画面の「DM | チャット」切り替え。新規はチャットと同じく一覧の先頭行。
+        MessagesSegmentBar(state)
         HorizontalDivider(color = DeckColors.Border)
-        DmConversationRows(convos, selectedPubkey, onSelect, onOpenProfile)
+        DmConversationRows(convos, selectedPubkey, onSelect, onOpenProfile, onNew = onNew)
     }
 }
 
@@ -211,16 +203,33 @@ private fun DmConversationRows(
     onSelect: (DmConversation) -> Unit,
     onOpenProfile: (DmConversation) -> Unit,
     listState: LazyListState = rememberLazyListState(),
+    /** [#422] 非null なら先頭に「新しいメッセージを送る」行（DM 画面のみ。DM カラムには出さない）。 */
+    onNew: (() -> Unit)? = null,
 ) {
     // null = まだ読み込んでいない。ここで「まだ会話がありません」を出すと、会話がある人にも
     // 一瞬だけ空表示が出てしまう。
-    if (convos == null) return
-    if (convos.isEmpty()) {
+    if (convos == null && onNew == null) return
+    if (convos != null && convos.isEmpty() && onNew == null) {
         DetailPlaceholder(stringResource(Res.string.dm_empty))
         return
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
-        items(convos, key = { it.pubkey }) { c ->
+        // 会話が無くても新規は出す（最初の1通を送る入口が無くなるので）。
+        if (onNew != null) {
+            item(key = "new_dm") {
+                ListCreateRow(stringResource(Res.string.dm_new_row), onNew)
+                HorizontalDivider(color = DeckColors.Border)
+            }
+        }
+        if (convos != null && convos.isEmpty()) {
+            item(key = "empty") {
+                Text(
+                    stringResource(Res.string.dm_empty), color = DeckColors.Text3, fontSize = DeckType.Sub,
+                    modifier = Modifier.fillMaxWidth().padding(DeckSpace.Xl),
+                )
+            }
+        }
+        items(convos.orEmpty(), key = { it.pubkey }) { c ->
             val active = c.pubkey == selectedPubkey
             Row(
                 Modifier.fillMaxWidth()

@@ -6,6 +6,9 @@
     <string name="nav_public_chat">パブリックチャット</string>
     <string name="nav_notifications">通知</string>
     <string name="nav_dm">DM</string>
+    <string name="nav_messages">メッセージ</string>
+    <string name="seg_dm">DM</string>
+    <string name="seg_chat">チャット</string>
     <string name="nav_add_column">カラム追加</string>
     <string name="settings_title">設定</string>
 
@@ -535,6 +538,7 @@
     <string name="connecting_6">波長を合わせています…</string>
     <string name="dm_select_conversation">会話を選択</string>
     <string name="dm_new_title">新しいメッセージ</string>
+    <string name="dm_new_row">新しいメッセージを送る</string>
     <string name="dm_open">開く</string>
     <string name="dm_title">メッセージ</string>
     <string name="unsent_label">未送信</string>
