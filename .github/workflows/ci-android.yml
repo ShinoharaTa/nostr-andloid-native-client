@@ -1,0 +1,59 @@
+# [#427] PR / main push で Android のコンパイルと JVM(desktop) テストを検証する。
+# release-beta.yml は Play 配信を伴うので検証用には回せない。こちらは配信・署名なし。
+#
+# debug ビルドなので署名 Secrets は不要（keystore.properties が無ければ未署名でビルドされる）。
+# iOS ターゲットは Linux ランナーでは自動でスキップされる。
+name: CI Android
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "designs/**"
+      - "distribution/**"
+      - "**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "designs/**"
+      - "distribution/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-android-${{ github.ref }}
+  cancel-in-progress: true  # 同一 PR / ブランチへの連続 push は古い実行を打ち切る
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK and run desktop tests
+        run: >
+          ./gradlew :composeApp:assembleDebug
+          :nostr-core:desktopTest
+          :composeApp:desktopTest
+          --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: "**/build/reports/tests/"
+          retention-days: 7
