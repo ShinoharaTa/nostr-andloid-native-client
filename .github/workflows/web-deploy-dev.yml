@@ -1,0 +1,56 @@
+# Web 版の dev 環境（web/wrangler.toml の [env.dev] = Worker nostrism-web-dev）へデプロイする。
+# **dev 環境専用**。トリガは web-dev ブランチへの push と workflow_dispatch のみ（main / PR では走らない）。
+# 本番（release/web → nostrism.shino3.net）は別ワークフロー（W-17）で扱う。
+#
+# 配信するのは LP（docs/）と /app/ プレースホルダだけ。wasm のビルド（Gradle）は、
+# composeApp の wasmJs ターゲットができた時点（W-06 / W-07）で assemble-dist の前に足す。
+#
+# 必要な GitHub Secrets（Settings → Secrets and variables → Actions）:
+#   CLOUDFLARE_API_TOKEN   … API トークン（テンプレート「Edit Cloudflare Workers」。dev だけなら Zone 権限は不要）
+#   CLOUDFLARE_ACCOUNT_ID  … Cloudflare の Account ID
+name: Web Deploy (dev)
+
+on:
+  push:
+    branches: [web-dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Test
+        working-directory: web
+        run: npm test
+
+      - name: Assemble dist
+        run: bash web/scripts/assemble-dist.sh
+
+      - name: Deploy to dev
+        uses: cloudflare/wrangler-action@v4
+        with:
+          # wranglerVersion を省略すると web/node_modules の wrangler（package-lock の版）をそのまま使う
+          workingDirectory: web
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env dev

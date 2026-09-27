@@ -13,3 +13,13 @@ binding = "ASSETS"
 html_handling = "auto-trailing-slash"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
+
+# dev 環境（web-dev ブランチの push でデプロイ: .github/workflows/web-deploy-dev.yml）。
+# URL は https://nostrism-web-dev.<account>.workers.dev。routes は持たない。
+# main / compatibility_date / [assets] はトップレベルから継承される。
+[env.dev]
+name = "nostrism-web-dev"
+workers_dev = true
+preview_urls = false
+# トップレベルに本番 routes を足しても dev に継承させない（routes は env に継承される）
+routes = []
