@@ -362,7 +362,8 @@ fun ComposeSheet(
                             slots.withPermit {
                                 val p = v.processed
                                     ?: videoProcessor(v.src, videoPrefs.heightFor(videoResolution))
-                                val url = repo?.uploadImage(p.bytes, p.mime, p.name)
+                                // [#685] 端末で変換済み（低/中）ならサーバの再変換を断る。高・変換失敗は従来どおり。
+                                val url = repo?.uploadImage(p.bytes, p.mime, p.name, noTransform = p !== v.src)
                                 uploadProgress.update { n -> n + 1 }
                                 url
                             }

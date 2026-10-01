@@ -1,6 +1,7 @@
 package app.nostrdeck.ui
 
 import android.content.Context
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
@@ -8,7 +9,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -24,7 +27,7 @@ import kotlin.coroutines.resume
 
 /**
  * [#248] Android 実装。Media3 Transformer で H.264/AAC(mp4) へトランスコードする。
- * Presentation.createForHeight で縦解像度を設定値へ（元が小さければ拡大しない）。
+ * [#685] 出力サイズは [ShortSidePresentation]（短辺を設定値へ、縦横比維持）。
  * 失敗時・変換後の方が大きい場合は元バイトを返す。
  */
 actual val videoCompressionSupported: Boolean = true
@@ -55,8 +58,8 @@ private suspend fun transcode(context: Context, video: PickedImage, targetHeight
             .setEffects(
                 Effects(
                     /* audioProcessors = */ emptyList(),
-                    // 縦解像度を落とす（元が小さい場合は Presentation は拡大しない）。
-                    /* videoEffects = */ listOf(Presentation.createForHeight(targetHeight)),
+                    // [#685] 短辺を設定値へ落とす（縦横比維持・拡大しない・偶数サイズ）。
+                    /* videoEffects = */ listOf(ShortSidePresentation(targetHeight)),
                 ),
             )
             .build()
@@ -99,4 +102,25 @@ private suspend fun transcode(context: Context, video: PickedImage, targetHeight
             runCatching { outFile.delete() }
         }
     }
+}
+
+/**
+ * [#685] 短辺を [targetShortSide] へ縮める Presentation（サイズ計算は [videoOutputSize]）。
+ * 入力サイズは configure で初めて分かるので、そこで出力サイズを決めて Presentation に委譲する。
+ * Media3 1.5 は回転メタデータをデコード時に適用し、表示向き（縦動画なら 1080x1920）で configure を
+ * 呼ぶため、ここで回転は見なくてよい。偶数丸めによる 1px 未満の比のズレは黒帯でなくクロップで吸収する。
+ */
+@UnstableApi
+private class ShortSidePresentation(private val targetShortSide: Int) : MatrixTransformation {
+    private var delegate: Presentation? = null
+
+    override fun configure(inputWidth: Int, inputHeight: Int): Size {
+        val (w, h) = videoOutputSize(inputWidth, inputHeight, targetShortSide)
+        val p = Presentation.createForWidthAndHeight(w, h, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+        delegate = p
+        return p.configure(inputWidth, inputHeight)
+    }
+
+    override fun getMatrix(presentationTimeUs: Long): Matrix =
+        checkNotNull(delegate) { "configure() not called" }.getMatrix(presentationTimeUs)
 }

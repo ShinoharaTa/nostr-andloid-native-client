@@ -5315,11 +5315,18 @@ class EventRepository(
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。
      * 有効なメディアサーバ(NIP-96)を順に試し、最初に成功した URL を返す。全滅なら null。
+     * [#685] noTransform = true は NIP-96 の no_transform を送り、サーバ側の再変換を断る
+     * （端末でトランスコード済みの動画用。nostrcheck.me は再変換で動画を 640x480 に潰していた）。
      */
-    suspend fun uploadImage(bytes: ByteArray, mime: String, filename: String = "image"): String? =
+    suspend fun uploadImage(
+        bytes: ByteArray,
+        mime: String,
+        filename: String = "image",
+        noTransform: Boolean = false,
+    ): String? =
         withContext(Dispatchers.Default) {
             for (s in q.enabledMediaServers().executeAsList()) {
-                val url = runCatching { uploadToServer(s.url, bytes, mime, filename) }.getOrNull()
+                val url = runCatching { uploadToServer(s.url, bytes, mime, filename, noTransform) }.getOrNull()
                 if (!url.isNullOrBlank()) return@withContext url
             }
             null
@@ -5331,10 +5338,17 @@ class EventRepository(
      *  2. api_url へ multipart/form-data（part 名 `file`）を POST。Authorization は NIP-98。
      *  3. レスポンス JSON から URL を抽出（nip94_event.tags の "url" / トップレベル "url"）。
      */
-    private suspend fun uploadToServer(server: String, bytes: ByteArray, mime: String, filename: String): String? {
+    private suspend fun uploadToServer(
+        server: String,
+        bytes: ByteArray,
+        mime: String,
+        filename: String,
+        noTransform: Boolean,
+    ): String? {
         val base = server.trim().trimEnd('/')
         val apiUrl = discoverApiUrl(base) ?: "$base/api/v1/media"
         val parts = formData {
+            if (noTransform) append("no_transform", "true")
             append(
                 "file", bytes,
                 Headers.build {

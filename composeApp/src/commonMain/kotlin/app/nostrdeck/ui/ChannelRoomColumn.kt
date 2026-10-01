@@ -619,9 +619,12 @@ private fun Composer(
                 sending = true
                 val body = text.trim()
                 scope.launch {
-                    val urls = (
-                        images.map { it.processed ?: it.src } + videos.map { it.processed ?: it.src }
-                        ).map { p -> repo?.uploadImage(p.bytes, p.mime, p.name) }
+                    // [#685] 端末で変換済みの動画はサーバの再変換を断る（no_transform）。
+                    val urls = images.map { it.processed ?: it.src }.map { p -> repo?.uploadImage(p.bytes, p.mime, p.name) } +
+                        videos.map { v ->
+                            val p = v.processed ?: v.src
+                            repo?.uploadImage(p.bytes, p.mime, p.name, noTransform = p !== v.src)
+                        }
                     if (urls.any { it.isNullOrBlank() }) {
                         // 1件でも失敗したらメディア欠けで送らない。添付は残して再試行できるようにする。
                         toast(uploadFailMsg)

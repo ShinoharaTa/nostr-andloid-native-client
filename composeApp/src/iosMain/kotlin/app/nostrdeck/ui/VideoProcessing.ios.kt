@@ -33,6 +33,8 @@ import kotlin.coroutines.resume
  * [#248] iOS 実装。AVAssetExportSession で H.264/AAC(mp4) へトランスコードする。
  * targetHeight は最も近い標準プリセット（480/540/720/1080/2160p）へ丸める。
  * 元動画がプリセットより小さい場合は拡大されない（AVFoundation の仕様）。
+ * [#685] サイズプリセットは固定サイズではなく長辺の上限（640x480 なら 16:9→640x360、縦→360x640、
+ * 正方形→640x640）。縦横比と回転（preferredTransform）は保たれる（iOS シミュレータで確認）。
  * 失敗時・変換後の方が大きい場合は元バイトを返す。
  */
 actual val videoCompressionSupported: Boolean = true
