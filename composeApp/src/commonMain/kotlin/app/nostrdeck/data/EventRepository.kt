@@ -5025,7 +5025,7 @@ class EventRepository(
             requestProfile(rumor.sender); rumor.recipient?.let { requestProfile(it) }
             // DM相手のアイコン/名前は接続中リレーに無いことが多いのでインデクサからも確実に取る。
             requestProfileFromIndexers(listOfNotNull(rumor.sender, rumor.recipient))
-            storeDm(rumor.id, rumor.sender, rumor.recipient, rumor.content, rumor.createdAt)
+            storeDm(rumor.id, rumor.sender, rumor.recipient, rumor.content, rumor.createdAt, rumor.replyTo)
         }
     }
 
@@ -5050,8 +5050,11 @@ class EventRepository(
         }
     }
 
-    private fun storeDm(id: String, sender: String, recipient: String?, content: String, createdAt: Long) {
-        val tags = recipient?.let { listOf(listOf("p", it)) } ?: emptyList()
+    private fun storeDm(
+        id: String, sender: String, recipient: String?, content: String, createdAt: Long, replyTo: String? = null,
+    ) {
+        // [#612] 返信元の #e も残す（以前は p だけで、返信の引用がどちらの向きでも出なかった）。
+        val tags = Nip17.rumorTags(recipient, replyTo)
         q.insertEvent(id, sender, 14, createdAt, content, tagsToJson(tags), "")
         indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
     }
@@ -5083,11 +5086,13 @@ class EventRepository(
      * 送信本体はアプリのスコープで走らせる。画面のスコープで走らせると、相手の DM リレーを
      * 引いている最中（最大 2.5 秒）に画面を離れただけで送信が中断され、楽観挿入したバブルだけが
      * 残っていた。呼び出し元が先にいなくなっても送信は最後まで進む（結果の通知だけが届かない）。
+     *
+     * [#612] [replyTo] があれば rumor に reply マーカー付き #e を付ける（以前は返信元を捨てていた）。
      */
-    suspend fun sendDm(peerPubkey: String, text: String): DmSendResult =
-        scope.async { sendDmNow(peerPubkey, text) }.await()
+    suspend fun sendDm(peerPubkey: String, text: String, replyTo: NostrEvent? = null): DmSendResult =
+        scope.async { sendDmNow(peerPubkey, text, replyTo) }.await()
 
-    private suspend fun sendDmNow(peerPubkey: String, text: String): DmSendResult {
+    private suspend fun sendDmNow(peerPubkey: String, text: String, replyTo: NostrEvent?): DmSendResult {
         if (text.isBlank()) return DmSendResult.FAILED
         // 楽観挿入した行。送れなかったときに戻す（送れていないのに履歴に残り続けないように）。
         var storedId: String? = null
@@ -5095,7 +5100,7 @@ class EventRepository(
             val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
             val signer = SignerProvider.current()
             val now = currentUnixTime()
-            val rumorTags = listOf(listOf("p", peerPubkey))
+            val rumorTags = Nip17.rumorTags(peerPubkey, replyTo?.id)
             val rumorId = Nip01.eventId(me, now, 14, rumorTags, text)
             val rumorJson = buildJsonObject {
                 put("id", rumorId); put("pubkey", me); put("created_at", now); put("kind", 14)
@@ -5106,7 +5111,7 @@ class EventRepository(
             fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
             val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
             val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
-            storeDm(rumorId, me, peerPubkey, text, now)   // 楽観反映
+            storeDm(rumorId, me, peerPubkey, text, now, replyTo?.id)   // 楽観反映（[#612] 返信の引用も出す）
             storedId = rumorId
             processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
             // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。

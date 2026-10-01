@@ -128,10 +128,11 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     // [#417] 結果をトーストで返す。以前はここで例外を握り潰していたため、
                     // 失敗しても入力欄がクリアされ自分のバブルも出て、送れたように見えていた。
                     // （例外を投げっぱなしにすると appScope 直下の未捕捉例外で落ちるので握るのは維持）
-                    onSend = if (repo != null) ({ text, _ ->
+                    // [#612] 返信元を渡す（以前は捨てていて、送った kind:14 に返信の #e が付かなかった）。
+                    onSend = if (repo != null) ({ text, replyingTo ->
                         scope.launch {
                             val peer = selected.pubkey
-                            when (repo.sendDm(peer, text)) {
+                            when (repo.sendDm(peer, text, replyingTo?.event)) {
                                 EventRepository.DmSendResult.SENT -> Unit
                                 EventRepository.DmSendResult.SENT_NO_PEER_RELAYS ->
                                     if (warnedNoRelays.add(peer)) toast(noRelaysMsg)

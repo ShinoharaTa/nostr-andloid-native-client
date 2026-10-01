@@ -22,11 +22,26 @@ import kotlinx.serialization.json.long
 object Nip17 {
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** 復号済み DM 本体。 */
+    /** 復号済み DM 本体。[replyTo] は返信元の rumor id（[#612] reply マーカー付き #e。無ければ null）。 */
     data class Rumor(
         val id: String, val sender: String, val recipient: String?,
         val content: String, val createdAt: Long,
+        val replyTo: String? = null,
     )
+
+    /**
+     * [#612] rumor(kind:14) のタグ。宛先 p は相手 1 人。[replyToId] があれば NIP-10 の reply マーカー付き
+     * #e を添える（Web buildRumor・publishChannelMessage と同じ形。DM は 1:1 なので相手への #p は増やさない）。
+     * 手元に保存する行も同じ形にする（p の無い受信 rumor もあるので [peer] は null を許す）。
+     */
+    fun rumorTags(peer: String?, replyToId: String? = null): List<List<String>> = buildList {
+        if (peer != null) add(listOf("p", peer))
+        if (replyToId != null) add(listOf("e", replyToId, "", "reply"))
+    }
+
+    /** [#612] 返信元の rumor id（reply マーカー付き #e。ChannelRoomColumn の replyParentId と同じ規則）。 */
+    fun replyToOf(tags: List<List<String>>): String? =
+        tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }?.get(1)
 
     /**
      * rumor(JSON) を [wrapTarget] 宛に gift wrap(kind:1059)する。
@@ -63,7 +78,8 @@ object Nip17 {
         val createdAt = rumor["created_at"]!!.jsonPrimitive.long
         val id = rumor["id"]?.jsonPrimitive?.content ?: Nip01.eventId(sender, createdAt, 14, tags, content)
         val recipient = tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
-        Rumor(id = id, sender = sender, recipient = recipient, content = content, createdAt = createdAt)
+        Rumor(id = id, sender = sender, recipient = recipient, content = content, createdAt = createdAt,
+            replyTo = replyToOf(tags))
     }.getOrNull()
 
     /** 有効な secp256k1 スカラー（1<=k<n）を得る。乱数はほぼ常に有効なので数回で成功する。 */
