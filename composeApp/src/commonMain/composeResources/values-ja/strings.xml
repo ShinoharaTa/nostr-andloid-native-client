@@ -547,6 +547,9 @@
     <string name="unsent_moved_to_draft">下書きに戻しました</string>
     <string name="unsent_tap_retry">未送信・タップで再送</string>
     <string name="publish_unconfirmed">送信を確認できませんでした。接続が戻ったら自動で再送します</string>
+    <!-- [#478] 自分のリストを編集する直前の取り直し -->
+    <string name="own_list_unreachable">最新のリストをリレーから取得できなかったため、変更しませんでした。接続を確認してもう一度お試しください</string>
+    <string name="own_list_stale">ほかの端末で更新されていたため、最新の内容を読み込みました。もう一度操作してください</string>
     <string name="dm_send_failed">メッセージを送れませんでした</string>
     <string name="dm_no_relays_warn">相手がDMリレーを公開していないため、届かない可能性があります</string>
     <string name="dm_empty">まだ会話がありません</string>

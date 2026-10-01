@@ -551,6 +551,9 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="unsent_moved_to_draft">Moved to draft</string>
     <string name="unsent_tap_retry">Not sent · tap to retry</string>
     <string name="publish_unconfirmed">Couldn't confirm sending. It will be retried when you're back online.</string>
+    <!-- [#478] 自分のリストを編集する直前の取り直し -->
+    <string name="own_list_unreachable">Couldn't get your latest list from the relays, so nothing was changed. Check your connection and try again.</string>
+    <string name="own_list_stale">This was updated on another device. The latest version is loaded — please try again.</string>
     <string name="dm_send_failed">Couldn't send the message</string>
     <string name="dm_no_relays_warn">This person hasn't published DM relays, so the message may not reach them</string>
     <string name="dm_empty">No conversations yet</string>
