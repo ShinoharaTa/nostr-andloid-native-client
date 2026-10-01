@@ -32,10 +32,18 @@ private const val SINCE_MARGIN_SEC = 60L
 // [#365] 差分基準に採用する created_at の未来側スキュー上限（壊れた時計の投稿対策）。
 private const val FUTURE_SKEW_SEC = 300L
 
+// [#547] kind:1059（gift wrap）の since に引く追加の幅。NIP-59 は created_at を最大2日過去へずらすので、
+// 切断より後に送られた DM の wrap は「最終受信 − 2日」より新しい。時計のずれの分を足して余裕を持たせる。
+internal const val GIFT_WRAP_SINCE_SLACK_SEC = 2 * 86_400L + 3_600L
+
 /**
  * [#365] 再接続時の張り直し用フィルタ調整（純ロジック・テスト可能）。
  * [lastEventAt]（その購読で受信済みの最大 created_at）があれば、since/until が明示されていない
  * フィルタへ `since = lastEventAt - margin` を差し込む。無ければ従来どおり全量。
+ * [#547] kind:1059 を含むフィルタは since をさらに [GIFT_WRAP_SINCE_SLACK_SEC] 前へ下げる。gift wrap の
+ * created_at は最大2日過去へずらされる（NIP-59）ため、最終受信の直前で切ると切断中に届いた DM を取りこぼす。
+ * 全量の取り直し（Web はこちら）だと、バックグラウンドから戻るたびに DM 全件を受け直して署名を検証するので、
+ * 取りこぼさない最小の幅（2日分）に留める。再復号は processedWraps（処理済み id）で防ぐ。
  */
 internal fun applySinceForResend(
     filters: List<Filter>,
@@ -44,7 +52,14 @@ internal fun applySinceForResend(
 ): List<Filter> {
     if (lastEventAt == null) return filters
     val since = (lastEventAt - marginSec).coerceAtLeast(0)
-    return filters.map { if (it.since != null || it.until != null) it else it.copy(since = since) }
+    val wrapSince = (since - GIFT_WRAP_SINCE_SLACK_SEC).coerceAtLeast(0)
+    return filters.map {
+        when {
+            it.since != null || it.until != null -> it
+            it.kinds?.contains(1059) == true -> it.copy(since = wrapSince)
+            else -> it.copy(since = since)
+        }
+    }
 }
 
 /** [#364] 購読(subId)単位の受信量。EVENT フレームのバイト数を購読に帰属させた概算。 */
@@ -212,6 +227,7 @@ class RelayClient(
      *  - 元のフィルタに since/until が明示されている場合は上書きしない
      *  - limit は安全上限としてそのまま残す（since が効けば通常は届かない）
      *  - 受信記録が無い購読（初回接続・AUTH 直後リセット等）は従来どおり全量
+     *  - [#547] kind:1059（gift wrap）を含むフィルタは since を2日余分に下げる（created_at がランダム化されるため）
      * マージンは順不同で届く遅延イベントの取りこぼし対策。重複分はローカル DB が
      * イベント id で弾くため、通信は増えても処理コストはほぼ無い。
      */

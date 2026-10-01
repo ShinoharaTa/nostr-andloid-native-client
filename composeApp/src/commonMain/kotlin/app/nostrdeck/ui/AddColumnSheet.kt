@@ -32,6 +32,7 @@ import app.nostrdeck.model.ColumnConfig
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.ColumnTemplate
 import app.nostrdeck.model.NotifKind
+import app.nostrdeck.model.acceptsInput
 import app.nostrdeck.model.build
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -143,7 +144,7 @@ private fun ConfigPane(t: ColumnTemplate, onBack: () -> Unit, onAdd: (ColumnSpec
                     val kinds = NotifKind.entries.filter { notif[it] == true }.map { it.kind }
                     onAdd(t.build(input = text, notifKinds = kinds, relays = relays))
                 },
-                enabled = t.config != ColumnConfig.TEXT || text.isNotBlank(),
+                enabled = t.acceptsInput(text),   // [#578] PROFILE は npub / nprofile / hex として読めるときだけ
             )
         }
     }

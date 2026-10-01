@@ -83,6 +83,7 @@ import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.nip65PrefsFromTags
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.withHexProfileAuthors
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.UnsignedEvent
 import app.nostrdeck.model.UsedEmoji
@@ -820,7 +821,7 @@ class EventRepository(
                     renderer = ColumnRenderer.valueOf(row.renderer),
                     filter = json.decodeFromString(ReqFilter.serializer(), row.filter_json),
                     pinned = true, order = row.sort_order.toInt(),
-                )
+                ).withHexProfileAuthors()   // [#578] 旧版で npub のまま保存された PROFILE を直す
             }.getOrNull()
         }
 
@@ -961,7 +962,7 @@ class EventRepository(
                         id = d.id, title = d.title, subtitle = d.subtitle,
                         kind = ColumnKind.valueOf(d.kind), renderer = ColumnRenderer.valueOf(d.renderer),
                         filter = d.filter, pinned = true, order = d.order,
-                    )
+                    ).withHexProfileAuthors()   // [#578]
                 }.getOrNull()
             }
 

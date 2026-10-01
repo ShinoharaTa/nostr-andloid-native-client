@@ -1,5 +1,6 @@
 package app.nostrdeck.model
 
+import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -65,8 +66,10 @@ fun ColumnTemplate.build(
         ColumnTemplate.DM -> spec(id, "DM", "NIP-17", ColumnKind.DM,
             ReqFilter(kinds = listOf(14)))
 
-        ColumnTemplate.PROFILE -> spec(id, npubShort(text), "profile", ColumnKind.PROFILE,
-            ReqFilter(kinds = listOf(1), authors = listOf(text)))
+        // [#578] authors は hex のみ（npub のまま入れると REQ に何も流れない）。
+        // 読めない入力は UI 側（acceptsInput）で追加/保存させない。
+        ColumnTemplate.PROFILE -> spec(id, npubShort(text.removePrefix("nostr:")), "profile", ColumnKind.PROFILE,
+            ReqFilter(kinds = listOf(1), authors = listOf(profileInputToHex(text) ?: text)))
 
         ColumnTemplate.SEARCH -> {
             // [#135] スペース区切りのトークンを単語/タグへ振り分け、OR で並べる1フィードに。
@@ -87,6 +90,33 @@ fun ColumnTemplate.build(
 
 private fun spec(id: String, title: String, subtitle: String, kind: ColumnKind, filter: ReqFilter) =
     ColumnSpec(id, title, subtitle, kind, ColumnRenderer.FEED, filter, pinned = true)
+
+/**
+ * [#578] PROFILE の入力 → 64 桁 hex 公開鍵。npub / nprofile（その pubkey）/ hex を受け付け、
+ * `nostr:` 付きでも良い。読めなければ null。
+ */
+fun profileInputToHex(input: String): String? {
+    val t = input.trim().removePrefix("nostr:")
+    if (t.length == 64 && t.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return t.lowercase()
+    return Nip19.mentionBechToHex(t)?.takeIf { it.length == 64 }
+}
+
+/** [#578] 入力欄の値で追加/保存できるか。PROFILE は pubkey として読めるものだけ。 */
+fun ColumnTemplate.acceptsInput(text: String): Boolean = when {
+    config != ColumnConfig.TEXT -> true
+    this == ColumnTemplate.PROFILE -> profileInputToHex(text) != null
+    else -> text.isNotBlank()
+}
+
+/**
+ * [#578] 旧版で保存された PROFILE カラムの authors に npub 等が入っていれば hex に直す
+ * （読み込み時に通し、壊れたまま保存済みのカラムも流れるようにする）。直せない値はそのまま。
+ */
+fun ColumnSpec.withHexProfileAuthors(): ColumnSpec {
+    if (kind != ColumnKind.PROFILE) return this
+    val fixed = filter.authors.map { profileInputToHex(it) ?: it }
+    return if (fixed == filter.authors) this else copy(filter = filter.copy(authors = fixed))
+}
 
 /**
  * [#135] キーワード・タグフィード。指定した単語・#タグの投稿を1カラムに OR で集約する
@@ -142,7 +172,9 @@ fun ColumnSpec.editTemplate(): ColumnTemplate? = when {
 /** 現在のテキスト設定値（TEXT 設定テンプレのプリフィル用）。 */
 fun ColumnSpec.editText(): String = when (kind) {
     ColumnKind.HASHTAG -> filter.hashtags.firstOrNull().orEmpty()
-    ColumnKind.PROFILE -> filter.authors.firstOrNull().orEmpty()
+    // [#578] authors は hex で持つので、入力欄には npub に戻して出す。
+    ColumnKind.PROFILE -> filter.authors.firstOrNull()
+        ?.let { runCatching { Nip19.hexToNpub(it) }.getOrNull() ?: it }.orEmpty()
     // [#135] キーワード・タグフィードはトークン列へ可逆に戻す（旧形式は search をそのまま）。
     ColumnKind.GLOBAL ->
         if (filter.words.isNotEmpty() || filter.hashtags.isNotEmpty())

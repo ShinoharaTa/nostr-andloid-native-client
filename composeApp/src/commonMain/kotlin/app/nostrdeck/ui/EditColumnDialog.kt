@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.nostrdeck.model.ColumnConfig
 import app.nostrdeck.model.NotifKind
+import app.nostrdeck.model.acceptsInput
 import app.nostrdeck.model.build
 import app.nostrdeck.model.editTemplate
 import app.nostrdeck.model.editText
@@ -57,7 +58,7 @@ fun EditColumnDialog(state: DeckState) {
             NotifKind.entries.forEach { put(it, it.kind in spec.filter.kinds) }
         }
     }
-    val canSave = template.config != ColumnConfig.TEXT || text.isNotBlank()
+    val canSave = template.acceptsInput(text)   // [#578] PROFILE は npub / nprofile / hex として読めるときだけ
 
     AlertDialog(
         onDismissRequest = { state.editingColumnId = null },
