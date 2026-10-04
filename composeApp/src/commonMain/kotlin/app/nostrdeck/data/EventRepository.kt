@@ -257,10 +257,17 @@ class EventRepository(
         else q.myRepostedNoteIds(pk).asFlow().mapToList(Dispatchers.Default).map { it.toSet() }
     }
 
-    /** 自分が各ノートに付けたリアクション（note_id→ReactionUi）。集約表示等に使う。 */
-    private val myReactionMapFlow: Flow<Map<String, ReactionUi>> = myReactionRowsFlow.map { rows ->
-        rows.associate { it.note_id to normalizeReaction(it.content, parseTags(it.tags_json)) }
-    }
+    /**
+     * 自分が各ノートに付けたリアクション（note_id→ReactionUi）。「＋絵文字」ボタンの表示に使う。
+     * [#732] 既定（♡/☆）と別の絵文字の両方を付けていれば別の絵文字を優先する（♡の状態は myReactedFlow が持つ）。
+     * 以前は到着順の最後の 1 件になっていて、既定が後から届くと別の絵文字が隠れていた。
+     */
+    private val myReactionMapFlow: Flow<Map<String, ReactionUi>> =
+        combine(myReactionRowsFlow, defaultReactionState) { rows, def ->
+            val defaultKey = MyReaction.defaultKey(def.first)
+            rows.groupBy({ it.note_id }, { normalizeReaction(it.content, parseTags(it.tags_json)) })
+                .mapValues { (_, list) -> MyReaction.pick(list, defaultKey)!! }
+        }
 
     /** [M10] フィードに載せるメタ: 自分が♡/リポスト済みか + 自分のリアクション絵文字。 */
     /** [#423] 画面上で「未送信」と出す行の id（確認待ちの間は含めない）。noteMetaFlow より前に置く。 */

@@ -63,6 +63,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.border
+import app.nostrdeck.data.MyReaction
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -117,6 +119,15 @@ fun NoteItem(
   var moreMenu by remember { mutableStateOf(false) }
   var showZap by remember { mutableStateOf(false) }
   var showReactionPicker by remember { mutableStateOf(false) }
+  // [#732] ピッカーで選んだ直後の楽観表示。自分のリアクションがリレーから返って mineReaction に載ったら解除、
+  // 届かなければ ♡ボタンと同じく数秒で戻す。
+  var pickPending by remember(note.event.id) { mutableStateOf<ReactionUi?>(null) }
+  LaunchedEffect(pickPending, note.mineReaction) {
+      val p = pickPending ?: return@LaunchedEffect
+      if (note.mineReaction?.key == p.key) { pickPending = null; return@LaunchedEffect }
+      delay(6000)
+      pickPending = null
+  }
   // ファボ/リアクションの取り消しは kind:5（削除イベント）の発行を伴うため、確認を挟む。
   var confirmUnreact by remember { mutableStateOf(false) }
   // [#93] フォロー解除は kind:3（フォローリスト）の再発行を伴うため、確認を挟む。
@@ -355,7 +366,12 @@ fun NoteItem(
                         },
                     )
                     // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
-                    ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
+                    // [#732] 既定以外のリアクションを付けていれば、その絵文字をこのボタンに出す（タップで再びピッカー）。
+                    EmojiPickerButton(
+                        mine = MyReaction.forPickerButton(note.mineReaction, MyReaction.defaultKey(defaultReaction.first)),
+                        pending = pickPending,
+                        onClick = { showReactionPicker = true },
+                    )
                     // Zap は絵文字の隣。lud16 があれば送信可、Zap 受領があれば合計 sats を表示。
                     if (!note.author.lud16.isNullOrBlank() || zapSats > 0) {
                         ZapAction(
@@ -598,7 +614,10 @@ fun NoteItem(
   // 絵文字リアクションピッカー（NIP-25/30）。選択で kind:7 を送る。
   if (showReactionPicker) {
       ReactionPickerSheet(
-          onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl) } },
+          onPick = { content, imageUrl ->
+              pickPending = ReactionUi(content, content, 0, imageUrl)   // [#732] 楽観表示
+              scope.launch { repo?.publishReaction(note.event, content, imageUrl) }
+          },
           onDismiss = { showReactionPicker = false },
           targetNote = note,
       )
@@ -714,6 +733,41 @@ private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? 
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(DeckDimens.IconMd.scaledByText()))   // グリフのみ拡大(最大23.4dp<40dp)
+    }
+}
+
+/**
+ * [#732] 絵文字ピッカーを開くボタン。自分が既定以外のリアクションを付けていれば（[mine]）、その絵文字を
+ * 押下済みの見た目（Accent の枠と薄い塗り）で出す。タップは常にピッカー（別の絵文字に変える／足す）。
+ * 取り消しは ⋯ メニューの「リアクションを取り消す」から（♡と同じく kind:5 の確認を挟む）。
+ * 送信中（[pending] があり、まだ [mine] に反映されていない）はスピナー。♡ボタン（DefaultReactionButton）と同じ作法。
+ */
+@Composable
+private fun EmojiPickerButton(mine: ReactionUi?, pending: ReactionUi?, onClick: () -> Unit) {
+    val shown = mine ?: pending
+    val desc = shown?.let { stringResource(Res.string.reaction_mine_fmt, it.display) }
+    Box(
+        Modifier.size(DeckDensity.ActionSize).clip(CircleShape)
+            .let { m ->
+                if (shown != null) m.background(DeckColors.Accent.copy(alpha = 0.12f)).border(1.5.dp, DeckColors.Accent, CircleShape)
+                else m
+            }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            shown == null -> Icon(
+                Icons.Outlined.AddReaction, contentDescription = null, tint = DeckColors.Text3,
+                modifier = Modifier.size(DeckDimens.IconMd.scaledByText()),
+            )
+            mine == null -> CircularProgressIndicator(Modifier.size(DeckDimens.IconMd), color = DeckColors.Accent, strokeWidth = 2.dp)
+            shown.imageUrl != null -> AsyncImage(
+                model = ImageRequest.Builder(LocalPlatformContext.current)
+                    .data(ImageProxy.proxied(shown.imageUrl, width = 48, quality = 80, animated = true)).build(),
+                contentDescription = desc, modifier = Modifier.size(DeckDimens.IconMd.scaledByText()),
+            )
+            else -> Text(shown.display, fontSize = DeckType.Sub)
+        }
     }
 }
 
