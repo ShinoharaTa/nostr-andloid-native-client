@@ -147,6 +147,8 @@
     <string name="embed_spotify">Spotify のカードを表示</string>
     <string name="embed_ogp">その他リンクの OGP カードを表示</string>
     <string name="embed_ogp_images">OGP カードの画像を読み込む</string>
+    <!-- [#733] X の投稿カード -->
+    <string name="xpost_open">X で開く</string>
 
     <!-- Profile tabs -->
     <string name="tab_posts">投稿</string>

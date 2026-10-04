@@ -32,6 +32,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.nostrdeck.model.XPost
+import app.nostrdeck.model.XPosts
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.sp
+import app.nostrdeck.i18n.stringResource
+import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.xpost_open
 import app.nostrdeck.model.EmbedKind
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.NetworkTier
@@ -73,7 +80,10 @@ fun LinkEmbeds(
             when (e.kind) {
                 EmbedKind.YOUTUBE -> YouTubeEmbed(e.url, e.youtubeId!!)
                 EmbedKind.SPOTIFY -> OgpEmbed(e.url, loadImage = true)   // Spotify も OGP カードで表現
-                EmbedKind.OGP -> OgpEmbed(e.url, loadImage = prefs.ogpImages)
+                // [#733] X の投稿 URL は、OGP から組み立てた投稿カード（本文が取れなければ従来のリンクカード）。
+                EmbedKind.OGP ->
+                    if (XPosts.isPostUrl(e.url)) XPostEmbed(e.url, loadImage = prefs.ogpImages)
+                    else OgpEmbed(e.url, loadImage = prefs.ogpImages)
                 EmbedKind.VIDEO -> VideoPlayer(
                     e.url, posterUrl = meta[e.url]?.thumb,
                     blurhash = meta[e.url]?.blurhash,   // [#140] ポスター未取得の間のぼかし
@@ -168,10 +178,93 @@ private fun YouTubeEmbed(url: String, videoId: String) {
 @Composable
 private fun OgpEmbed(url: String, loadImage: Boolean) {
     val repo = LocalRepository.current ?: return
-    val uri = LocalUriHandler.current
     // 結果 null が「取得中」か「失敗」かを区別するため、完了フラグと対にして持つ。
     val fetched by produceState(false to null as OgpData?, url) { value = true to repo.fetchOgp(url) }
     val (done, data) = fetched
+    OgpCard(url, data, done, loadImage)
+}
+
+/**
+ * [#733] X（Twitter）の投稿リンク。取得は OGP のまま（通信先は増えない）。本文が取れていれば
+ * 引用ノートに近い投稿カード（著者・@ハンドル・本文・写真）で出し、取れていなければ
+ * （削除済み・非公開・取得失敗）従来のリンクカードに落とす。
+ */
+@Composable
+private fun XPostEmbed(url: String, loadImage: Boolean) {
+    val repo = LocalRepository.current ?: return
+    val fetched by produceState(false to null as OgpData?, url) { value = true to repo.fetchOgp(url) }
+    val (done, data) = fetched
+    val post = remember(data) { XPosts.from(url, data) }
+    if (post == null) OgpCard(url, data, done, loadImage) else XPostCard(post, loadImage)
+}
+
+/**
+ * [#733] X の投稿カード。見た目は引用ノート（QuotedNoteCard）に揃える: 1 行目に（プロフィール画像）名前 @ハンドル、
+ * 本文は 4 行で折りたたみ（カードのタップで全文⇔折りたたみ）、写真があれば下に 1 枚、末尾に「X で開く」。
+ * 本文中の URL は引用カードと同じく短縮表示。画像は [loadImage]（設定「OGP カードの画像を読み込む」）に従う。
+ */
+@Composable
+internal fun XPostCard(post: XPost, loadImage: Boolean) {
+    val uri = LocalUriHandler.current
+    var expanded by remember(post.url) { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(DeckRadius.Md))
+            .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Md))
+            .background(DeckColors.Surface2)
+            .clickable { expanded = !expanded }
+            .padding(DeckSpace.Sm),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (loadImage && post.avatar != null) {
+                AsyncImage(
+                    model = ImageProxy.proxied(post.avatar, width = 64),
+                    contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(16.dp).clip(CircleShape),
+                )
+                Spacer(Modifier.width(DeckSpace.Xs))
+            }
+            Text(
+                post.name ?: post.handle, color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Name,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(DeckSpace.Xs))
+            Text("@" + post.handle, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.height(DeckSpace.Xs))
+        val annotated = remember(post.text) { noteAnnotated(post.text, shortenUrls = true) }
+        Text(
+            annotated, color = DeckColors.Text2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Body,
+            lineHeight = 18.sp, maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
+        )
+        if (loadImage && post.image != null) {
+            Spacer(Modifier.height(DeckSpace.Xs))
+            // [#360] OGP の画像は数 MB のことがあるため圧縮プロキシを通す。
+            AsyncImage(
+                model = ImageProxy.proxied(post.image, width = 800),
+                contentDescription = null, contentScale = ContentScale.Crop,
+                // 4:3 で中央を切り抜く。16:9 だと正方形に近い写真の上下（見出しや顔）が落ちやすい。
+                modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(DeckRadius.Sm)),
+            )
+        }
+        Spacer(Modifier.height(DeckSpace.Xs))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                hostOf(post.url), color = DeckColors.Text3, fontSize = DeckType.Label,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(Res.string.xpost_open), color = DeckColors.Accent, fontSize = DeckType.Label, fontWeight = DeckWeight.Link,
+                modifier = Modifier.clickable { uri.openUri(post.url) }.padding(DeckSpace.Xs),
+            )
+        }
+    }
+}
+
+/** 汎用のリンクカード（OGP）。[done] が false の間は取得中のスピナー。 */
+@Composable
+internal fun OgpCard(url: String, data: OgpData?, done: Boolean, loadImage: Boolean) {
+    val uri = LocalUriHandler.current
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(DeckRadius.Md))

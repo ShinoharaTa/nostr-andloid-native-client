@@ -151,6 +151,8 @@
     <string name="embed_spotify">Show Spotify cards</string>
     <string name="embed_ogp">Show preview cards for other links</string>
     <string name="embed_ogp_images">Load images in preview cards</string>
+    <!-- [#733] X の投稿カード -->
+    <string name="xpost_open">Open on X</string>
 
     <!-- Profile tabs -->
     <string name="tab_posts">Posts</string>
