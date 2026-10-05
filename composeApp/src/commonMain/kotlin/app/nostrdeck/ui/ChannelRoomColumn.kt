@@ -136,7 +136,7 @@ fun LiveChannelRoom(
         deckMode = deckMode,
         names = names,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
-        onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url) } },
+        onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url, announce = true) } },   // [#732]
     )
 }
 

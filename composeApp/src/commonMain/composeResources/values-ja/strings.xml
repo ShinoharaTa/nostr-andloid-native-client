@@ -301,6 +301,8 @@
     <string name="reaction_default_desc">各投稿のリアクションボタンの形を選べます。押すとこの内容で送信されます。（絵文字ピッカーからは別の絵文字を何度でも付けられます）</string>
     <string name="reaction_heart">ハート</string>
     <string name="reaction_star">スター</string>
+    <!-- [#732] 絵文字ピッカーからリアクションを送ったときのトースト -->
+    <string name="reaction_sent_fmt">%1$s でリアクションしました</string>
     <string name="reaction_other">その他の絵文字</string>
     <string name="settings_unavailable">設定を利用できません</string>
     <string name="sync_title">リレー同期</string>

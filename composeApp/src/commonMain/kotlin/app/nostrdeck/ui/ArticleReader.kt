@@ -175,7 +175,7 @@ fun ArticleReader(
         ReactionPickerSheet(
             onPick = { content, url ->
                 showPicker = false
-                scope.launch { repo?.publishReaction(article, content, url) }
+                scope.launch { repo?.publishReaction(article, content, url, announce = true) }   // [#732]
             },
             onDismiss = { showPicker = false },
         )

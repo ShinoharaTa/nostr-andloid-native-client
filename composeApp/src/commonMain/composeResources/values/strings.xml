@@ -305,6 +305,8 @@
     <string name="reaction_default_desc">Choose the shape of the reaction button on posts; pressing it sends this. (You can always pick other emoji from the emoji picker.)</string>
     <string name="reaction_heart">Heart</string>
     <string name="reaction_star">Star</string>
+    <!-- [#732] 絵文字ピッカーからリアクションを送ったときのトースト -->
+    <string name="reaction_sent_fmt">Reacted with %1$s</string>
     <string name="reaction_other">Other emoji</string>
     <string name="settings_unavailable">Settings are unavailable</string>
     <string name="sync_title">Relay sync</string>

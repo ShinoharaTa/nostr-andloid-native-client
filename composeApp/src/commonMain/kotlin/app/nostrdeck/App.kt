@@ -3,6 +3,7 @@ package app.nostrdeck
 import nostr_deck_client.composeapp.generated.resources.publish_unconfirmed
 import nostr_deck_client.composeapp.generated.resources.own_list_stale
 import nostr_deck_client.composeapp.generated.resources.own_list_unreachable
+import nostr_deck_client.composeapp.generated.resources.reaction_sent_fmt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -111,6 +112,12 @@ fun App(
         )
         LaunchedEffect(repository) {
             repository?.publishUnconfirmedFlow()?.collect { toast(unconfirmedMsg) }
+        }
+        // [#732] 絵文字ピッカーからリアクションを送ったことを知らせる（投稿の行には出さない方針）。
+        LaunchedEffect(repository) {
+            repository?.reactionSentFlow()?.collect { emoji ->
+                toast(app.nostrdeck.i18n.getString(nostr_deck_client.composeapp.generated.resources.Res.string.reaction_sent_fmt, emoji))
+            }
         }
         // [#478] 自分のリスト（フォロー・ミュート等）の編集を止めた理由。どの画面から操作しても同じ文言で知らせる。
         val ownListUnreachableMsg = app.nostrdeck.i18n.stringResource(

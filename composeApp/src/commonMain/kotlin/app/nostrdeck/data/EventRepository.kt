@@ -2172,7 +2172,12 @@ class EventRepository(
      * カスタム絵文字は [emoji]=":shortcode:" + [imageUrl] を渡すと NIP-30 の `emoji` タグを付ける。
      * "+" 以外はピッカーの「最近」（used_emoji）に記録する。
      */
-    suspend fun publishReaction(target: NostrEvent, emoji: String = "+", imageUrl: String? = null) {
+    /**
+     * kind:7 を送る。[announce] は絵文字ピッカーから送ったとき true にする（[#732] 送れたら
+     * [reactionSentFlow] に流し、App が「◯◯ でリアクションしました」とトーストで知らせる）。
+     * ♡ボタン（既定リアクション）はボタン自体の押下表示があるので知らせない。
+     */
+    suspend fun publishReaction(target: NostrEvent, emoji: String = "+", imageUrl: String? = null, announce: Boolean = false) {
         val tags = buildList {
             add(listOf("e", target.id))
             add(listOf("p", target.pubkey))
@@ -2182,7 +2187,12 @@ class EventRepository(
         }
         publishSigned(UnsignedEvent(kind = 7, content = emoji, tags = withRelayHints(tags)))
         recordUsedEmoji(emoji, imageUrl)
+        if (announce) reactionSent.tryEmit(if (emoji == "+" || emoji.isEmpty()) "❤️" else emoji)
     }
+
+    /** [#732] 絵文字ピッカーからのリアクションを送れた（署名して送信キューに積んだ）ときの表示名。App がトーストに出す。 */
+    private val reactionSent = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    fun reactionSentFlow(): SharedFlow<String> = reactionSent.asSharedFlow()
 
     /**
      * [#6] NIP-56 通報。kind:1984 で対象の投稿/ユーザーを報告する。

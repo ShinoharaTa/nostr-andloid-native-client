@@ -598,7 +598,7 @@ fun NoteItem(
   // 絵文字リアクションピッカー（NIP-25/30）。選択で kind:7 を送る。
   if (showReactionPicker) {
       ReactionPickerSheet(
-          onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl) } },
+          onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl, announce = true) } },   // [#732]
           onDismiss = { showReactionPicker = false },
           targetNote = note,
       )
