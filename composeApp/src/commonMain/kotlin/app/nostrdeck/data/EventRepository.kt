@@ -83,6 +83,7 @@ import app.nostrdeck.model.ReactionUi
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.nip65PrefsFromTags
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.XPosts
 import app.nostrdeck.model.withHexProfileAuthors
 import app.nostrdeck.model.ThreadEntry
 import app.nostrdeck.model.UnsignedEvent
@@ -4731,6 +4732,42 @@ class EventRepository(
             if (ytInfoCache.size > 256) ytInfoCache.remove(ytInfoCache.keys.first())
         }
         return info
+    }
+
+    /**
+     * [#733] X の投稿の日時（ja「2026年10月4日」/ en「October 4, 2026」）。OGP には日時が無いので、
+     * X 公式の oEmbed（publish.x.com、認証不要）の html から取る（[XPosts.dateFromOembedHtml]）。
+     * 削除済み・非公開は 404 で null。OGP と同じ DB キャッシュ（キー `x-oembed:<lang>:<url>`、title に日時）に
+     * 同じ TTL で持ち、カードを出すたびに取りに行かない。
+     */
+    suspend fun fetchXPostDate(url: String, lang: String): String? {
+        val key = "x-oembed:$lang:$url"
+        ogpMutex.withLock { if (ogpCache.containsKey(key)) return ogpCache[key]?.title }
+        val cached = withContext(Dispatchers.Default) { q.getOgpCache(key).executeAsOneOrNull() }
+        if (cached != null) {
+            val ttl = if (cached.ok != 0L) OGP_TTL_OK_SEC else OGP_TTL_NG_SEC
+            if (currentUnixTime() - cached.fetched_at < ttl) {
+                val data = if (cached.ok == 0L) null else OgpData(key, title = cached.title)
+                ogpMutex.withLock { putOgpMemory(key, data) }
+                return data?.title
+            }
+        }
+        val date = runCatching {
+            withContext(Dispatchers.Default) {
+                val resp = uploadHttp.get(
+                    "https://publish.x.com/oembed?url=${url.encodeURLParameter()}&omit_script=1&hide_thread=1&lang=$lang",
+                ) { header(HttpHeaders.UserAgent, OGP_UA) }
+                if (resp.status.value != 200) return@withContext null
+                val html = json.parseToJsonElement(resp.bodyAsText()).jsonObject["html"]?.jsonPrimitive?.contentOrNull
+                html?.let { XPosts.dateFromOembedHtml(it) }
+            }
+        }.getOrNull()
+        val data = date?.let { OgpData(key, title = it) }
+        ogpMutex.withLock { putOgpMemory(key, data) }
+        scope.launch(relayDispatcher) {
+            q.putOgpCache(key, currentUnixTime(), if (data != null) 1L else 0L, data?.title, null, null, null)
+        }
+        return date
     }
 
     /**
