@@ -521,6 +521,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="img_load_failed">Couldn't load the image</string>
     <string name="img_save_failed">Save failed</string>
     <string name="img_save">Save image</string>
+    <string name="img_rotate_left">Rotate left</string>
+    <string name="img_rotate_right">Rotate right</string>
+    <string name="img_flip_horizontal">Flip</string>
+    <string name="img_edit_reset">Reset</string>
     <string name="img_copy_url">Copy URL</string>
     <string name="img_url_copied">URL copied</string>
     <string name="show_more">Show more</string>

@@ -47,7 +47,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Constraints
+import app.nostrdeck.model.ImageTransform
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -226,7 +229,7 @@ internal fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
                 ZoomableImage(
-                    url = urls[page],
+                    model = urls[page],
                     onTap = onDismiss,
                     onLongPress = { menuOpen = true },
                     onZoomChange = { zoomed -> if (page == pager.currentPage) pagerScrollEnabled = !zoomed },
@@ -277,7 +280,7 @@ internal fun Lightbox(urls: List<String>, startIndex: Int, onDismiss: () -> Unit
 
 /** Lightbox 右上のオーバーレイ操作ボタン（半透明の丸背景・白アイコン）。 */
 @Composable
-private fun OverlayIconButton(
+internal fun OverlayIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -297,14 +300,18 @@ private const val EDGE_HANDOFF_THRESHOLD = 140f
  * `detectTransformGestures` を使うことで（multi-touch 専用の transformable と違い）
  * 1本指ドラッグのパンがスワイプ量に追従する。パンは画像境界でクランプし、端を越えて
  * さらにドラッグすると [onEdgeSwipe] で前後の画像へ移る。
+ *
+ * [#739] [model] は URL のほか、投稿前の添付画像のバイト列も渡せる。[transform] はその添付に付けた
+ * 向きの編集（回転・左右反転）で、表示だけに当てる（画素への焼き込みは送信用の processImage が行う）。
  */
 @Composable
-private fun ZoomableImage(
-    url: String,
+internal fun ZoomableImage(
+    model: Any,
     onTap: () -> Unit,
-    onLongPress: () -> Unit,
+    onLongPress: (() -> Unit)?,
     onZoomChange: (Boolean) -> Unit,
     onEdgeSwipe: (Int) -> Unit,
+    transform: ImageTransform = ImageTransform.IDENTITY,
 ) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -312,7 +319,7 @@ private fun ZoomableImage(
     var edgeAccum by remember { mutableStateOf(0f) }
     // [#413] 読み込み失敗。原寸 URL はプロキシのフォールバックが無いので、リンク切れや
     // ホットリンク拒否のホスト（プロフィール画像に多い）だと何も描かれず真っ黒な画面になる。
-    var failed by remember(url) { mutableStateOf(false) }
+    var failed by remember(model) { mutableStateOf(false) }
 
     LaunchedEffect(scale) { onZoomChange(scale > 1.01f) }
 
@@ -322,7 +329,7 @@ private fun ZoomableImage(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onTap() },
-                    onLongPress = { onLongPress() },
+                    onLongPress = onLongPress?.let { f -> { _ -> f() } },
                     onDoubleTap = {
                         if (scale > 1.01f) {
                             scale = 1f; offset = Offset.Zero; edgeAccum = 0f
@@ -375,18 +382,44 @@ private fun ZoomableImage(
             },
         contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(url).crossfade(true).build(),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            onSuccess = { failed = false },
-            onError = { failed = true },
-            modifier = Modifier.fillMaxSize()
+        Box(
+            Modifier.fillMaxSize()
                 .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalPlatformContext.current)
+                    .data(model).crossfade(true).build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                onSuccess = { failed = false },
+                onError = { failed = true },
+                modifier = Modifier.orientedFill(transform),
+            )
+        }
         if (failed) {
             Text(stringResource(Res.string.img_load_failed), color = Color.White.copy(alpha = 0.7f))
         }
     }
 }
+
+/**
+ * [#739] 画面いっぱいに Fit で描く画像に、向きの編集（[ImageTransform]: 左右反転してから時計回りに回す）を当てる。
+ * 90° / 270° 回すと縦横が入れ替わるので、縦横を入れ替えた枠で描いてから回し、回した後に画面へ収まるようにする。
+ */
+internal fun Modifier.orientedFill(transform: ImageTransform): Modifier =
+    if (transform.isIdentity) fillMaxSize() else this
+        .layout { measurable, constraints ->
+            val w = constraints.maxWidth
+            val h = constraints.maxHeight
+            val placeable = if (transform.swapsAxes) measurable.measure(Constraints.fixed(h, w)) else measurable.measure(Constraints.fixed(w, h))
+            layout(w, h) { placeable.place((w - placeable.width) / 2, (h - placeable.height) / 2) }
+        }
+        .orientedLayer(transform)
+
+/** [#739] 向きの編集を描画だけに当てる（graphicsLayer は拡大縮小 → 回転の順に当たるので、反転してから回すのと同じ）。 */
+internal fun Modifier.orientedLayer(transform: ImageTransform): Modifier =
+    if (transform.isIdentity) this else graphicsLayer(
+        rotationZ = transform.rotationDegrees.toFloat(),
+        scaleX = if (transform.mirrored) -1f else 1f,
+    )

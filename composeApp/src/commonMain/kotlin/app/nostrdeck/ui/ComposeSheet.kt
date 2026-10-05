@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.ImageTransform
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -348,7 +349,7 @@ fun ComposeSheet(
                     val urls = images.map { att ->
                         async {
                             slots.withPermit {
-                                val p = att.processed ?: processImage(att.src, imgPrefs.maxDimFor(resolution), imgPrefs.quality)
+                                val p = att.processed ?: processImage(att.src, imgPrefs.maxDimFor(resolution), imgPrefs.quality, att.edit)
                                 val url = repo?.uploadImage(p.bytes, p.mime, p.name)
                                 uploadProgress.update { n -> n + 1 }  // 完了枚数（並列でも CAS で安全）
                                 url
@@ -585,7 +586,15 @@ fun ComposeSheet(
                     // 添付画像カルーセル + 解像度（画像があるときだけ表示）。
                     if (images.isNotEmpty()) {
                         Spacer(Modifier.height(DeckSpace.Md))
-                        ImageCarousel(images, onRemove = { images.removeAt(it) })
+                        ImageCarousel(
+                            images,
+                            onRemove = { images.removeAt(it) },
+                            // [#739] ライトボックスで向きを編集したら、その 1 枚だけ送信用の画像を作り直す。
+                            onEdit = { att, edit ->
+                                att.edit = edit
+                                scope.launch { att.compress(resolution, imgPrefs) }
+                            },
+                        )
                         Spacer(Modifier.height(DeckSpace.Sm))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             HintText(stringResource(Res.string.compose_resolution))
@@ -918,20 +927,29 @@ internal fun EmojiSuggestChip(emoji: app.nostrdeck.model.CustomEmoji, onClick: (
 /**
  * 添付画像の横スクロール・カルーセル。各サムネに削除(×)。
  * サムネ下部に圧縮の進捗/結果（例: 1.5MB→293KB）を表示する。
+ * [#739] サムネのタップでライトボックス（[AttachmentLightbox]）を開き、向きを編集できる。サムネにも編集後の向きで出す。
  */
 @Composable
-private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Unit) {
+private fun ImageCarousel(
+    images: List<ComposeAttachment>,
+    onRemove: (Int) -> Unit,
+    onEdit: (ComposeAttachment, ImageTransform) -> Unit,
+) {
     val ctx = LocalPlatformContext.current
+    var lightboxIndex by remember { mutableStateOf<Int?>(null) }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(images.size) { i ->
             val att = images[i]
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3)) {
+                Box(
+                    Modifier.size(84.dp).clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface3)
+                        .clickable { lightboxIndex = i },
+                ) {
                     AsyncImage(
                         model = ImageRequest.Builder(ctx).data(att.src.bytes).build(),
                         contentDescription = stringResource(Res.string.compose_attachment),
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().orientedLayer(att.edit),
                     )
                     // 添付削除（インライン補助操作・32dp 実タップ領域）。
                     Box(
@@ -955,6 +973,9 @@ private fun ImageCarousel(images: List<ComposeAttachment>, onRemove: (Int) -> Un
                 }
             }
         }
+    }
+    lightboxIndex?.let { idx ->
+        AttachmentLightbox(images, idx, onEdit = onEdit, onDismiss = { lightboxIndex = null })
     }
 }
 
@@ -1038,11 +1059,25 @@ class ComposeAttachment(val src: PickedImage) {
     var processing by mutableStateOf(true)
         private set
 
-    /** 指定解像度で圧縮し直す（解像度変更・設定変更・追加時に呼ぶ）。失敗時は原画像を保持。 */
+    /** [#739] 投稿前に付けた向きの編集（回転・左右反転）。変えたら [compress] で送信用の画像を作り直す。 */
+    var edit by mutableStateOf(ImageTransform.IDENTITY)
+
+    /** 最後に始めた [compress] の番号。古い圧縮が後から終わっても結果を上書きさせない。 */
+    private var generation = 0
+
+    /**
+     * 指定解像度と今の向きの編集で圧縮し直す（解像度変更・設定変更・編集・追加時に呼ぶ）。失敗時は原画像を保持。
+     * 作り直している間は [processed] を空にする（送信時は空なら今の条件でその場で圧縮するので、古い向きで送らない）。
+     */
     suspend fun compress(resolution: ImageResolution, prefs: app.nostrdeck.model.ImageCompressionPrefs) {
+        val gen = ++generation
         processing = true
-        processed = processImage(src, prefs.maxDimFor(resolution), prefs.quality)
-        processing = false
+        processed = null
+        val result = processImage(src, prefs.maxDimFor(resolution), prefs.quality, edit)
+        if (gen == generation) {
+            processed = result
+            processing = false
+        }
     }
 }
 

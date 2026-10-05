@@ -517,6 +517,10 @@
     <string name="img_load_failed">画像を読み込めませんでした</string>
     <string name="img_save_failed">保存に失敗しました</string>
     <string name="img_save">画像を保存</string>
+    <string name="img_rotate_left">左に回転</string>
+    <string name="img_rotate_right">右に回転</string>
+    <string name="img_flip_horizontal">左右反転</string>
+    <string name="img_edit_reset">元に戻す</string>
     <string name="img_copy_url">URLをコピー</string>
     <string name="img_url_copied">URLをコピーしました</string>
     <string name="show_more">もっと見る</string>
