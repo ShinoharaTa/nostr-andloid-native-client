@@ -1,6 +1,6 @@
 import { npubEncode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useCloseMenuOnBack } from "../../app/history";
@@ -21,6 +21,7 @@ import {
   type FeedCategory,
   feedCatHiddenOf,
   isMutedRevealed,
+  statusTypeOf,
   useDeck,
   widthOf,
 } from "../../store/deck";
@@ -34,8 +35,11 @@ import { startDecrypting } from "../dm/dmService";
 import { KbRow, useKbList } from "../keyboard/KbList";
 import { NotificationList } from "../notifications/NotificationList";
 import { NotificationRow } from "../notifications/NotificationRow";
+import { StatusCard } from "../status/StatusCard";
+import { isStatusVisible, type StatusType, sortStatuses } from "../status/statusModel";
 import { NoteItem } from "../timeline/NoteItem";
 import { Timeline } from "../timeline/Timeline";
+import { useNow } from "../timeline/useNow";
 import { useZapReceipts, zapTargetIds } from "../zap/useZapReceipts";
 import styles from "./DeckColumn.module.css";
 import type { FeedRow } from "./followingMix";
@@ -46,6 +50,21 @@ import { useColumnFeed } from "./useColumnFeed";
 const UNSUPPORTED_KINDS: ReadonlySet<ColumnKind> = new Set(["THREAD"]);
 
 const WIDTHS: readonly ColumnWidth[] = ["S", "M", "L"];
+
+/** ステータスカラムの「表示」の選択肢（null = すべて） */
+const STATUS_FILTERS: readonly (StatusType | null)[] = [null, "music", "general"];
+
+/** 「表示」の項目名。ヘッダのサブタイトルにも使う（すべて = NIP-38） */
+function statusFilterLabel(type: StatusType | null): string {
+  switch (type) {
+    case null:
+      return t("web_status_filter_all");
+    case "music":
+      return t("web_status_type_music");
+    case "general":
+      return t("web_status_type_general");
+  }
+}
 
 function widthLabel(width: ColumnWidth): string {
   switch (width) {
@@ -80,6 +99,7 @@ export function DeckColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader:
   if (spec.kind === "DM") return <DmColumn spec={spec} showHeader={showHeader} />;
   if (spec.kind === "CHANNEL_LIST") return <ChannelListColumn spec={spec} showHeader={showHeader} />;
   if (spec.kind === "CHANNEL_ROOM") return <RoomColumn spec={spec} showHeader={showHeader} />;
+  if (spec.kind === "STATUS") return <StatusColumn spec={spec} showHeader={showHeader} />;
   return <FeedColumn spec={spec} showHeader={showHeader} />;
 }
 
@@ -221,6 +241,54 @@ function FeedColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolea
   );
 }
 
+/** ステータスの一覧を進める時計（期限切れをその場で落とす。カードの残り時間と同じ 10 秒） */
+const STATUS_CLOCK_MS = 10_000;
+
+/**
+ * ステータス（NIP-38）のカラム（#767）。フォロー中の人 + 自分の general / music を 1 人 1 種類 = 1 枚で新しい順に並べる。
+ * 空・期限切れ・古すぎる期限なしは出さない（期限切れは時計で落とす）。⋯ の「表示」で種類を絞る（表示だけ。REQ は張り直さない）。
+ * 過去読みはしない（置き換え可能で 1 人 2 件までなので、最初の REQ で取り切る）
+ */
+function StatusColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean }) {
+  const t = useT();
+  const { loading, events, refresh, emptyText } = useColumnFeed(spec);
+  const type = useDeck((s) => statusTypeOf(s, spec.id));
+  const now = useNow(STATUS_CLOCK_MS);
+  const statuses = useMemo(
+    () => sortStatuses(events.filter((e) => isStatusVisible(e, type, now))),
+    [events, type, now],
+  );
+  const list = useRef<VirtuosoHandle>(null);
+  // キー操作は j / k の移動だけ（ステータスは r / t / f の対象外）
+  useKbList(list, statuses.length);
+  const empty = emptyText ?? t(type === "music" ? "web_status_empty_music" : "web_status_empty");
+  return (
+    <section className={styles.column} aria-label={columnLabel(spec)} aria-busy={loading}>
+      {showHeader && <ColumnHeader spec={spec} onRefresh={refresh} />}
+      <div className={styles.body}>
+        {loading && (
+          <div className={styles.progress} role="progressbar" aria-label={t("web_deck_loading_aria")} />
+        )}
+        {statuses.length === 0 ? (
+          <p className={styles.empty}>{loading ? t("loading") : empty}</p>
+        ) : (
+          <Virtuoso
+            ref={list}
+            className={styles.list}
+            data={statuses}
+            computeItemKey={(_, status) => status.id}
+            itemContent={(index, status) => (
+              <KbRow index={index}>
+                <StatusCard event={status} />
+              </KbRow>
+            )}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
 /**
  * カラムヘッダ（ネイティブの ColumnHeader）。先頭 40px のアイコン、タイトル + 説明、末尾に ⋯。
  * PROFILE はプロフィール（kind:0）の名前をタイトルにする（ネイティブ ProfileColumn.kt:66-71。未取得なら spec.title）。
@@ -233,6 +301,9 @@ function ColumnHeader({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () =>
     profilePubkey && typeof profile?.name === "string" && profile.name.trim() !== ""
       ? profile.name
       : columnLabel(spec);
+  // ステータスカラムは「表示」で絞っている種類をサブタイトルに出す（すべてなら NIP-38）
+  const statusType = useDeck((s) => (spec.kind === "STATUS" ? statusTypeOf(s, spec.id) : null));
+  const subtitle = statusType !== null ? statusFilterLabel(statusType) : columnSubtitleFor(spec);
   return (
     <header className={styles.header}>
       <span className={styles.icon}>
@@ -240,7 +311,7 @@ function ColumnHeader({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () =>
       </span>
       <div className={styles.titles}>
         <h2 className={styles.title}>{title}</h2>
-        <p className={styles.subtitle}>{columnSubtitleFor(spec)}</p>
+        <p className={styles.subtitle}>{subtitle}</p>
       </div>
       <ColumnMenu spec={spec} onRefresh={onRefresh} />
     </header>
@@ -320,7 +391,7 @@ function FavItem({ reaction }: { reaction: NostrEvent }) {
  * onRefresh が無ければ「更新」を出さない。「ミュートを表示」は renderer が FEED / THREAD のときだけ
  * （ネイティブ DeckScreen.kt と同じ。CHANNEL_LIST は対象外）。ROOM（パブリックチャット）は
  * ネイティブには無い Web 独自の対象（発言のミュート表示切替は Web の既存機能なので残す。D3）。
- * 「タイムラインに混ぜる表示」はフォロー中カラムだけ。
+ * 「タイムラインに混ぜる表示」はフォロー中カラムだけ。「表示（すべて / Now Playing / ステータス）」はステータスカラムだけ（#767）。
  */
 export function ColumnMenu({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () => void }) {
   useT();
@@ -332,6 +403,7 @@ export function ColumnMenu({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: 
   const width = useDeck((s) => widthOf(s, spec.id));
   const mutedRevealed = useDeck((s) => isMutedRevealed(s, spec.id));
   const hiddenCategories = useDeck((s) => feedCatHiddenOf(s, spec.id));
+  const statusType = useDeck((s) => statusTypeOf(s, spec.id));
 
   // [#540] 開いている間の「戻る」はメニューを閉じるだけにする
   useCloseMenuOnBack(open, () => setOpen(false));
@@ -460,6 +532,24 @@ export function ColumnMenu({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: 
                   </button>
                 );
               })}
+            </fieldset>
+          )}
+          {spec.kind === "STATUS" && (
+            // 種類の切替は幅と同じくメニューを閉じない
+            <fieldset aria-label={t("web_status_filter")} className={styles.menuRow}>
+              <span className={styles.menuLabel}>{t("web_status_filter")}</span>
+              {STATUS_FILTERS.map((type) => (
+                <button
+                  key={type ?? "all"}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={statusType === type}
+                  className={styles.chip}
+                  onClick={() => deck().setStatusType(spec.id, type)}
+                >
+                  {statusFilterLabel(type)}
+                </button>
+              ))}
             </fieldset>
           )}
           <fieldset aria-label={t("col_width")} className={styles.menuRow}>

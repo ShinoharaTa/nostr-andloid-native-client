@@ -1,6 +1,8 @@
 import type { Filter } from "applesauce-core/helpers/filter";
 import type { NostrEvent } from "nostr-tools/pure";
+import { isStatusVisible, STATUS_KIND, STATUS_MAX_AGE_SEC } from "../features/status/statusModel";
 import type { ColumnKind, ColumnSpec, ReqFilter } from "./columns";
+import { unixNow } from "./time";
 
 /**
  * カラム → REQ（どのリレーへ何を投げるか）と、EventStore から読む条件。
@@ -12,6 +14,10 @@ export const COLUMN_LIMIT = 100;
 /** 検索は取りこぼしが多いので多めに取る */
 export const SEARCH_FETCH_LIMIT = 300;
 export const NOTIF_FETCH_LIMIT = 200;
+/** ステータス（NIP-38）の取得上限。置き換え可能で 1 人 2 件までなので、過去読みせず 1 回で取り切る */
+export const STATUS_FETCH_LIMIT = 500;
+/** ステータスカラムで扱う種類（d タグ） */
+const STATUS_TYPES = ["general", "music"];
 /** NIP-50 検索対応リレー（接続中のリレーが未対応でも結果を取れるように） */
 export const SEARCH_RELAYS: readonly string[] = [
   "wss://relay.nostr.band",
@@ -103,6 +109,24 @@ export function requestFor(spec: ColumnSpec, ctx: Ctx): RequestPlan {
     case "FAVS":
       if (!ctx.me) return null;
       return { relays: ctx.relays, filters: [myReactionsFilter(ctx.me)] };
+    case "STATUS": {
+      // フォロー + 自分の general / music（#767）。空なら REQ を張らない（#583 と同じ）。
+      // since は期限の無い何年も前のステータスを取りに行かないため（表示も STATUS_MAX_AGE_SEC で落とす）
+      const authors = followAuthors(ctx.follows ?? [], ctx.me);
+      if (authors.length === 0) return null;
+      return {
+        relays: ctx.relays,
+        filters: [
+          {
+            kinds: [STATUS_KIND],
+            authors,
+            "#d": STATUS_TYPES,
+            since: unixNow() - STATUS_MAX_AGE_SEC,
+            limit: STATUS_FETCH_LIMIT,
+          },
+        ],
+      };
+    }
     case "DM":
     case "THREAD":
     case "CHANNEL_LIST":
@@ -136,6 +160,16 @@ export function viewFor(spec: ColumnSpec, ctx: Ctx): ViewPlan {
     case "FAVS":
       if (!ctx.me) return { filters: [] };
       return myReactionsView(ctx.me);
+    case "STATUS": {
+      // REQ と同じ authors。表示条件（空・期限切れ・古すぎる期限なし）は読むたびに今の時刻で見る。
+      // 時間が経って切れたものはカラムが共有の時計で落とす
+      const authors = followAuthors(ctx.follows ?? [], ctx.me);
+      if (authors.length === 0) return { filters: [] };
+      return {
+        filters: [{ kinds: [STATUS_KIND], authors, "#d": STATUS_TYPES }],
+        predicate: (e) => isStatusVisible(e, null, unixNow()),
+      };
+    }
     case "HASHTAG":
       // 表示は先頭のタグを小文字にして t タグで読む（ネイティブ feedByHashtag。REQ はタグをそのまま送る）
       if (f.hashtags.length > 0) return { filters: [{ kinds: [1], "#t": [f.hashtags[0].toLowerCase()] }] };
@@ -218,6 +252,7 @@ export function outboxAuthorsFor(spec: ColumnSpec): string[] | null {
     case "FOLLOWING":
     case "NOTIFICATIONS":
     case "FAVS":
+    case "STATUS":
     case "DM":
     case "THREAD":
     case "CHANNEL_LIST":

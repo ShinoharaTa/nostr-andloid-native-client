@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { StatusType } from "../features/status/statusModel";
 import {
   buildColumn,
   type ColumnSpec,
@@ -18,6 +19,8 @@ export const WIDTHS_KEY = "nostrism.deck.widths";
 export const REVEAL_MUTED_KEY = "nostrism.deck.revealMuted";
 /** フォロー中カラムで隠す混在の種別（{"<id>":["REACTIONS",…]}。空のカラムは書かない。ネイティブ col_feedcat_hidden:<id>） */
 export const FEED_CAT_HIDDEN_KEY = "nostrism.deck.feedCatHidden";
+/** ステータスカラムで出す種類（{"<id>":"music"|"general"}。「すべて」は書かない。Web だけ・同期しない #767） */
+export const STATUS_TYPE_KEY = "nostrism.deck.statusType";
 
 /** フォロー中カラムに混ぜる行の種別（ネイティブ FeedNoticeCategory。⋯ メニューの並び順） */
 export type FeedCategory = "REACTIONS" | "REPLIES" | "REPOSTS" | "MY_REACTIONS" | "DMS";
@@ -37,6 +40,8 @@ export type DeckState = {
   revealMuted: string[];
   /** カラムごとに隠す混在の種別（フォロー中カラム。隠すものが無いカラムはキーを持たない） */
   feedCatHidden: Record<string, FeedCategory[]>;
+  /** ステータスカラムで出す種類（「すべて」のカラムはキーを持たない） */
+  statusType: Record<string, StatusType>;
   /** ジャンプ要求のカラム id（デッキが消費して null に戻す） */
   jumpTarget: string | null;
   /** コンパクト表示で見えているカラム id */
@@ -66,6 +71,8 @@ export type DeckState = {
   setRevealMuted(id: string, reveal: boolean): void;
   /** フォロー中カラムに混ぜる種別を隠すか（⋯ メニューの「タイムラインに混ぜる表示」） */
   setFeedCatHidden(id: string, category: FeedCategory, hidden: boolean): void;
+  /** ステータスカラムで出す種類（⋯ メニューの「表示」。null = すべて） */
+  setStatusType(id: string, type: StatusType | null): void;
   jumpTo(id: string): void;
   consumeJump(): void;
   setVisibleColumn(id: string | null): void;
@@ -171,6 +178,26 @@ export function loadFeedCatHidden(): Record<string, FeedCategory[]> {
   return hidden;
 }
 
+export function saveStatusType(types: Record<string, StatusType>) {
+  writeItem(STATUS_TYPE_KEY, JSON.stringify(types));
+}
+
+/** 保存済みのステータスカラムの種類（"music" / "general" だけを拾う。壊れていれば空 = すべて） */
+export function loadStatusType(): Record<string, StatusType> {
+  const types: Record<string, StatusType> = {};
+  try {
+    const value: unknown = JSON.parse(readItem(STATUS_TYPE_KEY) ?? "{}");
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      for (const [id, type] of Object.entries(value)) {
+        if (type === "music" || type === "general") types[id] = type;
+      }
+    }
+  } catch {
+    // 壊れた保存値は既定（すべて）へ
+  }
+  return types;
+}
+
 // (一時カラム id, 開いた元のカラム id) の戻りスタック。back() の戻り先に使う
 const originStack: [string, string | null][] = [];
 
@@ -199,6 +226,7 @@ export const useDeck = create<DeckState>()((set, get) => {
     widths: loadWidths(),
     revealMuted: loadRevealMuted(),
     feedCatHidden: loadFeedCatHidden(),
+    statusType: loadStatusType(),
     jumpTarget: null,
     visibleColumnId: null,
     editingColumnId: null,
@@ -253,7 +281,7 @@ export const useDeck = create<DeckState>()((set, get) => {
     },
 
     removeColumn(id) {
-      const { columns, widths, revealMuted, feedCatHidden } = get();
+      const { columns, widths, revealMuted, feedCatHidden, statusType } = get();
       const wasPinned = columns.some((c) => c.id === id && c.pinned);
       commit(
         columns.filter((c) => c.id !== id),
@@ -271,6 +299,7 @@ export const useDeck = create<DeckState>()((set, get) => {
         set({ feedCatHidden: rest });
         saveFeedCatHidden(rest);
       }
+      if (Object.hasOwn(statusType, id)) get().setStatusType(id, null);
     },
 
     moveColumn(id, delta) {
@@ -315,6 +344,14 @@ export const useDeck = create<DeckState>()((set, get) => {
       const feedCatHidden = next.length > 0 ? { ...rest, [id]: next } : rest;
       set({ feedCatHidden });
       saveFeedCatHidden(feedCatHidden);
+    },
+
+    setStatusType(id, type) {
+      const { [id]: _old, ...rest } = get().statusType;
+      // 「すべて」はキーごと消す
+      const statusType = type === null ? rest : { ...rest, [id]: type };
+      set({ statusType });
+      saveStatusType(statusType);
     },
 
     jumpTo(id) {
@@ -397,4 +434,9 @@ const NO_CATEGORIES: readonly FeedCategory[] = [];
 /** このカラムで隠す混在の種別（無ければ同じ空配列） */
 export function feedCatHiddenOf(s: DeckState, id: string): readonly FeedCategory[] {
   return s.feedCatHidden[id] ?? NO_CATEGORIES;
+}
+
+/** このステータスカラムで出す種類（null = すべて） */
+export function statusTypeOf(s: DeckState, id: string): StatusType | null {
+  return s.statusType[id] ?? null;
 }
