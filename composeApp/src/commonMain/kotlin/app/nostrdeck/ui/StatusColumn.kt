@@ -66,7 +66,8 @@ private const val STATUS_CLOCK_MS = 10_000L
 
 /**
  * [#772] ステータス（NIP-38）のカラム（Web #767 と同じ）。フォロー中の人 + 自分の general / music を、
- * 1 人・1 種類につき 1 枚で新しい順に並べる。空・期限切れ・期限が無くて 30 日を超えたものは出さず、
+ * 1 人・1 種類につき 1 枚で新しい順に並べる。ミュート対象は出さない（⋯ の「ミュートを表示」で出す）。
+ * 空・期限切れ・期限が無くて 30 日を超えたものは出さず、
  * 期限切れになったものは時計で落とす。⋯ の「表示」で種類を絞る（表示だけ。REQ は張り直さない）。
  * 過去読みはしない（置き換え可能で 1 人 2 件までなので、最初の REQ で取り切る）。
  */
@@ -85,7 +86,13 @@ fun StatusColumn(
     val now by produceState(currentUnixTime()) {
         while (true) { delay(STATUS_CLOCK_MS); value = currentUnixTime() }
     }
-    val statuses = remember(all, type, now) { UserStatuses.sort(all.filter { UserStatuses.isVisible(it, type, now) }) }
+    // ミュート（Web と同じく投稿と同じ判定。⋯ の「ミュートを表示」で出せる）。自分のステータスは対象外。
+    val matcher = rememberMuteMatcher()
+    val revealed = rememberColumnRevealMuted(spec.id)
+    val me by (repo?.myPubkeyState()?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
+    val statuses = remember(all, type, now, matcher, revealed, me) {
+        UserStatuses.sort(all.filter { UserStatuses.isVisible(it, type, now) && (revealed || !matcher.mutedStatus(it, me)) })
+    }
     val loaded by (repo?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
 
     Column(modifier.background(DeckColors.Surface)) {

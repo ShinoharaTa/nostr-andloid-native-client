@@ -228,6 +228,8 @@ class EventRepository(
     private var myPubkey: String? = null
     /** [M8-counts] 自分の公開鍵を Flow でも公開（♡/リポスト済み判定が鍵切替に追従するため）。 */
     private val myPubkeyFlow = MutableStateFlow<String?>(null)
+    /** [#772] ログイン中の公開鍵（ステータスのミュート判定で自分を除くため）。 */
+    fun myPubkeyState(): StateFlow<String?> = myPubkeyFlow.asStateFlow()
 
     /** 自分の全 kind:7 行（note_id / content / tags_json）。♡状態と自分リアクション表示の元。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -1191,9 +1193,10 @@ class EventRepository(
     }
 
     /**
-     * [#772] ステータスカラム（NIP-38）の購読。フォロー中 + 自分の general / music を、全リレーへ 1 回で取り切る
-     * （置き換え可能で 1 人 2 件までなので過去読みしない。期限の無い何年も前のものは since で取りに行かない）。
-     * フォローが変わったら張り直す（[subscribeFollowing] と同じ作法）。
+     * [#772] ステータスカラム（NIP-38）の購読。フォロー中 + 自分の general / music を、**自分の読み込みリレーだけ**に
+     * 1 回で取り切る（置き換え可能で 1 人 2 件までなので過去読みしない。期限の無い何年も前のものは since で取りに行かない）。
+     * Web と同じく読み込みリレーに限る（全リレー宛てだと、一時的に繋いだアウトボックス・チャンネル・DM のリレーにも
+     * 広がって Web と件数がずれる）。フォローや読み込みリレーが変わったら張り直す。
      */
     fun subscribeStatuses(columnId: String) {
         if (!openColumns.add(columnId)) return
@@ -1202,12 +1205,17 @@ class EventRepository(
             delay(8000)
             if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
         }
+        val readRelays = q.allRelays().asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.filter { it.read != 0L }.map { normalizeRelayUrl(it.url) }.toSet() }
+            .distinctUntilChanged()
         followingJobs[columnId] = scope.launch {
-            follows.collect { authors ->
+            combine(follows, readRelays) { authors, relays -> authors to relays }.collect { (authors, relays) ->
                 val withMe = (authors + listOfNotNull(myPubkey)).distinct()
                 if (withMe.isNotEmpty()) {
-                    subscribeAll(
-                        columnId,
+                    // 読み込みリレーが減ったときに古い REQ を残さないよう、いったん閉じてから張り直す（同じ直列の dispatcher で順に走る）。
+                    unsubscribeAll(columnId)
+                    subscribeTargeted(
+                        columnId, relays,
                         Filter(
                             kinds = listOf(UserStatuses.KIND), authors = withMe,
                             dTags = UserStatuses.Type.entries.map { it.d },
