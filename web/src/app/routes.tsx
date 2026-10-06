@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 import { EmojiMakerRoute } from "../features/emoji/EmojiMakerRoute";
+import { StatusDemoRoute } from "../features/status/StatusDemoRoute";
 import { AboutRoute } from "./AboutRoute";
 import { AppShell } from "./AppShell";
 import { HashtagRoute } from "./HashtagRoute";
@@ -21,6 +22,8 @@ export const routes: RouteObject[] = [
       { path: "/about", element: <AboutRoute /> },
       // 絵文字の作成ページ（docs/emoji-maker.md §7）。ログイン不要なので RequireSession の外
       { path: "/emoji", element: <EmojiMakerRoute /> },
+      // ステータスカラムの UI デモ（#767 仕様 §6.2。デモ用のブランチだけに置き、main にはマージしない）
+      { path: "/demo/status", element: <StatusDemoRoute /> },
       {
         path: "/",
         element: (

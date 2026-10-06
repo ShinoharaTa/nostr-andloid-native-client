@@ -1,0 +1,118 @@
+/* ステータスカラムの UI デモ（/demo/status。#767。main にはマージしない） */
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: var(--w-strong);
+}
+
+.lead {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-3);
+  font-size: var(--type-caption);
+  line-height: var(--line-desc);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+/* legend は fieldset の中で横並びにできないので、float で行の先頭に置く */
+.controlLabel {
+  float: left;
+  margin-right: var(--sp-1);
+  padding: 0;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.control > button[aria-pressed="true"] {
+  background: var(--accent-weak);
+  color: var(--text);
+  font-weight: var(--w-link);
+}
+
+.count {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.columns {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--column-gap);
+}
+
+/* デッキの枠（DeckColumn.module.css の .column）を高さなりにする（ページ全体でスクロールする） */
+.columns > .column {
+  flex: none;
+  height: auto;
+  width: min(100%, var(--demo-w));
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.column[data-w="s"] {
+  --demo-w: var(--column-w-s);
+}
+
+.column[data-w="m"] {
+  --demo-w: var(--column-w);
+}
+
+.column[data-w="l"] {
+  --demo-w: var(--column-w-l);
+}
+
+/* 狭い画面では選んだ幅の 1 本だけ。広い画面では S / M / L を並べて同時に見せる（幅の切替は出さない） */
+.columns > .column:not([data-active]) {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .columns > .column:not([data-active]) {
+    display: flex;
+  }
+
+  .widthControl {
+    display: none;
+  }
+}
+
+.widthBadge {
+  flex: none;
+  padding: 0 var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--type-caption);
+  text-align: center;
+}

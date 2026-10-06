@@ -1,0 +1,81 @@
+{
+  "ui": {
+    "ja": {
+      "title": "ステータスカラム（デモ）",
+      "lead": "issue #767 の見た目の確認用です。固定データを使い捨ての鍵でこの端末の中だけで署名して表示しています（リレーには送りません）。2 番目の曲（けんた）は約 20 秒で消えます。",
+      "filter": "表示",
+      "filterAll": "すべて",
+      "unit": "単位",
+      "unitType": "種類ごと",
+      "unitPerson": "人ごと",
+      "link": "リンク",
+      "linkCard": "カード + 行",
+      "linkLine": "行だけ",
+      "density": "密度",
+      "densityNormal": "通常",
+      "densityDense": "廃人",
+      "width": "幅",
+      "lang": "言語",
+      "columnTitle": "ステータス",
+      "empty": "いまステータスを出している人はいません",
+      "emptyMusic": "いま Now Playing を出している人はいません",
+      "count": "固定データ %1$d 件（出してはいけないもの %2$d 件を含む）/ 表示中 %3$d 件"
+    },
+    "en": {
+      "title": "Status column (demo)",
+      "lead": "For checking the look of issue #767. Fixed data is signed with throwaway keys on this device only and shown here (nothing is sent to relays). The second track (けんた) disappears in about 20 seconds.",
+      "filter": "Show",
+      "filterAll": "All",
+      "unit": "Unit",
+      "unitType": "Per status",
+      "unitPerson": "Per person",
+      "link": "Links",
+      "linkCard": "Card + line",
+      "linkLine": "Line only",
+      "density": "Density",
+      "densityNormal": "Normal",
+      "densityDense": "Dense",
+      "width": "Width",
+      "lang": "Language",
+      "columnTitle": "Statuses",
+      "empty": "No one you follow has a status right now",
+      "emptyMusic": "No one you follow is playing anything right now",
+      "count": "%1$d fixed events (%2$d that must not appear) / %3$d shown"
+    }
+  },
+  "people": {
+    "aoi": "あおい",
+    "kenta": "けんた",
+    "mika": "Mika",
+    "fan": "nostr_fan",
+    "long": "ながぶみ",
+    "taro": "たろう",
+    "hiro": "hiro",
+    "ng1": "出ないはず1",
+    "ng2": "出ないはず2",
+    "ng3": "出ないはず3"
+  },
+  "emojiText": {
+    "work": "作業",
+    "coffee": "休憩"
+  },
+  "content": {
+    "spotify": "Never Gonna Give You Up - Rick Astley",
+    "noLink": "夜に駆ける - YOASOBI",
+    "spotifyUri": "Intergalactic - Beastie Boys",
+    "emoji": ":nostrism_work: 原稿の締め切りと格闘中 :nostrism_coffee:",
+    "ogp": "Nostr のことはここを見て",
+    "long": "今週はずっと引っ越しの片付けをしています。\n段ボールがまだ 20 箱くらい残っていて、\n本棚を組み立てるところで止まっています。\nリプライ遅くなります。\nDM はたぶん夜に見ます。\n落ち着いたら写真を上げます。\nよろしくお願いします。",
+    "mention": "一緒にもくもく作業中",
+    "broken": "来週の打ち合わせの日程はこちら",
+    "empty": "",
+    "expired": "期限切れのステータス（出ないはず）",
+    "presence": "online（presence は出ないはず）",
+    "old": "31 日前のステータス（出ないはず）"
+  },
+  "langNames": {
+    "ja": "日本語",
+    "en": "English",
+    "kansai": "関西弁"
+  }
+}
