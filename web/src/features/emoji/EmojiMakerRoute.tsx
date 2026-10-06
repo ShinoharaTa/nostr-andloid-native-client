@@ -1,10 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { UpdateToast } from "../../app/UpdateToast";
-import { useT } from "../../i18n";
+import { t, useT } from "../../i18n";
 import { useSession } from "../../signer/session";
 import { Toaster } from "../../ui/Toaster";
 import { showToast } from "../../ui/toast";
+import { appendToEmojiList, EmojiListError, parseEmojiShortcode } from "../compose/customEmojis";
 import styles from "./EmojiMakerRoute.module.css";
 import {
   emojiImageUrl,
@@ -40,6 +41,7 @@ type PreviewError = { code: string; char?: string };
 export function EmojiMakerRoute() {
   const t = useT();
   const status = useSession((s) => s.status);
+  const me = useSession((s) => s.pubkey);
   const [search] = useSearchParams();
   const [input, setInput] = useState<MakerInput>(() => inputFromQuery(search));
   const parsed = useMemo(() => parseMakerInput(input), [input]);
@@ -190,6 +192,9 @@ export function EmojiMakerRoute() {
         </div>
       </div>
 
+      {status === "in" && me !== null && (
+        <AddToListForm me={me} url={url !== null && error === null ? url : null} />
+      )}
       {status === "out" && (
         <p className={styles.note}>
           {t("web_emoji_login_hint")} <Link to="/login?next=%2Femoji">{t("web_emoji_login_link")}</Link>
@@ -214,6 +219,84 @@ export function EmojiMakerRoute() {
       </div>
     </main>
   );
+}
+
+/**
+ * 自分の絵文字リスト（kind:10030）へ足す欄（ログイン中だけ。docs/emoji-maker.md §7.4）。
+ * shortcode の形と重複は欄の下に、発行の成否はトーストで出す。url が null（入力が通らない・エラー中）なら押せない。
+ */
+function AddToListForm({ me, url }: { me: string; url: string | null }) {
+  const t = useT();
+  const codeId = useId();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (url === null) return;
+    const shortcode = parseEmojiShortcode(code);
+    if (!shortcode) {
+      setError(t("web_settings_emoji_input_invalid"));
+      return;
+    }
+    setAdding(true);
+    try {
+      await appendToEmojiList(me, { shortcode, url });
+      setCode("");
+      setError(null);
+      showToast(t("emoji_saved"));
+    } catch (e) {
+      if (e instanceof EmojiListError && e.reason === "duplicate")
+        setError(t("web_settings_emoji_already_added"));
+      else showToast(addFailureMessage(e));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <form className={styles.field} onSubmit={(e) => void submit(e)}>
+      <label htmlFor={codeId} className={styles.label}>
+        {t("web_emoji_shortcode_label")}
+      </label>
+      <div className={styles.row}>
+        <input
+          id={codeId}
+          className={styles.input}
+          type="text"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder={t("emoji_shortcode_hint")}
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value);
+            setError(null);
+          }}
+        />
+        <button
+          type="submit"
+          className={styles.primary}
+          disabled={adding || url === null || code.trim() === ""}
+        >
+          {adding ? t("web_emoji_adding") : t("web_emoji_add")}
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className={styles.error}>
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** 追加の失敗の文言（重複は欄の下に出すのでここには来ない。stale は追加では起きない） */
+function addFailureMessage(e: unknown): string {
+  if (e instanceof EmojiListError && e.reason === "no-emoji-list") return t("web_emoji_no_base");
+  // ネイティブ emoji_save_failed
+  return t("emoji_save_failed");
 }
 
 /** 色の入力（カラーピッカー + 16 進の欄。どちらを変えても揃える） */

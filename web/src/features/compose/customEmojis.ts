@@ -109,8 +109,9 @@ export function buildEmojiListTemplate(
 /**
  * no-emoji-list = 直前の取り直しでどのリレーからも応答が無かった（古い版で上書きしうるので止めた）。
  * stale = 編集を始めた時点の版と、取り直した最新版が違う（別の端末・クライアントでの変更を消すので止めた）。
+ * duplicate = 足そうとした shortcode が取り直した最新版に既にある（appendToEmojiList）。
  */
-export type EmojiListFailure = "no-emoji-list" | "stale" | PublishFailure;
+export type EmojiListFailure = "no-emoji-list" | "stale" | "duplicate" | PublishFailure;
 
 export class EmojiListError extends Error {
   readonly reason: EmojiListFailure;
@@ -140,6 +141,37 @@ export async function publishEmojiList(
   }
   if ((base?.id ?? null) !== basedOnId) throw new EmojiListError("stale");
   const template = buildEmojiListTemplate(base, emojis, unixNow());
+  try {
+    await publishEvent(template);
+  } catch (e) {
+    if (e instanceof PublishError) throw new EmojiListError(e.reason, { cause: e });
+    throw e;
+  }
+}
+
+/**
+ * 自分のカスタム絵文字リスト（kind:10030）の末尾に 1 件足して発行する（絵文字作成ページ /emoji。
+ * docs/emoji-maker.md §7.4）。#478 の規則: 発行の直前に自分の最新版を取り直し、どのリレーからも応答が無ければ
+ * 発行しない（no-emoji-list）。取り直した最新版に足すので編集の起点は無く、stale にはならない。
+ * 同じ shortcode の emoji タグが最新版にあれば発行しない（duplicate）。最新版のタグは作り直さず
+ * （順序・https でない emoji タグ・4 要素目のある emoji タグも含めて）すべてそのまま保ち、末尾に 1 つ足す。content もそのまま。
+ */
+export async function appendToEmojiList(me: string, emoji: CustomEmoji): Promise<void> {
+  let base: NostrEvent | null;
+  try {
+    base = await refetchOwnReplaceable(me, 10030);
+  } catch (e) {
+    throw new EmojiListError("no-emoji-list", { cause: e });
+  }
+  const tags = base?.tags ?? [];
+  if (tags.some((t) => t[0] === "emoji" && t[1] === emoji.shortcode)) throw new EmojiListError("duplicate");
+  const template: EventTemplate = {
+    kind: 10030,
+    content: base?.content ?? "",
+    tags: [...tags, ["emoji", emoji.shortcode, emoji.url]],
+    // 同じ秒に続けて保存しても、置換可能イベントの新旧が崩れないように
+    created_at: Math.max(unixNow(), (base?.created_at ?? 0) + 1),
+  };
   try {
     await publishEvent(template);
   } catch (e) {

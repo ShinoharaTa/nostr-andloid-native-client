@@ -1,17 +1,26 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 import { useSession } from "../../signer/session";
-import { resetSession } from "../../test/fakeNostr";
+import { PUBKEY, resetSession } from "../../test/fakeNostr";
 import { useToast } from "../../ui/toast";
+import { appendToEmojiList, EmojiListError } from "../compose/customEmojis";
 import { PREVIEW_DEBOUNCE_MS } from "./EmojiMakerRoute";
+
+// 絵文字リストの発行はしない（取り直し・署名・送信は customEmojis.test.ts で見る）
+vi.mock("../compose/customEmojis", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../compose/customEmojis")>()),
+  appendToEmojiList: vi.fn(async () => {}),
+}));
 
 const fetchMock = vi.fn<typeof fetch>();
 const createObjectURL = vi.fn(() => "blob:emoji");
 const revokeObjectURL = vi.fn();
 
 beforeEach(() => {
+  vi.mocked(appendToEmojiList).mockReset();
+  vi.mocked(appendToEmojiList).mockResolvedValue(undefined);
   fetchMock.mockReset();
   fetchMock.mockImplementation(() =>
     Promise.resolve(new Response(new Blob([new Uint8Array([0x89, 0x50])], { type: "image/png" }))),
@@ -172,4 +181,63 @@ it("/emoji?text=…&font=… を初期値にする（stroke が無ければ縁�
   expect(urlField()).toHaveValue(
     `${origin()}/api/emoji.png?text=%E3%81%9D%E3%82%8C%0A%E3%81%AA&color=00ff00&font=delagothic`,
   );
+});
+
+describe("ログイン中は自分の絵文字リストへ追加できる", () => {
+  beforeEach(() => {
+    useSession.setState({ status: "in", method: "nip07", pubkey: PUBKEY });
+  });
+
+  const shortcode = () => screen.getByRole("textbox", { name: "ショートコード" });
+  const addButton = () => screen.getByRole("button", { name: "自分の絵文字に追加" });
+
+  it("shortcode と正規化した URL で appendToEmojiList を呼び、成功をトーストで出す", async () => {
+    renderAt("/emoji");
+    expect(screen.queryByRole("link", { name: "ログイン" })).toBeNull();
+    expect(screen.getByRole("link", { name: "← アプリへ" })).toHaveAttribute("href", "/");
+
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.change(shortcode(), { target: { value: ":kusa:" } });
+    fireEvent.click(addButton());
+
+    expect(await screen.findByRole("status")).toHaveTextContent("絵文字リストを公開しました。");
+    expect(appendToEmojiList).toHaveBeenCalledWith(PUBKEY, {
+      shortcode: "kusa",
+      url: `${origin()}/api/emoji.png?text=%E8%8D%89&stroke=ffffff`,
+    });
+    expect(shortcode()).toHaveValue("");
+  });
+
+  it("テキストが空なら押せない", () => {
+    renderAt("/emoji");
+    fireEvent.change(shortcode(), { target: { value: "kusa" } });
+    expect(addButton()).toBeDisabled();
+  });
+
+  it("shortcode の形が不正なら欄の下に出して呼ばない", () => {
+    renderAt("/emoji");
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.change(shortcode(), { target: { value: "く さ" } });
+    fireEvent.click(addButton());
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "ショートコードは英数字と _ - 、画像URLは https:// だけ使えます",
+    );
+    expect(appendToEmojiList).not.toHaveBeenCalled();
+  });
+
+  it("重複（duplicate）は欄の下に、取り直しの失敗（no-emoji-list）はトーストで出す", async () => {
+    renderAt("/emoji");
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.change(shortcode(), { target: { value: "kusa" } });
+
+    vi.mocked(appendToEmojiList).mockRejectedValueOnce(new EmojiListError("duplicate"));
+    fireEvent.click(addButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("そのショートコードは追加済みです");
+
+    vi.mocked(appendToEmojiList).mockRejectedValueOnce(new EmojiListError("no-emoji-list"));
+    fireEvent.change(shortcode(), { target: { value: "kusa2" } });
+    fireEvent.click(addButton());
+    expect(await screen.findByRole("status")).toHaveTextContent("最新の絵文字リストを取得できなかったため");
+  });
 });
