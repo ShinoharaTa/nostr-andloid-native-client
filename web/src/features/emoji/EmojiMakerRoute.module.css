@@ -1,0 +1,257 @@
+/* 絵文字作成ページ（/emoji）。AppShell の外なので LoginGate と同じく 1 カラムで中央に置く */
+.page {
+  box-sizing: border-box;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+}
+
+.brand {
+  color: var(--text);
+  font-size: var(--type-sub);
+  font-weight: var(--w-strong);
+}
+
+.back {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: var(--type-caption);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-display);
+  font-weight: var(--w-strong);
+}
+
+.lead {
+  margin: calc(var(--sp-2) * -1) 0 0;
+  color: var(--text-3);
+  font-size: var(--type-sub);
+  line-height: var(--line-desc);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.label {
+  padding: 0;
+  color: var(--text);
+  font-size: var(--type-sub);
+  font-weight: var(--w-strong);
+}
+
+.fieldset .label {
+  margin-bottom: var(--sp-2);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-caption);
+}
+
+.limitOver {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--type-caption);
+  font-weight: var(--w-strong);
+}
+
+.textarea,
+.input {
+  box-sizing: border-box;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  /* 16px 未満だと iOS Safari がフォーカス時に拡大する */
+  font-size: 16px;
+}
+
+.textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch-sm);
+}
+
+.textarea:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.textarea[aria-invalid="true"],
+.input[aria-invalid="true"] {
+  border-color: var(--warn);
+}
+
+.hex {
+  flex: none;
+  width: 9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-4);
+}
+
+.radio,
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--touch-sm);
+  color: var(--text);
+  font-size: var(--type-body);
+  cursor: pointer;
+}
+
+.check {
+  font-weight: var(--w-strong);
+}
+
+.picker {
+  flex: none;
+  width: var(--touch-sm);
+  height: var(--touch-sm);
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.preview {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 128×128 をそのまま（等倍）。両テーマでの見え方を並べる */
+.previewBox {
+  width: 128px;
+  height: 128px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+
+.previewBox img {
+  display: block;
+  width: 128px;
+  height: 128px;
+}
+
+.previewLight {
+  background: #fff;
+}
+
+.previewDark {
+  background: #0c0c10;
+}
+
+.error {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--type-caption);
+}
+
+.primary {
+  flex: none;
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-4);
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  /* [#673] アクセント地の上の文字色 */
+  color: var(--on-accent);
+  font: inherit;
+  font-size: var(--type-caption);
+  font-weight: var(--w-strong);
+  cursor: pointer;
+}
+
+.primary:disabled {
+  background: var(--surface-3);
+  color: var(--text-3);
+  cursor: default;
+}
+
+.note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--type-caption);
+  line-height: var(--line-desc);
+}
+
+.note a,
+.footer a {
+  color: var(--accent);
+}
+
+.footer {
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--type-caption);
+  line-height: var(--line-desc);
+}
+
+/* Toaster は position: absolute なので、画面に固定した層の中に置く（スクロールしても見える） */
+.toastLayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
