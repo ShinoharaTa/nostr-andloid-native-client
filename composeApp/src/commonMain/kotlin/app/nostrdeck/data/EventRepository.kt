@@ -24,6 +24,9 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import app.nostrdeck.model.EmojiMaker
+import app.nostrdeck.model.MadeEmoji
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLParameter
@@ -2178,7 +2181,13 @@ class EventRepository(
      * [reactionSentFlow] に流し、App が「◯◯ でリアクションしました」とトーストで知らせる）。
      * ♡ボタン（既定リアクション）はボタン自体の押下表示があるので知らせない。
      */
-    suspend fun publishReaction(target: NostrEvent, emoji: String = "+", imageUrl: String? = null, announce: Boolean = false) {
+    suspend fun publishReaction(
+        target: NostrEvent,
+        emoji: String = "+",
+        imageUrl: String? = null,
+        announce: Boolean = false,
+        announceAsMade: Boolean = false,
+    ) {
         val tags = buildList {
             add(listOf("e", target.id))
             add(listOf("p", target.pubkey))
@@ -2188,12 +2197,29 @@ class EventRepository(
         }
         publishSigned(UnsignedEvent(kind = 7, content = emoji, tags = withRelayHints(tags)))
         recordUsedEmoji(emoji, imageUrl)
-        if (announce) reactionSent.tryEmit(if (emoji == "+" || emoji.isEmpty()) "❤️" else emoji)
+        if (announce) reactionSent.tryEmit(ReactionSent(if (emoji == "+" || emoji.isEmpty()) "❤️" else emoji, made = announceAsMade))
     }
 
-    /** [#732] 絵文字ピッカーからのリアクションを送れた（署名して送信キューに積んだ）ときの表示名。App がトーストに出す。 */
-    private val reactionSent = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    fun reactionSentFlow(): SharedFlow<String> = reactionSent.asSharedFlow()
+    /**
+     * [#732] 絵文字ピッカーからのリアクションを送れた（署名して送信キューに積んだ）ときの表示名。App がトーストに出す。
+     * [#775] [made] = 「絵文字を作る」で作った絵文字で、名前が自動（nostrism_…）。名前が意味をなさないので「作った絵文字で」と出す。
+     */
+    data class ReactionSent(val emoji: String, val made: Boolean = false)
+    private val reactionSent = MutableSharedFlow<ReactionSent>(extraBufferCapacity = 4)
+    fun reactionSentFlow(): SharedFlow<ReactionSent> = reactionSent.asSharedFlow()
+
+    /**
+     * [#775] ピッカーの「絵文字を作る」で作った絵文字でリアクションする（NIP-25 / NIP-30: content `:shortcode:` + emoji タグ）。
+     * 絵文字リストへの登録は要らない。「自分の絵文字リストにも保存」がオンなら、送った後に足し、結果を [madeEmojiSavedFlow] に流す。
+     */
+    suspend fun publishMadeReaction(target: NostrEvent, made: MadeEmoji) {
+        publishReaction(target, ":${made.shortcode}:", made.url, announce = true, announceAsMade = made.autoName)
+        if (made.save) madeEmojiSaved.tryEmit(appendToEmojiList(CustomEmoji(made.shortcode, made.url)))
+    }
+
+    private val madeEmojiSaved = MutableSharedFlow<EmojiAppend>(extraBufferCapacity = 4)
+    /** [#775] ピッカーで作った絵文字を自分の絵文字リストに足した結果（リアクションの成否とは別に App がトーストで知らせる）。 */
+    fun madeEmojiSavedFlow(): SharedFlow<EmojiAppend> = madeEmojiSaved.asSharedFlow()
 
     /**
      * [#6] NIP-56 通報。kind:1984 で対象の投稿/ユーザーを報告する。
@@ -3671,6 +3697,21 @@ class EventRepository(
         return publishEmojiListNow(emojis)
     }
 
+    /** [#775] 絵文字を 1 つ自分の絵文字リストに足した結果。 */
+    enum class EmojiAppend { SAVED, DUPLICATE, UNREACHABLE, FAILED }
+
+    /**
+     * [#775] 自分の絵文字リスト（kind:10030）に 1 つ足して公開する（ピッカーで作った絵文字の「保存」）。
+     * [#478] 最新版を取り直してから、その版に足す（取れなければ公開しない。他の端末で足した絵文字を消さないため）。
+     * 同じショートコードが既にあれば足さない。
+     */
+    suspend fun appendToEmojiList(emoji: CustomEmoji): EmojiAppend {
+        if (refreshOwn(10030, notify = false) { emojiListRep.at } !is OwnRefetch.Result.Reached) return EmojiAppend.UNREACHABLE
+        val current = emojiListRep.state.value
+        if (current.any { it.shortcode == emoji.shortcode }) return EmojiAppend.DUPLICATE
+        return if (publishEmojiListNow(current + emoji)) EmojiAppend.SAVED else EmojiAppend.FAILED
+    }
+
     private suspend fun publishEmojiListNow(emojis: List<CustomEmoji>): Boolean = runCatching {
         val keep = emojiListRep.tags.filter { !(it.size >= 3 && it[0] == "emoji") }
         val tags = keep + emojis.map { listOf("emoji", it.shortcode, it.url) }
@@ -4740,6 +4781,33 @@ class EventRepository(
      * 削除済み・非公開は 404 で null。OGP と同じ DB キャッシュ（キー `x-oembed:<lang>:<url>`、title に日時）に
      * 同じ TTL で持ち、カードを出すたびに取りに行かない。
      */
+    /** [#775] 文字から作る絵文字の画像（プレビュー用）の取得結果。 */
+    sealed interface EmojiImage {
+        class Ok(val bytes: ByteArray) : EmojiImage
+        /** サーバーが作れなかった。[code] は応答の `error`（`unsupported_char` は描けない文字を [char] に持つ）。 */
+        data class Rejected(val code: String, val char: String? = null) : EmojiImage
+        /** 通信できなかった。 */
+        data object Failed : EmojiImage
+    }
+
+    /**
+     * [#775] 文字から作る絵文字の画像を取る（[EmojiMaker.imageUrl]。Web と同じサーバーが作り、Cloudflare にキャッシュされる）。
+     * 400 / 503 は応答の JSON の `error` を返す（作成フォームが理由を出す）。
+     */
+    suspend fun fetchEmojiImage(url: String): EmojiImage = try {
+        withContext(Dispatchers.Default) {
+            val resp = uploadHttp.get(url)
+            if (resp.status.value == 200) return@withContext EmojiImage.Ok(resp.readRawBytes())
+            val obj = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+            val code = obj?.get("error")?.jsonPrimitive?.contentOrNull ?: "unknown"
+            EmojiImage.Rejected(code, obj?.get("char")?.jsonPrimitive?.contentOrNull)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        EmojiImage.Failed
+    }
+
     suspend fun fetchXPostDate(url: String, lang: String): String? {
         val key = "x-oembed:$lang:$url"
         ogpMutex.withLock { if (ogpCache.containsKey(key)) return ogpCache[key]?.title }
