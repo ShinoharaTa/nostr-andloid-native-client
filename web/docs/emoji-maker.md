@@ -345,6 +345,16 @@ return response
 - ページ側: shortcode は `parseEmojiShortcode()` で検証。失敗文言は既存 `web_settings_emoji_input_invalid`、重複は `web_settings_emoji_already_added`、成功は `emoji_saved`、`no-emoji-list` は `web_emoji_no_base`、`stale` は出ない。
 - `main.tsx` はルートに関係なくセッション復元とリレー接続を始めるので、`/emoji` でも `eventStore` / `publishEvent` は使える（確認: `main.tsx` の `startOwnRelayList()` 等は無条件）。
 
+### 7.5 リアクションのピッカーで作ってその場でリアクション（#768）
+
+- `ReactionPickerDialog` に `target` がある（投稿・記事リーダー・チャットのリアクション）ときだけ、検索欄の右に「絵文字を作る」（`web_picker_make`）。投稿画面の絵文字ボタン・設定の既定リアクションでは出さない。
+- 押すとダイアログの中身が作成フォームの 1 画面になる（モーダルを重ねない）。上に「戻る」（一覧に戻る。検索語・タブはそのまま）、中は `EmojiMakerForm`（初期値 `DEFAULT_INPUT` = 黒文字 + 白縁取り）+ ショートコード（任意）+「自分の絵文字リストにも保存」（既定オフ）でスクロール、下に「この絵文字でリアクション」を固定。
+- ショートコードが空なら `autoEmojiShortcode(url)`（`features/emoji/autoShortcode.ts`）= `nostrism_` + 正規化した画像 URL の SHA-256 の先頭 8 桁（hex）。同じ絵文字なら毎回同じ名前で、プレースホルダに出す。入力したら `parseEmojiShortcode()` で検証（不正なら押せない）。
+- 押せないのは: テキストが空・プレビューがエラー・今の入力のプレビューがまだ届いていない（`useEmojiMaker().ready`）・名前が不正の間。
+- 押すと `onPick(":code:", url, { made: true, autoName, save })`。呼び出し側（`NoteActionButtons` / `ArticleReader` / `ChannelRoom`）が `publishReaction`（content `:code:` + `["emoji", code, url]`）で送る。トーストは `reactionSentMessage()`（`features/actions/pickedReaction.ts`）: 自動の名前なら `web_reaction_sent_made`、入力した名前なら従来の `web_reaction_sent_fmt`。
+- save がオンなら送信の後（成否によらず）に `saveMadeEmoji()` → `appendToEmojiList`。結果はリアクションとは別のトースト: 成功 `emoji_saved`、重複 `web_picker_make_save_duplicate`、`no-emoji-list` は `web_emoji_no_base`、それ以外は `emoji_save_failed`。
+- 作った絵文字は「最近」（`publishReaction` → `recordUsedEmoji`。`RecentEmoji` は `:code:` と画像 URL を持てる）に入るので、別の段は作らない。「最近」は端末ごと（アカウントで分けていない。既存の仕様のまま）。
+
 ---
 
 ## 8. CPU 時間の計測手順

@@ -39,14 +39,23 @@
   border-top: 1px solid var(--border);
 }
 
-/* ---- 検索 ---- */
+/* ---- 検索（[#768] 対象があれば右に「絵文字を作る」） ---- */
+
+.searchRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
 
 .search {
   box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   min-height: var(--touch-sm);
   padding: var(--sp-2) var(--sp-3);
-  margin-bottom: var(--sp-2);
   border: 0;
   border-radius: var(--r-full);
   background: var(--surface-2);
@@ -57,6 +66,27 @@
 
 .search::placeholder {
   color: var(--text-3);
+}
+
+.make {
+  flex: none;
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--type-caption);
+  font-weight: var(--w-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .make:hover {
+    background: var(--surface-3);
+  }
 }
 
 /* ---- カテゴリタブ（#684。全絵文字は多いので、選んだカテゴリだけ下のグリッドに描画する） ---- */
@@ -160,4 +190,67 @@
   text-align: center;
   color: var(--text-3);
   font-size: var(--type-caption);
+}
+
+/* ---- [#768] 絵文字を作る（一覧の代わりに出す 1 画面。フォームはスクロールし、送信ボタンは下に固定） ---- */
+
+.makeHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-2) 0 var(--sp-1);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--type-caption);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .back:hover {
+    background: var(--surface-3);
+  }
+}
+
+.backIcon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.makeTitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--type-sub);
+  font-weight: var(--w-strong);
+}
+
+.makeScroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.makeFoot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-2) 0 var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.makeSend {
+  width: 100%;
 }

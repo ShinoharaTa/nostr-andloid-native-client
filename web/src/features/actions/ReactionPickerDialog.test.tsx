@@ -1,7 +1,8 @@
-import { act, screen, within } from "@testing-library/react";
+import { createHash } from "node:crypto";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { unixNow } from "../../lib/time";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
@@ -160,4 +161,115 @@ it("cancel（Esc / 戻る）・✗・背景の押下で onClose", async () => {
 
   await user.click(dialog);
   expect(onClose).toHaveBeenCalledTimes(3);
+});
+
+describe("絵文字を作る（#768）", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const kusaUrl = () => `${window.location.origin}/api/emoji.png?text=%E8%8D%89&stroke=ffffff`;
+  const autoName = (url: string) => `nostrism_${createHash("sha256").update(url).digest("hex").slice(0, 8)}`;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(new Blob([new Uint8Array([0x89, 0x50])], { type: "image/png" }))),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    // jsdom に objectURL は無い
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:emoji"), revokeObjectURL: vi.fn() });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function post(): NostrEvent {
+    return finalizeEvent({ kind: 1, created_at: unixNow(), tags: [], content: "対象" }, generateSecretKey());
+  }
+
+  async function openMaker() {
+    const opened = open(post());
+    await userEvent.click(screen.getByRole("button", { name: "絵文字を作る" }));
+    return opened;
+  }
+
+  const textArea = () => screen.getByRole("textbox", { name: "テキスト" });
+  const shortcode = () => screen.getByRole("textbox", { name: "ショートコード（任意）" });
+  const send = () => screen.getByRole("button", { name: "この絵文字でリアクション" });
+
+  it("対象が無い（投稿画面・既定リアクションの設定）ときは出さない", () => {
+    open();
+    expect(screen.queryByRole("button", { name: "絵文字を作る" })).toBeNull();
+  });
+
+  it("「絵文字を作る」で一覧の代わりにフォーム（黒文字 + 白縁取り）。「戻る」で一覧へ", async () => {
+    await openMaker();
+    expect(screen.queryByRole("searchbox", { name: "絵文字を検索" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "最近" })).toBeNull();
+    expect(textArea()).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "文字色（16進）" })).toHaveValue("000000");
+    expect(screen.getByRole("checkbox", { name: "縁取り" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "自分の絵文字リストにも保存" })).not.toBeChecked();
+    // テキストが空のうちは押せない
+    expect(send()).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "戻る" }));
+    expect(screen.getByRole("searchbox", { name: "絵文字を検索" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "最近" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "テキスト" })).toBeNull();
+  });
+
+  it("名前が空なら自動の名前（プレースホルダに出す）で onPick(:nostrism_…:, URL, autoName) して閉じる", async () => {
+    const { onPick, onClose } = await openMaker();
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    const name = autoName(kusaUrl());
+    await waitFor(() => expect(shortcode()).toHaveAttribute("placeholder", name));
+    await waitFor(() => expect(send()).toBeEnabled());
+    await userEvent.click(send());
+    expect(onPick).toHaveBeenCalledWith(`:${name}:`, kusaUrl(), { made: true, autoName: true, save: false });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("入力した名前と保存のチェックを渡す", async () => {
+    const { onPick } = await openMaker();
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.change(shortcode(), { target: { value: " :kusa: " } });
+    await userEvent.click(screen.getByRole("checkbox", { name: "自分の絵文字リストにも保存" }));
+    await waitFor(() => expect(send()).toBeEnabled());
+    await userEvent.click(send());
+    expect(onPick).toHaveBeenCalledWith(":kusa:", kusaUrl(), { made: true, autoName: false, save: true });
+  });
+
+  it("不正な名前の間は押せない", async () => {
+    const { onPick } = await openMaker();
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    await waitFor(() => expect(send()).toBeEnabled());
+    fireEvent.change(shortcode(), { target: { value: "く さ" } });
+    expect(send()).toBeDisabled();
+    expect(shortcode()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("ショートコードは英数字と _ - だけ使えます")).toBeVisible();
+    fireEvent.change(shortcode(), { target: { value: "kusa_2" } });
+    expect(send()).toBeEnabled();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("プレビューがエラーの間は押せない", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json({ error: "unsupported_char", char: "𠮷" }, { status: 400 })),
+    );
+    await openMaker();
+    fireEvent.change(textArea(), { target: { value: "𠮷" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("「𠮷」はこのフォントで描けません");
+    expect(send()).toBeDisabled();
+  });
+
+  it("今の入力のプレビューが届くまでは押せない", async () => {
+    await openMaker();
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    expect(send()).toBeDisabled();
+    await waitFor(() => expect(send()).toBeEnabled());
+    // 打ち直すと、新しいプレビューが届くまでまた押せない
+    fireEvent.change(textArea(), { target: { value: "草草" } });
+    expect(send()).toBeDisabled();
+    await waitFor(() => expect(send()).toBeEnabled());
+  });
 });

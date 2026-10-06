@@ -441,5 +441,7 @@
   "hashtags_open_manager": "ハッシュタグの整理画面を開くで",
   "hashtags_last_used_fmt": "最後に使ったのは %1$s",
   "hashtags_used_delete": "履歴から消す",
-  "web_reaction_sent_fmt": "%1$s でリアクションしといたで"
+  "web_reaction_sent_fmt": "%1$s でリアクションしといたで",
+  "web_reaction_sent_made": "作った絵文字でリアクションしといたで",
+  "web_picker_make_save_duplicate": "同じショートコードの絵文字がもうリストにあるから、保存せえへんかったで"
 }
