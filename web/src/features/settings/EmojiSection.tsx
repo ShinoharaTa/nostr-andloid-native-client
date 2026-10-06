@@ -10,6 +10,7 @@ import {
   type CustomEmoji,
   customEmojisFrom,
   EmojiListError,
+  emojiListChanges,
   parseEmojiShortcode,
   parseEmojiUrl,
   publishEmojiList,
@@ -40,7 +41,8 @@ function useOwnEmojiList(me: string | null): { latest: NostrEvent | undefined; c
 /**
  * カスタム絵文字（ネイティブ EmojiEditorSettings。NIP-51 kind:10030 の emoji タグだけを編集）。
  * 編集は手元の下書きに溜め、「保存して公開」で kind:10030 を再発行する（保存のたびに発行しない）。
- * 30030 セット参照（a タグ）はそのまま維持し、ここには出さない。
+ * 発行は最新版のタグを土台に、削除したものを除き追加分を末尾に足す（#762）。
+ * 30030 セット参照（a タグ）や https でない emoji タグはそのまま維持し、ここには出さない。
  */
 export function EmojiSection() {
   const t = useT();
@@ -61,7 +63,12 @@ export function EmojiSection() {
     if (!me) return;
     setSaving(true);
     try {
-      await publishEmojiList(me, list, draft === null ? (latest?.id ?? null) : basedOnId);
+      // 下書きの差分（削除・追加）だけを取り直した最新版に当てる。画面に出さない emoji タグは保たれる（#762）
+      await publishEmojiList(
+        me,
+        emojiListChanges(current, list),
+        draft === null ? (latest?.id ?? null) : basedOnId,
+      );
       setDraft(null);
       showToast(t("emoji_saved"));
     } catch (e) {
