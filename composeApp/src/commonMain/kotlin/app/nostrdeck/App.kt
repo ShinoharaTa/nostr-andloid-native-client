@@ -4,6 +4,11 @@ import nostr_deck_client.composeapp.generated.resources.publish_unconfirmed
 import nostr_deck_client.composeapp.generated.resources.own_list_stale
 import nostr_deck_client.composeapp.generated.resources.own_list_unreachable
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_fmt
+import nostr_deck_client.composeapp.generated.resources.emoji_save_failed
+import nostr_deck_client.composeapp.generated.resources.emoji_saved
+import nostr_deck_client.composeapp.generated.resources.emoji_no_base
+import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplicate
+import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -115,8 +120,29 @@ fun App(
         }
         // [#732] 絵文字ピッカーからリアクションを送ったことを知らせる（投稿の行には出さない方針）。
         LaunchedEffect(repository) {
-            repository?.reactionSentFlow()?.collect { emoji ->
-                toast(app.nostrdeck.i18n.getString(nostr_deck_client.composeapp.generated.resources.Res.string.reaction_sent_fmt, emoji))
+            repository?.reactionSentFlow()?.collect { sent ->
+                val r = nostr_deck_client.composeapp.generated.resources.Res.string
+                // [#775] 作った絵文字で名前が自動（nostrism_…）のときは、名前を出しても意味をなさないので「作った絵文字で」。
+                toast(
+                    if (sent.made) app.nostrdeck.i18n.getString(r.reaction_sent_made)
+                    else app.nostrdeck.i18n.getString(r.reaction_sent_fmt, sent.emoji),
+                )
+            }
+        }
+        // [#775] ピッカーで作った絵文字を「自分の絵文字リストにも保存」した結果（リアクションの成否とは別に知らせる）。
+        LaunchedEffect(repository) {
+            repository?.madeEmojiSavedFlow()?.collect { result ->
+                val r = nostr_deck_client.composeapp.generated.resources.Res.string
+                toast(
+                    app.nostrdeck.i18n.getString(
+                        when (result) {
+                            app.nostrdeck.data.EventRepository.EmojiAppend.SAVED -> r.emoji_saved
+                            app.nostrdeck.data.EventRepository.EmojiAppend.DUPLICATE -> r.picker_make_save_duplicate
+                            app.nostrdeck.data.EventRepository.EmojiAppend.UNREACHABLE -> r.emoji_no_base
+                            app.nostrdeck.data.EventRepository.EmojiAppend.FAILED -> r.emoji_save_failed
+                        },
+                    ),
+                )
             }
         }
         // [#478] 自分のリスト（フォロー・ミュート等）の編集を止めた理由。どの画面から操作しても同じ文言で知らせる。

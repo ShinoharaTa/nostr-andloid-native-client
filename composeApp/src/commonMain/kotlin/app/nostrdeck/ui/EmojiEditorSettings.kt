@@ -1,5 +1,16 @@
 package app.nostrdeck.ui
 
+import nostr_deck_client.composeapp.generated.resources.emoji_shortcode_invalid
+import nostr_deck_client.composeapp.generated.resources.emoji_add_by_url
+import nostr_deck_client.composeapp.generated.resources.emoji_add_by_maker
+import app.nostrdeck.theme.DeckWeight
+import app.nostrdeck.theme.DeckRadius
+import app.nostrdeck.model.EmojiMaker
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +74,9 @@ fun EmojiEditorSettings() {
     var newCode by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
     val dirty = draft != published
+    // [#775] 追加の仕方: 画像の URL で追加 / 文字から作る（Web #763）。作った絵文字も下書きに足し、公開は「保存」。
+    var byMaker by remember { mutableStateOf(false) }
+    val makerState = rememberEmojiMakerState()
 
     Column(Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md)) {
         Text(stringResource(Res.string.emoji_note), color = DeckColors.Text3, fontSize = DeckType.Label)
@@ -91,27 +105,59 @@ fun EmojiEditorSettings() {
         HorizontalDivider(color = DeckColors.Border)
         Spacer(Modifier.size(DeckSpace.Md))
 
-        // 追加フォーム（shortcode + 画像URL）。
-        DeckTextField(
-            value = newCode, onValueChange = { newCode = it.trim().removePrefix(":").removeSuffix(":") },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = stringResource(Res.string.emoji_shortcode_hint),
-        )
-        Spacer(Modifier.size(DeckSpace.Sm))
-        DeckTextField(
-            value = newUrl, onValueChange = { newUrl = it.trim() },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = stringResource(Res.string.emoji_url_hint),
-        )
-        Spacer(Modifier.size(DeckSpace.Sm))
-        DeckGhostButton(
-            stringResource(Res.string.emoji_add),
-            enabled = newCode.isNotBlank() && newUrl.startsWith("http"),
-            onClick = {
-                draft = draft.filterNot { it.shortcode == newCode } + CustomEmoji(newCode, newUrl)
-                newCode = ""; newUrl = ""
-            },
-        )
+        AddModeSelector(byMaker, onSelect = { byMaker = it })
+        Spacer(Modifier.size(DeckSpace.Md))
+        if (byMaker) {
+            // [#775] 文字から作る: 作成フォーム + ショートコード（必須）。同じショートコードは URL での追加と同じく置き換える。
+            EmojiMakerForm(makerState)
+            Spacer(Modifier.size(DeckSpace.Md))
+            DeckTextField(
+                value = newCode, onValueChange = { newCode = it.trim().removePrefix(":").removeSuffix(":") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.emoji_shortcode_hint),
+            )
+            val code = EmojiMaker.parseShortcode(newCode)
+            if (newCode.isNotEmpty() && code == null) {
+                Text(
+                    stringResource(Res.string.emoji_shortcode_invalid), color = DeckColors.Warn, fontSize = DeckType.Label,
+                    modifier = Modifier.padding(top = DeckSpace.Xs),
+                )
+            }
+            Spacer(Modifier.size(DeckSpace.Sm))
+            val url = makerState.url
+            DeckGhostButton(
+                stringResource(Res.string.emoji_add),
+                enabled = makerState.ready && url != null && code != null,
+                onClick = {
+                    if (url != null && code != null) {
+                        draft = draft.filterNot { it.shortcode == code } + CustomEmoji(code, url)
+                        newCode = ""
+                    }
+                },
+            )
+        } else {
+            // 追加フォーム（shortcode + 画像URL）。
+            DeckTextField(
+                value = newCode, onValueChange = { newCode = it.trim().removePrefix(":").removeSuffix(":") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.emoji_shortcode_hint),
+            )
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckTextField(
+                value = newUrl, onValueChange = { newUrl = it.trim() },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.emoji_url_hint),
+            )
+            Spacer(Modifier.size(DeckSpace.Sm))
+            DeckGhostButton(
+                stringResource(Res.string.emoji_add),
+                enabled = newCode.isNotBlank() && newUrl.startsWith("http"),
+                onClick = {
+                    draft = draft.filterNot { it.shortcode == newCode } + CustomEmoji(newCode, newUrl)
+                    newCode = ""; newUrl = ""
+                },
+            )
+        }
         Spacer(Modifier.size(DeckSpace.Lg))
 
         val okMsg = stringResource(Res.string.emoji_saved)
@@ -128,5 +174,24 @@ fun EmojiEditorSettings() {
             },
         )
         Spacer(Modifier.size(DeckSpace.Xl))
+    }
+}
+
+/** [#775] 追加の仕方の切り替え（URL で追加 / 文字から作る）。モノクロのセグメント。 */
+@Composable
+private fun AddModeSelector(byMaker: Boolean, onSelect: (Boolean) -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(DeckRadius.Sm)).background(DeckColors.Surface2)) {
+        listOf(false to Res.string.emoji_add_by_url, true to Res.string.emoji_add_by_maker).forEach { (maker, label) ->
+            val active = maker == byMaker
+            Text(
+                stringResource(label),
+                color = if (active) DeckColors.Bg else DeckColors.Text2,
+                fontSize = DeckType.Caption, fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
+                modifier = Modifier
+                    .clickable { onSelect(maker) }
+                    .background(if (active) DeckColors.Text else Color.Transparent)
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+            )
+        }
     }
 }
