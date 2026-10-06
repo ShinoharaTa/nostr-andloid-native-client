@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
@@ -17,8 +18,21 @@ export default defineConfig({
   },
 });
 
-/** /・/index.html・/assets/a.css だけがある静的アセット。本文は test/functions/fallback.test.ts が照合する。 */
+/** 絵文字 API のグリフデータ（public/fonts/*.bin。npm run fonts:emoji の生成物をコミットしたもの）。 */
+const FONTS_DIR = new URL("./public/fonts/", import.meta.url);
+
+/**
+ * /・/index.html・/assets/a.css と /fonts/*.bin（public/fonts/ の実ファイル）だけがある静的アセット。
+ * HTML・CSS の本文は test/functions/fallback.test.ts が照合する。
+ */
 function fakeAssets(pathname: string): Response {
+  const font = /^\/fonts\/([\w.-]+\.bin)$/.exec(pathname);
+  if (font) {
+    const file = new URL(font[1], FONTS_DIR);
+    if (existsSync(file)) {
+      return new Response(readFileSync(file), { headers: { "Content-Type": "application/octet-stream" } });
+    }
+  }
   switch (pathname) {
     case "/":
     case "/index.html":

@@ -5,6 +5,7 @@
     "/assets/*",
     "/icons/*",
     "/lp/*",
+    "/fonts/*",
     "/sw.js",
     "/manifest.webmanifest",
     "/workbox-*",

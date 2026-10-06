@@ -1,3 +1,5 @@
 dist/
 node_modules/
 .wrangler/
+# 絵文字フォントの元 TTF（scripts/build-emoji-fonts.mjs が取得する。コミットしない）
+.fonts-src/
