@@ -5,6 +5,7 @@ import { requestOnce } from "../../nostr/pool";
 import { PublishError, publishEvent } from "../../nostr/publish";
 import { addVerified } from "../../nostr/store";
 import {
+  appendToEmojiList,
   buildEmojiListTemplate,
   customEmojisFrom,
   EmojiListError,
@@ -175,6 +176,131 @@ describe("publishEmojiList", () => {
     refetchReturns(null);
     vi.mocked(publishEvent).mockRejectedValueOnce(new PublishError("sign-failed"));
     await expect(publishEmojiList(me, [], null)).rejects.toMatchObject({
+      name: "EmojiListError",
+      reason: "sign-failed",
+    });
+  });
+});
+
+describe("appendToEmojiList", () => {
+  let key: Uint8Array;
+  let me: string;
+
+  beforeEach(() => {
+    key = generateSecretKey();
+    me = getPublicKey(key);
+    vi.mocked(requestOnce).mockReset();
+    vi.mocked(publishEvent).mockClear();
+  });
+
+  function list(tags: string[][], createdAt: number, content = ""): NostrEvent {
+    return finalizeEvent({ kind: 10030, created_at: createdAt, tags, content }, key);
+  }
+
+  function refetchReturns(latest: NostrEvent | null) {
+    vi.mocked(requestOnce).mockImplementation(() =>
+      latest
+        ? new Observable<NostrEvent>((subscriber) => {
+            addVerified(latest, "wss://relay.example");
+            subscriber.next(latest);
+            subscriber.complete();
+          })
+        : EMPTY,
+    );
+  }
+
+  const kusa = { shortcode: "kusa", url: "https://nostrism.shino3.net/api/emoji.png?text=%E8%8D%89" };
+
+  it("どのリレーからも応答が無ければ発行しない（no-emoji-list。手元に版があっても）", async () => {
+    addVerified(list([["emoji", "cat", "https://a/cat.png"]], 1_000));
+    vi.mocked(requestOnce).mockReturnValue(throwError(() => new Error("timeout")));
+
+    const error = await appendToEmojiList(me, kusa).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(EmojiListError);
+    expect(error).toMatchObject({ reason: "no-emoji-list" });
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+  });
+
+  it("取り直した最新版のタグを作り直さず（順序・https でない emoji・4 要素目付き emoji も）保ち、末尾に足す", async () => {
+    const latest = list(
+      [
+        ["a", "30030:pk:set"],
+        ["emoji", "zzz", "https://a/zzz.png"],
+        ["emoji", "plain", "http://a/plain.png"],
+        ["emoji", "fromset", "https://a/set.png", "30030:pk:set"],
+        ["x-unknown", "keep"],
+        ["emoji", "aaa", "https://a/aaa.png"],
+      ],
+      2_000,
+    );
+    refetchReturns(latest);
+
+    await appendToEmojiList(me, kusa);
+
+    const draft = vi.mocked(publishEvent).mock.calls[0][0];
+    expect(draft.tags).toEqual([...latest.tags, ["emoji", "kusa", kusa.url]]);
+  });
+
+  it("重複は既存の emoji タグの shortcode と比べる（https でない emoji タグでも duplicate）", async () => {
+    refetchReturns(list([["emoji", "kusa", "http://a/kusa.png"]], 2_000));
+
+    const error = await appendToEmojiList(me, kusa).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ name: "EmojiListError", reason: "duplicate" });
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+  });
+
+  it("取り直した最新版に同じ shortcode があれば発行しない（duplicate）", async () => {
+    refetchReturns(list([["emoji", "kusa", "https://a/other.png"]], 2_000));
+
+    const error = await appendToEmojiList(me, kusa).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ name: "EmojiListError", reason: "duplicate" });
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+  });
+
+  it("取り直した最新版のタグの末尾に足し、content はそのまま。created_at は最新版より後", async () => {
+    const latest = list(
+      [
+        ["emoji", "cat", "https://a/cat.png"],
+        ["a", "30030:pk:set"],
+        ["x-unknown", "keep"],
+      ],
+      2_000,
+      "memo",
+    );
+    refetchReturns(latest);
+
+    await appendToEmojiList(me, kusa);
+
+    expect(vi.mocked(publishEvent)).toHaveBeenCalledTimes(1);
+    const draft = vi.mocked(publishEvent).mock.calls[0][0];
+    expect(draft.kind).toBe(10030);
+    expect(draft.content).toBe("memo");
+    expect(draft.tags).toEqual([
+      ["emoji", "cat", "https://a/cat.png"],
+      ["a", "30030:pk:set"],
+      ["x-unknown", "keep"],
+      ["emoji", "kusa", kusa.url],
+    ]);
+    expect(draft.created_at).toBeGreaterThan(2_000);
+  });
+
+  it("自分の版がまだ無ければ 1 件だけのリストを発行する", async () => {
+    refetchReturns(null);
+
+    await appendToEmojiList(me, kusa);
+
+    const draft = vi.mocked(publishEvent).mock.calls[0][0];
+    expect(draft.tags).toEqual([["emoji", "kusa", kusa.url]]);
+    expect(draft.content).toBe("");
+  });
+
+  it("署名の失敗は同じ reason の EmojiListError", async () => {
+    refetchReturns(null);
+    vi.mocked(publishEvent).mockRejectedValueOnce(new PublishError("sign-failed"));
+    await expect(appendToEmojiList(me, kusa)).rejects.toMatchObject({
       name: "EmojiListError",
       reason: "sign-failed",
     });
