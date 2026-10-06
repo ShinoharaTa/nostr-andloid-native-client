@@ -102,6 +102,8 @@ export function columnIcon(kind: ColumnKind): IconName {
       return "tag";
     case "CHANNEL_ROOM":
       return "chat";
+    case "STATUS":
+      return "mood";
   }
 }
 

@@ -15,6 +15,8 @@ export const CANONICAL_TITLE = {
   thread: "スレッド",
   dm: "DM",
   list: "リスト",
+  /** NIP-38 のステータスカラム（Web だけの種別。ネイティブの ColumnTitles.kt には無い） */
+  status: "ステータス",
 } as const;
 
 export const CANONICAL_SUBTITLE = {
@@ -42,6 +44,8 @@ export function columnDisplayTitle(title: string): string {
       return t("thread_title");
     case CANONICAL_TITLE.dm:
       return t("nav_dm");
+    case CANONICAL_TITLE.status:
+      return t("web_tpl_status");
     default:
       return title;
   }

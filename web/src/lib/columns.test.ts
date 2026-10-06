@@ -4,6 +4,7 @@ import {
   buildColumn,
   buildListColumn,
   type ColumnSpec,
+  columnLabel,
   columnSubtitleFor,
   DEFAULT_COLUMNS,
   decodeDeckColumns,
@@ -143,6 +144,21 @@ describe("buildColumn", () => {
     expect(encodeDeckColumns([spec])).toBe(
       '[{"id":"col_dm_100","title":"DM","subtitle":"NIP-17","kind":"DM","renderer":"FEED","filter":{"kinds":[14]}}]',
     );
+  });
+
+  it('STATUS は追加一覧の末尾。{"kinds":[30315]} で保存・同期し、読むと同じカラムに戻る（#767）', () => {
+    expect(TEMPLATES.at(-1)).toEqual({ template: "STATUS", config: "NONE", iconKind: "STATUS" });
+
+    const spec = build("STATUS", {}, new Set(), 1791283000);
+    const json = encodeDeckColumns([spec]);
+    expect(json).toBe(
+      '[{"id":"col_status_1791283000","title":"ステータス","subtitle":"NIP-38","kind":"STATUS","renderer":"FEED","filter":{"kinds":[30315]}}]',
+    );
+    expect(decodeDeckColumns(json)).toEqual([spec]);
+    expect(columnSubtitleFor(spec)).toBe("NIP-38");
+    expect(columnLabel(spec)).toBe("ステータス");
+    // 種類の切替は ⋯ の「表示」なので、フィルターの編集は無い
+    expect(editTemplate(spec)).toBeNull();
   });
 });
 

@@ -175,6 +175,8 @@
 .menuLabel {
   flex: 1;
   color: var(--text);
+  /* チップが長い行（ステータスの「表示」）でも見出しを 1 字ずつ折り返さない */
+  white-space: nowrap;
 }
 
 /* タイムラインに混ぜる表示（区切り線 + 見出し + トグル。fieldset の既定の枠を消す） */
@@ -254,6 +256,7 @@
   color: var(--text-3);
   font: inherit;
   font-size: var(--type-label);
+  white-space: nowrap;
   cursor: pointer;
 }
 
