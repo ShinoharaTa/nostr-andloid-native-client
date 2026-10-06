@@ -443,5 +443,15 @@
   "hashtags_used_delete": "履歴から消す",
   "web_reaction_sent_fmt": "%1$s でリアクションしといたで",
   "web_reaction_sent_made": "作った絵文字でリアクションしといたで",
-  "web_picker_make_save_duplicate": "同じショートコードの絵文字がもうリストにあるから、保存せえへんかったで"
+  "web_picker_make_save_duplicate": "同じショートコードの絵文字がもうリストにあるから、保存せえへんかったで",
+  "web_status_type_music": "Now Playing",
+  "web_status_type_general": "ステータス",
+  "web_status_expires_soon": "もうすぐ終わるで",
+  "web_status_expires_min": "あと %1$d 分",
+  "web_status_expires_hour": "あと %1$d 時間",
+  "web_status_expires_at": "%1$s までやで",
+  "web_status_ref_post": "投稿見る",
+  "web_status_ref_article": "記事見る",
+  "web_status_ref_open": "開く",
+  "web_status_open_link_aria": "%1$s で開く"
 }
