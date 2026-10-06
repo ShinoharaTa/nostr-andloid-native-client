@@ -1,5 +1,8 @@
 package app.nostrdeck.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import app.nostrdeck.model.UserStatuses
 import androidx.compose.runtime.Composable
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnSpec
@@ -22,6 +25,7 @@ fun columnDisplayTitle(title: String): String = when (title) {
     "パブリックチャット" -> stringResource(Res.string.nav_public_chat)
     "スレッド" -> stringResource(Res.string.thread_title)
     "DM" -> stringResource(Res.string.nav_dm)
+    "ステータス" -> stringResource(Res.string.tpl_status)   // [#772]
     else -> title
 }
 
@@ -62,4 +66,10 @@ fun columnSubtitleFor(spec: ColumnSpec): String = when (spec.kind) {
     ColumnKind.LIST -> stringResource(Res.string.tab_lists)
     ColumnKind.THREAD, ColumnKind.CHANNEL_LIST, ColumnKind.CHANNEL_ROOM ->
         columnDisplaySubtitle(spec.subtitle)
+    // [#772] 「表示」で絞っていればその種類、すべてなら NIP-38（Web と同じ）。
+    ColumnKind.STATUS -> when (LocalRepository.current?.columnStatusTypesFlow()?.collectAsState()?.value?.get(spec.id)) {
+        UserStatuses.Type.MUSIC -> stringResource(Res.string.status_type_music)
+        UserStatuses.Type.GENERAL -> stringResource(Res.string.status_type_general)
+        null -> "NIP-38"
+    }
 }

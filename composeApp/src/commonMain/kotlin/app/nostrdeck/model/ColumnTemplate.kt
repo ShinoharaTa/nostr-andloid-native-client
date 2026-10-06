@@ -27,6 +27,7 @@ enum class ColumnTemplate(
     SEARCH(Res.string.tpl_search, ColumnConfig.TEXT, Res.string.tpl_search_hint),
     HASHTAG(Res.string.tpl_hashtag, ColumnConfig.TEXT, Res.string.tpl_hashtag_hint),
     FAVS(Res.string.tpl_favs, hint = Res.string.tpl_favs_hint),
+    STATUS(Res.string.tpl_status, hint = Res.string.tpl_status_hint),   // [#772] Web #767 と同じく末尾
 }
 
 /** 通知で選べるイベント種別（永続化されるフィルタ）。 */
@@ -85,6 +86,11 @@ fun ColumnTemplate.build(
 
         ColumnTemplate.FAVS -> spec(id, "ふぁぼ欄", "自分のリアクション", ColumnKind.FAVS,
             ReqFilter(kinds = listOf(7)))
+
+        // [#772] 対象（フォロー + 自分）は実行時に決めるので authors は持たない。種類の絞り込みはカラムの「表示」（同期しない）。
+        // タイトル・サブタイトル・filter は Web（columns.ts の feedColumn）と同じ。
+        ColumnTemplate.STATUS -> spec(id, "ステータス", "NIP-38", ColumnKind.STATUS,
+            ReqFilter(kinds = listOf(UserStatuses.KIND)))
     }
 }
 

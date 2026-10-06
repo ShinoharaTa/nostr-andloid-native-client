@@ -453,5 +453,12 @@
   "web_status_ref_post": "投稿見る",
   "web_status_ref_article": "記事見る",
   "web_status_ref_open": "開く",
-  "web_status_open_link_aria": "%1$s で開く"
+  "web_status_open_link_aria": "%1$s で開く",
+  "web_tpl_status": "ステータス",
+  "web_tpl_status_hint": "フォローしとる人の Now Playing とひとこと",
+  "web_status_filter": "表示",
+  "web_status_filter_all": "ぜんぶ",
+  "web_status_empty": "いまステータス出しとる人はおらへんで",
+  "web_status_empty_music": "いま Now Playing 出しとる人はおらへんで",
+  "web_status_login_needed": "ログインしたら、フォローしとる人のステータスが出るで"
 }
