@@ -41,6 +41,10 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# 絵文字 API のグリフデータ（docs/emoji-maker.md §3.3）。中身を変えたらファイル名の版（*.v1.bin）を上げる
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
 /index.html
   Cache-Control: no-cache
 /sw.js
