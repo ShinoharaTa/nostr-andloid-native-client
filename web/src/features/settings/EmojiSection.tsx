@@ -15,6 +15,9 @@ import {
   parseEmojiUrl,
   publishEmojiList,
 } from "../compose/customEmojis";
+import { EmojiMakerForm, useEmojiMaker } from "../emoji/EmojiMakerForm";
+import makerStyles from "../emoji/EmojiMakerRoute.module.css";
+import { DEFAULT_INPUT } from "../emoji/emojiUrl";
 import styles from "./SettingsSections.module.css";
 
 /** 保存の失敗の文言 */
@@ -101,7 +104,7 @@ export function EmojiSection() {
             ))}
           </ul>
         )}
-        <AddEmojiForm list={list} onAdd={(emoji) => edit([...list, emoji])} />
+        <AddEmojiPanel list={list} onAdd={(emoji) => edit([...list, emoji])} />
         <button
           type="button"
           className={`${styles.primary} ${styles.alignStart}`}
@@ -155,6 +158,54 @@ function EmojiRow({ emoji, onRemove }: { emoji: CustomEmoji; onRemove(): void })
   );
 }
 
+type AddMode = "url" | "maker";
+
+/** 追加欄（「URL で追加」と「文字から作る」の切り替え。#763）。どちらも下書きに足すだけで、発行は「保存して公開」 */
+function AddEmojiPanel({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emoji: CustomEmoji): void }) {
+  const t = useT();
+  const [mode, setMode] = useState<AddMode>("url");
+
+  const choice = (value: AddMode, label: string) => (
+    <button
+      type="button"
+      className={styles.choice}
+      aria-pressed={mode === value}
+      onClick={() => setMode(value)}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <>
+      <div className={styles.choices}>
+        {choice("url", t("web_settings_emoji_add_by_url"))}
+        {choice("maker", t("web_settings_emoji_add_by_maker"))}
+      </div>
+      {mode === "url" ? (
+        <AddEmojiForm list={list} onAdd={onAdd} />
+      ) : (
+        <MakeEmojiForm list={list} onAdd={onAdd} />
+      )}
+    </>
+  );
+}
+
+/**
+ * 追加欄の入力を検証する（「URL で追加」「文字から作る」で共通）。通れば絵文字、通らなければ欄の下に出す文言。
+ * url は検証済みの画像 URL（使えなければ null）。
+ */
+function parseNewEmoji(
+  list: readonly CustomEmoji[],
+  rawCode: string,
+  url: string | null,
+): CustomEmoji | string {
+  const shortcode = parseEmojiShortcode(rawCode);
+  if (!shortcode || !url) return t("web_settings_emoji_input_invalid");
+  if (list.some((e) => e.shortcode === shortcode)) return t("web_settings_emoji_already_added");
+  return { shortcode, url };
+}
+
 function AddEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emoji: CustomEmoji): void }) {
   const t = useT();
   const codeId = useId();
@@ -165,17 +216,12 @@ function AddEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emo
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const shortcode = parseEmojiShortcode(code);
-    const imageUrl = parseEmojiUrl(url);
-    if (!shortcode || !imageUrl) {
-      setError(t("web_settings_emoji_input_invalid"));
+    const emoji = parseNewEmoji(list, code, parseEmojiUrl(url));
+    if (typeof emoji === "string") {
+      setError(emoji);
       return;
     }
-    if (list.some((e) => e.shortcode === shortcode)) {
-      setError(t("web_settings_emoji_already_added"));
-      return;
-    }
-    onAdd({ shortcode, url: imageUrl });
+    onAdd(emoji);
     setCode("");
     setUrl("");
     setError(null);
@@ -226,6 +272,67 @@ function AddEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emo
           {error}
         </p>
       )}
+    </form>
+  );
+}
+
+/**
+ * 「文字から作る」（#763）。/emoji と同じフォーム（EmojiMakerForm）で作り、ショートコードを付けて下書きに足す。
+ * 初期値は黒文字 + 白縁取り。テキストが空・プレビューがエラーの間は押せない。
+ */
+function MakeEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emoji: CustomEmoji): void }) {
+  const t = useT();
+  const codeId = useId();
+  const maker = useEmojiMaker(DEFAULT_INPUT);
+  const url = maker.url !== null && maker.error === null ? maker.url : null;
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (url === null) return;
+    const emoji = parseNewEmoji(list, code, url);
+    if (typeof emoji === "string") {
+      setError(emoji);
+      return;
+    }
+    onAdd(emoji);
+    setCode("");
+    setError(null);
+  }
+
+  return (
+    <form className={makerStyles.form} onSubmit={submit}>
+      <EmojiMakerForm maker={maker} />
+      <div className={makerStyles.field}>
+        <label htmlFor={codeId} className={makerStyles.label}>
+          {t("web_settings_emoji_shortcode_label")}
+        </label>
+        <div className={styles.row}>
+          <input
+            id={codeId}
+            className={styles.input}
+            type="text"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder={t("emoji_shortcode_hint")}
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+              setError(null);
+            }}
+          />
+          <button type="submit" className={styles.ghost} disabled={url === null || code.trim() === ""}>
+            {t("common_add")}
+          </button>
+        </div>
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+      </div>
     </form>
   );
 }
