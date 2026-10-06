@@ -601,6 +601,7 @@ fun NoteItem(
           onPick = { content, imageUrl -> scope.launch { repo?.publishReaction(note.event, content, imageUrl, announce = true) } },   // [#732]
           onDismiss = { showReactionPicker = false },
           targetNote = note,
+          onMake = { made -> scope.launch { repo?.publishMadeReaction(note.event, made) } },   // [#775]
       )
   }
 

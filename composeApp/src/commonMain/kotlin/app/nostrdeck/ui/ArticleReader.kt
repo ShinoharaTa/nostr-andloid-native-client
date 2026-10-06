@@ -178,6 +178,10 @@ fun ArticleReader(
                 scope.launch { repo?.publishReaction(article, content, url, announce = true) }   // [#732]
             },
             onDismiss = { showPicker = false },
+            onMake = { made ->   // [#775]
+                showPicker = false
+                scope.launch { repo?.publishMadeReaction(article, made) }
+            },
         )
     }
 }

@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.MadeEmoji
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.heightIn
@@ -137,6 +138,7 @@ fun LiveChannelRoom(
         names = names,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url, announce = true) } },   // [#732]
+        onReactMade = { target, made -> scope.launch { repo.publishMadeReaction(target, made) } },   // [#775]
     )
 }
 
@@ -161,6 +163,8 @@ fun ChannelRoomColumn(
     names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
     onReact: ((NostrEvent, String, String?) -> Unit)? = null,
+    /** [#775] ピッカーの「絵文字を作る」で作った絵文字でリアクションする。null なら作るボタンを出さない。 */
+    onReactMade: ((NostrEvent, MadeEmoji) -> Unit)? = null,
     // 自分の投稿を右寄せ・明色バブルにするか。DM(1:1)は true（iMessage流）、パブチャは false（全左＝Slack流）。
     mineOnRight: Boolean = false,
     /** [#382] 非null ならヘッダのタイトルをタップできる（DM は相手のプロフィールを開く）。 */
@@ -297,6 +301,7 @@ fun ChannelRoomColumn(
         ReactionPickerSheet(
             onPick = { content, url -> onReact(target.event, content, url); pickerFor = null },
             onDismiss = { pickerFor = null },
+            onMake = onReactMade?.let { react -> { made -> react(target.event, made); pickerFor = null } },
         )
     }
 }
