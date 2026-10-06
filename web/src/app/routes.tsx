@@ -1,4 +1,5 @@
 import type { RouteObject } from "react-router";
+import { EmojiMakerRoute } from "../features/emoji/EmojiMakerRoute";
 import { AboutRoute } from "./AboutRoute";
 import { AppShell } from "./AppShell";
 import { HashtagRoute } from "./HashtagRoute";
@@ -18,6 +19,8 @@ export const routes: RouteObject[] = [
       { path: "/login", element: <LoginGate /> },
       // /about は常に LP（ログイン中でも）。RequireSession の下には置かず、静的な LP をそのまま見せる
       { path: "/about", element: <AboutRoute /> },
+      // 絵文字の作成ページ（docs/emoji-maker.md §7）。ログイン不要なので RequireSession の外
+      { path: "/emoji", element: <EmojiMakerRoute /> },
       {
         path: "/",
         element: (
