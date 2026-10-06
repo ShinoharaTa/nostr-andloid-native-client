@@ -255,3 +255,24 @@
   inset: 0;
   pointer-events: none;
 }
+
+/* EmojiMakerForm の外枠（/emoji ではページと同じ間隔で欄を縦に並べる） */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* 追加欄の見出しと、右端の「絵文字の設定を開く」 */
+.labelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.settingsLink {
+  color: var(--accent);
+  font-size: var(--type-caption);
+}

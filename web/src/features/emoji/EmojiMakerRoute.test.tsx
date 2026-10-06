@@ -71,6 +71,7 @@ it("未ログインでも開け（/login に飛ばない）、初期値は黒文
   // 未ログインは追加の代わりにログインの案内
   expect(screen.getByRole("link", { name: "ログイン" })).toHaveAttribute("href", "/login?next=%2Femoji");
   expect(screen.queryByRole("button", { name: "自分の絵文字に追加" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "絵文字の設定を開く" })).toBeNull();
   // フォントのライセンス表記
   expect(screen.getByRole("link", { name: "Dela Gothic One" })).toHaveAttribute(
     "href",
@@ -195,6 +196,10 @@ describe("ログイン中は自分の絵文字リストへ追加できる", () =
     renderAt("/emoji");
     expect(screen.queryByRole("link", { name: "ログイン" })).toBeNull();
     expect(screen.getByRole("link", { name: "← アプリへ" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "絵文字の設定を開く" })).toHaveAttribute(
+      "href",
+      "/settings/emoji",
+    );
 
     fireEvent.change(textArea(), { target: { value: "草" } });
     fireEvent.change(shortcode(), { target: { value: ":kusa:" } });
