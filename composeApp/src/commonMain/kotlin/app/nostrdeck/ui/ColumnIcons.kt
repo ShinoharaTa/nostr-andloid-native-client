@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.List
@@ -28,4 +29,5 @@ fun columnIcon(kind: ColumnKind): ImageVector = when (kind) {
     ColumnKind.THREAD -> Icons.AutoMirrored.Outlined.Reply
     ColumnKind.CHANNEL_LIST -> Icons.Outlined.Tag
     ColumnKind.CHANNEL_ROOM -> Icons.AutoMirrored.Outlined.Chat
+    ColumnKind.STATUS -> Icons.Outlined.Mood   // [#772] Web の mood アイコンと同じ
 }

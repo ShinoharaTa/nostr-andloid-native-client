@@ -37,6 +37,7 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.nostrdeck.ui.extractMedia
+import app.nostrdeck.model.UserStatuses
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -394,6 +395,8 @@ class EventRepository(
         loadHiddenCategories()
         // [#10] カラム別の幅を KV から復元。
         loadColumnWidths()
+        // [#772] ステータスカラムの「表示」を KV から復元。
+        loadColumnStatusTypes()
         // [#27] 検索履歴を KV から復元。
         loadSearchHistory()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
@@ -1186,6 +1189,52 @@ class EventRepository(
             }
         }
     }
+
+    /**
+     * [#772] ステータスカラム（NIP-38）の購読。フォロー中 + 自分の general / music を、全リレーへ 1 回で取り切る
+     * （置き換え可能で 1 人 2 件までなので過去読みしない。期限の無い何年も前のものは since で取りに行かない）。
+     * フォローが変わったら張り直す（[subscribeFollowing] と同じ作法）。
+     */
+    fun subscribeStatuses(columnId: String) {
+        if (!openColumns.add(columnId)) return
+        columnLoadedState.value = columnLoadedState.value - columnId
+        scope.launch {
+            delay(8000)
+            if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
+        }
+        followingJobs[columnId] = scope.launch {
+            follows.collect { authors ->
+                val withMe = (authors + listOfNotNull(myPubkey)).distinct()
+                if (withMe.isNotEmpty()) {
+                    subscribeAll(
+                        columnId,
+                        Filter(
+                            kinds = listOf(UserStatuses.KIND), authors = withMe,
+                            dTags = UserStatuses.Type.entries.map { it.d },
+                            since = currentUnixTime() - UserStatuses.MAX_AGE_SEC,
+                            limit = UserStatuses.FETCH_LIMIT,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    /** [#772] ステータスカラムのプルリフレッシュ（REQ を張り直す）。 */
+    fun refreshStatuses(columnId: String) {
+        unsubscribeColumn(columnId)
+        subscribeStatuses(columnId)
+    }
+
+    /**
+     * [#772] フォロー中 + 自分のステータス（1 人・1 種類につき最新の 1 件）。表示条件（空・期限切れ・古すぎる）は
+     * 呼び出し側が今の時刻で見る（時間が経って切れたものを落とすため）。
+     */
+    fun statusesFlow(): Flow<List<NostrEvent>> =
+        combine(statuses, follows) { all, authors ->
+            val who = (authors + listOfNotNull(myPubkey)).toSet()
+            all.values.filter { it.pubkey in who }
+        }.flowOn(Dispatchers.Default)
 
     /**
      * [#53] カラムのプルリフレッシュ: 今の REQ を破棄して張り直す（取りこぼし解消・最新化）。
@@ -3260,6 +3309,7 @@ class EventRepository(
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
+            UserStatuses.KIND -> captureStatus(e)   // [#772] NIP-38 ステータス（メモリだけに持つ）
             30078 -> {
                 captureSyncEvent(e) // [#374] NIP-78 アプリデータ（設定/カラム構成の手動同期用の控え）
                 // [#288] 配布テーマ（t=nostrism-theme）は **他人の分も** event テーブルへ保存する。
@@ -3347,6 +3397,35 @@ class EventRepository(
     private fun loadColumnWidths() {
         columnWidthsState.value = q.settingsByPrefix(COL_WIDTH_PREFIX).executeAsList()
             .associate { it.key.removePrefix(COL_WIDTH_PREFIX) to it.value_ }
+    }
+
+    // ---- [#772] NIP-38 ステータス（kind:30315）----
+
+    /**
+     * 「pubkey:d」→ 最新版（general / music だけ）。DB には保存しない（起動のたびにカラムの REQ で取り直す。
+     * 置き換え可能で古い版が溜まるうえ、ステータスは今のものだけ要るため）。
+     */
+    private val statuses = MutableStateFlow<Map<String, NostrEvent>>(emptyMap())
+
+    private fun captureStatus(e: NostrEvent) {
+        val type = UserStatuses.typeOf(e) ?: return
+        val key = "${e.pubkey}:${type.d}"
+        statuses.update { m -> if (UserStatuses.replaces(m[key], e)) m + (key to e) else m }
+        requestProfile(e.pubkey)
+    }
+
+    /** [#772] ステータスカラムの「表示」（カラム別。端末だけに保存し、同期しない）。無ければすべて。 */
+    private val columnStatusTypesState = MutableStateFlow<Map<String, UserStatuses.Type>>(emptyMap())
+    fun columnStatusTypesFlow(): StateFlow<Map<String, UserStatuses.Type>> = columnStatusTypesState
+    fun setColumnStatusType(columnId: String, type: UserStatuses.Type?) {
+        columnStatusTypesState.value =
+            if (type == null) columnStatusTypesState.value - columnId else columnStatusTypesState.value + (columnId to type)
+        putSettingAsync(COL_STATUS_TYPE_PREFIX + columnId, type?.d ?: "all")
+    }
+    private fun loadColumnStatusTypes() {
+        columnStatusTypesState.value = q.settingsByPrefix(COL_STATUS_TYPE_PREFIX).executeAsList()
+            .mapNotNull { row -> UserStatuses.Type.entries.firstOrNull { it.d == row.value_ }?.let { row.key.removePrefix(COL_STATUS_TYPE_PREFIX) to it } }
+            .toMap()
     }
 
     // [#27] 検索履歴（新しい順・上限30・KV 永続）。検索タブの履歴一覧に使う。
@@ -5566,6 +5645,9 @@ class EventRepository(
 
         /** [#10] カラム別の幅（"S"/"M"/"L"）の KV キー接頭辞。 */
         const val COL_WIDTH_PREFIX = "col_width:"
+
+        /** [#772] ステータスカラム別の「表示」（"all" / "music" / "general"）の KV キー接頭辞。同期しない。 */
+        const val COL_STATUS_TYPE_PREFIX = "col_status_type:"
 
         /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
         const val SEARCH_HISTORY = "search_history"
