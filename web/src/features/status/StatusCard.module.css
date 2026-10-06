@@ -1,0 +1,172 @@
+/* ステータスのカード（#767。投稿カード NoteItem.module.css と同じ寸法・トークン） */
+.card {
+  border-bottom: 1px solid var(--border);
+  /* 全体（余白）のクリックでプロフィールを開く */
+  cursor: pointer;
+}
+
+.row {
+  display: flex;
+  gap: var(--note-gap);
+  padding: var(--note-pad-y) var(--note-pad-x);
+}
+
+/* アバターのリンクは中の画像の大きさだけを占める */
+.avatarLink {
+  flex: none;
+  display: flex;
+  align-self: flex-start;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--note-gap);
+  padding-bottom: var(--sp-1);
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* 名前は残りの幅を占め、時刻を右端に寄せる */
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-size: var(--type-sub);
+  font-weight: var(--w-name);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .name:hover {
+    text-decoration: underline;
+  }
+}
+
+.time {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+  font-weight: var(--w-body);
+}
+
+/* 種類の印 + 本文 */
+.body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+
+/* 本文 1 行目の高さの中央に置く */
+.mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--line-body);
+}
+
+.markMusic {
+  color: var(--accent);
+}
+
+.markGeneral {
+  color: var(--text-2);
+}
+
+/* 本文は 4 行で省略（「続きを読む」は付けない） */
+.text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+
+/* リンク行と残り時間。幅が足りなければ折り返し、残り時間は右寄せのまま */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-1);
+  font-size: var(--type-caption);
+}
+
+.ref {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  font-weight: var(--w-link);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .ref:hover {
+    text-decoration: underline;
+  }
+}
+
+/* リンクにしない参照（spotify: 等） */
+.refText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+.expiry {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--type-label);
+  font-weight: var(--w-body);
+}
+
+/*
+ * 廃人モード: NoteItem.module.css の dense と同じ組み方（アイコン + 名前・時刻を 1 行目、本文以下を 2 行目から全幅）。
+ * 本文は 2 行で省略する（リンクカードは StatusCard 側で出さない）。
+ */
+:root[data-density="dense"] .row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: var(--note-gap);
+  row-gap: var(--note-gap);
+}
+
+:root[data-density="dense"] .avatarLink {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+:root[data-density="dense"] .main {
+  display: contents;
+}
+
+:root[data-density="dense"] .main > .meta {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+:root[data-density="dense"] .main > *:not(.meta) {
+  grid-column: 1 / -1;
+}
+
+:root[data-density="dense"] .text {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
