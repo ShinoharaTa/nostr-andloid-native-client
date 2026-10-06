@@ -37,6 +37,7 @@ import { formatSats } from "../zap/zapTotals";
 import { moreMenuEntries } from "./moreMenu";
 import styles from "./NoteActionButtons.module.css";
 import { copyText, hasBodyText, noteLinksOf, plainTextOf } from "./noteLinks";
+import { reactionSentMessage, saveMadeEmoji } from "./pickedReaction";
 import { ReactionPickerDialog } from "./ReactionPickerDialog";
 import { ReportDialog } from "./ReportDialog";
 import { useDefaultReaction } from "./reactionPrefs";
@@ -186,11 +187,11 @@ function EmojiReactionButton({ event }: { event: NostrEvent }) {
       {open && (
         <ReactionPickerDialog
           target={event}
-          onPick={(c, url) =>
-            void publishReaction(event, c, url).then(
-              () => showToast(t("web_reaction_sent_fmt", c)),
-              warn(t("web_log_react_failed")),
-            )
+          onPick={(c, url, made) =>
+            void publishReaction(event, c, url)
+              .then(() => showToast(reactionSentMessage(c, made)), warn(t("web_log_react_failed")))
+              // [#768] 「自分の絵文字リストにも保存」は送信の後に（成否はリアクションとは別のトースト）
+              .then(() => saveMadeEmoji(c, url, made))
           }
           onClose={() => setOpen(false)}
         />

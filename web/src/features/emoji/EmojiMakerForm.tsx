@@ -24,6 +24,8 @@ export type EmojiMaker = {
   overLimit: boolean;
   /** 取れたプレビュー画像（objectURL） */
   previewSrc: string | null;
+  /** 今の url の画像が取れた（前の入力の画像を出したまま取りに行っている間は false。#768 のピッカーで使う） */
+  ready: boolean;
 };
 
 /**
@@ -48,6 +50,7 @@ export function useEmojiMaker(initial: MakerInput | (() => MakerInput)): EmojiMa
     error: localError ?? preview.error,
     overLimit,
     previewSrc: preview.src,
+    ready: preview.ready,
   };
 }
 
@@ -216,7 +219,7 @@ type PreviewResult = { url: string; src: string | null; error: PreviewError | nu
  * 取れたら objectURL にして返し、前の objectURL は捨てる。4xx は JSON の error、通信の失敗は network。
  * 次の結果が来るまでは前の画像を出したままにする（打つたびに消えないように）。エラーは今の URL の分だけ返す。
  */
-function usePreview(url: string | null): { src: string | null; error: PreviewError | null } {
+function usePreview(url: string | null): { src: string | null; error: PreviewError | null; ready: boolean } {
   const [result, setResult] = useState<PreviewResult | null>(null);
 
   useEffect(() => {
@@ -259,8 +262,9 @@ function usePreview(url: string | null): { src: string | null; error: PreviewErr
     [src],
   );
 
-  if (url === null) return { src: null, error: null };
-  return { src, error: result?.url === url ? result.error : null };
+  if (url === null) return { src: null, error: null, ready: false };
+  const current = result?.url === url;
+  return { src, error: current ? result.error : null, ready: current && src !== null };
 }
 
 /** API のエラー本文（{"error":"…","char":"…"}）を読む。読めなければ unknown */

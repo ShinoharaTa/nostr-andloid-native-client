@@ -34,6 +34,7 @@ import { MenuButton, type MenuEntry } from "../../ui/MenuButton";
 import { showToast } from "../../ui/toast";
 import { useVisualViewportHeight } from "../../ui/useVisualViewportHeight";
 import { copyText, plainTextOf } from "../actions/noteLinks";
+import { reactionSentMessage, saveMadeEmoji } from "../actions/pickedReaction";
 import { ReactionPickerDialog } from "../actions/ReactionPickerDialog";
 import { ReportDialog } from "../actions/ReportDialog";
 import { useDefaultReaction } from "../actions/reactionPrefs";
@@ -473,11 +474,11 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
       {dialog === "picker" && (
         <ReactionPickerDialog
           target={message}
-          onPick={(c, url) =>
-            void publishReaction(message, c, url).then(
-              () => showToast(t("web_reaction_sent_fmt", c)),
-              warn(t("web_log_chat_react_failed")),
-            )
+          onPick={(c, url, made) =>
+            void publishReaction(message, c, url)
+              .then(() => showToast(reactionSentMessage(c, made)), warn(t("web_log_chat_react_failed")))
+              // [#768] 「自分の絵文字リストにも保存」は送信の後に（成否はリアクションとは別のトースト）
+              .then(() => saveMadeEmoji(c, url, made))
           }
           onClose={() => setDialog(null)}
         />

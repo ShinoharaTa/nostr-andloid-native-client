@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
@@ -12,6 +13,7 @@ import { installDialogPolyfill } from "../../test/dialog";
 import { renderWithRouter } from "../../test/renderWithRouter";
 import { useToast } from "../../ui/toast";
 import { useCompose } from "../compose/composeStore";
+import { appendToEmojiList, EmojiListError } from "../compose/customEmojis";
 import { NoteFooter } from "../compose/NoteFooter";
 import { toggleBookmark, togglePinned, useOwnLists } from "../lists/ownLists";
 import { EMPTY_MUTE_LIST, setMuteList } from "../mute/muteList";
@@ -54,6 +56,12 @@ vi.mock("../../lib/lnurl", async (importOriginal) => {
 vi.mock("../profile/follow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../profile/follow")>();
   return { ...actual, toggleFollow: vi.fn(async () => "done" as const) };
+});
+
+// [#768] 作った絵文字の保存は appendToEmojiList を呼ぶところまで（取り直し・発行は customEmojis.test.ts）
+vi.mock("../compose/customEmojis", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../compose/customEmojis")>();
+  return { ...actual, appendToEmojiList: vi.fn(async () => {}) };
 });
 
 // ブックマーク・固定は ownLists の関数を呼ぶところまで（取り直し・発行は ownLists.test.ts）
@@ -294,6 +302,103 @@ describe("ピッカーからのリアクションのトースト", () => {
     );
     await waitFor(() => expect(publishEvent).toHaveBeenCalled());
     expect(useToast.getState().queue).toEqual([]);
+  });
+});
+
+describe("ピッカーで作った絵文字でリアクション（#768）", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const kusaUrl = () => `${window.location.origin}/api/emoji.png?text=%E8%8D%89&stroke=ffffff`;
+  const autoName = () => `nostrism_${createHash("sha256").update(kusaUrl()).digest("hex").slice(0, 8)}`;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(new Blob([new Uint8Array([0x89, 0x50])], { type: "image/png" }))),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    // jsdom に objectURL は無い
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:emoji"), revokeObjectURL: vi.fn() });
+    vi.mocked(appendToEmojiList).mockReset();
+    vi.mocked(appendToEmojiList).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** ピッカー →「絵文字を作る」→「草」→（名前・保存）→「この絵文字でリアクション」 */
+  async function reactWithMade({ name = "", save = false }: { name?: string; save?: boolean } = {}) {
+    const user = userEvent.setup();
+    await user.click(button("絵文字でリアクション"));
+    const dialog = screen.getByRole("dialog", { name: "リアクション" });
+    await user.click(within(dialog).getByRole("button", { name: "絵文字を作る" }));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "テキスト" }), { target: { value: "草" } });
+    if (name !== "")
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "ショートコード（任意）" }), {
+        target: { value: name },
+      });
+    if (save) await user.click(within(dialog).getByRole("checkbox", { name: "自分の絵文字リストにも保存" }));
+    const send = within(dialog).getByRole("button", { name: "この絵文字でリアクション" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await user.click(send);
+  }
+
+  it("自動の名前は「作った絵文字でリアクションしました」。:code: + emoji タグで送り、「最近」に入る。保存はしない", async () => {
+    renderRow(post());
+    await reactWithMade();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["作った絵文字でリアクションしました"]));
+    expect(lastDraft()).toMatchObject({ kind: 7, content: `:${autoName()}:` });
+    expect(lastDraft().tags).toContainEqual(["emoji", autoName(), kusaUrl()]);
+    expect(appendToEmojiList).not.toHaveBeenCalled();
+
+    // 次に開いたピッカーの「最近」に出る
+    await userEvent.click(button("絵文字でリアクション"));
+    const recent = within(screen.getByRole("region", { name: "最近" }));
+    expect(recent.getByRole("button", { name: `:${autoName()}:` })).toBeVisible();
+  });
+
+  it("入力した名前は従来どおり「:name: でリアクションしました」", async () => {
+    renderRow(post());
+    await reactWithMade({ name: "kusa" });
+    await waitFor(() => expect(useToast.getState().queue).toEqual([":kusa: でリアクションしました"]));
+    expect(lastDraft()).toMatchObject({ kind: 7, content: ":kusa:" });
+  });
+
+  it("保存がオンなら送信の後に自分の絵文字リストへ足し、別のトーストで知らせる", async () => {
+    renderRow(post());
+    await reactWithMade({ name: "kusa", save: true });
+    await waitFor(() =>
+      expect(useToast.getState().queue).toEqual([
+        ":kusa: でリアクションしました",
+        "絵文字リストを公開しました。",
+      ]),
+    );
+    expect(appendToEmojiList).toHaveBeenCalledWith(me, { shortcode: "kusa", url: kusaUrl() });
+  });
+
+  it("同じショートコードが既にあれば、リアクションは送ったうえで保存しなかったと知らせる", async () => {
+    vi.mocked(appendToEmojiList).mockRejectedValue(new EmojiListError("duplicate"));
+    renderRow(post());
+    await reactWithMade({ save: true });
+    await waitFor(() =>
+      expect(useToast.getState().queue).toEqual([
+        "作った絵文字でリアクションしました",
+        "同じショートコードの絵文字がリストにあるため、保存しませんでした",
+      ]),
+    );
+    expect(lastDraft()).toMatchObject({ kind: 7, content: `:${autoName()}:` });
+  });
+
+  it("保存の失敗はリアクションとは別に知らせる", async () => {
+    vi.mocked(appendToEmojiList).mockRejectedValue(new EmojiListError("sign-failed"));
+    renderRow(post());
+    await reactWithMade({ save: true });
+    await waitFor(() =>
+      expect(useToast.getState().queue).toEqual([
+        "作った絵文字でリアクションしました",
+        "絵文字リストを公開できませんでした。",
+      ]),
+    );
   });
 });
 
