@@ -88,19 +88,39 @@ export function parseEmojiUrl(raw: string): string | null {
 }
 
 /**
- * 発行する kind:10030。取り直した版（base）の emoji 以外のタグ（a タグ等の 30030 セット参照）と content は
- * そのまま残し、emoji タグだけ emojis で置き換える（ネイティブ publishEmojiList）。
+ * 設定「カスタム絵文字」の下書きの差分。removed = 画面で削除した shortcode、added = 画面で足した絵文字（足した順）。
+ * 同じ shortcode の画像を差し替えたときは removed と added の両方に入る。
+ */
+export type EmojiListChanges = { removed: readonly string[]; added: readonly CustomEmoji[] };
+
+/** 編集前（before）と下書き（after）の差分。shortcode と URL の組が同じものは編集していないとみなす */
+export function emojiListChanges(
+  before: readonly CustomEmoji[],
+  after: readonly CustomEmoji[],
+): EmojiListChanges {
+  const same = (a: CustomEmoji, b: CustomEmoji) => a.shortcode === b.shortcode && a.url === b.url;
+  return {
+    removed: before.filter((b) => !after.some((a) => same(a, b))).map((b) => b.shortcode),
+    added: after.filter((a) => !before.some((b) => same(a, b))),
+  };
+}
+
+/**
+ * 発行する kind:10030。取り直した版（base）のタグを作り直さず土台にし、削除した shortcode の emoji タグだけ除いて
+ * 追加分を末尾に足す（#762）。編集していない emoji タグ（https でない・4 要素目付きも）は要素も順序もそのまま、
+ * a タグ等の 30030 セット参照・未知タグ・content も保つ。
  */
 export function buildEmojiListTemplate(
   base: NostrEvent | null,
-  emojis: readonly CustomEmoji[],
+  changes: EmojiListChanges,
   nowSec: number,
 ): EventTemplate {
-  const others = (base?.tags ?? []).filter((t) => t[0] !== "emoji");
+  const removed = new Set(changes.removed);
+  const kept = (base?.tags ?? []).filter((t) => !(t[0] === "emoji" && removed.has(t[1])));
   return {
     kind: 10030,
     content: base?.content ?? "",
-    tags: [...emojis.map((e) => ["emoji", e.shortcode, e.url]), ...others],
+    tags: [...kept, ...changes.added.map((e) => ["emoji", e.shortcode, e.url])],
     // 同じ秒に続けて保存しても、置換可能イベントの新旧が崩れないように
     created_at: Math.max(nowSec, (base?.created_at ?? 0) + 1),
   };
@@ -127,10 +147,11 @@ export class EmojiListError extends Error {
  * カスタム絵文字リスト（kind:10030）を発行する（設定「カスタム絵文字」の「保存して公開」）。#478 の規則:
  * 発行の直前に自分の最新版を read ∪ write ∪ インデクサから取り直し、どのリレーからも応答が無ければ発行しない
  * （no-emoji-list）。編集を始めた時点の版（basedOnId）と取り直した最新版の id が違えば発行しない（stale）。
+ * 発行するタグは取り直した最新版に下書きの差分（changes）だけ当てたもの（buildEmojiListTemplate）。
  */
 export async function publishEmojiList(
   me: string,
-  emojis: readonly CustomEmoji[],
+  changes: EmojiListChanges,
   basedOnId: string | null,
 ): Promise<void> {
   let base: NostrEvent | null;
@@ -140,7 +161,7 @@ export async function publishEmojiList(
     throw new EmojiListError("no-emoji-list", { cause: e });
   }
   if ((base?.id ?? null) !== basedOnId) throw new EmojiListError("stale");
-  const template = buildEmojiListTemplate(base, emojis, unixNow());
+  const template = buildEmojiListTemplate(base, changes, unixNow());
   try {
     await publishEvent(template);
   } catch (e) {

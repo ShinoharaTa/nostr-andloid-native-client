@@ -9,6 +9,7 @@ import {
   buildEmojiListTemplate,
   customEmojisFrom,
   EmojiListError,
+  emojiListChanges,
   emojiSetPointers,
   parseEmojiShortcode,
   parseEmojiUrl,
@@ -73,8 +74,33 @@ describe("追加欄の検証", () => {
   });
 });
 
+describe("emojiListChanges", () => {
+  it("消えたものは removed、増えたものは足した順で added。URL の差し替えは両方に入る", () => {
+    const before = [
+      { shortcode: "a", url: "https://a/a.png" },
+      { shortcode: "b", url: "https://a/b.png" },
+      { shortcode: "c", url: "https://a/c.png" },
+    ];
+    const after = [
+      { shortcode: "a", url: "https://a/a.png" },
+      { shortcode: "c", url: "https://a/c2.png" },
+      { shortcode: "z", url: "https://a/z.png" },
+      { shortcode: "d", url: "https://a/d.png" },
+    ];
+    expect(emojiListChanges(before, after)).toEqual({
+      removed: ["b", "c"],
+      added: [
+        { shortcode: "c", url: "https://a/c2.png" },
+        { shortcode: "z", url: "https://a/z.png" },
+        { shortcode: "d", url: "https://a/d.png" },
+      ],
+    });
+    expect(emojiListChanges(before, before)).toEqual({ removed: [], added: [] });
+  });
+});
+
 describe("buildEmojiListTemplate", () => {
-  it("emoji タグだけ置き換え、a タグ等と content はそのまま。created_at は前の版より後", () => {
+  it("削除した shortcode の emoji タグだけ除き、追加は末尾。a タグ等と content はそのまま。created_at は前の版より後", () => {
     const base = event(
       10030,
       [
@@ -84,25 +110,65 @@ describe("buildEmojiListTemplate", () => {
       2_000,
       "note",
     );
-    expect(buildEmojiListTemplate(base, [{ shortcode: "cat", url: "https://a/cat.png" }], 1_000)).toEqual({
+    expect(
+      buildEmojiListTemplate(
+        base,
+        { removed: ["old"], added: [{ shortcode: "cat", url: "https://a/cat.png" }] },
+        1_000,
+      ),
+    ).toEqual({
       kind: 10030,
       content: "note",
       tags: [
-        ["emoji", "cat", "https://a/cat.png"],
         ["a", "30030:pk:set"],
+        ["emoji", "cat", "https://a/cat.png"],
       ],
       created_at: 2_001,
     });
-    expect(buildEmojiListTemplate(null, [], 1_000)).toEqual({
+    expect(buildEmojiListTemplate(null, { removed: [], added: [] }, 1_000)).toEqual({
       kind: 10030,
       content: "",
       tags: [],
       created_at: 1_000,
     });
   });
+
+  it("編集していないタグ（https でない emoji・4 要素目付き emoji・未知タグ）は要素も順序もそのまま", () => {
+    const tags = [
+      ["a", "30030:pk:set"],
+      ["emoji", "zzz", "https://a/zzz.png"],
+      ["emoji", "plain", "http://a/plain.png"],
+      ["emoji", "fromset", "https://a/set.png", "30030:pk:set"],
+      ["x-unknown", "keep"],
+      ["emoji", "aaa", "https://a/aaa.png"],
+    ];
+    const base = event(10030, tags, 2_000);
+    expect(buildEmojiListTemplate(base, { removed: [], added: [] }, 1_000).tags).toEqual(tags);
+    expect(
+      buildEmojiListTemplate(
+        base,
+        {
+          removed: ["zzz", "aaa"],
+          added: [
+            { shortcode: "dog", url: "https://a/dog.png" },
+            { shortcode: "bee", url: "https://a/bee.png" },
+          ],
+        },
+        1_000,
+      ).tags,
+    ).toEqual([
+      ["a", "30030:pk:set"],
+      ["emoji", "plain", "http://a/plain.png"],
+      ["emoji", "fromset", "https://a/set.png", "30030:pk:set"],
+      ["x-unknown", "keep"],
+      ["emoji", "dog", "https://a/dog.png"],
+      ["emoji", "bee", "https://a/bee.png"],
+    ]);
+  });
 });
 
 describe("publishEmojiList", () => {
+  const none = { removed: [], added: [] };
   let key: Uint8Array;
   let me: string;
 
@@ -133,7 +199,7 @@ describe("publishEmojiList", () => {
     addVerified(list([["emoji", "cat", "https://a/cat.png"]], 1_000));
     vi.mocked(requestOnce).mockReturnValue(throwError(() => new Error("timeout")));
 
-    const error = await publishEmojiList(me, [], null).catch((e: unknown) => e);
+    const error = await publishEmojiList(me, none, null).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(EmojiListError);
     expect(error).toMatchObject({ reason: "no-emoji-list" });
@@ -145,37 +211,49 @@ describe("publishEmojiList", () => {
     addVerified(shown);
     refetchReturns(list([["emoji", "dog", "https://a/dog.png"]], 2_000));
 
-    const error = await publishEmojiList(me, [], shown.id).catch((e: unknown) => e);
+    const error = await publishEmojiList(me, none, shown.id).catch((e: unknown) => e);
 
     expect(error).toMatchObject({ name: "EmojiListError", reason: "stale" });
     expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
   });
 
-  it("版が一致すれば、取り直した最新版の未知タグを保って発行する", async () => {
+  it("版が一致すれば、取り直した最新版のタグを土台に、削除したものだけ除き追加を末尾に足して発行する", async () => {
     const latest = list(
       [
         ["emoji", "cat", "https://a/cat.png"],
+        ["emoji", "plain", "http://a/plain.png"],
         ["a", "30030:pk:set"],
+        ["emoji", "fromset", "https://a/set.png", "30030:pk:set"],
+        ["emoji", "ant", "https://a/ant.png"],
       ],
       2_000,
+      "note",
     );
     refetchReturns(latest);
 
-    await publishEmojiList(me, [{ shortcode: "dog", url: "https://a/dog.png" }], latest.id);
+    await publishEmojiList(
+      me,
+      { removed: ["cat"], added: [{ shortcode: "dog", url: "https://a/dog.png" }] },
+      latest.id,
+    );
 
     expect(vi.mocked(publishEvent)).toHaveBeenCalledTimes(1);
     const draft = vi.mocked(publishEvent).mock.calls[0][0];
     expect(draft.tags).toEqual([
-      ["emoji", "dog", "https://a/dog.png"],
+      ["emoji", "plain", "http://a/plain.png"],
       ["a", "30030:pk:set"],
+      ["emoji", "fromset", "https://a/set.png", "30030:pk:set"],
+      ["emoji", "ant", "https://a/ant.png"],
+      ["emoji", "dog", "https://a/dog.png"],
     ]);
+    expect(draft.content).toBe("note");
     expect(draft.created_at).toBeGreaterThan(2_000);
   });
 
   it("署名の失敗は同じ reason の EmojiListError", async () => {
     refetchReturns(null);
     vi.mocked(publishEvent).mockRejectedValueOnce(new PublishError("sign-failed"));
-    await expect(publishEmojiList(me, [], null)).rejects.toMatchObject({
+    await expect(publishEmojiList(me, none, null)).rejects.toMatchObject({
       name: "EmojiListError",
       reason: "sign-failed",
     });

@@ -56,7 +56,7 @@ it("空なら案内を出し、保存は無効", () => {
   expect(screen.getByRole("button", { name: "保存して公開" })).toBeDisabled();
 });
 
-it("追加・削除・重複と不正な入力の検証、保存で emoji タグだけ置き換えて発行する", async () => {
+it("追加・削除・重複と不正な入力の検証、保存で下書きの差分（削除・追加）を渡して発行する", async () => {
   addVerified(
     emojiList([
       ["emoji", "old", "https://a/old.png"],
@@ -86,7 +86,7 @@ it("追加・削除・重複と不正な入力の検証、保存で emoji タグ
   expect(vi.mocked(publishEmojiList)).toHaveBeenCalledTimes(1);
   expect(vi.mocked(publishEmojiList).mock.calls[0]).toEqual([
     me,
-    [{ shortcode: "cat", url: "https://a/cat.png" }],
+    { removed: ["old"], added: [{ shortcode: "cat", url: "https://a/cat.png" }] },
     expect.any(String),
   ]);
   expect(useToast.getState().queue).toEqual(["絵文字リストを公開しました。"]);
