@@ -27,6 +27,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "fake-indexeddb": "^6.2.5",
+    "fast-png": "^8.0.0",
     "jsdom": "^30.1.1",
     "opentype.js": "^2.0.0",
     "react": "^19.3.0",
