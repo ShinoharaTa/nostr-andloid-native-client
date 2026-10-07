@@ -152,7 +152,9 @@ export function Timeline<T extends { id: string } = NostrEvent>({
         <button
           type="button"
           className={styles.pill}
-          onClick={() => list.current?.scrollTo({ top: 0, behavior: "smooth" })}
+          // 新着は firstItemIndex で先頭に差し込むので、virtuoso はそのずれを内部の補正で持つ。
+          // ピクセル位置 0（scrollTo）では先頭に届かないため、行の番号で戻す（#782）
+          onClick={() => list.current?.scrollToIndex({ index: 0, align: "start", behavior: "smooth" })}
         >
           ↑ {pill}
         </button>
