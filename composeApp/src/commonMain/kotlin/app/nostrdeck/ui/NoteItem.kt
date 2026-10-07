@@ -782,11 +782,12 @@ private fun NoteMetaLine(note: NoteUi, authorTap: Modifier, modifier: Modifier =
             )
         }
         Spacer(Modifier.width(DeckSpace.Sm))
-        HintText(relativeTime(note.event.createdAt))
+        HintText(noteRelativeTime(note.event.createdAt))
     }
 }
 
-private fun relativeTime(createdAt: Long): String {
+/** 投稿の相対時刻（now / 12s / 5m / 3h / 2d / 1w）。[#772] ステータスのカードも同じ表記を使う。 */
+internal fun noteRelativeTime(createdAt: Long): String {
     val diff = currentUnixTime() - createdAt
     return when {
         diff < 10 -> "now"

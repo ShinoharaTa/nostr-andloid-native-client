@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.UserStatuses
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
@@ -440,6 +441,7 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
     val filtersMuted = spec.renderer == ColumnRenderer.FEED || spec.renderer == ColumnRenderer.THREAD
     // フォロー中カラムだけ「タイムラインに混ぜる表示」カテゴリのトグルを出す。
     val isFollowing = spec.kind == ColumnKind.FOLLOWING
+    val isStatus = spec.kind == ColumnKind.STATUS
     val hiddenCategories = if (isFollowing && repoForMenu != null)
         repoForMenu.columnHiddenCategoriesFlow().collectAsState().value[spec.id].orEmpty() else emptySet()
     val index = state.columns.indexOfFirst { it.id == spec.id }
@@ -459,6 +461,9 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
             ({ cat: FeedNoticeCategory -> repoForMenu.setColumnCategoryHidden(spec.id, cat, cat !in hiddenCategories) }) else null,
         columnWidth = if (repoForMenu != null) (repoForMenu.columnWidthsFlow().collectAsState().value[spec.id] ?: "M") else null,
         onSetWidth = if (repoForMenu != null) ({ s: String -> repoForMenu.setColumnWidth(spec.id, s) }) else null,
+        // [#772] ステータスカラムだけ「表示」（すべて / Now Playing / ステータス）を出す。
+        statusType = if (isStatus && repoForMenu != null) repoForMenu.columnStatusTypesFlow().collectAsState().value[spec.id] else null,
+        onSetStatusType = if (isStatus && repoForMenu != null) ({ t: UserStatuses.Type? -> repoForMenu.setColumnStatusType(spec.id, t) }) else null,
     )
 }
 
@@ -485,6 +490,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
             // 素の FEED では永久に空になり、以前はここが仮データに落ちていた。
             val isDm = spec.kind == ColumnKind.DM
             val isFavs = repo != null && spec.kind == ColumnKind.FAVS  // [#12] ふぁぼ欄
+            val isStatus = repo != null && spec.kind == ColumnKind.STATUS  // [#772] NIP-38 ステータス
             val live = repo != null && spec.kind in LIVE_FEED_KINDS
             val profilePubkey = spec.filter.authors.firstOrNull()
             if (live) {
@@ -502,12 +508,23 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     }
                 }
             }
+            if (isStatus) {
+                DisposableEffect(spec.id) {
+                    repo!!.subscribeStatuses(spec.id)
+                    onDispose { repo.unsubscribeColumn(spec.id) }
+                }
+            }
             val openProfile: (String) -> Unit = { pk -> state.openProfile(pk) }
             // ノートタップは新カラムではなく全幅オーバーレイ（最大幅制限）でスレッドを開く。
             val openThread: (NoteUi) -> Unit = { note -> state.openThreadDetail(note.event.id) }
             val doReply: (NoteUi) -> Unit = { note -> state.replyTo = note.event; state.showCompose = true }
             val doQuote: (NoteUi) -> Unit = { note -> state.quoting = note.event; state.showCompose = true }
             when {
+                isStatus -> StatusColumn(
+                    spec, modifier, listState, menu = menu,
+                    onAuthorClick = openProfile,
+                    onRefresh = { repo!!.refreshStatuses(spec.id) },
+                )
                 isFollowingFeed -> {
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
                     val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
