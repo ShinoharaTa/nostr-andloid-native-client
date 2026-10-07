@@ -5,6 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import app.nostrdeck.model.MadeEmoji
+import app.nostrdeck.model.EmojiMaker
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -67,8 +72,13 @@ fun ReactionPickerSheet(
     onPick: (content: String, imageUrl: String?) -> Unit,
     onDismiss: () -> Unit,
     targetNote: NoteUi? = null,
+    onMake: ((MadeEmoji) -> Unit)? = null,
 ) {
     val repo = LocalRepository.current
+    // [#775] 「絵文字を作る」の画面を開いているか。フォームの入力は一覧に戻っても覚えておく。
+    var making by remember { mutableStateOf(false) }
+    val makerState = rememberEmojiMakerState()
+    PlatformBackHandler(enabled = making) { making = false }
     val recents by remember(repo) { repo?.recentEmojisFlow() ?: flowOf(emptyList()) }
         .collectAsState(emptyList())
     val customs by remember(repo) { repo?.customEmojisFlow() ?: flowOf(emptyList()) }
@@ -84,6 +94,9 @@ fun ReactionPickerSheet(
         Column(
             Modifier.fillMaxWidth().fillMaxHeight(0.92f),
         ) {
+          if (making && onMake != null) {
+            MakeEmojiPane(makerState, onBack = { making = false }, onReact = { onMake(it); onDismiss() })
+          } else {
             // リアクション対象ノート（アイコン＋本文2行）を先頭に表示して文脈を明示。
             if (targetNote != null) {
                 TargetNoteHeader(targetNote)
@@ -91,13 +104,20 @@ fun ReactionPickerSheet(
                 HorizontalDivider(color = DeckColors.Border)
                 Spacer(Modifier.size(DeckSpace.Sm))
             }
-            DeckTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = stringResource(Res.string.picker_search_placeholder),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DeckTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = stringResource(Res.string.picker_search_placeholder),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                )
+                // [#775] リアクションのときだけ（投稿の絵文字挿入・既定リアクションの設定では出さない）。
+                if (onMake != null) {
+                    Spacer(Modifier.width(DeckSpace.Sm))
+                    DeckGhostButton(stringResource(Res.string.picker_make), onClick = { making = true })
+                }
+            }
             Spacer(Modifier.size(DeckSpace.Sm))
 
             Column(
@@ -146,8 +166,70 @@ fun ReactionPickerSheet(
                 }
                 Spacer(Modifier.size(DeckSpace.Lg))
             }
+          }
         }
     }
+}
+
+/**
+ * [#775] ピッカーの「絵文字を作る」の画面（Web #768）。作成フォーム + ショートコード（任意）+「自分の絵文字リストにも保存」、
+ * 下に「この絵文字でリアクション」を固定する。ショートコードが空なら自動の名前（nostrism_ + 画像 URL の SHA-256 先頭 8 桁）。
+ * 押せないのは: テキストが空・プレビューがエラー・今の入力のプレビューがまだ届いていない・名前が不正の間。
+ */
+@Composable
+private fun ColumnScope.MakeEmojiPane(state: EmojiMakerState, onBack: () -> Unit, onReact: (MadeEmoji) -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var save by remember { mutableStateOf(false) }
+    val url = state.url
+    val autoName = remember(url) { url?.let { EmojiMaker.autoShortcode(it) } }
+    val typed = code.isNotBlank()
+    val shortcode = if (typed) EmojiMaker.parseShortcode(code) else autoName
+
+    DeckTextButton("← " + stringResource(Res.string.common_back), onClick = onBack)
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+        EmojiMakerForm(state)
+        Spacer(Modifier.size(DeckSpace.Md))
+        Text(
+            stringResource(Res.string.picker_make_shortcode_label), color = DeckColors.Text2,
+            fontSize = DeckType.Caption, fontWeight = DeckWeight.Name, modifier = Modifier.padding(bottom = DeckSpace.Xs),
+        )
+        DeckTextField(
+            value = code,
+            onValueChange = { code = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = autoName ?: stringResource(Res.string.picker_make_shortcode_hint),
+        )
+        Text(
+            if (typed && shortcode == null) stringResource(Res.string.emoji_shortcode_invalid)
+            else stringResource(Res.string.picker_make_shortcode_hint),
+            color = if (typed && shortcode == null) DeckColors.Warn else DeckColors.Text3,
+            fontSize = DeckType.Label, modifier = Modifier.padding(top = DeckSpace.Xs),
+        )
+        Row(
+            Modifier.fillMaxWidth().clickable { save = !save },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = save,
+                onCheckedChange = { save = it },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = DeckColors.Accent, uncheckedColor = DeckColors.Text3, checkmarkColor = DeckColors.Bg,
+                ),
+            )
+            Text(stringResource(Res.string.picker_make_save), color = DeckColors.Text, fontSize = DeckType.Body)
+        }
+        Spacer(Modifier.size(DeckSpace.Md))
+    }
+    Spacer(Modifier.size(DeckSpace.Sm))
+    DeckButton(
+        stringResource(Res.string.picker_make_react),
+        enabled = state.ready && url != null && shortcode != null,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = {
+            if (url != null && shortcode != null) onReact(MadeEmoji(shortcode, url, autoName = !typed, save = save))
+        },
+    )
 }
 
 /** リアクション対象ノートの要約（アバター＋著者名＋本文2行）。 */
