@@ -47,6 +47,27 @@ class MuteMatcher(
         return note.event.id in threads
     }
 
+    /**
+     * [#772] ステータス（NIP-38）がミュート対象か。Web の isNoteMuted（投稿の判定）と同じ: 著者、t タグのハッシュタグとワード、
+     * e タグのスレッド、本文のワード。自分のステータスは対象外。
+     */
+    fun mutedStatus(e: NostrEvent, me: String?): Boolean {
+        if (isEmpty) return false
+        if (me != null && e.pubkey == me) return false
+        if (e.pubkey in users) return true
+        e.tags.forEach { t ->
+            if (t.size >= 2) when (t[0]) {
+                "t" -> {
+                    if (t[1].lowercase() in hashtags) return true
+                    if (hasWords && matchesWord(t[1])) return true
+                }
+                "e" -> if (t[1] in threads) return true
+            }
+        }
+        if (hasWords && matchesWord(e.content)) return true
+        return e.id in threads
+    }
+
     /** 通知がミュート対象か（相手＝actor がミュート中ユーザー）。 */
     fun muted(notif: NotificationUi): Boolean = !isEmpty && notif.actor.pubkey in users
 

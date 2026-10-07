@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.UserStatuses
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -76,6 +77,9 @@ data class ColumnMenuActions(
     /** [#10] カラム幅（"S"/"M"/"L"）。null なら幅切替を出さない。 */
     val columnWidth: String? = null,
     val onSetWidth: ((String) -> Unit)? = null,
+    /** [#772] ステータスカラムの「表示」の今の種類（null = すべて）。[onSetStatusType] が null なら項目を出さない。 */
+    val statusType: UserStatuses.Type? = null,
+    val onSetStatusType: ((UserStatuses.Type?) -> Unit)? = null,
 )
 
 /**
@@ -226,6 +230,21 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
                 FeedCategoryItem(stringResource(Res.string.cat_dms), FeedNoticeCategory.DMS, menu.hiddenCategories, menu.onToggleCategory)
                 HorizontalDivider(color = DeckColors.Border)
             }
+            // [#772] ステータスカラム: 表示する種類（すべて / Now Playing / ステータス）。幅と同じくメニューを閉じない。
+            menu.onSetStatusType?.let { onSet ->
+                HorizontalDivider(color = DeckColors.Border)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(Res.string.status_filter), color = DeckColors.Text3, fontSize = DeckType.Label, modifier = Modifier.weight(1f))
+                    StatusTypeChip(stringResource(Res.string.status_filter_all), null, menu.statusType, onSet)
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    StatusTypeChip(stringResource(Res.string.status_type_music), UserStatuses.Type.MUSIC, menu.statusType, onSet)
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    StatusTypeChip(stringResource(Res.string.status_type_general), UserStatuses.Type.GENERAL, menu.statusType, onSet)
+                }
+            }
             // [#10] カラム幅（S/M/L）。タップしてもメニューは閉じない。
             if (menu.columnWidth != null && menu.onSetWidth != null) {
                 HorizontalDivider(color = DeckColors.Border)
@@ -249,6 +268,20 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
             )
         }
     }
+}
+
+/** [#772] ステータスカラムの「表示」の選択チップ（幅のチップと同じ見た目）。 */
+@Composable
+private fun StatusTypeChip(label: String, type: UserStatuses.Type?, current: UserStatuses.Type?, onSet: (UserStatuses.Type?) -> Unit) {
+    val selected = current == type
+    Text(
+        label,
+        color = if (selected) DeckColors.Text else DeckColors.Text3, fontSize = DeckType.Label,
+        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Sm))
+            .background(if (selected) DeckColors.AccentWeak else DeckColors.Surface2)
+            .clickable { onSet(type) }
+            .padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
+    )
 }
 
 /** [#10] カラム幅の選択チップ（S/M/L）。選択中はアクセント背景。タップしてもメニューは閉じない。 */

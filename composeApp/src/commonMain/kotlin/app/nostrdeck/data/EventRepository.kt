@@ -40,6 +40,7 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.nostrdeck.ui.extractMedia
+import app.nostrdeck.model.UserStatuses
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -230,6 +231,8 @@ class EventRepository(
     private var myPubkey: String? = null
     /** [M8-counts] 自分の公開鍵を Flow でも公開（♡/リポスト済み判定が鍵切替に追従するため）。 */
     private val myPubkeyFlow = MutableStateFlow<String?>(null)
+    /** [#772] ログイン中の公開鍵（ステータスのミュート判定で自分を除くため）。 */
+    fun myPubkeyState(): StateFlow<String?> = myPubkeyFlow.asStateFlow()
 
     /** 自分の全 kind:7 行（note_id / content / tags_json）。♡状態と自分リアクション表示の元。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -372,10 +375,12 @@ class EventRepository(
         scope.launch {
             q.allRelays().asFlow().mapToList(Dispatchers.Default).collect { rows ->
                 // [#50] 常設接続すべき集合＝read 有効なリスト由来リレー。N/M 表示の分母もこれ。
-                listRelays = rows.filter { it.read != 0L }.map { normalizeRelayUrl(it.url) }.toSet()
+                val read = rows.filter { it.read != 0L }.map { normalizeRelayUrl(it.url) }.toSet()
+                listRelays = read
                 rows.forEach { if (it.read != 0L) ensureRelay(it.url) }
                 // リストが変わったらステータス表示を更新（外れたリレーは一覧から消す）。
-                withContext(relayDispatcher) { refreshRelayConns() }
+                // カラムの購読（読み込みリレーだけに張る分）も新しい読み込みリレーへ張り替える。
+                withContext(relayDispatcher) { retargetReadSubs(read); refreshRelayConns() }
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
@@ -397,6 +402,8 @@ class EventRepository(
         loadHiddenCategories()
         // [#10] カラム別の幅を KV から復元。
         loadColumnWidths()
+        // [#772] ステータスカラムの「表示」を KV から復元。
+        loadColumnStatusTypes()
         // [#27] 検索履歴を KV から復元。
         loadSearchHistory()
         // リンク埋め込み設定（OGP/YouTube/Spotify）を KV から復元。
@@ -448,7 +455,7 @@ class EventRepository(
             subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
             subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
             // [M16] 自分のリアクション(kind:7)を購読し、宛先ノートと共に TL へ混ぜる。
-            subscribeAll("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
+            subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
         }
     }
 
@@ -507,8 +514,7 @@ class EventRepository(
             }
             // 限定なし(subTargets 無)のサブ、または新リレーが対象集合に含まれるサブだけ張り直す。
             activeSubs.forEach { (subId, filters) ->
-                val t = subTargets[subId]
-                if (t == null || key in t) client.subscribe(subId, *filters.toTypedArray())
+                if (RelayRouting.sendsTo(key, subTargets[subId])) client.subscribe(subId, *filters.toTypedArray())
             }
         }
     }
@@ -650,10 +656,48 @@ class EventRepository(
         }
     }
 
+    /**
+     * 自分の読み込みリレーだけへ張る購読の subId（カラムのタイムライン用。Web の `ctx.relays` と同じ送り先）。
+     * relayDispatcher 上でだけ触る。
+     */
+    private val readSubs = mutableSetOf<String>()
+
+    /**
+     * カラムのタイムラインの購読。**自分の読み込みリレーだけ**へ張る（Web と同じ）。
+     * [subscribeAll] は接続中の全リレー（検索用・チャンネル・DM・アウトボックス・インデクサなど一時的に繋いだものも含む）へ
+     * 張り、後から繋いだリレーにも張り直すため、拾う範囲が使い方で変わって Web と件数がずれていた。
+     * 読み込みリレーが変わったら [retargetReadSubs] が張り替える。読み込みリレーがまだ分からない間（起動直後）は張らず、
+     * 分かった時点で張る（全リレーへは広げない）。
+     */
+    private fun subscribeRead(subId: String, vararg filters: Filter) {
+        val list = filters.toList()
+        scope.launch(relayDispatcher) {
+            val targets = listRelays
+            activeSubs[subId] = list
+            subTargets[subId] = targets
+            readSubs += subId
+            relays.filterKeys { it in targets }.values.forEach { it.subscribe(subId, *list.toTypedArray()) }
+        }
+    }
+
+    /** 読み込みリレーが変わったとき（relayDispatcher 上）。外れたリレーでは CLOSE し、加わったリレーへ REQ を送る。 */
+    private fun retargetReadSubs(read: Set<String>) {
+        readSubs.forEach { subId ->
+            val filters = activeSubs[subId] ?: return@forEach
+            val old = subTargets[subId].orEmpty()
+            if (old == read) return@forEach
+            subTargets[subId] = read
+            val (close, open) = RelayRouting.retarget(old, read)
+            close.forEach { relays[it]?.unsubscribe(subId) }
+            open.forEach { url -> relays[url]?.subscribe(subId, *filters.toTypedArray()) }
+        }
+    }
+
     private fun unsubscribeAll(subId: String) {
         scope.launch(relayDispatcher) {
             activeSubs.remove(subId)
             subTargets.remove(subId)
+            readSubs.remove(subId)
             relays.values.forEach { it.unsubscribe(subId) }
         }
     }
@@ -769,12 +813,14 @@ class EventRepository(
             subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
             subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
             subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
-            subscribeAll("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
+            subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
             withContext(relayDispatcher) {
+                // 配信先を限定した購読（読み込みリレーだけ・検索・チャンネル等）は、その対象のリレーにだけ張り直す。
                 activeSubs.forEach { (subId, filters) ->
-                    relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
+                    val t = subTargets[subId]
+                    relays.filterKeys { RelayRouting.sendsTo(it, t) }.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
                 }
             }
         }
@@ -804,8 +850,10 @@ class EventRepository(
                 subscribeOwnLists(me)
             }
             withContext(relayDispatcher) {
+                // 配信先を限定した購読（読み込みリレーだけ・検索・チャンネル等）は、その対象のリレーにだけ張り直す。
                 activeSubs.forEach { (subId, filters) ->
-                    relays.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
+                    val t = subTargets[subId]
+                    relays.filterKeys { RelayRouting.sendsTo(it, t) }.values.forEach { it.subscribe(subId, *filters.toTypedArray()) }
                 }
             }
         }
@@ -1053,7 +1101,7 @@ class EventRepository(
             filter.relays.isNotEmpty() -> subscribeTargeted(columnId, filter.relays.toSet(), proto)
             // [#209] プロフィール/指定npub（少数著者）は著者の書き込みリレー(NIP-65)からも取得（アウトボックス）。
             filter.authors.isNotEmpty() && filter.authors.size <= 3 -> subscribeAuthorOutbox(columnId, filter, proto)
-            else -> subscribeAll(columnId, proto)
+            else -> subscribeRead(columnId, proto)
         }
     }
 
@@ -1064,7 +1112,7 @@ class EventRepository(
      * 取りこぼし（中間抜け）が減る。追加購読はカラム ID に紐づけ、カラム閉時にまとめて CLOSE する。
      */
     private fun subscribeAuthorOutbox(columnId: String, filter: ReqFilter, proto: Filter) {
-        subscribeAll(columnId, proto)   // 自分のリレーで即購読
+        subscribeRead(columnId, proto)   // 自分の読み込みリレーで即購読
         // [#388-review] 10002 待ちのジョブをカラム id で記録し、unsubscribeColumn で取り消す。
         // これが無いと、閉じた後に最大10秒遅れて「~outbox」購読が張られて漏れる。
         outboxJobs.remove(columnId)?.cancel()
@@ -1137,7 +1185,7 @@ class EventRepository(
             )
             !filter.search.isNullOrBlank() -> subscribeTargeted(subId, SEARCH_RELAYS.toSet(), filter.toProtocol(limit = SEARCH_FETCH_LIMIT).copy(until = untilSec))
             filter.relays.isNotEmpty() -> subscribeTargeted(subId, filter.relays.toSet(), proto)
-            else -> subscribeAll(subId, proto)
+            else -> subscribeRead(subId, proto)
         }
         scope.launch { delay(6000); unsubscribeAll(subId); openColumns.remove(subId) }
     }
@@ -1184,11 +1232,58 @@ class EventRepository(
                     // [#319] kind:5 削除リクエストも取る。これが無いと、別端末で消した自分の投稿が
                     // こちらに残り続ける（フォロー先が消したものも同じ）。件数は少なく負荷にならない。
                     // [#380] kind:1111 NIP-22 コメントも流す（ルート文脈の1行プレビュー付きで表示）。
-                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 5, 1111), authors = withMe, limit = 100))
+                    subscribeRead(columnId, Filter(kinds = listOf(1, 6, 16, 5, 1111), authors = withMe, limit = 100))
                 }
             }
         }
     }
+
+    /**
+     * [#772] ステータスカラム（NIP-38）の購読。フォロー中 + 自分の general / music を、**自分の読み込みリレーだけ**に
+     * 1 回で取り切る（置き換え可能で 1 人 2 件までなので過去読みしない。期限の無い何年も前のものは since で取りに行かない）。
+     * Web と同じく読み込みリレーに限る（全リレー宛てだと、一時的に繋いだアウトボックス・チャンネル・DM のリレーにも
+     * 広がって Web と件数がずれる。[subscribeRead]）。フォローや読み込みリレーが変わったら張り直す。
+     */
+    fun subscribeStatuses(columnId: String) {
+        if (!openColumns.add(columnId)) return
+        columnLoadedState.value = columnLoadedState.value - columnId
+        scope.launch {
+            delay(8000)
+            if (columnId in openColumns) columnLoadedState.value = columnLoadedState.value + columnId
+        }
+        followingJobs[columnId] = scope.launch {
+            follows.collect { authors ->
+                val withMe = (authors + listOfNotNull(myPubkey)).distinct()
+                if (withMe.isNotEmpty()) {
+                    subscribeRead(
+                        columnId,
+                        Filter(
+                            kinds = listOf(UserStatuses.KIND), authors = withMe,
+                            dTags = UserStatuses.Type.entries.map { it.d },
+                            since = currentUnixTime() - UserStatuses.MAX_AGE_SEC,
+                            limit = UserStatuses.FETCH_LIMIT,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    /** [#772] ステータスカラムのプルリフレッシュ（REQ を張り直す）。 */
+    fun refreshStatuses(columnId: String) {
+        unsubscribeColumn(columnId)
+        subscribeStatuses(columnId)
+    }
+
+    /**
+     * [#772] フォロー中 + 自分のステータス（1 人・1 種類につき最新の 1 件）。表示条件（空・期限切れ・古すぎる）は
+     * 呼び出し側が今の時刻で見る（時間が経って切れたものを落とすため）。
+     */
+    fun statusesFlow(): Flow<List<NostrEvent>> =
+        combine(statuses, follows) { all, authors ->
+            val who = (authors + listOfNotNull(myPubkey)).toSet()
+            all.values.filter { it.pubkey in who }
+        }.flowOn(Dispatchers.Default)
 
     /**
      * [#53] カラムのプルリフレッシュ: 今の REQ を破棄して張り直す（取りこぼし解消・最新化）。
@@ -1548,7 +1643,7 @@ class EventRepository(
                 if (me != null) {
                     // 返信/メンション(1)・リポスト(6/16)・リアクション(7)・Zap受領(9735)・
                     // NIP-22 コメント(1111)[#380] を自分宛(#p)で購読（1111 は P/p 必須なので #p で拾える）。
-                    subscribeAll(columnId, Filter(kinds = listOf(1, 6, 16, 7, 9735, 1111), pTags = listOf(me), limit = 200))
+                    subscribeRead(columnId, Filter(kinds = listOf(1, 6, 16, 7, 9735, 1111), pTags = listOf(me), limit = 200))
                 }
             }
         }
@@ -3286,6 +3381,7 @@ class EventRepository(
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
+            UserStatuses.KIND -> captureStatus(e)   // [#772] NIP-38 ステータス（メモリだけに持つ）
             30078 -> {
                 captureSyncEvent(e) // [#374] NIP-78 アプリデータ（設定/カラム構成の手動同期用の控え）
                 // [#288] 配布テーマ（t=nostrism-theme）は **他人の分も** event テーブルへ保存する。
@@ -3373,6 +3469,35 @@ class EventRepository(
     private fun loadColumnWidths() {
         columnWidthsState.value = q.settingsByPrefix(COL_WIDTH_PREFIX).executeAsList()
             .associate { it.key.removePrefix(COL_WIDTH_PREFIX) to it.value_ }
+    }
+
+    // ---- [#772] NIP-38 ステータス（kind:30315）----
+
+    /**
+     * 「pubkey:d」→ 最新版（general / music だけ）。DB には保存しない（起動のたびにカラムの REQ で取り直す。
+     * 置き換え可能で古い版が溜まるうえ、ステータスは今のものだけ要るため）。
+     */
+    private val statuses = MutableStateFlow<Map<String, NostrEvent>>(emptyMap())
+
+    private fun captureStatus(e: NostrEvent) {
+        val type = UserStatuses.typeOf(e) ?: return
+        val key = "${e.pubkey}:${type.d}"
+        statuses.update { m -> if (UserStatuses.replaces(m[key], e)) m + (key to e) else m }
+        requestProfile(e.pubkey)
+    }
+
+    /** [#772] ステータスカラムの「表示」（カラム別。端末だけに保存し、同期しない）。無ければすべて。 */
+    private val columnStatusTypesState = MutableStateFlow<Map<String, UserStatuses.Type>>(emptyMap())
+    fun columnStatusTypesFlow(): StateFlow<Map<String, UserStatuses.Type>> = columnStatusTypesState
+    fun setColumnStatusType(columnId: String, type: UserStatuses.Type?) {
+        columnStatusTypesState.value =
+            if (type == null) columnStatusTypesState.value - columnId else columnStatusTypesState.value + (columnId to type)
+        putSettingAsync(COL_STATUS_TYPE_PREFIX + columnId, type?.d ?: "all")
+    }
+    private fun loadColumnStatusTypes() {
+        columnStatusTypesState.value = q.settingsByPrefix(COL_STATUS_TYPE_PREFIX).executeAsList()
+            .mapNotNull { row -> UserStatuses.Type.entries.firstOrNull { it.d == row.value_ }?.let { row.key.removePrefix(COL_STATUS_TYPE_PREFIX) to it } }
+            .toMap()
     }
 
     // [#27] 検索履歴（新しい順・上限30・KV 永続）。検索タブの履歴一覧に使う。
@@ -5634,6 +5759,9 @@ class EventRepository(
 
         /** [#10] カラム別の幅（"S"/"M"/"L"）の KV キー接頭辞。 */
         const val COL_WIDTH_PREFIX = "col_width:"
+
+        /** [#772] ステータスカラム別の「表示」（"all" / "music" / "general"）の KV キー接頭辞。同期しない。 */
+        const val COL_STATUS_TYPE_PREFIX = "col_status_type:"
 
         /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
         const val SEARCH_HISTORY = "search_history"
