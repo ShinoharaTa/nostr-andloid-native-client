@@ -31,7 +31,7 @@ export type ColumnFeed = {
   mode: FeedMode;
   /** 最初の EOSE（または 8 秒経過。フォロー中は kind:3 未受信の間も）まで true */
   loading: boolean;
-  /** フォロー中カラムで REQ を出していない（フォロー 0 件・未ログイン）ときの空表示の文言 */
+  /** フォロー中・ステータスのカラムで REQ を出していない（フォロー 0 件・未ログイン）ときの空表示の文言 */
   emptyText?: string;
   /** 新しい順（ミュート対象は除く。カラムで「ミュートを表示」中なら除かない） */
   events: NostrEvent[];
@@ -66,8 +66,8 @@ const NO_IDS: ReadonlySet<string> = new Set();
 export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
   const t = useT();
   const me = useSession((s) => s.pubkey);
-  // フック呼び出しの順を変えないよう常に呼ぶ（フォロー中以外は me を渡さず購読しない）
-  const follows = useFollows(spec.kind === "FOLLOWING" ? me : null);
+  // フック呼び出しの順を変えないよう常に呼ぶ（フォロー中・ステータス以外は me を渡さず購読しない）
+  const follows = useFollows(spec.kind === "FOLLOWING" || spec.kind === "STATUS" ? me : null);
   const relays = useReadRelays();
 
   // フィルター・フォロー・read リレーの中身が変わったときだけ張り直す（同じ中身で配列が作り直されても据え置く）
@@ -147,8 +147,14 @@ export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
   const refresh = useCallback(() => setEpoch((e) => e + 1), []);
 
   const mode: FeedMode = spec.kind !== "FOLLOWING" ? "column" : "following";
-  // フォロー中カラムで REQ を出していない（未ログインでフォローも無い）ときだけ空表示の文言を出す（#583。ネイティブ feed_empty）
-  const emptyText = spec.kind === "FOLLOWING" && plan === null ? t("feed_empty") : undefined;
+  // フォロー中・ステータスのカラムで REQ を出していない（未ログインでフォローも無い）ときだけ空表示の文言を出す
+  // （#583。ネイティブ feed_empty。ステータスはログインを促す #767）
+  const emptyText =
+    plan === null && spec.kind === "FOLLOWING"
+      ? t("feed_empty")
+      : plan === null && spec.kind === "STATUS"
+        ? t("web_status_login_needed")
+        : undefined;
   return { mode, loading, emptyText, events: visible, rows, loadingOlder, loadOlder, refresh };
 }
 

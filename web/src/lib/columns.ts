@@ -23,7 +23,9 @@ export type ColumnKind =
   | "LIST"
   | "THREAD"
   | "CHANNEL_LIST"
-  | "CHANNEL_ROOM";
+  | "CHANNEL_ROOM"
+  /** NIP-38 のステータス（Web だけの種別。ネイティブは知らない種別の行として捨てる） */
+  | "STATUS";
 
 export type ColumnRenderer = "FEED" | "THREAD" | "CHANNEL_LIST" | "ROOM";
 
@@ -42,6 +44,7 @@ const COLUMN_KINDS: ReadonlySet<string> = new Set<ColumnKind>([
   "THREAD",
   "CHANNEL_LIST",
   "CHANNEL_ROOM",
+  "STATUS",
 ]);
 const COLUMN_RENDERERS: ReadonlySet<string> = new Set<ColumnRenderer>([
   "FEED",
@@ -237,7 +240,8 @@ export type TemplateId =
   | "PROFILE"
   | "SEARCH"
   | "HASHTAG"
-  | "FAVS";
+  | "FAVS"
+  | "STATUS";
 
 /** テンプレの設定種別 */
 export type ColumnConfig = "NONE" | "TEXT" | "NOTIF_FILTER" | "RELAY_SET";
@@ -249,7 +253,10 @@ export type ColumnTemplate = {
   iconKind: ColumnKind;
 };
 
-/** カラム追加の一覧（ネイティブの ColumnTemplate.entries の順。表示名は templateLabel / templateHint） */
+/**
+ * カラム追加の一覧（ネイティブの ColumnTemplate.entries の順。表示名は templateLabel / templateHint）。
+ * STATUS はネイティブに無いテンプレなので末尾に置く
+ */
 export const TEMPLATES: readonly ColumnTemplate[] = [
   { template: "FOLLOWING", config: "NONE", iconKind: "FOLLOWING" },
   { template: "GLOBAL", config: "RELAY_SET", iconKind: "GLOBAL" },
@@ -259,6 +266,7 @@ export const TEMPLATES: readonly ColumnTemplate[] = [
   { template: "SEARCH", config: "TEXT", iconKind: "GLOBAL" },
   { template: "HASHTAG", config: "TEXT", iconKind: "HASHTAG" },
   { template: "FAVS", config: "NONE", iconKind: "FAVS" },
+  { template: "STATUS", config: "NONE", iconKind: "STATUS" },
 ];
 
 /** テンプレの表示名（ネイティブの tpl_* / nav_dm） */
@@ -280,6 +288,8 @@ export function templateLabel(template: TemplateId): string {
       return t("tpl_hashtag");
     case "FAVS":
       return t("tpl_favs");
+    case "STATUS":
+      return t("web_tpl_status");
   }
 }
 
@@ -296,6 +306,8 @@ export function templateHint(template: TemplateId): string | undefined {
       return t("tpl_hashtag_hint");
     case "FAVS":
       return t("tpl_favs_hint");
+    case "STATUS":
+      return t("web_tpl_status_hint");
     default:
       return undefined;
   }
@@ -444,6 +456,9 @@ export function buildColumn(
     }
     case "FAVS":
       return feedColumn(id, CANONICAL_TITLE.favs, CANONICAL_SUBTITLE.myReactions, "FAVS", { kinds: [7] });
+    case "STATUS":
+      // 対象（フォロー + 自分）は実行時に決めるので authors は持たない。種類の絞り込みはカラムの表示設定（同期しない）
+      return feedColumn(id, CANONICAL_TITLE.status, "NIP-38", "STATUS", { kinds: [30315] });
   }
 }
 
@@ -552,6 +567,8 @@ export function columnSubtitleFor(spec: ColumnSpec): string {
       return t("sub_my_reactions");
     case "LIST":
       return t("tab_lists");
+    case "STATUS":
+      return "NIP-38";
     default:
       return columnDisplaySubtitle(spec.subtitle);
   }

@@ -1,7 +1,15 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useT } from "../../i18n";
 import styles from "./EmojiMakerRoute.module.css";
-import { emojiImageUrl, FONT_IDS, type MakerInput, normalizeColor, parseMakerInput } from "./emojiUrl";
+import {
+  emojiImageUrl,
+  FONT_IDS,
+  type MakerInput,
+  normalizeColor,
+  PALETTE,
+  parseMakerInput,
+} from "./emojiUrl";
+import { saveLastMakerInput } from "./lastMakerInput";
 
 /** 入力が止まってからプレビューを取りに行くまで（§7.3） */
 export const PREVIEW_DEBOUNCE_MS = 400;
@@ -26,6 +34,8 @@ export type EmojiMaker = {
   previewSrc: string | null;
   /** 今の url の画像が取れた（前の入力の画像を出したまま取りに行っている間は false。#768 のピッカーで使う） */
   ready: boolean;
+  /** 今の文字色・縁取り・フォントを端末に覚える（#783。絵文字を「使った」ときに呼ぶ。テキストは覚えない） */
+  remember(): void;
 };
 
 /**
@@ -51,12 +61,14 @@ export function useEmojiMaker(initial: MakerInput | (() => MakerInput)): EmojiMa
     overLimit,
     previewSrc: preview.src,
     ready: preview.ready,
+    remember: () => saveLastMakerInput(input),
   };
 }
 
 /**
- * 絵文字作成フォーム（テキスト・フォント・文字色・縁取り・明暗 2 枚のプレビュー・エラー。docs/emoji-maker.md §7）。
+ * 絵文字作成フォーム（明暗 2 枚のプレビュー・エラー・テキスト・フォント・文字色・縁取り。docs/emoji-maker.md §7）。
  * 状態は useEmojiMaker で親が持つ（URL の表示や追加は親の側）。
+ * [#783] プレビューとエラーは先頭に置く（ネイティブと同じ。スマホでキーボードやスクロールで隠れないように）。
  */
 export function EmojiMakerForm({ maker }: { maker: EmojiMaker }) {
   const t = useT();
@@ -66,6 +78,19 @@ export function EmojiMakerForm({ maker }: { maker: EmojiMaker }) {
 
   return (
     <div className={styles.form}>
+      <section className={styles.field} aria-label={t("web_emoji_preview_label")}>
+        <span className={styles.label}>{t("web_emoji_preview_label")}</span>
+        <div className={styles.previews}>
+          <PreviewBox src={error === null ? maker.previewSrc : null} dark={false} />
+          <PreviewBox src={error === null ? maker.previewSrc : null} dark />
+        </div>
+        {error && (
+          <p role="alert" className={styles.error}>
+            {errorMessage(t, error)}
+          </p>
+        )}
+      </section>
+
       <div className={styles.field}>
         <label htmlFor={textId} className={styles.label}>
           {t("web_emoji_text_label")}
@@ -105,8 +130,9 @@ export function EmojiMakerForm({ maker }: { maker: EmojiMaker }) {
 
       <div className={styles.field}>
         <span className={styles.label}>{t("web_emoji_color_label")}</span>
-        <ColorInput
+        <ColorChooser
           value={input.color}
+          paletteLabel={t("web_emoji_color_palette_label")}
           pickerLabel={t("web_emoji_color_label")}
           hexLabel={t("web_emoji_color_hex_label")}
           onChange={(color) => update({ color })}
@@ -123,39 +149,32 @@ export function EmojiMakerForm({ maker }: { maker: EmojiMaker }) {
           {t("web_emoji_stroke_enable")}
         </label>
         {input.strokeOn && (
-          <ColorInput
+          <ColorChooser
             value={input.stroke}
+            paletteLabel={t("web_emoji_stroke_palette_label")}
             pickerLabel={t("web_emoji_stroke_color_label")}
             hexLabel={t("web_emoji_stroke_hex_label")}
             onChange={(stroke) => update({ stroke })}
           />
         )}
       </div>
-
-      <section className={styles.field} aria-label={t("web_emoji_preview_label")}>
-        <span className={styles.label}>{t("web_emoji_preview_label")}</span>
-        <div className={styles.previews}>
-          <PreviewBox src={error === null ? maker.previewSrc : null} dark={false} />
-          <PreviewBox src={error === null ? maker.previewSrc : null} dark />
-        </div>
-        {error && (
-          <p role="alert" className={styles.error}>
-            {errorMessage(t, error)}
-          </p>
-        )}
-      </section>
     </div>
   );
 }
 
-/** 色の入力（カラーピッカー + 16 進の欄。どちらを変えても揃える） */
-function ColorInput({
+/**
+ * 色の選択（#783）。パレット（ネイティブと同じ 12 色の丸い見本。選択中は太い枠）と、その下に # + 16 進の欄と
+ * ブラウザのカラーピッカー（今の色の見本を兼ねる）。どれを変えても揃える。
+ */
+function ColorChooser({
   value,
+  paletteLabel,
   pickerLabel,
   hexLabel,
   onChange,
 }: {
   value: string;
+  paletteLabel: string;
   pickerLabel: string;
   hexLabel: string;
   onChange(color: string): void;
@@ -164,37 +183,57 @@ function ColorInput({
   const [draft, setDraft] = useState(value);
   const valid = normalizeColor(draft) !== null;
 
+  function choose(color: string) {
+    setDraft(color);
+    onChange(color);
+  }
+
   return (
-    <div className={styles.row}>
-      <input
-        className={styles.picker}
-        type="color"
-        aria-label={pickerLabel}
-        // ピッカーは 6 桁しか持てないので、8 桁（アルファ付き）は色だけ渡す
-        value={`#${value.slice(0, 6)}`}
-        onChange={(e) => {
-          const color = e.target.value.slice(1).toLowerCase();
-          setDraft(color);
-          onChange(color);
-        }}
-      />
-      <input
-        className={`${styles.input} ${styles.hex}`}
-        type="text"
-        aria-label={hexLabel}
-        aria-invalid={!valid}
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-        maxLength={9}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          const color = normalizeColor(e.target.value);
-          if (color !== null) onChange(color);
-        }}
-      />
-    </div>
+    <>
+      <fieldset aria-label={paletteLabel} className={styles.palette}>
+        {PALETTE.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            className={styles.swatch}
+            aria-label={`#${hex}`}
+            aria-pressed={value === hex}
+            style={{ backgroundColor: `#${hex}` }}
+            onClick={() => choose(hex)}
+          />
+        ))}
+      </fieldset>
+      <div className={styles.row}>
+        <span className={styles.hash} aria-hidden="true">
+          #
+        </span>
+        <input
+          className={`${styles.input} ${styles.hex}`}
+          type="text"
+          aria-label={hexLabel}
+          aria-invalid={!valid}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={9}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const color = normalizeColor(e.target.value);
+            if (color !== null) onChange(color);
+          }}
+        />
+        {/* ブラウザのカラーピッカーが今の色の見本を兼ねる */}
+        <input
+          className={styles.picker}
+          type="color"
+          aria-label={pickerLabel}
+          // ピッカーは 6 桁しか持てないので、8 桁（アルファ付き）は色だけ渡す
+          value={`#${value.slice(0, 6)}`}
+          onChange={(e) => choose(e.target.value.slice(1).toLowerCase())}
+        />
+      </div>
+    </>
   );
 }
 

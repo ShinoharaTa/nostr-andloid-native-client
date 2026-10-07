@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { useSession } from "../../signer/session";
 import { useToast } from "../../ui/toast";
 import { EmojiListError, publishEmojiList } from "../compose/customEmojis";
 import { PREVIEW_DEBOUNCE_MS } from "../emoji/EmojiMakerForm";
+import { LAST_MAKER_KEY } from "../emoji/lastMakerInput";
 import { EmojiSection } from "./EmojiSection";
 
 // 取り直し・発行は customEmojis.test.ts。ここは呼び出しと画面だけ
@@ -28,6 +29,7 @@ beforeEach(() => {
   useSession.setState({ status: "in", method: "local", pubkey: me });
   vi.mocked(publishEmojiList).mockReset();
   vi.mocked(publishEmojiList).mockResolvedValue(undefined);
+  localStorage.removeItem(LAST_MAKER_KEY);
 });
 
 afterEach(() => {
@@ -191,6 +193,44 @@ describe("文字から作る（#763）", () => {
       },
       expect.any(String),
     ]);
+  });
+
+  it("下書きに足したら前回の設定として覚え、次に開くとその色・フォントで始まる（#783）", async () => {
+    render(<EmojiSection />);
+    await userEvent.click(makerMode());
+    // プレビューはフォームの先頭
+    const preview = screen.getByRole("region", { name: "プレビュー" });
+    expect(preview.compareDocumentPosition(textArea()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "縁取りの色のパレット" })).getByRole("button", {
+        name: "#fb8c00",
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Dela Gothic One" }));
+    expect(localStorage.getItem(LAST_MAKER_KEY)).toBeNull();
+    // 不正なショートコードで足せなければ覚えない
+    fireEvent.change(shortcode(), { target: { value: "く さ" } });
+    fireEvent.click(addButton());
+    expect(localStorage.getItem(LAST_MAKER_KEY)).toBeNull();
+
+    fireEvent.change(shortcode(), { target: { value: "kusa" } });
+    fireEvent.click(addButton());
+    expect(rows()).toEqual([":kusa:削除"]);
+    expect(JSON.parse(localStorage.getItem(LAST_MAKER_KEY) ?? "null")).toEqual({
+      v: 1,
+      color: "000000",
+      stroke: "fb8c00",
+      font: "delagothic",
+    });
+
+    cleanup();
+    render(<EmojiSection />);
+    await userEvent.click(makerMode());
+    expect(textArea()).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "縁取りの色（16進）" })).toHaveValue("fb8c00");
+    expect(screen.getByRole("radio", { name: "Dela Gothic One" })).toBeChecked();
   });
 
   it("プレビューがエラーの間は押せない", async () => {

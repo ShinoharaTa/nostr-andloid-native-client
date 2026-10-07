@@ -17,7 +17,7 @@ import {
 } from "../compose/customEmojis";
 import { EmojiMakerForm, useEmojiMaker } from "../emoji/EmojiMakerForm";
 import makerStyles from "../emoji/EmojiMakerRoute.module.css";
-import { DEFAULT_INPUT } from "../emoji/emojiUrl";
+import { loadLastMakerInput } from "../emoji/lastMakerInput";
 import styles from "./SettingsSections.module.css";
 
 /** 保存の失敗の文言 */
@@ -278,12 +278,13 @@ function AddEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emo
 
 /**
  * 「文字から作る」（#763）。/emoji と同じフォーム（EmojiMakerForm）で作り、ショートコードを付けて下書きに足す。
- * 初期値は黒文字 + 白縁取り。テキストが空・プレビューがエラーの間は押せない。
+ * 初期値は前回使った絵文字の文字色・縁取り・フォント（無ければ黒文字 + 白縁取り。#783）。下書きに足したら覚える。
+ * テキストが空・プレビューがエラーの間は押せない。
  */
 function MakeEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emoji: CustomEmoji): void }) {
   const t = useT();
   const codeId = useId();
-  const maker = useEmojiMaker(DEFAULT_INPUT);
+  const maker = useEmojiMaker(loadLastMakerInput);
   const url = maker.url !== null && maker.error === null ? maker.url : null;
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -297,6 +298,7 @@ function MakeEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(em
       return;
     }
     onAdd(emoji);
+    maker.remember();
     setCode("");
     setError(null);
   }
