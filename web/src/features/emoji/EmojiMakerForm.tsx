@@ -163,8 +163,8 @@ export function EmojiMakerForm({ maker }: { maker: EmojiMaker }) {
 }
 
 /**
- * 色の選択（#783）。パレット（ネイティブと同じ 12 色の丸い見本。選択中は太い枠）と、その下に # + 16 進の欄・
- * 今の色の見本・ブラウザのカラーピッカー。どれを変えても揃える。
+ * 色の選択（#783）。パレット（ネイティブと同じ 12 色の丸い見本。選択中は太い枠）と、その下に # + 16 進の欄と
+ * ブラウザのカラーピッカー（今の色の見本を兼ねる）。どれを変えても揃える。
  */
 function ColorChooser({
   value,
@@ -223,8 +223,7 @@ function ColorChooser({
             if (color !== null) onChange(color);
           }}
         />
-        {/* 今の色（8 桁ならアルファも込み） */}
-        <span className={styles.current} style={{ backgroundColor: `#${value}` }} aria-hidden="true" />
+        {/* ブラウザのカラーピッカーが今の色の見本を兼ねる */}
         <input
           className={styles.picker}
           type="color"

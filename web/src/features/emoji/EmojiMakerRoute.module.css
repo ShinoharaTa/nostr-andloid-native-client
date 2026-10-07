@@ -202,15 +202,6 @@
   font-size: var(--type-body);
 }
 
-/* 今の色の小さな見本 */
-.current {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-full);
-}
-
 .previews {
   display: flex;
   flex-wrap: wrap;

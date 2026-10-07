@@ -237,15 +237,19 @@ it("パレットで選ぶと URL と 16 進の欄が変わり、16 進で打つ�
 
   fireEvent.click(colorSwatch("#e53935"));
   expect(colorHex()).toHaveValue("e53935");
+  // ブラウザのカラーピッカーが今の色の見本を兼ねる
+  expect(screen.getByLabelText("文字色")).toHaveValue("#e53935");
   expect(colorSwatch("#e53935")).toHaveAttribute("aria-pressed", "true");
   expect(colorSwatch("#000000")).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(strokeSwatch("#fdd835"));
   expect(strokeHex()).toHaveValue("fdd835");
+  expect(screen.getByLabelText("縁取りの色")).toHaveValue("#fdd835");
   expect(urlField()).toHaveValue(`${origin()}/api/emoji.png?text=%E8%8D%89&color=e53935&stroke=fdd835`);
 
   // 16 進で打つとパレットの選択も揃う（パレットに無い色ならどれも選ばれない）
   fireEvent.change(colorHex(), { target: { value: "#1E88E5" } });
   expect(colorSwatch("#1e88e5")).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText("文字色")).toHaveValue("#1e88e5");
   expect(colorSwatch("#e53935")).toHaveAttribute("aria-pressed", "false");
   fireEvent.change(colorHex(), { target: { value: "123" } });
   expect(

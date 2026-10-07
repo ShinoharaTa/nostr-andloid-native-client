@@ -334,7 +334,7 @@ return response
 8. **ログイン中だけ**（`useSession(s => s.status) === "in"`）: ショートコード入力 + 「自分の絵文字に追加」ボタン（§7.4）。未ログインなら「ログインすると自分の絵文字リストに追加できます」+ `/login?next=/emoji` へのリンク。
 9. フッタ: フォントのライセンス表記（§3.4）。
 
-- **色の選択**（[#783]。ネイティブ `ColorChooser` と同じ）: パレット = 丸い色見本 12 色（`emojiUrl.ts` の `PALETTE`。ネイティブ `EmojiMaker.PALETTE` と同じ色・同じ順: `000000 ffffff 757575 e53935 d81b60 fb8c00 fdd835 43a047 00acc1 1e88e5 8e24aa 6d4c41`）。`<fieldset aria-label>`（`web_emoji_color_palette_label` / `web_emoji_stroke_palette_label`）の中に `<button aria-pressed aria-label="#rrggbb">` を並べる（32px = `--touch-xs`。選択中は `--accent` の太い枠）。その下の行に `#` + 16 進の欄（3/4/6/8 桁。読める値になったら反映）、今の色の小さな見本（24px）、ブラウザの `<input type="color">`（補助）。どれを変えても揃える。
+- **色の選択**（[#783]。ネイティブ `ColorChooser` と同じ）: パレット = 丸い色見本 12 色（`emojiUrl.ts` の `PALETTE`。ネイティブ `EmojiMaker.PALETTE` と同じ色・同じ順: `000000 ffffff 757575 e53935 d81b60 fb8c00 fdd835 43a047 00acc1 1e88e5 8e24aa 6d4c41`）。`<fieldset aria-label>`（`web_emoji_color_palette_label` / `web_emoji_stroke_palette_label`）の中に `<button aria-pressed aria-label="#rrggbb">` を並べる（32px = `--touch-xs`。選択中は `--accent` の太い枠）。その下の行に `#` + 16 進の欄（3/4/6/8 桁。読める値になったら反映）と、その右にブラウザの `<input type="color">`（今の色の見本を兼ねる。8 桁のアルファは見本に出ない）。どれを変えても揃える。
 - 初期値: text 空、font notosans、color `000000`、縁取り有り（`ffffff`。§12 #1）。前回の設定（§7.6）があればその文字色・縁取り・フォント。URL のクエリ（`/emoji?text=…&color=…`）があればクエリを優先する（API と同じ名前。共有しやすい。stroke が無ければ縁取りなし）。入力は URL に**書き戻さない**（履歴が汚れる）。
 - 文言はすべて `t()`（`web_emoji_*`）。`web.ja.json` と `web.en.json` の両方に足す。`node scripts/check-i18n.mjs` を通す。
 
