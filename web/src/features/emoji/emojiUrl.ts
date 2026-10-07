@@ -17,6 +17,22 @@ import {
 
 export { FONT_IDS, type FontId, normalizeColor, type ParamsError };
 
+/** 色のパレット（#783。ネイティブ EmojiMaker.PALETTE と同じ 12 色・同じ順。正規化済みの hex） */
+export const PALETTE = [
+  "000000",
+  "ffffff",
+  "757575",
+  "e53935",
+  "d81b60",
+  "fb8c00",
+  "fdd835",
+  "43a047",
+  "00acc1",
+  "1e88e5",
+  "8e24aa",
+  "6d4c41",
+] as const;
+
 /** 画像 API のパス（§4.1） */
 export const EMOJI_API_PATH = "/api/emoji.png";
 
@@ -46,10 +62,13 @@ const QUERY_KEYS = ["text", "color", "stroke", "font"] as const;
 /**
  * /emoji?text=…&color=…&stroke=…&font=… から初期値を作る。どれかがあれば API の URL として読む
  * （stroke が無ければ縁取りなし。ページが出した URL を開き直して同じ画像になるように）。
- * 読めない値は初期値のまま。
+ * 読めない値は初期値のまま。クエリが無ければ fallback（#783 の前回の設定。クエリがあればクエリを優先する）。
  */
-export function inputFromQuery(search: URLSearchParams): MakerInput {
-  if (!QUERY_KEYS.some((key) => search.has(key))) return DEFAULT_INPUT;
+export function inputFromQuery(
+  search: URLSearchParams,
+  fallback: () => MakerInput = () => DEFAULT_INPUT,
+): MakerInput {
+  if (!QUERY_KEYS.some((key) => search.has(key))) return fallback();
   const color = normalizeColor(search.get("color") ?? "");
   const stroke = normalizeColor(search.get("stroke") ?? "");
   const font = (search.get("font") ?? "").toLowerCase();

@@ -322,17 +322,20 @@ return response
 
 ### 7.3 UI（上から）
 
+フォーム（`EmojiMakerForm`。`/emoji`・ピッカー §7.5・設定「文字から作る」の 3 か所で共通）は 2〜6。[#783] ネイティブ（`EmojiMakerForm.kt`）と同じく、プレビューとエラーを先頭に置く（スマホでキーボードやスクロールで隠れないように）。
+
 1. 見出し `web_emoji_title`、説明 `web_emoji_desc`（「文字から 128×128 の絵文字画像を作ります。URL をそのままカスタム絵文字に登録できます」）。
-2. **テキスト** `<textarea rows=4>`（`web_emoji_text_label`）。入力中に行数・1 行の文字数を数え、超えたら赤字で `web_emoji_limit`（「4 行・1 行 10 文字まで」）。
-3. **フォント**: 3 つのラジオ（`web_emoji_font_notosans` = "Noto Sans JP"、`web_emoji_font_mplusrounded` = "M PLUS Rounded 1c"、`web_emoji_font_delagothic` = "Dela Gothic One"。固有名詞なのでキーは作るが ja/en 同文）。
-4. **文字色**: `<input type="color">` + 6 桁 hex のテキスト欄（どちらを変えても同期）。
-5. **縁取り**: チェックボックス `web_emoji_stroke_enable` + 有効時だけ色入力。
-6. **プレビュー**: 128×128 の `<img>` を 2 枚（明るい地 `#fff` と暗い地 `#0c0c10`。両テーマでの見え方）。入力変更から **400 ms デバウンス**して `fetch(url)`（同一オリジン）。200 なら `URL.createObjectURL(blob)` を src に（前の objectURL は revoke）。4xx なら JSON の `error` を `web_emoji_error_<code>` の文言で表示（`unsupported_char` は `char` を `%1$s` で埋める）。通信失敗は `web_emoji_error_network`。
+2. **プレビュー**: 128×128 の `<img>` を 2 枚（明るい地 `#fff` と暗い地 `#0c0c10`。両テーマでの見え方）。入力変更から **400 ms デバウンス**して `fetch(url)`（同一オリジン）。200 なら `URL.createObjectURL(blob)` を src に（前の objectURL は revoke）。4xx なら JSON の `error` を `web_emoji_error_<code>` の文言で表示（`unsupported_char` は `char` を `%1$s` で埋める）。通信失敗は `web_emoji_error_network`。エラーはプレビューのすぐ下。
+3. **テキスト** `<textarea rows=4>`（`web_emoji_text_label`）。入力中に行数・1 行の文字数を数え、超えたら赤字で `web_emoji_limit`（「4 行・1 行 10 文字まで」）。
+4. **フォント**: 3 つのラジオ（`web_emoji_font_notosans` = "Noto Sans JP"、`web_emoji_font_mplusrounded` = "M PLUS Rounded 1c"、`web_emoji_font_delagothic` = "Dela Gothic One"。固有名詞なのでキーは作るが ja/en 同文）。
+5. **文字色**: パレット + 16 進の欄（下記）。
+6. **縁取り**: チェックボックス `web_emoji_stroke_enable` + 有効時だけ色の選択（文字色と同じ部品）。
 7. **URL**: 読み取り専用の `<input>` に正規化 URL（絶対 URL。`location.origin` + `/api/emoji.png?…`）。横に「コピー」ボタン（`navigator.clipboard.writeText` → `showToast(t("web_emoji_copied"))`。失敗したら `select()` して `web_emoji_copy_failed`）。
 8. **ログイン中だけ**（`useSession(s => s.status) === "in"`）: ショートコード入力 + 「自分の絵文字に追加」ボタン（§7.4）。未ログインなら「ログインすると自分の絵文字リストに追加できます」+ `/login?next=/emoji` へのリンク。
 9. フッタ: フォントのライセンス表記（§3.4）。
 
-- 初期値: text 空、font notosans、color `000000`、縁取り有り（`ffffff`。§12 #1）。URL のクエリ（`/emoji?text=…&color=…`）があれば初期値にする（API と同じ名前。共有しやすい）。入力は URL に**書き戻さない**（履歴が汚れる）。
+- **色の選択**（[#783]。ネイティブ `ColorChooser` と同じ）: パレット = 丸い色見本 12 色（`emojiUrl.ts` の `PALETTE`。ネイティブ `EmojiMaker.PALETTE` と同じ色・同じ順: `000000 ffffff 757575 e53935 d81b60 fb8c00 fdd835 43a047 00acc1 1e88e5 8e24aa 6d4c41`）。`<fieldset aria-label>`（`web_emoji_color_palette_label` / `web_emoji_stroke_palette_label`）の中に `<button aria-pressed aria-label="#rrggbb">` を並べる（32px = `--touch-xs`。選択中は `--accent` の太い枠）。その下の行に `#` + 16 進の欄（3/4/6/8 桁。読める値になったら反映）、今の色の小さな見本（24px）、ブラウザの `<input type="color">`（補助）。どれを変えても揃える。
+- 初期値: text 空、font notosans、color `000000`、縁取り有り（`ffffff`。§12 #1）。前回の設定（§7.6）があればその文字色・縁取り・フォント。URL のクエリ（`/emoji?text=…&color=…`）があればクエリを優先する（API と同じ名前。共有しやすい。stroke が無ければ縁取りなし）。入力は URL に**書き戻さない**（履歴が汚れる）。
 - 文言はすべて `t()`（`web_emoji_*`）。`web.ja.json` と `web.en.json` の両方に足す。`node scripts/check-i18n.mjs` を通す。
 
 ### 7.4 自分の絵文字リストへ追加（最小）
@@ -348,12 +351,19 @@ return response
 ### 7.5 リアクションのピッカーで作ってその場でリアクション（#768）
 
 - `ReactionPickerDialog` に `target` がある（投稿・記事リーダー・チャットのリアクション）ときだけ、検索欄の右に「絵文字を作る」（`web_picker_make`）。投稿画面の絵文字ボタン・設定の既定リアクションでは出さない。
-- 押すとダイアログの中身が作成フォームの 1 画面になる（モーダルを重ねない）。上に「戻る」（一覧に戻る。検索語・タブはそのまま）、中は `EmojiMakerForm`（初期値 `DEFAULT_INPUT` = 黒文字 + 白縁取り）+ ショートコード（任意）+「自分の絵文字リストにも保存」（既定オフ）でスクロール、下に「この絵文字でリアクション」を固定。
+- 押すとダイアログの中身が作成フォームの 1 画面になる（モーダルを重ねない）。上に「戻る」（一覧に戻る。検索語・タブはそのまま）、中は `EmojiMakerForm`（初期値は前回の設定 §7.6、無ければ `DEFAULT_INPUT` = 黒文字 + 白縁取り）+ ショートコード（任意）+「自分の絵文字リストにも保存」（既定オフ）でスクロール、下に「この絵文字でリアクション」を固定。
 - ショートコードが空なら `autoEmojiShortcode(url)`（`features/emoji/autoShortcode.ts`）= `nostrism_` + 正規化した画像 URL の SHA-256 の先頭 8 桁（hex）。同じ絵文字なら毎回同じ名前で、プレースホルダに出す。入力したら `parseEmojiShortcode()` で検証（不正なら押せない）。
 - 押せないのは: テキストが空・プレビューがエラー・今の入力のプレビューがまだ届いていない（`useEmojiMaker().ready`）・名前が不正の間。
 - 押すと `onPick(":code:", url, { made: true, autoName, save })`。呼び出し側（`NoteActionButtons` / `ArticleReader` / `ChannelRoom`）が `publishReaction`（content `:code:` + `["emoji", code, url]`）で送る。トーストは `reactionSentMessage()`（`features/actions/pickedReaction.ts`）: 自動の名前なら `web_reaction_sent_made`、入力した名前なら従来の `web_reaction_sent_fmt`。
 - save がオンなら送信の後（成否によらず）に `saveMadeEmoji()` → `appendToEmojiList`。結果はリアクションとは別のトースト: 成功 `emoji_saved`、重複 `web_picker_make_save_duplicate`、`no-emoji-list` は `web_emoji_no_base`、それ以外は `emoji_save_failed`。
 - 作った絵文字は「最近」（`publishReaction` → `recordUsedEmoji`。`RecentEmoji` は `:code:` と画像 URL を持てる）に入るので、別の段は作らない。「最近」は端末ごと（アカウントで分けていない。既存の仕様のまま）。
+
+### 7.6 前回の設定を端末に覚える（#783）
+
+- 文字色・縁取りのオン/オフと色・フォントを localStorage `nostrism.emojiMaker.last` に `{"v":1,"color":"rrggbb","stroke":"rrggbb"|null,"font":"notosans"|…}` で保存する（`features/emoji/lastMakerInput.ts`）。stroke が null なら縁取りなし。**テキストは覚えない。** アカウントに紐付けない（端末ごと）。NIP-78 等で同期しない。
+- 保存するのは絵文字を「使った」ときだけ（`useEmojiMaker().remember()`）: ピッカーで「この絵文字でリアクション」を押した、設定「文字から作る」で下書きに追加した、`/emoji` で URL をコピーした（`clipboard.writeText` が成功したとき）・リストに追加した（`appendToEmojiList` が成功したとき）。入力を変えただけ・戻っただけでは保存しない。
+- 読むのはフォームを開いたとき（`/emoji`・ピッカーの作成画面・設定「文字から作る」）。値は API と同じ `normalizeColor` と `FONT_IDS` で検証し、`v` が 1 でない・色が読めない・フォントが無いなど**どれか 1 つでも壊れていれば全部捨てて**初期値（黒文字 + 白縁取り、Noto Sans JP）。読み書きは try/catch（localStorage が使えなくても動く）。
+- `/emoji?…` に API のクエリ（text・color・stroke・font のどれか）があればクエリを優先し、前回の設定は使わない。
 
 ---
 
@@ -426,6 +436,7 @@ return response
 - 400 応答で該当文言が出る。
 - 未ログインで追加 UI が出ない。ログイン中で出て、`appendToEmojiList` が呼ばれる（モック）。
 - `/emoji?text=…&font=delagothic` で初期値が入る。
+- [#783] プレビューがフォームの先頭。パレットで選ぶと URL と 16 進の欄が変わり、16 進で打つとパレットの選択が揃う。前回の設定はコピー・リストへの追加（成功時）でだけ保存し、開き直すと戻る。壊れた保存値は捨てる。クエリがあればクエリ優先。ピッカー（`ReactionPickerDialog.test.tsx`）・設定（`EmojiSection.test.tsx`）でも送信・下書き追加で保存して次に戻ることを見る。
 
 ---
 

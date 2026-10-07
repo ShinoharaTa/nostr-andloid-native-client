@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { installDialogPolyfill } from "../../test/dialog";
 import { renderWithRouter } from "../../test/renderWithRouter";
+import { LAST_MAKER_KEY } from "../emoji/lastMakerInput";
 import { ReactionPickerDialog } from "./ReactionPickerDialog";
 import { RECENT_EMOJIS_KEY } from "./reactionPrefs";
 
@@ -260,6 +261,46 @@ describe("絵文字を作る（#768）", () => {
     fireEvent.change(textArea(), { target: { value: "𠮷" } });
     expect(await screen.findByRole("alert")).toHaveTextContent("「𠮷」はこのフォントで描けません");
     expect(send()).toBeDisabled();
+  });
+
+  it("送ったら前回の設定として覚え、次に開くとその色・フォントで始まる。戻るだけでは覚えない（#783）", async () => {
+    await openMaker();
+    // プレビューはフォームの先頭
+    const preview = screen.getByRole("region", { name: "プレビュー" });
+    expect(preview.compareDocumentPosition(textArea()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "文字色のパレット" })).getByRole("button", {
+        name: "#8e24aa",
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "M PLUS Rounded 1c" }));
+    await userEvent.click(screen.getByRole("button", { name: "戻る" }));
+    expect(localStorage.getItem(LAST_MAKER_KEY)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "絵文字を作る" }));
+    fireEvent.change(textArea(), { target: { value: "草" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "文字色のパレット" })).getByRole("button", {
+        name: "#8e24aa",
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "M PLUS Rounded 1c" }));
+    await waitFor(() => expect(send()).toBeEnabled());
+    await userEvent.click(send());
+    expect(JSON.parse(localStorage.getItem(LAST_MAKER_KEY) ?? "null")).toEqual({
+      v: 1,
+      color: "8e24aa",
+      stroke: "ffffff",
+      font: "mplusrounded",
+    });
+
+    cleanup();
+    await openMaker();
+    expect(textArea()).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "文字色（16進）" })).toHaveValue("8e24aa");
+    expect(screen.getByRole("radio", { name: "M PLUS Rounded 1c" })).toBeChecked();
   });
 
   it("今の入力のプレビューが届くまでは押せない", async () => {

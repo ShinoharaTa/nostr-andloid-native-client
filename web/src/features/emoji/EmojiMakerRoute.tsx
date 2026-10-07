@@ -9,6 +9,7 @@ import { appendToEmojiList, EmojiListError, parseEmojiShortcode } from "../compo
 import { EmojiMakerForm, useEmojiMaker } from "./EmojiMakerForm";
 import styles from "./EmojiMakerRoute.module.css";
 import { type FontId, inputFromQuery } from "./emojiUrl";
+import { loadLastMakerInput } from "./lastMakerInput";
 
 export { PREVIEW_DEBOUNCE_MS } from "./EmojiMakerForm";
 
@@ -23,13 +24,14 @@ const FONT_LICENSES: readonly { font: FontId; href: string }[] = [
  * 文字から絵文字画像を作るページ（/emoji。仕様: docs/emoji-maker.md §7）。ログイン不要。
  * フォームは EmojiMakerForm（設定「カスタム絵文字」の「文字から作る」と共通）。ここでは URL の表示・コピーと追加を持つ。
  * 入力は URL に書き戻さない（履歴が汚れる）。
+ * [#783] クエリが無ければ前回の設定（文字色・縁取り・フォント）で始める。URL をコピーした・リストに追加したら覚える。
  */
 export function EmojiMakerRoute() {
   const t = useT();
   const status = useSession((s) => s.status);
   const me = useSession((s) => s.pubkey);
   const [search] = useSearchParams();
-  const maker = useEmojiMaker(() => inputFromQuery(search));
+  const maker = useEmojiMaker(() => inputFromQuery(search, loadLastMakerInput));
   const { url, error } = maker;
   const urlRef = useRef<HTMLInputElement>(null);
   const urlId = useId();
@@ -38,6 +40,7 @@ export function EmojiMakerRoute() {
     if (url === null) return;
     try {
       await navigator.clipboard.writeText(url);
+      maker.remember();
       showToast(t("web_emoji_copied"));
     } catch {
       urlRef.current?.select();
@@ -88,7 +91,7 @@ export function EmojiMakerRoute() {
       </div>
 
       {status === "in" && me !== null && (
-        <AddToListForm me={me} url={url !== null && error === null ? url : null} />
+        <AddToListForm me={me} url={url !== null && error === null ? url : null} onAdded={maker.remember} />
       )}
       {status === "out" && (
         <p className={styles.note}>
@@ -119,8 +122,9 @@ export function EmojiMakerRoute() {
 /**
  * 自分の絵文字リスト（kind:10030）へ足す欄（ログイン中だけ。docs/emoji-maker.md §7.4）。
  * shortcode の形と重複は欄の下に、発行の成否はトーストで出す。url が null（入力が通らない・エラー中）なら押せない。
+ * 追加できたら onAdded（前回の設定として覚える。#783）。
  */
-function AddToListForm({ me, url }: { me: string; url: string | null }) {
+function AddToListForm({ me, url, onAdded }: { me: string; url: string | null; onAdded(): void }) {
   const t = useT();
   const codeId = useId();
   const [code, setCode] = useState("");
@@ -138,6 +142,7 @@ function AddToListForm({ me, url }: { me: string; url: string | null }) {
     setAdding(true);
     try {
       await appendToEmojiList(me, { shortcode, url });
+      onAdded();
       setCode("");
       setError(null);
       showToast(t("emoji_saved"));
