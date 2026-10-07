@@ -11,7 +11,7 @@ import { ProfileAvatar } from "../compose/ProfileAvatar";
 import { autoEmojiShortcode } from "../emoji/autoShortcode";
 import { EmojiMakerForm, useEmojiMaker } from "../emoji/EmojiMakerForm";
 import makerStyles from "../emoji/EmojiMakerRoute.module.css";
-import { DEFAULT_INPUT } from "../emoji/emojiUrl";
+import { loadLastMakerInput } from "../emoji/lastMakerInput";
 import { NoteContent } from "../timeline/NoteContent";
 import { EMOJI_CATEGORIES, type EmojiCategory, loadEmojiCatalog, searchEmojis } from "./emojiCatalog";
 import type { MadeEmoji } from "./pickedReaction";
@@ -188,7 +188,8 @@ export function ReactionPickerDialog({
 }
 
 /**
- * [#768] ピッカーの中の「絵文字を作る」（/emoji と同じ EmojiMakerForm。初期値は黒文字 + 白縁取り）。
+ * [#768] ピッカーの中の「絵文字を作る」（/emoji と同じ EmojiMakerForm。初期値は前回送った絵文字の文字色・縁取り・
+ * フォントで、無ければ黒文字 + 白縁取り。#783）。
  * 「戻る」で一覧に戻る。ショートコードは任意（空なら autoEmojiShortcode の名前。プレースホルダに出す）で、入力したら
  * 設定画面と同じ parseEmojiShortcode で検証する。テキストが空・プレビューがエラー・今の入力のプレビューがまだ取れて
  * いない・名前が不正の間は送れない。フォームはスクロールし、送信ボタンは下に固定する。
@@ -203,7 +204,7 @@ function MakeEmojiPane({
   const t = useT();
   const codeId = useId();
   const codeHintId = useId();
-  const maker = useEmojiMaker(DEFAULT_INPUT);
+  const maker = useEmojiMaker(loadLastMakerInput);
   const autoName = useAutoShortcode(maker.url);
   const [code, setCode] = useState("");
   const [save, setSave] = useState(false);
@@ -256,8 +257,10 @@ function MakeEmojiPane({
           className={`${makerStyles.primary} ${styles.makeSend}`}
           disabled={url === null || shortcode === null}
           onClick={() => {
-            if (url !== null && shortcode !== null)
+            if (url !== null && shortcode !== null) {
+              maker.remember();
               onReact(shortcode, url, { made: true, autoName: !typed, save });
+            }
           }}
         >
           {t("web_picker_make_react")}

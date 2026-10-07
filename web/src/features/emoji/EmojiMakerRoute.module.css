@@ -163,6 +163,45 @@
   cursor: pointer;
 }
 
+/* [#783] 色のパレット（ネイティブ ColorChooser と同じ 32px の丸。選択中は太い枠） */
+.palette {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  /* ネイティブと同じ Xs（4dp）。/emoji の幅（560px）で 12 色が 1 行に収まる */
+  gap: var(--sp-1);
+}
+
+.swatch {
+  box-sizing: border-box;
+  flex: none;
+  width: var(--touch-xs);
+  height: var(--touch-xs);
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+
+/* 枠と色の間に地の色の隙間を空けて、白・黒の見本でも選択が分かるようにする */
+.swatch[aria-pressed="true"] {
+  border: 2px solid var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hash {
+  color: var(--text-3);
+  font-size: var(--type-body);
+}
+
 .previews {
   display: flex;
   flex-wrap: wrap;
