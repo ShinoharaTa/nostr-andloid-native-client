@@ -92,6 +92,12 @@ import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.delay
 
 /**
  * 実データ配線済みのチャンネルルーム。[channelId] の kind:42 を購読・表示し、送信も行う。
@@ -108,10 +114,15 @@ fun LiveChannelRoom(
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
     deckMode: Boolean = false,
+    /** [#791] 本文の kind:42 へのリンクから開いたときの発言 id。届いたらその位置まで送って短く強調する。 */
+    highlightMessageId: String? = null,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
-        ChannelRoomColumn(spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack, deckMode = deckMode)
+        ChannelRoomColumn(
+            spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
+            deckMode = deckMode, highlightMessageId = highlightMessageId,
+        )
         return
     }
     DisposableEffect(spec.id) {
@@ -136,6 +147,7 @@ fun LiveChannelRoom(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         deckMode = deckMode,
         names = names,
+        highlightMessageId = highlightMessageId,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url, announce = true) } },   // [#732]
         onReactMade = { target, made -> scope.launch { repo.publishMadeReaction(target, made) } },   // [#775]
@@ -170,6 +182,8 @@ fun ChannelRoomColumn(
     /** [#382] 非null ならヘッダのタイトルをタップできる（DM は相手のプロフィールを開く）。 */
     onTitleClick: (() -> Unit)? = null,
     titleClickLabel: String? = null,
+    /** [#791] 一覧に届いたらその位置まで送って短く強調する発言 id（本文の kind:42 へのリンクから開いたとき）。 */
+    highlightMessageId: String? = null,
 ) {
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
@@ -188,6 +202,26 @@ fun ChannelRoomColumn(
         }
     }
     val byId = remember(ordered) { ordered.associateBy { it.event.id } }
+    // [#791] 強調する発言。一覧に届いた時点で 1 度だけその位置へ送り、下地を点けてから薄く消す。
+    // 送ってから強調が消えるまでは、新着で最新側へ寄せる処理（下の LaunchedEffect）を止めて位置を保つ。
+    // 送ったかどうかは保存する（ルームの上に別の詳細を重ねて戻ったとき、読んでいた位置から送り直さない）。
+    val highlightIndex = highlightMessageId?.let { id -> ordered.indexOfFirst { it.event.id == id } } ?: -1
+    val highlight = remember(highlightMessageId) { Animatable(0f) }
+    var highlightJumped by rememberSaveable(highlightMessageId) { mutableStateOf(false) }
+    var holdPosition by remember(highlightMessageId) { mutableStateOf(false) }
+    LaunchedEffect(highlightMessageId, highlightIndex >= 0) {
+        if (highlightIndex < 0 || highlightJumped) return@LaunchedEffect
+        highlightJumped = true
+        holdPosition = true
+        try {
+            listState.scrollToItem(highlightIndex)
+            highlight.snapTo(1f)
+            delay(HIGHLIGHT_HOLD_MS)
+            highlight.animateTo(0f, tween(HIGHLIGHT_FADE_MS))
+        } finally {
+            holdPosition = false
+        }
+    }
 
     // 入力中（キーボード表示中）は、本文エリアへのタップを「フォーカス解除だけ」にする
     // （メッセージや返信ボタン等の操作を貫通させない）。
@@ -218,14 +252,28 @@ fun ChannelRoomColumn(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 items(ordered, key = { it.event.id }) { m ->
-                    MessageBubble(
-                        m,
-                        parent = replyParentId(m)?.let { byId[it] },
-                        names = names,
-                        mineOnRight = mineOnRight,
-                        onReply = if (onSend != null) ({ replyingTo = m; if (deckMode) showComposeModal = true }) else null,
-                        onReact = if (onReact != null) ({ pickerFor = m }) else null,
-                    )
+                    // [#791] 強調する発言だけ下地を敷く（透明度は描画時に読むので、消える間も再コンポーズしない）。
+                    val flash = if (m.event.id == highlightMessageId) {
+                        Modifier.drawBehind {
+                            val a = highlight.value
+                            if (a > 0f) {
+                                drawRoundRect(
+                                    DeckColors.Accent.copy(alpha = HIGHLIGHT_ALPHA * a),
+                                    cornerRadius = CornerRadius(DeckRadius.Sm.toPx()),
+                                )
+                            }
+                        }
+                    } else Modifier
+                    Box(flash) {
+                        MessageBubble(
+                            m,
+                            parent = replyParentId(m)?.let { byId[it] },
+                            names = names,
+                            mineOnRight = mineOnRight,
+                            onReply = if (onSend != null) ({ replyingTo = m; if (deckMode) showComposeModal = true }) else null,
+                            onReact = if (onReact != null) ({ pickerFor = m }) else null,
+                        )
+                    }
                 }
             }
             // 入力中は本文エリアへのタップを吸収してフォーカス解除のみ（操作は貫通させない）。
@@ -241,6 +289,7 @@ fun ChannelRoomColumn(
         // フィードと同様、新着（先頭）が届いたら先頭付近にいるときだけ最上部へ寄せる。
         // 下（過去）を読んでいる間は位置を保ち、指でスクロール中は割り込まない。
         LaunchedEffect(ordered.firstOrNull()?.event?.id) {
+            if (holdPosition) return@LaunchedEffect   // [#791] 強調中の発言の位置を保つ
             if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
                 listState.animateScrollToItem(0)
             }
@@ -305,6 +354,11 @@ fun ChannelRoomColumn(
         )
     }
 }
+
+/** [#791] 強調の下地の濃さ（Accent の薄被せ。AccentWeak では一瞬の強調として弱すぎる）と、点けておく時間・消えるまでの時間。 */
+private const val HIGHLIGHT_ALPHA = 0.18f
+private const val HIGHLIGHT_HOLD_MS = 1_200L
+private const val HIGHLIGHT_FADE_MS = 900
 
 /** NIP-10: reply マーカー付き #e（返信元メッセージ id）。無ければ null。 */
 private fun replyParentId(m: ChannelMessage): String? =
