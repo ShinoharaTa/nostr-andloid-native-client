@@ -17,6 +17,8 @@ package app.nostrdeck.state
 fun detailRouteKey(index: Int, route: DetailRoute): String = when (route) {
     is DetailRoute.ProfileView -> "$index:profile:${route.pubkey}"
     is DetailRoute.ThreadView -> "$index:thread:${route.eventId}"
+    // [#791] 同じルームでも強調する発言が違えば別の画面（スクロール位置を混ぜない）。
+    is DetailRoute.ChannelRoomView -> "$index:room:${route.channelId}:${route.messageId.orEmpty()}"
 }
 
 /** スタック全体のキー一覧（先頭から末尾の順）。 */

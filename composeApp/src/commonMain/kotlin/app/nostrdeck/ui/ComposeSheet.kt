@@ -211,13 +211,17 @@ fun ComposeSheet(
     // このカウンタを上げたら一度クリア→再フォーカス＋show でキーボードを確実に戻す。
     var reassertKb by remember { mutableStateOf(0) }
 
-    // 複数選択ピッカー → 添付リストへ追加し、即圧縮を走らせる（アップロードは送信時）。
-    val picker = rememberImagePicker { picked ->
+    // 添付リストへ追加し、即圧縮を走らせる（アップロードは送信時）。ピッカー・共有シート・貼り付けで共用。
+    val addImages: (List<PickedImage>) -> Unit = { picked ->
         picked.forEach { p ->
             val att = ComposeAttachment(p)
             images.add(att)
             scope.launch { att.compress(resolution, imgPrefs) }
         }
+    }
+    // 複数選択ピッカー → 添付リストへ追加。
+    val picker = rememberImagePicker { picked ->
+        addImages(picked)
         reassertKb++   // 選択後にキーボードを戻す
     }
     // [#202] 動画ピッカー → 添付リストへ追加（1本ずつ）。[#248] 追加時に即トランスコード開始。
@@ -247,11 +251,7 @@ fun ComposeSheet(
         val picked = withContext(Dispatchers.Default) {
             initialImageUris.mapNotNull { readSharedImage(platformContext, it) }
         }
-        picked.forEach { p ->
-            val att = ComposeAttachment(p)
-            images.add(att)
-            scope.launch { att.compress(resolution, imgPrefs) }
-        }
+        addImages(picked)
     }
     // 起動時に本文へフォーカス（＝キーボードが出てすぐ入力できる）。[#13] 新規は下書きを復元。
     // [#172] iOS はモーダル表示直後の requestFocus が無視されることがあるためリトライ式に。
@@ -542,7 +542,9 @@ fun ComposeSheet(
                         )
                     }
                     BodyField(field, onChange = { field = it }, focusRequester = bodyFocus, modifier = Modifier.fillMaxWidth(),
-                        onSubmit = { if (canSend) doSend() })
+                        onSubmit = { if (canSend) doSend() },
+                        // [#795] 本文欄への貼り付けでクリップボードの画像を添付（ピッカーと同じ経路）。送信中は横取りしない。
+                        onPasteImages = addImages, pasteEnabled = !sending)
 
                     // 入力中の候補（本文直下）。絵文字 > メンション > ハッシュタグ の優先で1種のみ出す。
                     if (emojiCandidates.isNotEmpty()) {
@@ -880,28 +882,34 @@ private fun BodyField(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
     onSubmit: () -> Unit = {},   // [#14] Cmd/Ctrl+Enter で投稿
+    // [#795] 貼り付けで受け取ったクリップボードの画像。テキストの貼り付けはそのまま本文へ入る。
+    onPasteImages: (List<PickedImage>) -> Unit = {},
+    pasteEnabled: Boolean = true,
 ) {
     Box(modifier.padding(vertical = DeckSpace.Sm)) {
         if (value.text.isEmpty()) {
             Text(stringResource(Res.string.compose_placeholder), color = DeckColors.Text3, fontSize = DeckType.Title)
         }
-        BasicTextField(
-            value = value, onValueChange = onChange,
-            textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
-            cursorBrush = SolidColor(DeckColors.Text),
-            modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
-                .focusRequester(focusRequester)
-                // [#14] Cmd(Mac)/Ctrl+Enter で送信。改行は素の Enter のまま。
-                .onPreviewKeyEvent { e ->
-                    if (e.type == KeyEventType.KeyDown && (e.isMetaPressed || e.isCtrlPressed) &&
-                        (e.key == Key.Enter || e.key == Key.NumPadEnter)
-                    ) {
-                        onSubmit(); true
-                    } else {
-                        false
-                    }
-                },
-        )
+        PasteImageHost(onImages = onPasteImages, enabled = pasteEnabled) { pasteModifier ->
+            BasicTextField(
+                value = value, onValueChange = onChange,
+                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Title, lineHeight = 21.sp),
+                cursorBrush = SolidColor(DeckColors.Text),
+                modifier = Modifier.fillMaxWidth().heightIn(min = BODY_MIN_HEIGHT, max = BODY_MAX_HEIGHT)
+                    .focusRequester(focusRequester)
+                    .then(pasteModifier)
+                    // [#14] Cmd(Mac)/Ctrl+Enter で送信。改行は素の Enter のまま。
+                    .onPreviewKeyEvent { e ->
+                        if (e.type == KeyEventType.KeyDown && (e.isMetaPressed || e.isCtrlPressed) &&
+                            (e.key == Key.Enter || e.key == Key.NumPadEnter)
+                        ) {
+                            onSubmit(); true
+                        } else {
+                            false
+                        }
+                    },
+            )
+        }
     }
 }
 

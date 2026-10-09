@@ -1232,7 +1232,8 @@ class EventRepository(
                     // [#319] kind:5 削除リクエストも取る。これが無いと、別端末で消した自分の投稿が
                     // こちらに残り続ける（フォロー先が消したものも同じ）。件数は少なく負荷にならない。
                     // [#380] kind:1111 NIP-22 コメントも流す（ルート文脈の1行プレビュー付きで表示）。
-                    subscribeRead(columnId, Filter(kinds = listOf(1, 6, 16, 5, 1111), authors = withMe, limit = 100))
+                    // [#793] kind:42 パブリックチャットの発言も流す（「#チャンネル名 で発言」の1行付きで表示）。
+                    subscribeRead(columnId, Filter(kinds = listOf(1, 6, 16, 5, 1111, 42), authors = withMe, limit = 100))
                 }
             }
         }
@@ -1313,21 +1314,66 @@ class EventRepository(
             else combine(
                 // [M8-repost] kind:1 + kind:6/16 リポストを含めて取得し、表示用に展開する。
                 q.feedFollowingWithReposts(authors, 0L).asFlow().mapToList(Dispatchers.Default),
+                // [#793] パブリックチャットの発言（kind:42）。件数の枠は投稿と別（Nostr.sq の feedFollowingChat）。
+                q.feedFollowingChat(authors).asFlow().mapToList(Dispatchers.Default),
                 profilesFlow,
                 noteMetaFlow,  // [M10] 自分の♡/リポスト済み状態（ボタンのハイライト用）
-            ) { rows, profiles, meta -> Triple(rows, profiles, meta) }
+                channelNamesFlow(),  // [#793] 発言先のチャンネル名（kind:40 が届けば組み直す）
+            ) { rows, chatRows, profiles, meta, channelNames -> FollowingRows(rows, chatRows, profiles, meta, channelNames) }
                 // conflate: 変換は重いので rapid な profiles/rows 更新は最新だけ処理して間引く。
                 .conflate()
-                .map { (rows, profiles, meta) ->
+                .map { (rows, chatRows, profiles, meta, channelNames) ->
                     val byPubkey = profiles.associateBy { it.pubkey }
                     // [M8-repost] リポストは元ノートに展開。メタ（反応/数/自分の状態）を表示ノートに付与。
                     // [#61] 重複排除は「完全な同一エントリ」だけを畳む。元投稿は event.id、リポストの
                     // コピーは repostId で一意化 → 元 vs リポストは別々に残り、複数人のリポストも各々残る。
-                    rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
+                    val notes = rows.mapNotNull { row -> toFollowingNoteUi(row, byPubkey)?.let { applyMeta(it, meta) } }
+                    // [#793] 発言は投稿と同じ列に時刻順で混ぜる（並びはリポストと同じく「その行の時刻」）。
+                    val chats = chatRows.mapNotNull { row -> toChatNoteUi(row, byPubkey, channelNames)?.let { applyMeta(it, meta) } }
+                    (if (chats.isEmpty()) notes else (notes + chats).sortedByDescending { it.repostAt ?: it.event.createdAt })
                         .distinctBy { it.repostId ?: it.event.id }
                 // 変換（eventById 解決・集約付与）は重いので Default に載せ、UI スレッドを塞がない（ANR 対策）。
                 }.flowOn(Dispatchers.Default)
         }
+
+    /** [#793] フォロー中フィードの材料（combine は5本までなので名前付きでまとめる）。 */
+    private data class FollowingRows(
+        val rows: List<Event>,
+        val chatRows: List<Event>,
+        val profiles: List<app.nostrdeck.db.Profile>,
+        val meta: NoteMeta,
+        val channelNames: Map<String, String>,
+    )
+
+    /**
+     * [#793] チャンネル id → 名前（空の名前は除く）。発言のたびに進む最終活動時刻（touchChannelActivity）では
+     * 中身が変わらないので distinctUntilChanged で止め、フィードを組み直さない。
+     */
+    private fun channelNamesFlow(): Flow<Map<String, String>> =
+        q.channelNames().asFlow().mapToList(Dispatchers.Default)
+            .map { rows -> rows.filter { it.name.isNotBlank() }.associate { it.id to it.name } }
+            .distinctUntilChanged()
+
+    /**
+     * [#793] フォロー中のタイムラインに混ぜるパブリックチャットの発言（kind:42）。投稿と同じ NoteUi に、
+     * 発言先のチャンネル（[NoteUi.chatChannel]）と返信元（[resolveReplyParent] の 42）を載せる。
+     * チャンネルの分からない発言は出さない（開く先が無い）。名前が手元に無ければ kind:40 を id で取りに行く
+     * （届けば ingest がチャンネル一覧に入れ、[channelNamesFlow] 経由で名前が出る）。
+     */
+    private fun toChatNoteUi(
+        row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>, channelNames: Map<String, String>,
+    ): NoteUi? {
+        val tags = parseTags(row.tags_json)
+        val channelId = Nip28.channelIdOf(tags) ?: return null
+        val name = channelNames[channelId]
+        if (name == null) requestEvent(channelId, listOfNotNull(Nip28.relayHintOf(tags, channelId)))
+        val note = withQuoteAndReply(toNoteUi(row, byPubkey[row.pubkey]), row, byPubkey)
+        return note.copy(
+            chatChannel = app.nostrdeck.model.ChatChannelRef(channelId, name),
+            // 返信の発言は投稿の返信と同じ種別表示（アクセント）にする。
+            isReply = note.replyParent != null || Nip28.replyToOf(tags) != null,
+        )
+    }
 
     /**
      * 画面遷移（タブ切替・詳細表示）で都度フィードが空に戻る問題を避けるため、
@@ -1489,6 +1535,19 @@ class EventRepository(
         val id: String, val name: String, val about: String,
         val picture: String?, val createdAt: Long, val lastAt: Long,
     )
+
+    /**
+     * [#793] 届いた kind:40（チャンネル作成）をチャンネル一覧（channel）へ入れる。フォロー中 TL の発言は
+     * thread.nchan.vip の一覧に無いチャンネルのものもあり、名前を出すために id で取りに行く。
+     * 一覧に名前つきで既にあれば触らない（HTTP 由来は kind:41 の編集を反映済みで、kind:40 の名前は古いことがある）。
+     * 最終活動は既存の値を残し、無ければ作成時刻（以後の発言で touchChannelActivity が進める）。
+     */
+    private fun ingestChannelCreate(e: NostrEvent) {
+        val meta = Nip28.channelMetaOf(e.content) ?: return
+        val prev = q.channelById(e.id).executeAsOneOrNull()
+        if (prev != null && prev.name.isNotBlank()) return
+        q.upsertChannel(e.id, meta.name, meta.about, meta.picture, e.createdAt, prev?.last_message_at ?: e.createdAt)
+    }
 
     /** チャンネルルーム表示時に購読開始（kind:42 #e=channelId）。チャンネルのリレーへも接続する。 */
     fun subscribeChannel(columnId: String, channelId: String) {
@@ -3068,6 +3127,50 @@ class EventRepository(
         eventRequests.trySend(id)
     }
 
+    /**
+     * [#791] イベント 1 件を取って待つ（本文リンクの kind で開き先を決めるため）。
+     * 手元（event テーブル）にあればそれを返す。無ければ接続中リレー + [hints] へ ids 指定の一時 REQ を投げ、
+     * 届くのを最大 [timeoutMs] 待つ。問い合わせた接続中のリレーがすべて EOSE を返しても届かなければ、
+     * そこで諦めて null（無いイベントのために上限まで待たせない）。
+     *
+     * kind:40（チャンネル作成）は取り込みで event テーブルに保存しないので、DB ではなく届いたイベントを
+     * 直接受け取る（[OwnRefetchCollector] の受け口を借りる）。届いたものは通常の取り込み経路にも流れる。
+     */
+    suspend fun fetchEvent(id: String, hints: List<String> = emptyList(), timeoutMs: Long = 6_000): NostrEvent? {
+        withContext(Dispatchers.Default) { q.eventById(id).executeAsOneOrNull() }?.let {
+            return NostrEvent(it.id, it.pubkey, it.kind.toInt(), it.created_at, it.content, parseTags(it.tags_json), it.sig)
+        }
+        val subId = "evone_${id.take(16)}_${Random.nextInt(1_000_000)}"
+        val collector = OwnRefetchCollector()
+        ownRefetches.update { it + (subId to collector) }
+        try {
+            // ヒントリレーへ一時接続（requestEvent と同じ規則・接続数上限つき）。EOSE を待つ数は
+            // 「いま繋がっているリレー + 今回繋ぎに行くヒント」（落ちているリレーの EOSE は来ないので数えない）。
+            val asked = withContext(relayDispatcher) {
+                var added = 0
+                for (raw in hints) {
+                    val url = normalizeRelayUrl(raw)
+                    if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                    if (relays.containsKey(url)) continue
+                    if (hintRelays.size >= HINT_RELAY_CAP) break
+                    if (hintRelays.add(url)) { ensureRelay(url); added++ }
+                }
+                relays.values.count { it.state.value == RelayConnState.CONNECTED } + added
+            }
+            subscribeAll(subId, Filter(ids = listOf(id), limit = 1))
+            withTimeoutOrNull(timeoutMs) {
+                combine(collector.events, collector.eose) { events, eose -> events to eose }
+                    .first { (events, eose) -> events.any { it.id == id } || (asked > 0 && eose.size >= asked) }
+            }
+        } finally {
+            ownRefetches.update { it - subId }
+            unsubscribeAll(subId)
+        }
+        return withContext(Dispatchers.Default) {
+            collector.events.value.firstOrNull { it.id == id && EventCrypto.verify(it) }
+        }
+    }
+
     private var eventReqSeq = 0
 
     private suspend fun eventBatchLoop() {
@@ -3369,6 +3472,8 @@ class EventRepository(
                 requestMentionedProfiles(e.content)
                 rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
+            // [#793] NIP-28 チャンネル作成。フォロー中 TL の発言に「#名前」を出すため id で取りに行ったものを一覧へ。
+            Nip28.KIND_CHANNEL_CREATE -> ingestChannelCreate(e)
             0 -> upsertProfile(e)
             3 -> { updateFollows(e); captureContacts(e) }  // 自分のフォロー更新＋全 pubkey の集計[#96/#97/#98]
             10002 -> { captureNip65(e); if (relayListRep.accept(e, myPubkey)) applyRelayList(relayListRep.state.value) }
@@ -4404,6 +4509,8 @@ class EventRepository(
             Nip22.KIND -> Nip22.parentEventIdOf(tags)
                 ?: Nip22.rootEventIdOf(tags)
                 ?: Nip22.parentAddressOf(tags)?.let { addressToIdLocal(it) }
+            // [#793] パブリックチャットの発言は reply マーカーの e だけが返信先（root はチャンネル）。
+            Nip28.KIND_MESSAGE -> Nip28.replyToOf(tags)
             else -> null
         } ?: return null
         // 返信先 e タグの relay ヒント（3要素目）があれば取得に使う。

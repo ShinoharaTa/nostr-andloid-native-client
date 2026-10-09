@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import app.nostrdeck.crypto.Nip19
 import kotlinx.coroutines.launch
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.state.eventLinkOf
 import app.nostrdeck.model.Profile
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -365,10 +366,8 @@ private fun InlineText(
                     }
                 }
             } else {
-                Nip19.eventBechToIdAndRelays(bech)?.let { (id, relays) ->
-                    repo?.requestEvent(id, relays)  // 未取得でも先に取得を出しておく
-                    nav?.onEvent?.invoke(id)
-                }
+                // [#791] kind・リレーヒントも渡す。未取得分の取得（ヒント込み）と開き先の判定は onEventLink 側で行う。
+                eventLinkOf(bech)?.let { link -> nav?.onEventLink?.invoke(link) }
             }
         } else {
             runCatching { uriHandler.openUri(url) }

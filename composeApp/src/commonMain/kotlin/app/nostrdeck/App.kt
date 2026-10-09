@@ -50,7 +50,12 @@ import app.nostrdeck.ui.LocalRepository
 import app.nostrdeck.ui.LoginGate
 import app.nostrdeck.ui.NoteNav
 import app.nostrdeck.ui.Nyan
+import app.nostrdeck.state.DetailRoute
+import app.nostrdeck.state.EventLink
+import app.nostrdeck.state.resolveEventLinkRoute
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -82,13 +87,19 @@ fun App(
         // 本文メンション(@npub…)解決用の pubkey→name マップを供給（実データ時のみ）。
         val names by (repository?.profileNames()?.collectAsState(emptyMap<String, String>())
             ?: remember { mutableStateOf(emptyMap<String, String>()) })
-        // 本文リンクのタップ遷移: @→プロフィール / #→ハッシュタグカラム / note・nevent→スレッド。
+        // 本文リンクのタップ遷移: @→プロフィール / #→ハッシュタグカラム / note・nevent→スレッド
+        // （[#791] パブリックチャットの kind:40/42 はルームを重ねる）。
         val navScope = rememberCoroutineScope()
         val noteNav = remember(state, repository) {
+            // [#791] 開き先の判定中（取得待ち）に別のリンクを押したら前の判定は捨てる（後から古いほうが開かないように）。
+            var pendingEventLink: Job? = null
             NoteNav(
                 onMention = { hex -> state.openProfile(hex) },
                 onHashtag = { tag -> state.openHashtag(tag) },
-                onEvent = { id -> state.openThreadDetail(id) },
+                onEventLink = { link ->
+                    pendingEventLink?.cancel()
+                    pendingEventLink = navScope.launch { openEventLink(state, repository, link) }
+                },
                 // naddr は kind+著者+dTag から実イベント id を解決してスレッドを開く（Markdown 記事と同じ経路）。
                 onAddr = { addr ->
                     navScope.launch {
@@ -266,4 +277,21 @@ fun App(
             }
         }
     }
+}
+
+/**
+ * [#791] 本文の note・nevent を開く。kind:40/42（パブリックチャット）ならルームを重ね、それ以外はスレッド。
+ * kind は nevent → 手元のイベント → 手元のチャンネル一覧 → 取得（最大 6 秒）の順で決める（[resolveEventLinkRoute]）。
+ * 取得しても分からなければスレッド（従来どおり）。
+ */
+private suspend fun openEventLink(state: DeckState, repo: EventRepository?, link: EventLink) {
+    val route = resolveEventLinkRoute(
+        link,
+        local = { id -> repo?.eventByIdFlow(id)?.first() },
+        isKnownChannel = { id -> repo?.channelsFlow()?.first()?.any { it.id == id } == true },
+        fetch = { id, relays -> repo?.fetchEvent(id, relays) },
+    )
+    // スレッドで開くときもリレーヒントは取得に使う（スレッド表示は ids で取り直すがヒントを知らない）。
+    if (route is DetailRoute.ThreadView && link.relays.isNotEmpty()) repo?.requestEvent(link.id, link.relays)
+    state.openDetail(route)
 }

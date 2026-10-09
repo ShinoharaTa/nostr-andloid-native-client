@@ -530,30 +530,29 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
                     val entries = all.filterNot {
                         // メニューで非表示にした通知系カテゴリを除外。
-                        val cat = when (it) {
-                            is FeedEntry.Notice -> when (it.notif.kind) {
-                                NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
-                                NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
-                                NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
-                                NotificationKind.DM -> FeedNoticeCategory.DMS  // [#419]
-                                else -> null
-                            }
-                            is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS
-                            is FeedEntry.Post -> null
-                        }
+                        // [#793] 対応表は feedNoticeCategoryOf（パブリックチャットの発言 → CHAT を足した）。
+                        val cat = app.nostrdeck.model.feedNoticeCategoryOf(it)
                         if (cat != null && cat in hiddenCategories) return@filterNot true
                         if (revealed) return@filterNot false
                         when (it) {
+                            // [#793] チャットの発言も投稿と同じ判定（Post で流れてくる）。
                             is FeedEntry.Post -> matcher.muted(it.note)
                             is FeedEntry.Notice -> matcher.muted(it.notif)
                             is FeedEntry.MyReaction -> matcher.muted(it.target)
                         }
                     }
+                    // [#793] チャットの発言の行き先（そのチャンネルのルーム）。今は通知のチャット行と同じく
+                    // 「パブリックチャット」の画面へ移ってルームを選ぶ。
+                    // [#793] 「#チャンネル名 で発言」の行・本文・返信のタップ: ルームを詳細オーバーレイで重ねる（#791 と同じ経路）。
+                    val openChannel: (String) -> Unit = { channelId -> state.openChannelRoom(channelId) }
                     SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })
                     val selIdx = kbColumnSelection(
                         state, spec.id, entries.size, listState,
                         resolve = { i -> feedEntryNote(entries.getOrNull(i)) },
-                        onOpen = openThread, onReply = doReply, onRepost = doQuote,
+                        // [#793] キー操作でも、チャットの発言はタップと同じくルームを開く（開く・返信）。
+                        onOpen = { n -> val ch = n.chatChannel; if (ch != null) openChannel(ch.id) else openThread(n) },
+                        onReply = { n -> val ch = n.chatChannel; if (ch != null) openChannel(ch.id) else doReply(n) },
+                        onRepost = doQuote,
                     )
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
@@ -561,6 +560,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         onNoticeClick = { n -> openNotificationTarget(state, n) },  // [#419]
                         onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
                         selectedIndex = selIdx,
+                        onChannelClick = openChannel,  // [#793]
                     )
                 }
                 isNotifications -> {

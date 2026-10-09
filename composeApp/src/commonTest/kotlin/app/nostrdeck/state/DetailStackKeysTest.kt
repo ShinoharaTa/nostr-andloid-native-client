@@ -31,6 +31,19 @@ class DetailStackKeysTest {
     }
 
     @Test
+    fun channel_room_key_distinguishes_highlighted_message() {
+        // [#791] 同じルームでも強調する発言が違えば別の画面。ほかの種類とも衝突しない。
+        val keys = detailStackKeys(
+            listOf(
+                DetailRoute.ThreadView("x"),
+                DetailRoute.ChannelRoomView("x"),
+                DetailRoute.ChannelRoomView("x", messageId = "m"),
+            ),
+        )
+        assertEquals(listOf("0:thread:x", "1:room:x:", "2:room:x:m"), keys)
+    }
+
+    @Test
     fun surviving_entries_keep_their_key_across_push_and_pop() {
         val base = listOf(DetailRoute.ProfileView("alice"))
         val pushed = base + DetailRoute.ThreadView("note1")

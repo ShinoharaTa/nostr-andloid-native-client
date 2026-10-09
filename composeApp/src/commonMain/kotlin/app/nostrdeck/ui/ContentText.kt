@@ -14,6 +14,7 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.model.ContentToken
 import app.nostrdeck.model.extractMediaUrls
 import app.nostrdeck.model.tokenizeNostrContent
+import app.nostrdeck.state.eventLinkOf
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckWeight
 
@@ -65,8 +66,9 @@ fun noteAnnotated(
                 styled(if (nav != null) ({ nav.onMention(hex) }) else null)
             }
             bech.startsWith("note1") || bech.startsWith("nevent1") -> {
-                val id = Nip19.eventBechToHex(bech) ?: return append(raw)
-                styled(if (nav != null) ({ nav.onEvent(id) }) else null)
+                // [#791] nevent の kind・リレーヒントも渡す（kind:40/42 はパブリックチャットのルームで開く）。
+                val link = eventLinkOf(bech) ?: return append(raw)
+                styled(if (nav != null) ({ nav.onEventLink(link) }) else null)
             }
             bech.startsWith("naddr1") -> {
                 val addr = Nip19.naddrDecode(bech) ?: return append(raw)
