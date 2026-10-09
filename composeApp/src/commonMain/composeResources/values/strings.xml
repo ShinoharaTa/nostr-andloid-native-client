@@ -186,6 +186,7 @@
     <string name="tpl_favs_hint">Posts you reacted to</string>
     <string name="tpl_status">Statuses</string>
     <string name="tpl_status_hint">Now Playing and statuses from people you follow</string>
+    <string name="tpl_channel_list_hint">Public chat threads (NIP-28)</string>
     <string name="status_type_general">Status</string>
     <string name="status_type_music">Now Playing</string>
     <string name="status_filter">Show</string>

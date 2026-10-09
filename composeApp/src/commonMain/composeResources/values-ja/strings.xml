@@ -182,6 +182,7 @@
     <string name="tpl_favs_hint">自分がリアクションした投稿</string>
     <string name="tpl_status">ステータス</string>
     <string name="tpl_status_hint">フォロー中の人の Now Playing とひとこと</string>
+    <string name="tpl_channel_list_hint">パブリックチャットのスレッド一覧（NIP-28）</string>
     <string name="status_type_general">ステータス</string>
     <string name="status_type_music">Now Playing</string>
     <string name="status_filter">表示</string>
