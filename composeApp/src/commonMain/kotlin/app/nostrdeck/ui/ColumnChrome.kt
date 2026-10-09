@@ -228,6 +228,8 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
                 FeedCategoryItem(stringResource(Res.string.cat_reposts_of_me), FeedNoticeCategory.REPOSTS, menu.hiddenCategories, menu.onToggleCategory)
                 FeedCategoryItem(stringResource(Res.string.cat_my_reactions), FeedNoticeCategory.MY_REACTIONS, menu.hiddenCategories, menu.onToggleCategory)
                 FeedCategoryItem(stringResource(Res.string.cat_dms), FeedNoticeCategory.DMS, menu.hiddenCategories, menu.onToggleCategory)
+                // [#793] フォロー中の人（と自分）のパブリックチャットの発言。既定は表示。
+                FeedCategoryItem(stringResource(Res.string.cat_public_chat), FeedNoticeCategory.CHAT, menu.hiddenCategories, menu.onToggleCategory)
                 HorizontalDivider(color = DeckColors.Border)
             }
             // [#772] ステータスカラム: 表示する種類（すべて / Now Playing / ステータス）。幅と同じくメニューを閉じない。

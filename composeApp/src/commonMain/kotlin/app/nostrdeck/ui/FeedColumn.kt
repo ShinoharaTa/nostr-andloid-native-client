@@ -187,6 +187,8 @@ fun FollowingFeedColumn(
     onNoticeClick: (NotificationUi) -> Unit = {},
     onRefresh: (() -> Unit)? = null,   // [#53] プルリフレッシュ（非nullで有効。REQ張り直し）
     selectedIndex: Int = -1,           // [#14] キーボード選択中のインデックス（-1=なし）
+    /** [#793] パブリックチャットの発言の行き先（そのチャンネルのルームを開く）。チャンネル id を渡す。 */
+    onChannelClick: (channelId: String) -> Unit = {},
 ) {
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
         if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
@@ -205,12 +207,20 @@ fun FollowingFeedColumn(
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(entries, key = { _, it -> feedEntryKey(it) }) { index, entry ->
                     when (entry) {
-                        is FeedEntry.Post -> NoteItem(
-                            entry.note, onClick = { onNoteClick(entry.note) },
-                            onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) },
-                            onAuthorClick = onAuthorClick,
-                            selected = index == selectedIndex,
-                        )
+                        is FeedEntry.Post -> {
+                            // [#793] チャットの発言は、本文のタップも返信もそのチャンネルのルームへ。スレッド表示には
+                            // チャンネル内の返信（kind:42）が出ず、ここから返すと kind:1 の返信になってしまうため。
+                            val chat = entry.note.chatChannel
+                            NoteItem(
+                                entry.note,
+                                onClick = if (chat != null) ({ onChannelClick(chat.id) }) else ({ onNoteClick(entry.note) }),
+                                onReply = if (chat != null) ({ onChannelClick(chat.id) }) else ({ onReply(entry.note) }),
+                                onQuote = { onQuote(entry.note) },
+                                onAuthorClick = onAuthorClick,
+                                selected = index == selectedIndex,
+                                onChannelClick = onChannelClick,
+                            )
+                        }
                         is FeedEntry.Notice -> NoticeRow(
                             entry.notif,
                             onClick = { onNoticeClick(entry.notif) },
