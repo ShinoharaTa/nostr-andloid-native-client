@@ -21,22 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Mood
-import androidx.compose.material.icons.outlined.Tag
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Info
@@ -107,11 +97,8 @@ import nostr_deck_client.composeapp.generated.resources.embed_spotify
 import nostr_deck_client.composeapp.generated.resources.embed_video
 import nostr_deck_client.composeapp.generated.resources.embed_hide_carded_urls
 import nostr_deck_client.composeapp.generated.resources.embed_youtube
-import nostr_deck_client.composeapp.generated.resources.group_connection
 import nostr_deck_client.composeapp.generated.resources.group_customize
-import nostr_deck_client.composeapp.generated.resources.group_quick_access
 import nostr_deck_client.composeapp.generated.resources.group_system
-import nostr_deck_client.composeapp.generated.resources.nav_dm
 import nostr_deck_client.composeapp.generated.resources.section_about
 import nostr_deck_client.composeapp.generated.resources.section_account
 import nostr_deck_client.composeapp.generated.resources.section_appearance
@@ -146,7 +133,6 @@ import nostr_deck_client.composeapp.generated.resources.theme_dark
 import nostr_deck_client.composeapp.generated.resources.theme_light
 import nostr_deck_client.composeapp.generated.resources.theme_system
 import nostr_deck_client.composeapp.generated.resources.theme_title
-import nostr_deck_client.composeapp.generated.resources.tile_profile
 import nostr_deck_client.composeapp.generated.resources.ui_scale_desc
 import nostr_deck_client.composeapp.generated.resources.ui_scale_large
 import nostr_deck_client.composeapp.generated.resources.ui_scale_medium
@@ -156,7 +142,6 @@ import nostr_deck_client.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
 import app.nostrdeck.i18n.getString
 import app.nostrdeck.i18n.stringResource
-import app.nostrdeck.state.NavDest
 import app.nostrdeck.model.NoteAccentStyle
 import app.nostrdeck.model.NoteAccentKind
 import androidx.compose.ui.graphics.Color
@@ -170,24 +155,14 @@ import app.nostrdeck.theme.DeckWeight
 /**
  * 設定（Android 大画面踏襲）。list-detail 2ペイン：左=メニュー / 右=内容。
  * Expanded では先頭セクションを既定表示。
+ * [#806] 一覧に並ぶのはアプリの設定だけ。Nostr の設定（ミュート・リレー等）は自分のアイコンのメニュー（AccountMenu）から
+ * [DeckState.openSettingsSection] で右ペイン（Compact は単独の画面）へ直接入る。
  */
 @Composable
 fun SettingsScreen(state: DeckState, isCompact: Boolean) {
     val sections = SampleData.settingsSectionIds
     val selectedId = state.settingsSection ?: if (!isCompact) sections.first() else null
-    val repo = LocalRepository.current
-    val myPubkey = repo?.loggedInPubkey()?.collectAsState(null)?.value
-
-    // [#hub] プロフィールだけは全幅オーバーレイ（1枚の大きな画面）。
-    // ふぁぼ/ブックマーク/ミュート等は設定の右ペイン（リスト）に表示する。
-    val onSelect: (String) -> Unit = { id ->
-        when (id) {
-            "profile_view" -> myPubkey?.let { state.openProfile(it) }
-            // [#nav] DM はナビから外したので、ここから DM 画面へ遷移する。
-            "dm_view" -> { state.clearDetail(); state.navDest = NavDest.DM }
-            else -> state.settingsSection = id
-        }
-    }
+    val onSelect: (String) -> Unit = { id -> state.settingsSection = id }
 
     TwoPane(
         isCompact = isCompact,
@@ -195,51 +170,36 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
         list = { SettingsMenu(selectedId, onSelect) },
         detail = {
             if (selectedId == null) DetailPlaceholder(stringResource(Res.string.placeholder_select_menu))
-            // Compact はタイトル横に ← を出して一覧へ戻る（Expanded は2ペインなので不要）。
-            else SettingsContent(selectedId, state, onBack = if (isCompact) ({ state.settingsSection = null }) else null)
+            // Compact はタイトル横に ← を出して戻る（Expanded は2ペインなので不要）。
+            // [#806] 一覧から開いた節は一覧へ、メニューから開いた節はメニューを開く前の画面へ。
+            else SettingsContent(selectedId, state, onBack = if (isCompact) ({ state.closeSettingsSection() }) else null)
         },
         listWidth = 280,
     )
 }
 
-// [#28] メニューを「ランチャー(パレット)」化。よく使う機能をタイルで前面に、設定はグループ化。
+// [#28] メニューを「ランチャー(パレット)」化。設定はグループ化。
 // [#149] ラベルは文字列リソース（既定=英語 / values-ja=日本語）。
 private data class SItem(val id: String, val label: StringResource, val icon: ImageVector)
 
-// ① よく使う（大タイル）: 日常操作。設定というより機能。
-// [#hub] 自分ハブ = 設定一覧。プロフ/私的リスト/ミュートへの直行口をここに集約する
-// （レール/下バーはアバター1枠だけにして煩雑さを避ける）。
-private val paletteFav = listOf(
-    SItem("profile_view", Res.string.tile_profile, Icons.Outlined.Person),
-    // [#nav] DM は下部ナビ/レールから外したため、ここが導線（タップで DM 画面へ）。
-    SItem("dm_view", Res.string.nav_dm, Icons.Outlined.MailOutline),
-    SItem("favs", Res.string.section_favs, Icons.Outlined.StarBorder),
-    SItem("bookmarks", Res.string.section_bookmarks, Icons.Outlined.BookmarkBorder),
-    SItem("mute", Res.string.section_mute, Icons.Outlined.Block),
-)
-// ②③④ グループ化した設定。
+// グループ化した設定。
+// [#806] 「よく使う」（プロフィール・DM・ふぁぼ・ブックマーク・ミュート）と「接続・アカウント」、
+// カスタマイズのうち絵文字・ハッシュタグは、自分のアイコンのメニュー（AccountMenu）へ移した。
+// ここに残すのはアプリ（端末）の設定だけ。並びは SampleData.settingsSectionIds と同じ。
 private val paletteGroups = listOf(
     Res.string.group_customize to listOf(
         SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
-        SItem("emoji", Res.string.section_emoji, Icons.Outlined.Mood),
-        SItem("hashtags", Res.string.section_hashtags, Icons.Outlined.Tag),   // [#393]
         SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
-    ),
-    Res.string.group_connection to listOf(
-        // [#246] kind:0 編集への導線。従来は自分プロフィールの「編集」ボタン経由のみで
-        // 発見しにくかった（設定に項目が無い＝「編集できない」と誤認される）。
-        SItem("account", Res.string.section_account, Icons.Outlined.Edit),
-        SItem("signer", Res.string.section_signer, Icons.Outlined.Key),
-        SItem("relays", Res.string.section_relays, Icons.Outlined.Cloud),
-        SItem("dmrelays", Res.string.section_dm_relays, Icons.Outlined.MailOutline),
-        SItem("media", Res.string.section_media, Icons.Outlined.CloudUpload),
-        SItem("wallet", Res.string.section_wallet, Icons.Outlined.Bolt),
     ),
     Res.string.group_system to listOf(
         SItem("data", Res.string.section_data, Icons.Outlined.Storage),
         SItem("about", Res.string.section_about, Icons.Outlined.Info),
     ),
 )
+
+/** [#806] 設定の一覧に並ぶ節の id（表示順）。 */
+internal val settingsPaletteIds: List<String>
+    get() = paletteGroups.flatMap { (_, rows) -> rows.map { it.id } }
 
 @Composable
 private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
@@ -249,21 +209,6 @@ private fun SettingsMenu(selectedId: String?, onSelect: (String) -> Unit) {
         }
         HorizontalDivider(color = DeckColors.Border)
         LazyColumn(Modifier.fillMaxSize().padding(bottom = DeckSpace.Xl)) {
-            item { PaletteGroupHeader(stringResource(Res.string.group_quick_access)) }
-            item {
-                // 2列グリッド（4タイルを2行に）。1行4列だとラベルが窮屈で見切れるため。
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
-                    verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
-                ) {
-                    paletteFav.chunked(2).forEach { rowItems ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
-                            rowItems.forEach { PaletteTile(it, selectedId, onSelect, Modifier.weight(1f)) }
-                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
             paletteGroups.forEach { (title, rows) ->
                 item { PaletteGroupHeader(stringResource(title)) }
                 items(rows, key = { it.id }) { PaletteRow(it, selectedId, onSelect) }
@@ -278,22 +223,6 @@ private fun PaletteGroupHeader(title: String) {
         title, color = DeckColors.Text3, fontSize = DeckType.Label,
         modifier = Modifier.padding(horizontal = DeckSpace.Md).padding(top = DeckSpace.Md, bottom = DeckSpace.Xs),
     )
-}
-
-@Composable
-private fun PaletteTile(item: SItem, selectedId: String?, onSelect: (String) -> Unit, modifier: Modifier) {
-    val active = item.id == selectedId
-    Column(
-        modifier.clip(RoundedCornerShape(DeckRadius.Md))
-            .background(if (active) DeckColors.AccentWeak else DeckColors.Surface2)
-            .clickable { onSelect(item.id) }
-            .padding(vertical = DeckSpace.Md),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(item.icon, null, tint = if (active) DeckColors.Text else DeckColors.Text2, modifier = Modifier.size(DeckDimens.IconLg))
-        Spacer(Modifier.height(DeckSpace.Xs))
-        Text(stringResource(item.label), color = if (active) DeckColors.Text else DeckColors.Text2, fontSize = DeckType.Label, maxLines = 1)
-    }
 }
 
 @Composable

@@ -116,7 +116,8 @@ fun AppScaffold(state: DeckState) {
                 NavDest.HOME -> state.back()
                 NavDest.CHANNELS -> state.publicChatRoom = null
                 NavDest.DM -> state.dmThread = null
-                NavDest.SETTINGS -> state.settingsSection = null
+                // [#806] 自分のアイコンのメニューから開いた節は、メニューを開く前の画面へ戻る。
+                NavDest.SETTINGS -> state.closeSettingsSection()
                 else -> {}
             }
         }

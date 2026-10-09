@@ -56,12 +56,61 @@ class DeckState(
     private fun persistPinned() = onPinnedChanged?.invoke(columns.filter { it.pinned })
 
     /** レール/下タブの選択中宛先。 */
-    var navDest by mutableStateOf(NavDest.HOME)
+    var navDest: NavDest
+        get() = navDestState
+        set(value) {
+            // [#806] 設定から離れたら、アイコンのメニューから開いたセクションの戻り先は忘れる。
+            if (value != NavDest.SETTINGS) settingsReturn = null
+            navDestState = value
+        }
+    private var navDestState by mutableStateOf(NavDest.HOME)
 
     // 各 list-detail 宛先で選択中の項目（右ペイン）。Compact では null=一覧 / 非null=詳細。
     var publicChatRoom by mutableStateOf<String?>(null)   // 選択中チャンネル id
     var dmThread by mutableStateOf<String?>(null)         // 選択中の相手 pubkey
     var settingsSection by mutableStateOf<String?>(null)  // 選択中の設定セクション
+
+    /**
+     * [#806] アイコンのメニューから設定のセクション（[section]）を開く前の画面。
+     * 宛先・重ねていた詳細・表示中のカラム（Compact のホーム）を覚えて、そのセクションを閉じたらここへ戻す。
+     */
+    private data class SettingsReturn(
+        val section: String,
+        val dest: NavDest,
+        val details: List<DetailRoute>,
+        val columnId: String?,
+    )
+    private var settingsReturn: SettingsReturn? = null
+
+    /**
+     * [#806] アイコンのメニューから設定のセクション（ミュート・リレー等。設定の一覧には並ばない）を直接開く。
+     * 設定の外から開いたときは開く前の画面を覚え、[closeSettingsSection] でそこへ戻す。
+     * 設定の中から開き直したときは、最初に覚えた戻り先のまま（設定の一覧から入っていたなら一覧へ戻る）。
+     */
+    fun openSettingsSection(id: String) {
+        settingsReturn = if (navDest != NavDest.SETTINGS) {
+            SettingsReturn(id, navDest, detailStack.toList(), visibleColumnId)
+        } else {
+            settingsReturn?.copy(section = id)
+        }
+        clearDetail()
+        settingsSection = id
+        navDest = NavDest.SETTINGS
+    }
+
+    /**
+     * 設定のセクションを閉じる（Compact の ← / システムバック）。設定の一覧から開いたセクションは一覧へ戻る。
+     * [#806] アイコンのメニューから開いたセクションは、メニューを開く前の画面へ戻る。
+     */
+    fun closeSettingsSection() {
+        val back = settingsReturn?.takeIf { it.section == settingsSection }
+        settingsSection = null
+        if (back == null) return
+        // ホームはカラムの位置まで戻す（ホームを離れている間に Pager が作り直されて先頭へ戻っているため）。
+        val column = back.columnId?.takeIf { id -> back.dest == NavDest.HOME && columns.any { it.id == id } }
+        if (column != null) jumpTo(column) else navDest = back.dest
+        detailStack.addAll(back.details)
+    }
 
     /** レールアイコン/タブから要求されたジャンプ先カラム id（消費後に null へ）。 */
     var jumpTarget by mutableStateOf<String?>(null)
