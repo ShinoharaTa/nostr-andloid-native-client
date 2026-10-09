@@ -3127,6 +3127,50 @@ class EventRepository(
         eventRequests.trySend(id)
     }
 
+    /**
+     * [#791] イベント 1 件を取って待つ（本文リンクの kind で開き先を決めるため）。
+     * 手元（event テーブル）にあればそれを返す。無ければ接続中リレー + [hints] へ ids 指定の一時 REQ を投げ、
+     * 届くのを最大 [timeoutMs] 待つ。問い合わせた接続中のリレーがすべて EOSE を返しても届かなければ、
+     * そこで諦めて null（無いイベントのために上限まで待たせない）。
+     *
+     * kind:40（チャンネル作成）は取り込みで event テーブルに保存しないので、DB ではなく届いたイベントを
+     * 直接受け取る（[OwnRefetchCollector] の受け口を借りる）。届いたものは通常の取り込み経路にも流れる。
+     */
+    suspend fun fetchEvent(id: String, hints: List<String> = emptyList(), timeoutMs: Long = 6_000): NostrEvent? {
+        withContext(Dispatchers.Default) { q.eventById(id).executeAsOneOrNull() }?.let {
+            return NostrEvent(it.id, it.pubkey, it.kind.toInt(), it.created_at, it.content, parseTags(it.tags_json), it.sig)
+        }
+        val subId = "evone_${id.take(16)}_${Random.nextInt(1_000_000)}"
+        val collector = OwnRefetchCollector()
+        ownRefetches.update { it + (subId to collector) }
+        try {
+            // ヒントリレーへ一時接続（requestEvent と同じ規則・接続数上限つき）。EOSE を待つ数は
+            // 「いま繋がっているリレー + 今回繋ぎに行くヒント」（落ちているリレーの EOSE は来ないので数えない）。
+            val asked = withContext(relayDispatcher) {
+                var added = 0
+                for (raw in hints) {
+                    val url = normalizeRelayUrl(raw)
+                    if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                    if (relays.containsKey(url)) continue
+                    if (hintRelays.size >= HINT_RELAY_CAP) break
+                    if (hintRelays.add(url)) { ensureRelay(url); added++ }
+                }
+                relays.values.count { it.state.value == RelayConnState.CONNECTED } + added
+            }
+            subscribeAll(subId, Filter(ids = listOf(id), limit = 1))
+            withTimeoutOrNull(timeoutMs) {
+                combine(collector.events, collector.eose) { events, eose -> events to eose }
+                    .first { (events, eose) -> events.any { it.id == id } || (asked > 0 && eose.size >= asked) }
+            }
+        } finally {
+            ownRefetches.update { it - subId }
+            unsubscribeAll(subId)
+        }
+        return withContext(Dispatchers.Default) {
+            collector.events.value.firstOrNull { it.id == id && EventCrypto.verify(it) }
+        }
+    }
+
     private var eventReqSeq = 0
 
     private suspend fun eventBatchLoop() {

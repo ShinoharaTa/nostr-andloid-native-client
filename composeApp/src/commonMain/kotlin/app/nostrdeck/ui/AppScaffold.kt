@@ -279,6 +279,11 @@ private fun DetailOverlay(state: DeckState, isCompact: Boolean, stateHolder: Sav
                 ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
                     ThreadDetail(state, top.eventId)
                 }
+            // [#791] 本文の kind:40/42 へのリンクから開くパブリックチャットのルーム（スレッドと同じ中央パネル）。
+            is DetailRoute.ChannelRoomView ->
+                ConstrainedOverlay(isCompact, onScrimClick = { state.popDetail() }) {
+                    ChannelRoomDetail(state, top.channelId, top.messageId)
+                }
         }
     }
 }

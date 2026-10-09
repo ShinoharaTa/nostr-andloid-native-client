@@ -160,5 +160,6 @@ private fun ColumnTemplate.toKindForIcon() = when (this) {
     ColumnTemplate.SEARCH -> app.nostrdeck.model.ColumnKind.GLOBAL
     ColumnTemplate.HASHTAG -> app.nostrdeck.model.ColumnKind.HASHTAG
     ColumnTemplate.FAVS -> app.nostrdeck.model.ColumnKind.FAVS
+    ColumnTemplate.CHANNEL_LIST -> app.nostrdeck.model.ColumnKind.CHANNEL_LIST   // [#792]
     ColumnTemplate.STATUS -> app.nostrdeck.model.ColumnKind.STATUS
 }

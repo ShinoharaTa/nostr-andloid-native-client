@@ -182,6 +182,7 @@
     <string name="tpl_favs_hint">自分がリアクションした投稿</string>
     <string name="tpl_status">ステータス</string>
     <string name="tpl_status_hint">フォロー中の人の Now Playing とひとこと</string>
+    <string name="tpl_channel_list_hint">パブリックチャットのスレッド一覧（NIP-28）</string>
     <string name="status_type_general">ステータス</string>
     <string name="status_type_music">Now Playing</string>
     <string name="status_filter">表示</string>
@@ -496,6 +497,7 @@
     <string name="compose_posting">投稿中…</string>
     <string name="compose_attach_image">画像を添付</string>
     <string name="compose_attach_video">動画を添付</string>
+    <string name="compose_paste_image_failed">クリップボードの画像を読み込めませんでした</string>
     <string name="compose_insert_emoji">絵文字を挿入</string>
     <string name="compose_sensitive_on">センシティブ: ON</string>
     <string name="compose_sensitive">センシティブ指定</string>
@@ -657,6 +659,7 @@
     <string name="load_more">さらに読み込む</string>
     <string name="thread_title">スレッド</string>
     <string name="chat_select_channel">チャンネルを選択</string>
+    <string name="chat_room_unnamed">パブリックチャット</string>
     <string name="chat_loading_channel">チャンネルを読み込み中…</string>
     <string name="chat_write_message">✏️ メッセージを書く</string>
     <string name="chat_reply">リプライ</string>

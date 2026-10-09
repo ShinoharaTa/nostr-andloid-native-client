@@ -26,6 +26,11 @@ enum class KbAction { OPEN, REPLY, REPOST, REACT, BOOKMARK }
 sealed interface DetailRoute {
     data class ProfileView(val pubkey: String) : DetailRoute
     data class ThreadView(val eventId: String) : DetailRoute
+    /**
+     * [#791] パブリックチャット（NIP-28）のルーム。本文の kind:40/42 へのリンクから重ねる（タブは移らない）。
+     * [messageId] があれば（kind:42 へのリンク）、その発言の位置まで送って強調する。
+     */
+    data class ChannelRoomView(val channelId: String, val messageId: String? = null) : DetailRoute
 }
 
 /**
@@ -218,6 +223,20 @@ class DeckState(
     fun openThreadDetail(eventId: String) {
         if ((detailStack.lastOrNull() as? DetailRoute.ThreadView)?.eventId == eventId) return
         detailStack.add(DetailRoute.ThreadView(eventId))
+    }
+
+    /** [#791] パブリックチャットのルームを全幅で重ねる（同じルート＝同じルーム・同じ発言が末尾なら何もしない）。 */
+    fun openChannelRoom(channelId: String, messageId: String? = null) {
+        val route = DetailRoute.ChannelRoomView(channelId, messageId)
+        if (detailStack.lastOrNull() == route) return
+        detailStack.add(route)
+    }
+
+    /** [#791] 判定済みの詳細ルートを開く（本文リンクの開き先の判定結果をそのまま渡す）。 */
+    fun openDetail(route: DetailRoute) = when (route) {
+        is DetailRoute.ProfileView -> openProfile(route.pubkey)
+        is DetailRoute.ThreadView -> openThreadDetail(route.eventId)
+        is DetailRoute.ChannelRoomView -> openChannelRoom(route.channelId, route.messageId)
     }
 
     /** 詳細ルートを1つ閉じる。閉じたら true（戻る操作で消費）。 */

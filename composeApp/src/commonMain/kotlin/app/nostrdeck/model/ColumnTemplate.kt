@@ -27,6 +27,8 @@ enum class ColumnTemplate(
     SEARCH(Res.string.tpl_search, ColumnConfig.TEXT, Res.string.tpl_search_hint),
     HASHTAG(Res.string.tpl_hashtag, ColumnConfig.TEXT, Res.string.tpl_hashtag_hint),
     FAVS(Res.string.tpl_favs, hint = Res.string.tpl_favs_hint),
+    // [#792] パブリックチャット（NIP-28）の一覧。Web のテンプレ一覧に無い（Web #799）ので「ステータス」の前に置く。
+    CHANNEL_LIST(Res.string.nav_public_chat, hint = Res.string.tpl_channel_list_hint),
     STATUS(Res.string.tpl_status, hint = Res.string.tpl_status_hint),   // [#772] Web #767 と同じく末尾
 }
 
@@ -86,6 +88,11 @@ fun ColumnTemplate.build(
 
         ColumnTemplate.FAVS -> spec(id, "ふぁぼ欄", "自分のリアクション", ColumnKind.FAVS,
             ReqFilter(kinds = listOf(7)))
+
+        // [#792] パブリックチャット画面の一覧（SampleData.channelListColumn）と同じタイトル・サブタイトル・filter。
+        // 一覧は REQ を張らず refreshChannels（HTTP）で取るので、filter は同期の形を揃えるためだけに持つ。
+        ColumnTemplate.CHANNEL_LIST -> ColumnSpec(id, "パブリックチャット", "NIP-28 · channels",
+            ColumnKind.CHANNEL_LIST, ColumnRenderer.CHANNEL_LIST, ReqFilter(kinds = listOf(40, 41)), pinned = true)
 
         // [#772] 対象（フォロー + 自分）は実行時に決めるので authors は持たない。種類の絞り込みはカラムの「表示」（同期しない）。
         // タイトル・サブタイトル・filter は Web（columns.ts の feedColumn）と同じ。
