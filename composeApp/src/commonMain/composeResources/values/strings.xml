@@ -16,8 +16,8 @@
     <string name="settings_title">Settings</string>
 
     <!-- Settings: groups -->
-    <string name="group_customize">Customize</string>
-    <string name="group_system">System</string>
+    <string name="group_nostr">Nostr settings</string>
+    <string name="group_app">App settings</string>
 
     <!-- Settings: sections / tiles -->
     <string name="section_account">Edit profile</string>
