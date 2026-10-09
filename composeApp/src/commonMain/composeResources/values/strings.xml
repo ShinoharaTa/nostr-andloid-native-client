@@ -16,9 +16,7 @@
     <string name="settings_title">Settings</string>
 
     <!-- Settings: groups -->
-    <string name="group_quick_access">Quick access</string>
     <string name="group_customize">Customize</string>
-    <string name="group_connection">Connection &amp; account</string>
     <string name="group_system">System</string>
 
     <!-- Settings: sections / tiles -->

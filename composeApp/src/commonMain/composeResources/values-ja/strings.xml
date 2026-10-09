@@ -12,9 +12,7 @@
     <string name="settings_title">設定</string>
 
     <!-- Settings: groups -->
-    <string name="group_quick_access">よく使う</string>
     <string name="group_customize">カスタマイズ</string>
-    <string name="group_connection">接続・アカウント</string>
     <string name="group_system">システム</string>
 
     <!-- Settings: sections / tiles -->

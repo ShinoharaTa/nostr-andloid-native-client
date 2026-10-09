@@ -236,8 +236,8 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     val onReply: (NoteUi) -> Unit = { state.replyTo = it.event; state.showCompose = true }
     val onQuote: (NoteUi) -> Unit = { state.quoting = it.event; state.showCompose = true }
     val onBack: () -> Unit = { state.popDetail() }
-    // [#hub] 自分のプロフィールの「編集」→ 設定のアカウント（kind:0 編集）へ。オーバーレイは畳む。
-    val onEdit: () -> Unit = { state.clearDetail(); state.settingsSection = "account"; state.navDest = NavDest.SETTINGS }
+    // [#hub] 自分のプロフィールの「編集」→ プロフィール編集（kind:0）へ。[#806] 戻るでこのプロフィールに戻る。
+    val onEdit: () -> Unit = { state.openSettingsSection("account") }
 
     // [#96/#97] フォロー中/フォロワーの一覧はプロフィールを丸ごと差し替えて表示（戻るで復帰）。
     // Compact/Expanded 共通。フォロワーの集計はこのタブを開いた時に初めて走る。

@@ -359,7 +359,7 @@ private fun BottomBar(state: DeckState) {
             selected = state.notificationsActive, onClick = { state.openNotifications() },
         )
         val pk = myPubkey
-        // [#794] タップで自分のメニュー（プロフィール/DM/リレー/設定/ログアウト）。未ログインは今までどおり設定へ。
+        // [#794][#806] タップで自分のメニュー（よく使う / Nostr の設定 / 設定 / ログアウト）。未ログインは今までどおり設定へ。
         // DM・設定を開いている間はここを選択表示にし、未読 DM の件数もここに出す（AccountMenu が描く）。
         var accountMenuOpen by remember { mutableStateOf(false) }
         NavigationBarItem(
