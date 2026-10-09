@@ -176,5 +176,8 @@ object SampleData {
     // [#806] 設定の一覧に並ぶ節（アプリの設定だけ。表示順）。Expanded の既定表示は先頭。
     // Nostr の設定（account / signer / relays / mute / favs / bookmarks / dmrelays / media / emoji / hashtags / wallet）は
     // 自分のアイコンのメニュー（AccountMenuItem.section）から開くので、ここには含めない。
-    val settingsSectionIds = listOf("reaction", "appearance", "data", "about")
+    val settingsSectionIds = listOf(
+        "account", "emoji", "hashtags", "relays", "dmrelays", "media", "wallet", "signer",
+        "appearance", "reaction", "data", "about",
+    )
 }

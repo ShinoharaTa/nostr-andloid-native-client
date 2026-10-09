@@ -7,12 +7,8 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material.icons.outlined.Person
@@ -79,29 +75,24 @@ import org.jetbrains.compose.resources.StringResource
  * （SettingsScreen の SettingsContent の id）へ直接入る。
  */
 internal enum class AccountMenuItem(val label: StringResource, val icon: ImageVector, val section: String? = null) {
-    // よく使う
+    // よく使う（設定の一覧には並べず、ここからだけ開く）
     PROFILE(Res.string.tile_profile, Icons.Outlined.Person),
     DM(Res.string.nav_dm, Icons.Outlined.MailOutline),
     FAVS(Res.string.section_favs, Icons.Outlined.StarBorder, "favs"),
     BOOKMARKS(Res.string.section_bookmarks, Icons.Outlined.BookmarkBorder, "bookmarks"),
     MUTE(Res.string.section_mute, Icons.Outlined.Block, "mute"),
-    // Nostr の設定
-    PROFILE_EDIT(Res.string.section_account, Icons.Outlined.Edit, "account"),
+    // Nostr の設定のうち、よく触るもの（残りは「設定」の一覧から）
     EMOJI(Res.string.section_emoji, Icons.Outlined.Mood, "emoji"),
     HASHTAGS(Res.string.section_hashtags, Icons.Outlined.Tag, "hashtags"),
     RELAYS(Res.string.section_relays, Icons.Outlined.Cloud, "relays"),
-    DM_RELAYS(Res.string.section_dm_relays, Icons.Outlined.MailOutline, "dmrelays"),
-    MEDIA(Res.string.section_media, Icons.Outlined.CloudUpload, "media"),
-    WALLET(Res.string.section_wallet, Icons.Outlined.Bolt, "wallet"),
-    SIGNER(Res.string.section_signer, Icons.Outlined.Key, "signer"),   // アカウント（鍵・ログイン方法）
-    // アプリの設定（表示・リアクション・データ・このアプリについて）
+    // 設定（Nostr の設定 + アプリの設定の一覧）
     SETTINGS(Res.string.settings_title, Icons.Outlined.Settings),
     LOGOUT(Res.string.logout, Icons.AutoMirrored.Outlined.Logout),
 }
 
-/** [#806] 直後に区切り線を引く項目（よく使う / Nostr の設定 / 設定 / ログアウト の境目）。 */
+/** [#806] 直後に区切り線を引く項目（よく使う / 絵文字・ハッシュタグ・リレー / 設定 / ログアウト の境目）。 */
 internal val AccountMenuItem.endsGroup: Boolean
-    get() = this == AccountMenuItem.MUTE || this == AccountMenuItem.SIGNER || this == AccountMenuItem.SETTINGS
+    get() = this == AccountMenuItem.MUTE || this == AccountMenuItem.RELAYS || this == AccountMenuItem.SETTINGS
 
 /** [#794] 項目に出す件数（0 なら出さない）。未読 DM の件数は「DM」にだけ出す。 */
 internal fun AccountMenuItem.badgeCount(dmUnread: Int): Int = if (this == AccountMenuItem.DM) dmUnread else 0

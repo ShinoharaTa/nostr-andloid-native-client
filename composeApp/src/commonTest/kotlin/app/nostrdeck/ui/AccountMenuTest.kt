@@ -72,39 +72,33 @@ class AccountMenuTest {
 
     @Test
     fun menu_order_and_dividers() {
-        // [#806] Issue で決めた並び。区切り線は よく使う / Nostr の設定 / 設定 / ログアウト の境目の 3 か所。
+        // [#806] 決めた並び（10 行）。区切り線は よく使う / 絵文字・ハッシュタグ・リレー / 設定 / ログアウト の境目の 3 か所。
         assertEquals(
             listOf(
                 AccountMenuItem.PROFILE, AccountMenuItem.DM, AccountMenuItem.FAVS, AccountMenuItem.BOOKMARKS,
                 AccountMenuItem.MUTE,
-                AccountMenuItem.PROFILE_EDIT, AccountMenuItem.EMOJI, AccountMenuItem.HASHTAGS, AccountMenuItem.RELAYS,
-                AccountMenuItem.DM_RELAYS, AccountMenuItem.MEDIA, AccountMenuItem.WALLET, AccountMenuItem.SIGNER,
+                AccountMenuItem.EMOJI, AccountMenuItem.HASHTAGS, AccountMenuItem.RELAYS,
                 AccountMenuItem.SETTINGS,
                 AccountMenuItem.LOGOUT,
             ),
             AccountMenuItem.entries,
         )
         assertEquals(
-            listOf(AccountMenuItem.MUTE, AccountMenuItem.SIGNER, AccountMenuItem.SETTINGS),
+            listOf(AccountMenuItem.MUTE, AccountMenuItem.RELAYS, AccountMenuItem.SETTINGS),
             AccountMenuItem.entries.filter { it.endsGroup },
         )
     }
 
     @Test
     fun section_items_open_their_settings_section() {
-        // [#806] ふぁぼ〜アカウント（鍵）は、設定のその節へ直接入る（詳細を重ねていても畳む）。
+        // [#806] ふぁぼ〜リレーは、設定のその節へ直接入る（詳細を重ねていても畳む）。
         val expected = mapOf(
             AccountMenuItem.FAVS to "favs",
             AccountMenuItem.BOOKMARKS to "bookmarks",
             AccountMenuItem.MUTE to "mute",
-            AccountMenuItem.PROFILE_EDIT to "account",
             AccountMenuItem.EMOJI to "emoji",
             AccountMenuItem.HASHTAGS to "hashtags",
             AccountMenuItem.RELAYS to "relays",
-            AccountMenuItem.DM_RELAYS to "dmrelays",
-            AccountMenuItem.MEDIA to "media",
-            AccountMenuItem.WALLET to "wallet",
-            AccountMenuItem.SIGNER to "signer",
         )
         assertEquals(expected.keys, AccountMenuItem.entries.filter { it.section != null }.toSet())
         expected.forEach { (item, section) ->
@@ -156,10 +150,10 @@ class AccountMenuTest {
         assertNull(s.settingsSection)
         assertEquals(listOf<DetailRoute>(DetailRoute.ThreadView("e1")), s.detailStack.toList())
 
-        // 自分のプロフィール → プロフィール編集 → 戻る で、プロフィールへ戻る。
+        // 自分のプロフィール → 「編集」（ProfileScreen は openSettingsSection("account") で開く）→ 戻る で、プロフィールへ戻る。
         val p = newState()
         p.openFromAccountMenu(AccountMenuItem.PROFILE, me)
-        p.openFromAccountMenu(AccountMenuItem.PROFILE_EDIT, me)
+        p.openSettingsSection("account")
         assertFalse(p.hasDetail)
         p.closeSettingsSection()
         assertEquals(NavDest.HOME, p.navDest)
@@ -213,7 +207,7 @@ class AccountMenuTest {
     fun leaving_settings_forgets_return() {
         // 設定から別の宛先へ移ったら戻り先は忘れる（プロフィールの「編集」など別の入り方で同じ節へ来たとき、古い画面へ戻さない）。
         val s = newState()
-        s.openFromAccountMenu(AccountMenuItem.PROFILE_EDIT, me)
+        s.openFromAccountMenu(AccountMenuItem.EMOJI, me)
         s.openPublicChat()
         s.settingsSection = "account"
         s.navDest = NavDest.SETTINGS
@@ -223,12 +217,16 @@ class AccountMenuTest {
     }
 
     @Test
-    fun settings_list_has_only_app_settings() {
-        // [#806] 設定の一覧に残るのはアプリの設定だけ（カスタマイズ: リアクション・表示 / システム: データ・このアプリについて）。
-        assertEquals(listOf("reaction", "appearance", "data", "about"), settingsPaletteIds)
+    fun settings_list_has_nostr_and_app_settings() {
+        // [#806] 設定の一覧は「Nostr の設定」8 つと「アプリの設定」4 つ。「よく使う」はメニューからだけ。
+        assertEquals(
+            listOf("account", "emoji", "hashtags", "relays", "dmrelays", "media", "wallet", "signer", "appearance", "reaction", "data", "about"),
+            settingsPaletteIds,
+        )
         assertEquals(SampleData.settingsSectionIds, settingsPaletteIds)
-        // メニューから開く節は、設定の一覧に並ばない。
-        AccountMenuItem.entries.mapNotNull { it.section }.forEach { assertFalse(it in settingsPaletteIds, it) }
+        listOf("favs", "bookmarks", "mute").forEach { assertFalse(it in settingsPaletteIds, it) }
+        // 絵文字・ハッシュタグ・リレーはメニューにも設定の一覧にもある。
+        listOf("emoji", "hashtags", "relays").forEach { assertTrue(it in settingsPaletteIds, it) }
     }
 
     @Test

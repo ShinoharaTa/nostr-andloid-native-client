@@ -22,6 +22,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Palette
@@ -97,8 +103,8 @@ import nostr_deck_client.composeapp.generated.resources.embed_spotify
 import nostr_deck_client.composeapp.generated.resources.embed_video
 import nostr_deck_client.composeapp.generated.resources.embed_hide_carded_urls
 import nostr_deck_client.composeapp.generated.resources.embed_youtube
-import nostr_deck_client.composeapp.generated.resources.group_customize
-import nostr_deck_client.composeapp.generated.resources.group_system
+import nostr_deck_client.composeapp.generated.resources.group_app
+import nostr_deck_client.composeapp.generated.resources.group_nostr
 import nostr_deck_client.composeapp.generated.resources.section_about
 import nostr_deck_client.composeapp.generated.resources.section_account
 import nostr_deck_client.composeapp.generated.resources.section_appearance
@@ -183,15 +189,23 @@ fun SettingsScreen(state: DeckState, isCompact: Boolean) {
 private data class SItem(val id: String, val label: StringResource, val icon: ImageVector)
 
 // グループ化した設定。
-// [#806] 「よく使う」（プロフィール・DM・ふぁぼ・ブックマーク・ミュート）と「接続・アカウント」、
-// カスタマイズのうち絵文字・ハッシュタグは、自分のアイコンのメニュー（AccountMenu）へ移した。
-// ここに残すのはアプリ（端末）の設定だけ。並びは SampleData.settingsSectionIds と同じ。
+// [#806] 「よく使う」（プロフィール・DM・ふぁぼ・ブックマーク・ミュート）は自分のアイコンのメニュー（AccountMenu）へ移し、
+// ここには並べない。絵文字・ハッシュタグ・リレーはメニューにもあるが、設定としてここにも並べる。
+// 並びは SampleData.settingsSectionIds と同じ。
 private val paletteGroups = listOf(
-    Res.string.group_customize to listOf(
-        SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
-        SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
+    Res.string.group_nostr to listOf(
+        SItem("account", Res.string.section_account, Icons.Outlined.Edit),
+        SItem("emoji", Res.string.section_emoji, Icons.Outlined.Mood),
+        SItem("hashtags", Res.string.section_hashtags, Icons.Outlined.Tag),
+        SItem("relays", Res.string.section_relays, Icons.Outlined.Cloud),
+        SItem("dmrelays", Res.string.section_dm_relays, Icons.Outlined.MailOutline),
+        SItem("media", Res.string.section_media, Icons.Outlined.CloudUpload),
+        SItem("wallet", Res.string.section_wallet, Icons.Outlined.Bolt),
+        SItem("signer", Res.string.section_signer, Icons.Outlined.Key),
     ),
-    Res.string.group_system to listOf(
+    Res.string.group_app to listOf(
+        SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
+        SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
         SItem("data", Res.string.section_data, Icons.Outlined.Storage),
         SItem("about", Res.string.section_about, Icons.Outlined.Info),
     ),

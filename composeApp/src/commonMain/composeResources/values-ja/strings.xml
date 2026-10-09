@@ -12,8 +12,8 @@
     <string name="settings_title">設定</string>
 
     <!-- Settings: groups -->
-    <string name="group_customize">カスタマイズ</string>
-    <string name="group_system">システム</string>
+    <string name="group_nostr">Nostr の設定</string>
+    <string name="group_app">アプリの設定</string>
 
     <!-- Settings: sections / tiles -->
     <string name="section_account">プロフィール編集</string>
