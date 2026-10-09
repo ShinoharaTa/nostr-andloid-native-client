@@ -494,6 +494,7 @@
     <string name="compose_posting">投稿中…</string>
     <string name="compose_attach_image">画像を添付</string>
     <string name="compose_attach_video">動画を添付</string>
+    <string name="compose_paste_image_failed">クリップボードの画像を読み込めませんでした</string>
     <string name="compose_insert_emoji">絵文字を挿入</string>
     <string name="compose_sensitive_on">センシティブ: ON</string>
     <string name="compose_sensitive">センシティブ指定</string>
