@@ -654,6 +654,7 @@
     <string name="load_more">さらに読み込む</string>
     <string name="thread_title">スレッド</string>
     <string name="chat_select_channel">チャンネルを選択</string>
+    <string name="chat_room_unnamed">パブリックチャット</string>
     <string name="chat_loading_channel">チャンネルを読み込み中…</string>
     <string name="chat_write_message">✏️ メッセージを書く</string>
     <string name="chat_reply">リプライ</string>

@@ -658,6 +658,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="load_more">Load more</string>
     <string name="thread_title">Thread</string>
     <string name="chat_select_channel">Select a channel</string>
+    <string name="chat_room_unnamed">Public chat</string>
     <string name="chat_loading_channel">Loading channel…</string>
     <string name="chat_write_message">✏️ Write a message</string>
     <string name="chat_reply">Reply</string>
