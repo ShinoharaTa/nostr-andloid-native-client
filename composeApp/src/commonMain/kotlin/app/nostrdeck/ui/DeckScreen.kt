@@ -543,12 +543,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     }
                     // [#793] チャットの発言の行き先（そのチャンネルのルーム）。今は通知のチャット行と同じく
                     // 「パブリックチャット」の画面へ移ってルームを選ぶ。
-                    // [#793] 統合時に #791 の state.openChannelRoom へ差し替える
-                    val openChannel: (String) -> Unit = { channelId ->
-                        state.clearDetail()
-                        state.navDest = NavDest.CHANNELS
-                        state.publicChatRoom = channelId
-                    }
+                    // [#793] 「#チャンネル名 で発言」の行・本文・返信のタップ: ルームを詳細オーバーレイで重ねる（#791 と同じ経路）。
+                    val openChannel: (String) -> Unit = { channelId -> state.openChannelRoom(channelId) }
                     SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })
                     val selIdx = kbColumnSelection(
                         state, spec.id, entries.size, listState,
