@@ -84,24 +84,12 @@ class DeckState(
     }
 
     /**
-     * [#422] メッセージ画面（DM とパブリックチャットを統合）で最後に選んだ側。
-     * 未読の DM が無いときに「メッセージ」を開いた際の初期表示に使う。
+     * [#794] 「パブリックチャット」ナビのタップ。常にチャンネル一覧へ。
+     * #422 の「メッセージ」（DM とチャットを切り替えでまとめた画面）はやめ、DM は自分のアイコンのメニューから開く。
      */
-    var messagesSegment by mutableStateOf(NavDest.DM)
-
-    /** [#422] 「メッセージ」ナビの選択状態（DM・チャットのどちらを開いていても点灯）。 */
-    val messagesActive: Boolean get() = navDest == NavDest.DM || navDest == NavDest.CHANNELS
-
-    /** [#422] 「メッセージ」ナビのタップ。未読の DM があれば DM、無ければ最後に使った側を開く。 */
-    fun openMessages(dmUnread: Int) {
+    fun openPublicChat() {
         clearDetail()
-        navDest = if (dmUnread > 0) NavDest.DM else messagesSegment
-    }
-
-    /** [#422] メッセージ画面の「DM | チャット」切り替え。 */
-    fun switchMessages(dest: NavDest) {
-        messagesSegment = dest
-        navDest = dest
+        navDest = NavDest.CHANNELS
     }
 
     /** [#405] 通知カラム（あれば）。「通知」ナビのジャンプ先。 */

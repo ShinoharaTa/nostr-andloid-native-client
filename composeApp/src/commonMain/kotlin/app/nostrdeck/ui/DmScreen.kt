@@ -103,7 +103,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
         showDetail = state.dmThread != null,
         list = {
             DmList(
-                state, loaded, selectedPubkey = state.dmThread,
+                loaded, selectedPubkey = state.dmThread,
                 onNew = { showNew = true },
                 onSelect = { state.dmThread = it.pubkey },
                 onOpenProfile = { state.openProfile(it.pubkey) },
@@ -178,7 +178,6 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
 
 @Composable
 private fun DmList(
-    state: DeckState,
     convos: List<DmConversation>?,
     selectedPubkey: String?,
     onNew: () -> Unit,
@@ -186,8 +185,12 @@ private fun DmList(
     onOpenProfile: (DmConversation) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
-        // [#422] 見出しはメッセージ画面の「DM | チャット」切り替え。新規はチャットと同じく一覧の先頭行。
-        MessagesSegmentBar(state)
+        // [#794] 見出しはパブリックチャット画面と同じ通常のカラムヘッダ（DM カラムと同じ名前・印）。
+        // #422 の「DM | チャット」切り替えはやめた。新規は一覧の先頭行のまま。
+        ColumnHeader(
+            title = stringResource(Res.string.nav_dm), subtitle = "NIP-17",
+            leadingIcon = columnIcon(ColumnKind.DM), pinned = false,
+        )
         HorizontalDivider(color = DeckColors.Border)
         DmConversationRows(convos, selectedPubkey, onSelect, onOpenProfile, onNew = onNew)
     }
@@ -195,7 +198,7 @@ private fun DmList(
 
 /**
  * [#415] 会話一覧の行（DM 画面と Deck の DM カラムで共有）。
- * ヘッダは呼び出し側が用意する（画面は自前のタイトル行、カラムは [ColumnHeader]）。
+ * ヘッダは呼び出し側が用意する（画面・カラムとも [ColumnHeader]）。
  */
 @Composable
 private fun DmConversationRows(

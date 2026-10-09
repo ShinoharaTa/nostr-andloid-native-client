@@ -10,9 +10,8 @@
     <string name="nav_public_chat">Public chat</string>
     <string name="nav_notifications">Notifications</string>
     <string name="nav_dm">DM</string>
-    <string name="nav_messages">Messages</string>
-    <string name="seg_dm">DM</string>
-    <string name="seg_chat">Chats</string>
+    <!-- [#794] 自分のアイコンのメニュー: リレーの接続状態（接続数 / 全体） -->
+    <string name="account_menu_relays_fmt">%1$d / %2$d connected</string>
     <string name="nav_add_column">Add column</string>
     <string name="settings_title">Settings</string>
 
