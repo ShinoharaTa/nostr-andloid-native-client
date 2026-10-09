@@ -116,7 +116,8 @@ fun AppScaffold(state: DeckState) {
                 NavDest.HOME -> state.back()
                 NavDest.CHANNELS -> state.publicChatRoom = null
                 NavDest.DM -> state.dmThread = null
-                NavDest.SETTINGS -> state.settingsSection = null
+                // [#806] 自分のアイコンのメニューから開いた節は、メニューを開く前の画面へ戻る。
+                NavDest.SETTINGS -> state.closeSettingsSection()
                 else -> {}
             }
         }
@@ -358,7 +359,7 @@ private fun BottomBar(state: DeckState) {
             selected = state.notificationsActive, onClick = { state.openNotifications() },
         )
         val pk = myPubkey
-        // [#794] タップで自分のメニュー（プロフィール/DM/リレー/設定/ログアウト）。未ログインは今までどおり設定へ。
+        // [#794][#806] タップで自分のメニュー（よく使う / Nostr の設定 / 設定 / ログアウト）。未ログインは今までどおり設定へ。
         // DM・設定を開いている間はここを選択表示にし、未読 DM の件数もここに出す（AccountMenu が描く）。
         var accountMenuOpen by remember { mutableStateOf(false) }
         NavigationBarItem(

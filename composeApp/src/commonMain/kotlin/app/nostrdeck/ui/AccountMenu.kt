@@ -6,10 +6,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenuItem
@@ -25,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import app.nostrdeck.data.SampleData
 import app.nostrdeck.i18n.stringResource
 import app.nostrdeck.nostr.RelayConn
 import app.nostrdeck.nostr.RelayConnState
@@ -37,21 +47,61 @@ import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.account_menu_relays_fmt
 import nostr_deck_client.composeapp.generated.resources.logout
 import nostr_deck_client.composeapp.generated.resources.nav_dm
+import nostr_deck_client.composeapp.generated.resources.section_account
+import nostr_deck_client.composeapp.generated.resources.section_bookmarks
+import nostr_deck_client.composeapp.generated.resources.section_dm_relays
+import nostr_deck_client.composeapp.generated.resources.section_emoji
+import nostr_deck_client.composeapp.generated.resources.section_favs
+import nostr_deck_client.composeapp.generated.resources.section_hashtags
+import nostr_deck_client.composeapp.generated.resources.section_media
+import nostr_deck_client.composeapp.generated.resources.section_mute
 import nostr_deck_client.composeapp.generated.resources.section_relays
+import nostr_deck_client.composeapp.generated.resources.section_signer
+import nostr_deck_client.composeapp.generated.resources.section_wallet
 import nostr_deck_client.composeapp.generated.resources.settings_title
 import nostr_deck_client.composeapp.generated.resources.tile_profile
+import org.jetbrains.compose.resources.StringResource
 
 /*
  * [#794] 下タブ（レール）の自分のアイコンのメニュー。以前はタップで設定へ直行していたので、
  * 自分のプロフィールを見るには設定か自分の投稿の名前を経由するしかなかった。
- * 項目は 自分のプロフィール・DM・リレーの接続状態・設定・ログアウト。動くものを見て並びや項目を調整する前提で、
  * 長押しなどの近道は作らない。
  * DM はナビに枠を持たず（3枠目はパブリックチャット直行）、このメニューからだけ開く。そのため未読 DM の件数は
  * 自分のアイコンとメニューの「DM」に出す。
+ * [#806] 設定の「よく使う」と Nostr の設定（ミュート・絵文字・リレー等）もここに並べ、設定はアプリの設定だけにした。
+ * 並びは よく使う / Nostr の設定 / 設定 / ログアウト の 4 群（境目に区切り線）。全部を直接並べ、
+ * 画面に収まらないときはメニューの中でスクロールする（DropdownMenu の既定）。
  */
 
-/** [#794] メニューの項目（表示順）。 */
-internal enum class AccountMenuItem { PROFILE, DM, RELAYS, SETTINGS, LOGOUT }
+/**
+ * [#794] メニューの項目（表示順）。
+ * [#806] [label] と [icon] は設定の一覧のタイルにあったものと同じ。[section] があれば設定のその節
+ * （SettingsScreen の SettingsContent の id）へ直接入る。
+ */
+internal enum class AccountMenuItem(val label: StringResource, val icon: ImageVector, val section: String? = null) {
+    // よく使う
+    PROFILE(Res.string.tile_profile, Icons.Outlined.Person),
+    DM(Res.string.nav_dm, Icons.Outlined.MailOutline),
+    FAVS(Res.string.section_favs, Icons.Outlined.StarBorder, "favs"),
+    BOOKMARKS(Res.string.section_bookmarks, Icons.Outlined.BookmarkBorder, "bookmarks"),
+    MUTE(Res.string.section_mute, Icons.Outlined.Block, "mute"),
+    // Nostr の設定
+    PROFILE_EDIT(Res.string.section_account, Icons.Outlined.Edit, "account"),
+    EMOJI(Res.string.section_emoji, Icons.Outlined.Mood, "emoji"),
+    HASHTAGS(Res.string.section_hashtags, Icons.Outlined.Tag, "hashtags"),
+    RELAYS(Res.string.section_relays, Icons.Outlined.Cloud, "relays"),
+    DM_RELAYS(Res.string.section_dm_relays, Icons.Outlined.MailOutline, "dmrelays"),
+    MEDIA(Res.string.section_media, Icons.Outlined.CloudUpload, "media"),
+    WALLET(Res.string.section_wallet, Icons.Outlined.Bolt, "wallet"),
+    SIGNER(Res.string.section_signer, Icons.Outlined.Key, "signer"),   // アカウント（鍵・ログイン方法）
+    // アプリの設定（表示・リアクション・データ・このアプリについて）
+    SETTINGS(Res.string.settings_title, Icons.Outlined.Settings),
+    LOGOUT(Res.string.logout, Icons.AutoMirrored.Outlined.Logout),
+}
+
+/** [#806] 直後に区切り線を引く項目（よく使う / Nostr の設定 / 設定 / ログアウト の境目）。 */
+internal val AccountMenuItem.endsGroup: Boolean
+    get() = this == AccountMenuItem.MUTE || this == AccountMenuItem.SIGNER || this == AccountMenuItem.SETTINGS
 
 /** [#794] 項目に出す件数（0 なら出さない）。未読 DM の件数は「DM」にだけ出す。 */
 internal fun AccountMenuItem.badgeCount(dmUnread: Int): Int = if (this == AccountMenuItem.DM) dmUnread else 0
@@ -74,15 +124,22 @@ internal fun DeckState.openFromAccountMenu(item: AccountMenuItem, me: String) {
         AccountMenuItem.PROFILE -> openProfile(me)
         // 常に DM（会話一覧。開いていた会話はそのまま）。
         AccountMenuItem.DM -> { clearDetail(); navDest = NavDest.DM }
-        // 設定の中の「リレー」節へ直接入る（プロフィールの「編集」→アカウント節と同じ入り方）。
-        AccountMenuItem.RELAYS -> { clearDetail(); settingsSection = "relays"; navDest = NavDest.SETTINGS }
         AccountMenuItem.SETTINGS -> openSettingsHub()
         AccountMenuItem.LOGOUT -> Unit
+        // [#806] 設定の中の節（ふぁぼ・ミュート・リレー等）へ直接入る。Compact の戻るでメニューを開く前の画面へ戻る。
+        else -> item.section?.let { openSettingsSection(it) }
     }
 }
 
-/** 今までのアイコンの動き（設定一覧へ）。 */
-private fun DeckState.openSettingsHub() { clearDetail(); navDest = NavDest.SETTINGS }
+/**
+ * 今までのアイコンの動き（設定一覧へ）。
+ * [#806] メニューから開いた節（設定の一覧に無いもの）が残っていれば外し、アプリの設定から見せる。
+ */
+private fun DeckState.openSettingsHub() {
+    clearDetail()
+    if (settingsSection !in SampleData.settingsSectionIds) settingsSection = null
+    navDest = NavDest.SETTINGS
+}
 
 /**
  * [#794] 自分のアイコン（[icon]）とそのメニュー。開閉は呼び出し側が [expanded] で持つ
@@ -125,38 +182,42 @@ internal fun AccountMenu(
     if (confirmLogout) LogoutConfirmDialog(onDismiss = { confirmLogout = false })
 }
 
-/** [#794] メニューの中身。モノクロのアイコン + 文言（カラムの ⋯ メニューと同じ並べ方）。ログアウトだけ Warn 色で線の下に離す。 */
+/**
+ * [#794] メニューの中身。モノクロのアイコン + 文言（カラムの ⋯ メニューと同じ並べ方）。ログアウトだけ Warn 色。
+ * [#806] 群の境目（[endsGroup]）に区切り線を引く。
+ */
 @Composable
 internal fun ColumnScope.AccountMenuItems(conns: List<RelayConn>, dmUnread: Int, onSelect: (AccountMenuItem) -> Unit) {
-    AccountMenuRow(Icons.Outlined.Person, stringResource(Res.string.tile_profile)) { onSelect(AccountMenuItem.PROFILE) }
-    val dmBadge = AccountMenuItem.DM.badgeCount(dmUnread)
-    AccountMenuRow(
-        Icons.Outlined.MailOutline, stringResource(Res.string.nav_dm),
-        trailing = if (dmBadge > 0) ({ CountBadge(dmBadge) }) else null,
-    ) { onSelect(AccountMenuItem.DM) }
-    // 接続状態は「3 / 4 接続中」を右に添える（レールの ● n/m と同じ数え方）。
-    val connected = conns.count { it.state == RelayConnState.CONNECTED }
-    val relayStatus = stringResource(Res.string.account_menu_relays_fmt, connected, conns.size)
-    AccountMenuRow(
-        Icons.Outlined.Cloud, stringResource(Res.string.section_relays),
-        trailing = { Text(relayStatus, color = DeckColors.Text3, fontSize = DeckType.Label) },
-    ) { onSelect(AccountMenuItem.RELAYS) }
-    AccountMenuRow(Icons.Outlined.Settings, stringResource(Res.string.settings_title)) { onSelect(AccountMenuItem.SETTINGS) }
-    HorizontalDivider(color = DeckColors.Border)
-    DropdownMenuItem(
-        text = { Text(stringResource(Res.string.logout), color = DeckColors.Warn) },
-        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = DeckColors.Warn, modifier = Modifier.size(DeckDimens.IconMd)) },
-        onClick = { onSelect(AccountMenuItem.LOGOUT) },
-    )
+    AccountMenuItem.entries.forEach { item ->
+        when (item) {
+            AccountMenuItem.DM -> {
+                val dmBadge = item.badgeCount(dmUnread)
+                AccountMenuRow(item, onSelect, trailing = if (dmBadge > 0) ({ CountBadge(dmBadge) }) else null)
+            }
+            AccountMenuItem.RELAYS -> {
+                // 接続状態は「3 / 4 接続中」を右に添える（レールの ● n/m と同じ数え方）。
+                val connected = conns.count { it.state == RelayConnState.CONNECTED }
+                val relayStatus = stringResource(Res.string.account_menu_relays_fmt, connected, conns.size)
+                AccountMenuRow(item, onSelect, trailing = { Text(relayStatus, color = DeckColors.Text3, fontSize = DeckType.Label) })
+            }
+            AccountMenuItem.LOGOUT -> DropdownMenuItem(
+                text = { Text(stringResource(item.label), color = DeckColors.Warn) },
+                leadingIcon = { Icon(item.icon, null, tint = DeckColors.Warn, modifier = Modifier.size(DeckDimens.IconMd)) },
+                onClick = { onSelect(item) },
+            )
+            else -> AccountMenuRow(item, onSelect)
+        }
+        if (item.endsGroup) HorizontalDivider(color = DeckColors.Border)
+    }
 }
 
 @Composable
-private fun AccountMenuRow(icon: ImageVector, label: String, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+private fun AccountMenuRow(item: AccountMenuItem, onSelect: (AccountMenuItem) -> Unit, trailing: (@Composable () -> Unit)? = null) {
     DropdownMenuItem(
-        text = { Text(label) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+        text = { Text(stringResource(item.label)) },
+        leadingIcon = { Icon(item.icon, null, modifier = Modifier.size(DeckDimens.IconMd)) },
         trailingIcon = trailing,
-        onClick = onClick,
+        onClick = { onSelect(item) },
     )
 }
 

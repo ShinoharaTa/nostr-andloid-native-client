@@ -173,8 +173,8 @@ object SampleData {
 
     // ---- 設定（左メニュー / 右内容） ----
     // [#162] ラベルは文字列リソースで解決するため id のみ持つ（SettingsScreen.sectionTitle 参照）。
-    val settingsSectionIds = listOf(
-        "account", "signer", "relays", "mute", "favs", "bookmarks",
-        "dmrelays", "media", "reaction", "data", "appearance", "about",
-    )
+    // [#806] 設定の一覧に並ぶ節（アプリの設定だけ。表示順）。Expanded の既定表示は先頭。
+    // Nostr の設定（account / signer / relays / mute / favs / bookmarks / dmrelays / media / emoji / hashtags / wallet）は
+    // 自分のアイコンのメニュー（AccountMenuItem.section）から開くので、ここには含めない。
+    val settingsSectionIds = listOf("reaction", "appearance", "data", "about")
 }
