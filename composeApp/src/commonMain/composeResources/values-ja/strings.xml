@@ -220,6 +220,9 @@
     <string name="cat_reposts_of_me">自分へのリポスト</string>
     <string name="cat_my_reactions">自分がしたリアクション</string>
     <string name="cat_dms">未読のメッセージ</string>
+    <string name="cat_public_chat">パブリックチャットの発言</string>
+    <string name="feed_chat_in_channel_fmt">#%1$s で発言</string>
+    <string name="feed_chat_in_channel_unknown">チャットで発言</string>
     <string name="col_width">カラム幅</string>
     <string name="width_narrow">狭</string>
     <string name="width_default">標準</string>

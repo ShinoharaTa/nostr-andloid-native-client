@@ -305,6 +305,10 @@ SELECT * FROM channel ORDER BY last_message_at DESC;
 channelById:
 SELECT * FROM channel WHERE id = ?;
 
+-- [#793] チャンネル id → 名前（フォロー中タイムラインの「#名前 で発言」用）。
+channelNames:
+SELECT id, name FROM channel;
+
 -- [#291] 自分が作成したチャンネル（自分の kind:40 は publishSigned でローカル保存される）。
 myChannelCreateIds:
 SELECT id FROM event WHERE kind = 40 AND pubkey = ?;
@@ -385,6 +389,15 @@ SELECT * FROM event
 WHERE kind IN (1, 1111, 6, 16) AND pubkey IN ? AND created_at > ?
 ORDER BY created_at DESC
 LIMIT 300;
+
+-- [#793] フォロー中タイムラインに混ぜるパブリックチャットの発言（kind:42）を新しい順に。
+-- 件数の枠は投稿（feedFollowingWithReposts）と分ける。同じ LIMIT に入れると、活発なチャットに
+-- 投稿が押し出される（⋯ で発言を隠したときにも投稿が減ったままになる）。
+feedFollowingChat:
+SELECT * FROM event
+WHERE kind = 42 AND pubkey IN ?
+ORDER BY created_at DESC
+LIMIT 100;
 
 -- [M8-repost] イベント id 単一解決（リポスト元 / 引用ノートの解決用）。
 eventById:

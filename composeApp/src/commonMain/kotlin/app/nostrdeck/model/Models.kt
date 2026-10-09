@@ -144,6 +144,21 @@ data class NoteUi(
      * （replyParent が解決できたときは通常の返信元1行プレビューが出るので null）。
      */
     val commentRoot: CommentRootRef? = null,
+    /**
+     * [#793] パブリックチャットの発言（kind:42）をフォロー中のタイムラインに混ぜたときの、発言先のチャンネル。
+     * NoteItem がこれから「#チャンネル名 で発言」の1行を出す（投稿・コメントでは null）。
+     */
+    val chatChannel: ChatChannelRef? = null,
+)
+
+/**
+ * [#793] 発言先のチャンネル。[name] は kind:40（またはチャンネル一覧）から引いた名前で、
+ * まだ手元に無ければ null（表示は仮の文言。届けばフィードが組み直されて名前が入る）。
+ */
+@Immutable
+data class ChatChannelRef(
+    val id: String,
+    val name: String? = null,
 )
 
 /** [#380] NIP-22 コメントのルート参照（E=イベントid / A=アドレス / I=外部識別子 / K=kind）。 */
@@ -208,8 +223,9 @@ enum class AuthPolicy { OFF, DM_AND_MINE, ALWAYS }
  * [M18] フォロー中TLに混ぜる通知系の表示カテゴリ。カラムの ⋯ メニューから個別に表示/非表示できる。
  * REACTIONS=自分へのリアクション / REPLIES=自分への返信・メンション / REPOSTS=自分へのリポスト /
  * MY_REACTIONS=自分がしたリアクション。
+ * [#793] CHAT=フォロー中の人（と自分）のパブリックチャットの発言（kind:42）。既定は表示（非表示の集合に入れたときだけ隠す）。
  */
-enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS, DMS }
+enum class FeedNoticeCategory { REACTIONS, REPLIES, REPOSTS, MY_REACTIONS, DMS, CHAT }
 
 /**
  * [M10-notif] 通知一覧の1行。自分(#p)宛のイベントを種別ごとに整形したもの。
@@ -265,6 +281,23 @@ sealed interface FeedEntry {
     data class MyReaction(val reaction: ReactionUi, val target: NoteUi, val reactedAt: Long) : FeedEntry {
         override val sortAt: Long get() = reactedAt
     }
+}
+
+/**
+ * [M18][#793] フォロー中TLの1行が、⋯「タイムラインに混ぜる表示」のどのカテゴリに当たるか。
+ * null はカテゴリに属さない（常に出す）行＝通常の投稿・ZAP 通知など。
+ */
+fun feedNoticeCategoryOf(entry: FeedEntry): FeedNoticeCategory? = when (entry) {
+    is FeedEntry.Notice -> when (entry.notif.kind) {
+        NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
+        NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
+        NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
+        NotificationKind.DM -> FeedNoticeCategory.DMS  // [#419]
+        else -> null
+    }
+    is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS
+    // [#793] パブリックチャットの発言は投稿と同じ Post で流し、発言先のチャンネルを持つかで見分ける。
+    is FeedEntry.Post -> if (entry.note.chatChannel != null) FeedNoticeCategory.CHAT else null
 }
 
 /** NIP-28 チャンネル（kind:40 作成 + kind:41 最新メタ）。一覧カラムの行。 */

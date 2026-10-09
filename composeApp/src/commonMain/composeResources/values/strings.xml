@@ -224,6 +224,9 @@
     <string name="cat_reposts_of_me">Reposts of your posts</string>
     <string name="cat_my_reactions">Your reactions</string>
     <string name="cat_dms">Unread messages</string>
+    <string name="cat_public_chat">Public chat messages</string>
+    <string name="feed_chat_in_channel_fmt">Posted in #%1$s</string>
+    <string name="feed_chat_in_channel_unknown">Posted in a public chat</string>
     <string name="col_width">Column width</string>
     <string name="width_narrow">Narrow</string>
     <string name="width_default">Default</string>
