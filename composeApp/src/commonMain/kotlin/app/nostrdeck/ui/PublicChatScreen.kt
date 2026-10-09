@@ -56,8 +56,7 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                 onEditChannel = if (repo != null) ({ id, name, about, picture ->
                     chScope.launch { repo.updateChannel(id, name, about, picture) }
                 }) else null,
-                // [#422] メッセージ画面の「DM | チャット」切り替え。作成は一覧の先頭行にある。
-                header = { MessagesSegmentBar(state) },
+                // [#794] 見出しは通常のカラムヘッダ（パブリックチャット）。#422 の「DM | チャット」切り替えはやめた。
             )
         },
         detail = {

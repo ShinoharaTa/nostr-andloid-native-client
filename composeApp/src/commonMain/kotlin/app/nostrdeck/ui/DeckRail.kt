@@ -43,7 +43,7 @@ import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.nav_add_column
 import nostr_deck_client.composeapp.generated.resources.nav_home
-import nostr_deck_client.composeapp.generated.resources.nav_messages
+import nostr_deck_client.composeapp.generated.resources.nav_public_chat
 import nostr_deck_client.composeapp.generated.resources.nav_notifications
 import nostr_deck_client.composeapp.generated.resources.nav_search
 import app.nostrdeck.i18n.stringResource
@@ -67,7 +67,7 @@ fun DeckRail(state: DeckState) {
     val repo = LocalRepository.current
     // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
     // （ここで DM 画面に居るだけで既読にすると、読んでいない会話まで消えていた）。
-    // [#422] 件数は「メッセージ」に出す。
+    // [#794] 件数は自分のアイコン（とそのメニューの「DM」）に出す。DM はそのメニューから開くため。
     // [#405] 通知の未読バッジは廃止（通知はカラムに一本化、ナビの「通知」はカラムへのジャンプ）。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState(0) ?: remember { mutableStateOf(0) })
     // [#hub] 自分のアバター: タップで自分のプロフィール、実データ（名前/画像）で表示。
@@ -120,16 +120,16 @@ fun DeckRail(state: DeckState) {
 
         RailDivider()
 
-        // ── 中段固定: 検索・メッセージ・通知（下部ナビと同順） ──
-        // [#422] DM とパブリックチャットは「メッセージ」にまとめる（未読 DM の件数もここに出す）。
+        // ── 中段固定: 検索・パブリックチャット・通知（下部ナビと同順） ──
+        // [#794] 「メッセージ」（DM | チャットの切り替え）をやめてパブリックチャット直行。DM は自分のメニューから。
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
             NavIcon(Icons.Outlined.Search, stringResource(Res.string.nav_search), state.navDest == NavDest.SEARCH) { state.clearDetail(); state.navDest = NavDest.SEARCH }
-            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_messages), state.messagesActive, badge = dmUnread) {
-                state.openMessages(dmUnread)
+            NavIcon(Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat), state.navDest == NavDest.CHANNELS) {
+                state.openPublicChat()
             }
             // [#405][#409] 通知カラムがあるときは目次のベルがその役を担う（同じベルを2つ並べない）。
             // 通知カラムを表示していないユーザーだけ、ここから従来の通知画面を開く。
@@ -158,8 +158,9 @@ fun DeckRail(state: DeckState) {
             // [#hub] 自分=アバター1枠のみ（ふぁぼ/ブクマ/ミュートは設定内の「よく使う」パネルに集約）。
             // レールにボタンを増やさず煩雑さを避ける。
             // [#794] タップは下タブと同じ自分のメニュー（レールの右へ出す）。未ログインは今までどおり設定へ。
+            // DM・設定を開いている間はここを点灯し、未読 DM の件数もここに出す（AccountMenu が描く）。
             var accountMenuOpen by remember { mutableStateOf(false) }
-            RailSlot(active = state.navDest == NavDest.SETTINGS, onClick = { state.onAccountIconClick(myPubkey) { accountMenuOpen = true } }) {
+            RailSlot(active = state.accountIconActive, onClick = { state.onAccountIconClick(myPubkey) { accountMenuOpen = true } }) {
                 AccountMenu(state, myPubkey, dmUnread, expanded = accountMenuOpen, onDismiss = { accountMenuOpen = false }, beside = true) {
                     Avatar(myProfile?.name ?: myPubkey ?: "me", myProfile?.pictureUrl, modifier = Modifier.size(DeckDimens.RailMark), pubkey = myPubkey)
                 }
@@ -181,14 +182,10 @@ private fun RailSlot(active: Boolean = false, onClick: (() -> Unit)? = null, con
 }
 
 @Composable
-private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
+private fun NavIcon(icon: ImageVector, cd: String, active: Boolean, onClick: () -> Unit) {
     RailSlot(active = active, onClick = onClick) {
         val tint = if (active) DeckColors.Accent else DeckColors.Text2
-        if (badge > 0) {
-            BadgedBox(badge = { Badge { Text("$badge", fontSize = DeckType.Micro) } }) {
-                Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.RailIcon))
-            }
-        } else Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.RailIcon))
+        Icon(icon, cd, tint = tint, modifier = Modifier.size(DeckDimens.RailIcon))
     }
 }
 

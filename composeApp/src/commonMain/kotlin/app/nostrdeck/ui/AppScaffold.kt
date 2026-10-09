@@ -324,7 +324,7 @@ private fun BottomBar(state: DeckState) {
     val repo = LocalRepository.current
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
-    // [#422] 「メッセージ」の件数（未読管理は DM のみ）。
+    // [#794] 未読 DM の件数。DM は自分のアイコンのメニューから開くので、件数もアイコンに出す。
     val dmUnread by (repo?.dmUnreadFlow()?.collectAsState() ?: remember { mutableStateOf(0) })
     // 元の M3 NavigationBar（既定高さ80dp・選択インジケータ）を維持する。変更点は2つだけ:
     //  1) 色: containerColor=Bg + tonalElevation=0 → 左レール/セーフエリア裏と同色のモノクロに揃える
@@ -338,8 +338,9 @@ private fun BottomBar(state: DeckState) {
         tonalElevation = 0.dp,
         windowInsets = bottomBarInsets(),
     ) {
-        // [#422] 並びは ホーム・検索・メッセージ・通知・ユーザーの固定5枠（レールと同順）。
-        // ピン留め次第で項目が増減しない。DM とパブリックチャットは「メッセージ」にまとめる。
+        // [#422] 並びは ホーム・検索・パブリックチャット・通知・ユーザーの固定5枠（レールと同順）。
+        // ピン留め次第で項目が増減しない。
+        // [#794] 3枠目は「メッセージ」（DM | チャットの切り替え）をやめてパブリックチャット直行。DM は自分のメニューから。
         // [#405] 通知カラムを開いている間は「通知」側を選択表示にする（ホームは非選択）。
         NavItem(
             state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
@@ -348,8 +349,8 @@ private fun BottomBar(state: DeckState) {
         )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
         NavItem(
-            state, NavDest.DM, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_messages),
-            selected = state.messagesActive, onClick = { state.openMessages(dmUnread) }, badge = dmUnread,
+            state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat),
+            onClick = { state.openPublicChat() },
         )
         // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
         NavItem(
@@ -358,9 +359,10 @@ private fun BottomBar(state: DeckState) {
         )
         val pk = myPubkey
         // [#794] タップで自分のメニュー（プロフィール/DM/リレー/設定/ログアウト）。未ログインは今までどおり設定へ。
+        // DM・設定を開いている間はここを選択表示にし、未読 DM の件数もここに出す（AccountMenu が描く）。
         var accountMenuOpen by remember { mutableStateOf(false) }
         NavigationBarItem(
-            selected = state.navDest == NavDest.SETTINGS,
+            selected = state.accountIconActive,
             onClick = { state.onAccountIconClick(pk) { accountMenuOpen = true } },
             icon = {
                 AccountMenu(state, pk, dmUnread, expanded = accountMenuOpen, onDismiss = { accountMenuOpen = false }) {
@@ -377,19 +379,11 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
     state: DeckState, dest: NavDest, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String,
     selected: Boolean = state.navDest == dest,
     onClick: () -> Unit = { state.clearDetail(); state.navDest = dest },
-    /** [#422] 件数バッジ（0 なら出さない）。「メッセージ」の未読 DM に使う。 */
-    badge: Int = 0,
 ) {
     NavigationBarItem(
         selected = selected,
         onClick = onClick,
-        icon = {
-            if (badge > 0) {
-                androidx.compose.material3.BadgedBox(badge = { androidx.compose.material3.Badge { androidx.compose.material3.Text("$badge") } }) {
-                    Icon(icon, label)
-                }
-            } else Icon(icon, label)
-        },
+        icon = { Icon(icon, label) },
         colors = bottomNavItemColors(),
     )
 }
