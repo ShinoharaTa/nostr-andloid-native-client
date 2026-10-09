@@ -155,10 +155,14 @@ fun DeckRail(state: DeckState) {
                 if (showRelays) RelayStatusDialog(conns, onDismiss = { showRelays = false })
             }
 
-            // [#hub] 自分=アバター1枠のみ。タップで設定一覧へ（プロフ/ふぁぼ/ブクマ/ミュートは
-            // 設定内の「よく使う」パネルに集約）。レールにボタンを増やさず煩雑さを避ける。
-            RailSlot(active = state.navDest == NavDest.SETTINGS, onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS }) {
-                Avatar(myProfile?.name ?: myPubkey ?: "me", myProfile?.pictureUrl, modifier = Modifier.size(DeckDimens.RailMark), pubkey = myPubkey)
+            // [#hub] 自分=アバター1枠のみ（ふぁぼ/ブクマ/ミュートは設定内の「よく使う」パネルに集約）。
+            // レールにボタンを増やさず煩雑さを避ける。
+            // [#794] タップは下タブと同じ自分のメニュー（レールの右へ出す）。未ログインは今までどおり設定へ。
+            var accountMenuOpen by remember { mutableStateOf(false) }
+            RailSlot(active = state.navDest == NavDest.SETTINGS, onClick = { state.onAccountIconClick(myPubkey) { accountMenuOpen = true } }) {
+                AccountMenu(state, myPubkey, dmUnread, expanded = accountMenuOpen, onDismiss = { accountMenuOpen = false }, beside = true) {
+                    Avatar(myProfile?.name ?: myPubkey ?: "me", myProfile?.pictureUrl, modifier = Modifier.size(DeckDimens.RailMark), pubkey = myPubkey)
+                }
             }
         }
     }

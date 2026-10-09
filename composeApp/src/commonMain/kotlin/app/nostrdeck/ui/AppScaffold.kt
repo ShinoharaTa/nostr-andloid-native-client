@@ -314,7 +314,8 @@ private fun ConstrainedOverlay(
 
 @Composable
 private fun BottomBar(state: DeckState) {
-    // [#hub] 5枠目=自分（アバター）→ 設定一覧（自分ハブ）。プロフ/私的リストは設定内のパネルへ集約。
+    // [#hub] 5枠目=自分（アバター）。プロフ/私的リストは設定内のパネルへ集約。
+    // [#794] タップは設定へ直行せず、自分のメニュー（AccountMenu）を出す。
     val repo = LocalRepository.current
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
@@ -351,10 +352,16 @@ private fun BottomBar(state: DeckState) {
             selected = state.notificationsActive, onClick = { state.openNotifications() },
         )
         val pk = myPubkey
+        // [#794] タップで自分のメニュー（プロフィール/DM/リレー/設定/ログアウト）。未ログインは今までどおり設定へ。
+        var accountMenuOpen by remember { mutableStateOf(false) }
         NavigationBarItem(
             selected = state.navDest == NavDest.SETTINGS,
-            onClick = { state.clearDetail(); state.navDest = NavDest.SETTINGS },
-            icon = { Avatar(myProfile?.name ?: pk ?: "me", myProfile?.pictureUrl, size = 24.dp, pubkey = pk) },
+            onClick = { state.onAccountIconClick(pk) { accountMenuOpen = true } },
+            icon = {
+                AccountMenu(state, pk, dmUnread, expanded = accountMenuOpen, onDismiss = { accountMenuOpen = false }) {
+                    Avatar(myProfile?.name ?: pk ?: "me", myProfile?.pictureUrl, size = 24.dp, pubkey = pk)
+                }
+            },
             colors = bottomNavItemColors(),
         )
     }

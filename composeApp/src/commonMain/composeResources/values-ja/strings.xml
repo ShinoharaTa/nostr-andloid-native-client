@@ -6,6 +6,8 @@
     <string name="nav_public_chat">パブリックチャット</string>
     <string name="nav_notifications">通知</string>
     <string name="nav_dm">DM</string>
+    <!-- [#794] 自分のアイコンのメニュー: リレーの接続状態（接続数 / 全体） -->
+    <string name="account_menu_relays_fmt">%1$d / %2$d 接続中</string>
     <string name="nav_messages">メッセージ</string>
     <string name="seg_dm">DM</string>
     <string name="seg_chat">チャット</string>

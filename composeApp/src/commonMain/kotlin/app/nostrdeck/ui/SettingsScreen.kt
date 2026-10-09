@@ -1698,22 +1698,29 @@ private fun SignerSettings() {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         DeckTextButton(stringResource(Res.string.logout), color = DeckColors.Warn, onClick = { confirmLogout = true })
     }
-    if (confirmLogout) {
-        DeckConfirmDialog(
-            title = stringResource(Res.string.logout_title),
-            text = stringResource(Res.string.logout_text),
-            confirmLabel = stringResource(Res.string.logout), destructive = true,
-            onConfirm = {
-                confirmLogout = false
-                // 外部の永続セッションを全て破棄してから未ログインへ（次回起動もゲートになる）。
-                ExternalSignerHost.provider?.logout()
-                Nip46Manager.disconnect()
-                NosskeyHost.provider?.logout()
-                SignerProvider.logout()
-            },
-            onDismiss = { confirmLogout = false },
-        )
-    }
+    if (confirmLogout) LogoutConfirmDialog(onDismiss = { confirmLogout = false })
+}
+
+/**
+ * ログアウトの確認ダイアログ。確定で鍵を外して未ログインへ戻す。
+ * [#794] 設定のアカウント画面と、自分のアイコンのメニュー（[AccountMenu]）の両方から使う。
+ */
+@Composable
+internal fun LogoutConfirmDialog(onDismiss: () -> Unit) {
+    DeckConfirmDialog(
+        title = stringResource(Res.string.logout_title),
+        text = stringResource(Res.string.logout_text),
+        confirmLabel = stringResource(Res.string.logout), destructive = true,
+        onConfirm = {
+            onDismiss()
+            // 外部の永続セッションを全て破棄してから未ログインへ（次回起動もゲートになる）。
+            ExternalSignerHost.provider?.logout()
+            Nip46Manager.disconnect()
+            NosskeyHost.provider?.logout()
+            SignerProvider.logout()
+        },
+        onDismiss = onDismiss,
+    )
 }
 
 /** [#154] 現在の署名方式のユーザー向け表示名。 */
