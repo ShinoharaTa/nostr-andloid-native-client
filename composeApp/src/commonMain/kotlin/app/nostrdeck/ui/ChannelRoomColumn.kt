@@ -591,13 +591,15 @@ private fun Composer(
         )
     val videoProcessor = rememberVideoProcessor()
     var resolution by remember { mutableStateOf(ImageResolution.MID) }
-    val picker = rememberImagePicker { picked ->
+    // 添付リストへ追加し、追加時に圧縮を走らせる。ピッカーと貼り付け（[#795]）で共用。
+    val addImages: (List<PickedImage>) -> Unit = { picked ->
         picked.forEach { p ->
             val att = ComposeAttachment(p)
             images.add(att)
             scope.launch { att.compress(resolution, imgPrefs) }
         }
     }
+    val picker = rememberImagePicker { picked -> addImages(picked) }
     val videoPicker = rememberVideoPicker { picked ->
         picked?.let { p ->
             val att = VideoAttachment(p)
@@ -776,16 +778,20 @@ private fun Composer(
             if (text.isEmpty()) {
                 Text(stringResource(Res.string.chat_input_placeholder), color = DeckColors.Text3, fontSize = DeckType.Body)
             }
-            BasicTextField(
-                value = field,
-                onValueChange = { field = it },
-                textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Body),
-                cursorBrush = SolidColor(DeckColors.Accent),
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth()
-                    .let { m -> focusRequester?.let { m.focusRequester(it) } ?: m }
-                    .onFocusChanged { onFocusChanged(it.isFocused) },
-            )
+            // [#795] 入力欄への貼り付けでクリップボードの画像を添付（投稿画面と同じ部品）。送信中は横取りしない。
+            PasteImageHost(onImages = addImages, enabled = !sending) { pasteModifier ->
+                BasicTextField(
+                    value = field,
+                    onValueChange = { field = it },
+                    textStyle = TextStyle(color = DeckColors.Text, fontSize = DeckType.Body),
+                    cursorBrush = SolidColor(DeckColors.Accent),
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth()
+                        .let { m -> focusRequester?.let { m.focusRequester(it) } ?: m }
+                        .onFocusChanged { onFocusChanged(it.isFocused) }
+                        .then(pasteModifier),
+                )
+            }
         }
         Spacer(Modifier.width(DeckSpace.Xs))
         // [#304] 画像/動画の添付。押した順に添付され、圧縮は追加時に走る。
