@@ -236,7 +236,7 @@ const JA_READING_TO_KANJI: readonly (readonly [reading: string, kanji: string])[
 /** 肌の色・髪型などの合成用パーツ（単体では出さない） */
 const EXCLUDED_GROUP_KEY = "component";
 
-/** emojibase のグループ（messages.json の key）→ カテゴリ名。ja の値は emojibase-data/ja/messages.json のまま */
+/** emojibase のグループ（messages.json の key）→ カテゴリ名。ja は厳選リスト（emoji_cat_*）と同じ系統の言い方（emojibase の ja の誤訳「有効化」「フラグ」等は直してある） */
 const GROUP_TITLES: Readonly<Record<string, () => string>> = {
   "smileys-emotion": () => t("web_picker_group_smileys_emotion"),
   "people-body": () => t("web_picker_group_people_body"),

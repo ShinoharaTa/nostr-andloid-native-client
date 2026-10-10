@@ -31,17 +31,17 @@ it("loadEmojiCatalog() で標準の絵文字全部（1,500件超）・カテゴ�
   expect(EMOJI_ALL.length).toBeGreaterThan(1500);
   // 表情・人体・動物・食べ物・旅行・活動・物・記号・国旗（肌の色などの合成用パーツは除く）
   expect(EMOJI_CATEGORIES.length).toBeGreaterThanOrEqual(9);
-  // カテゴリ名は辞書から引く（ja は emojibase-data/ja/messages.json の名前のまま）
+  // カテゴリ名は辞書から引く（ja は厳選リストと同じ系統の言い方。emojibase の ja の名前は使わない）
   expect(EMOJI_CATEGORIES.map((c) => c.title())).toEqual([
-    "スマイリーと感情",
-    "人体",
-    "動物自然",
-    "飲み物・食べ物",
+    "表情・感情",
+    "人・体",
+    "動物・自然",
+    "食べ物・飲み物",
     "旅行・場所",
-    "有効化",
-    "オブジェクト",
-    "シンボル",
-    "フラグ",
+    "アクティビティ",
+    "物",
+    "記号",
+    "旗",
   ]);
   // char の重複が無い
   expect(new Set(EMOJI_ALL.map((e) => e.char)).size).toBe(EMOJI_ALL.length);
