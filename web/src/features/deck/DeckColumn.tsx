@@ -198,7 +198,7 @@ function FeedColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolea
   const profileHeader = profilePubkey ? <ProfileColumnHeader pubkey={profilePubkey} /> : undefined;
   return (
     <section className={styles.column} aria-label={columnLabel(spec)} aria-busy={loading}>
-      {showHeader && <ColumnHeader spec={spec} onRefresh={refresh} />}
+      {showHeader && <ColumnHeader spec={spec} />}
       <div className={styles.body}>
         {loading && (
           <div className={styles.progress} role="progressbar" aria-label={t("web_deck_loading_aria")} />
@@ -253,7 +253,7 @@ const STATUS_CLOCK_MS = 10_000;
  */
 function StatusColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean }) {
   const t = useT();
-  const { loading, events, refresh, emptyText } = useColumnFeed(spec);
+  const { loading, events, emptyText } = useColumnFeed(spec);
   const type = useDeck((s) => statusTypeOf(s, spec.id));
   const now = useNow(STATUS_CLOCK_MS);
   const statuses = useMemo(
@@ -266,7 +266,7 @@ function StatusColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: bool
   const empty = emptyText ?? t(type === "music" ? "web_status_empty_music" : "web_status_empty");
   return (
     <section className={styles.column} aria-label={columnLabel(spec)} aria-busy={loading}>
-      {showHeader && <ColumnHeader spec={spec} onRefresh={refresh} />}
+      {showHeader && <ColumnHeader spec={spec} />}
       <div className={styles.body}>
         {loading && (
           <div className={styles.progress} role="progressbar" aria-label={t("web_deck_loading_aria")} />
@@ -295,7 +295,7 @@ function StatusColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: bool
  * カラムヘッダ（ネイティブの ColumnHeader）。先頭 40px のアイコン、タイトル + 説明、末尾に ⋯。
  * PROFILE はプロフィール（kind:0）の名前をタイトルにする（ネイティブ ProfileColumn.kt:66-71。未取得なら spec.title）。
  */
-function ColumnHeader({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () => void }) {
+function ColumnHeader({ spec }: { spec: ColumnSpec }) {
   useT();
   const profilePubkey = spec.kind === "PROFILE" ? spec.filter.authors[0] : undefined;
   const profile = useProfile(profilePubkey);
@@ -315,7 +315,7 @@ function ColumnHeader({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () =>
         <h2 className={styles.title}>{title}</h2>
         <p className={styles.subtitle}>{subtitle}</p>
       </div>
-      <ColumnMenu spec={spec} onRefresh={onRefresh} />
+      <ColumnMenu spec={spec} />
     </header>
   );
 }
@@ -389,13 +389,13 @@ function FavItem({ reaction }: { reaction: NostrEvent }) {
 
 /**
  * カラムの ⋯ メニュー（ネイティブの ColumnMenuButton）。移動 ◀ ▶ / フィルターを編集 / ミュートを表示・隠す /
- * 更新 / 固定する / タイムラインに混ぜる表示 / カラム幅 / カラムを削除。外側のクリック・Escape・戻る（#540）で閉じる。
- * onRefresh が無ければ「更新」を出さない。「ミュートを表示」は renderer が FEED / THREAD のときだけ
+ * 固定する / タイムラインに混ぜる表示 / カラム幅 / カラムを削除。外側のクリック・Escape・戻る（#540）で閉じる。
+ * [#819] 「更新」は出さない（#601 の引っ張って更新で足りる）。「ミュートを表示」は renderer が FEED / THREAD のときだけ
  * （ネイティブ DeckScreen.kt と同じ。CHANNEL_LIST は対象外）。ROOM（パブリックチャット）は
  * ネイティブには無い Web 独自の対象（発言のミュート表示切替は Web の既存機能なので残す。D3）。
  * 「タイムラインに混ぜる表示」はフォロー中カラムだけ。「表示（すべて / Now Playing / ステータス）」はステータスカラムだけ（#767）。
  */
-export function ColumnMenu({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: () => void }) {
+export function ColumnMenu({ spec }: { spec: ColumnSpec }) {
   useT();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -497,12 +497,6 @@ export function ColumnMenu({ spec, onRefresh }: { spec: ColumnSpec; onRefresh?: 
                 {mutedRevealed ? t("col_hide_muted") : t("col_show_muted")}
               </button>
             )}
-          {onRefresh && (
-            <button type="button" role="menuitem" className={styles.menuItem} onClick={act(onRefresh)}>
-              <Icon name="refresh" size="md" />
-              {t("web_deck_refresh")}
-            </button>
-          )}
           {!spec.pinned && (
             <button
               type="button"

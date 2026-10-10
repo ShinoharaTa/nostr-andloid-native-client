@@ -43,7 +43,6 @@
   "web_deck_empty": "カラムがありません。＋ から追加できます",
   "web_deck_loading_aria": "読み込み中",
   "web_deck_pin": "固定する",
-  "web_deck_refresh": "更新",
   "web_deck_unsupported_column": "この種類のカラムは Web 版ではまだ使えません",
   "web_display_datasaver_desc": "オンの間は画像を小さく・低画質で読み込み、通信量を抑えます。再読み込みやブラウザのデータセーバー設定の変更で、ブラウザの設定に戻ります。",
   "web_display_datasaver_title": "データセーバー",

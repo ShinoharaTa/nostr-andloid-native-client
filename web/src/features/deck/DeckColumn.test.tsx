@@ -93,6 +93,17 @@ it("左端のカラムのメニューでは「左へ移動」が押せない", a
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });
 
+it("[#819] メニューに「更新」は無い（引っ張って更新で足りる）。一時カラムの「固定する」は残す", async () => {
+  const user = userEvent.setup();
+  const temporary: ColumnSpec = { ...DEFAULT_COLUMNS[1], id: "c_temp", pinned: false };
+  useDeck.setState({ columns: [...DEFAULT_COLUMNS, temporary], widths: {} });
+  renderWithRouter(<DeckColumn spec={temporary} showHeader />);
+  await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+
+  expect(screen.queryByRole("menuitem", { name: "更新" })).not.toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "固定する" })).toBeInTheDocument();
+});
+
 /** DM カラムを / に描き、/messages/:peer へ移れるルータ */
 function renderDmColumn(spec: ColumnSpec) {
   const router = createMemoryRouter([
