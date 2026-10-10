@@ -3473,7 +3473,13 @@ class EventRepository(
                 rootOf(e.tags)?.let { q.touchChannelActivity(e.createdAt, it, e.createdAt) }
             }
             // [#793] NIP-28 チャンネル作成。フォロー中 TL の発言に「#名前」を出すため id で取りに行ったものを一覧へ。
-            Nip28.KIND_CHANNEL_CREATE -> ingestChannelCreate(e)
+            // [#839] 本文の引用（nevent / note）・記事の埋め込み・通知の対象として id で引けるよう event テーブルにも入れる
+            // （引用の解決は eventById しか見ないので、入れないと他人のチャンネルの引用はカードにならずリンクのままだった）。
+            Nip28.KIND_CHANNEL_CREATE -> {
+                q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, e.content, tagsToJson(e.tags), e.sig)
+                indexTags(e)
+                ingestChannelCreate(e)
+            }
             0 -> upsertProfile(e)
             3 -> { updateFollows(e); captureContacts(e) }  // 自分のフォロー更新＋全 pubkey の集計[#96/#97/#98]
             10002 -> { captureNip65(e); if (relayListRep.accept(e, myPubkey)) applyRelayList(relayListRep.state.value) }
