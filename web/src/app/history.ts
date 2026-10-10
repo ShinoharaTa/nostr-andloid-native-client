@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NavigationType, useLocation, useNavigate, useNavigationType } from "react-router";
 import { useDeck } from "../store/deck";
 
@@ -128,4 +128,28 @@ export function useCloseMenuOnBack(open: boolean, onClose: () => void): void {
       void latest.current.navigate(-1);
     };
   }, [open]);
+}
+
+/**
+ * [#797] ⋯ メニューの項目で画面を移るとき用。useCloseMenuOnBack が積んだ印のエントリが戻って消えてから run を呼ぶ
+ * （消える前に移ると、印を消すための「戻る」が移った先のエントリを消してしまう）。印が無ければ次の描画の後に呼ぶ。
+ * run は呼ぶときの場所（閉じた後の場所）で行き先を決めること。
+ */
+export function useAfterMenuClosed(): (run: () => void) => void {
+  const location = useLocation();
+  const pending = useRef<(() => void) | null>(null);
+  const [requested, setRequested] = useState(0);
+
+  useEffect(() => {
+    void requested;
+    const run = pending.current;
+    if (!run || isMenuOpenState(location.state)) return;
+    pending.current = null;
+    run();
+  }, [location, requested]);
+
+  return useCallback((run: () => void) => {
+    pending.current = run;
+    setRequested((n) => n + 1);
+  }, []);
 }

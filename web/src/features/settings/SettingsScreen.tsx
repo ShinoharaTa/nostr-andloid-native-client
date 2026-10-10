@@ -1,8 +1,6 @@
 import { type ReactNode, useId } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { useT } from "../../i18n";
-import { hrefForProfile } from "../../lib/content/labels";
-import { useSession } from "../../signer/session";
 import { ScreenHeader } from "../../ui/ScreenHeader";
 import { useLayoutMode } from "../../ui/useLayoutMode";
 import { WalletSection } from "../wallet/WalletSection";
@@ -22,54 +20,39 @@ import { ReactionSection } from "./ReactionSection";
 import { RelaySection } from "./RelaySection";
 import styles from "./SettingsScreen.module.css";
 import {
+  canGoBackFromSection,
   DEFAULT_SECTION_ID,
   findSection,
   renamedSectionId,
+  SETTINGS_FROM_LIST,
   SETTINGS_GROUPS,
   type SettingsSection,
 } from "./sections";
 
-/** 一覧から開いた詳細の履歴エントリの印（Compact の「←」で戻れるか） */
-const FROM_LIST = "settingsFromList";
-
-function openedFromList(state: unknown): boolean {
-  return (
-    typeof state === "object" && state !== null && (state as Record<string, unknown>)[FROM_LIST] === true
-  );
-}
-
 /**
  * 設定（ネイティブ SettingsScreen + TwoPane）。URL は /settings/:section?。
- * Expanded = 左に項目の一覧・右に内容（未選択ならアカウント）、Compact/Rail = 一覧 → 内容（「←」で一覧へ。
+ * Expanded = 左に項目の一覧・右に内容（未選択ならプロフィール編集）、Compact/Rail = 一覧 → 内容（「←」で一覧へ。
  * [#661] Rail は内容が Compact と同じ 1 ペイン）。
+ * [#807] 自分のアイコンのメニュー・プロフィールの「編集」から開いた項目の「←」は、開く前の画面へ戻る。
  */
 export function SettingsScreen() {
   const mode = useLayoutMode();
   const { section: param } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const me = useSession((s) => s.pubkey);
   const opened = findSection(param) ?? null;
   const selected = opened ?? (mode === "expanded" ? (findSection(DEFAULT_SECTION_ID) ?? null) : null);
 
-  // Compact は戻る対象にする（一覧 → 内容）、Expanded は項目の切り替えなので置き換える。
-  // 「プロフィール」は自分のプロフィールを重ね、「DM」はメッセージ画面へ切り替える（設定の中では描かない）
+  // Compact は戻る対象にする（一覧 → 内容）、Expanded は項目の切り替えなので置き換える
   function select(id: string) {
-    if (id === "profile") {
-      if (me) void navigate(hrefForProfile(me));
-      return;
-    }
-    if (id === "dm") {
-      void navigate("/messages", { replace: true });
-      return;
-    }
     if (id === selected?.id) return;
-    if (mode !== "expanded") void navigate(`/settings/${id}`, { state: { [FROM_LIST]: true } });
+    if (mode !== "expanded") void navigate(`/settings/${id}`, { state: { [SETTINGS_FROM_LIST]: true } });
     else void navigate(`/settings/${id}`, { replace: true });
   }
 
+  // 一覧から・設定の外から積んだエントリは 1 つ戻る（一覧 / 開く前の画面）。直接開いたものは一覧へ置き換える
   function back() {
-    if (openedFromList(location.state)) void navigate(-1);
+    if (canGoBackFromSection(location.state)) void navigate(-1);
     else void navigate("/settings", { replace: true });
   }
 

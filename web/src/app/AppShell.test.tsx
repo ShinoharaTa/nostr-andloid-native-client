@@ -87,7 +87,7 @@ function currentNavLabels() {
 describe("骨格", () => {
   it("compact: 下部ナビ（5 つ）と main。レールは無い", () => {
     renderAt(["/"]);
-    expect(navLabels()).toEqual(["ホーム", "検索", "メッセージ", "通知", "設定"]);
+    expect(navLabels()).toEqual(["ホーム", "検索", "パブリックチャット", "通知", "アカウントのメニュー"]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
     expect(screen.queryByRole("img", { name: "Nostrism" })).not.toBeInTheDocument();
     expect(screen.getByRole("main")).toBeInTheDocument();
@@ -103,8 +103,8 @@ describe("骨格", () => {
       "通知",
       "カラム追加",
       "検索",
-      "メッセージ",
-      "設定",
+      "パブリックチャット",
+      "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
     expect(screen.getByTestId("col-c_following")).toHaveAttribute("data-header", "false");
@@ -120,8 +120,8 @@ describe("骨格", () => {
       "通知",
       "カラム追加",
       "検索",
-      "メッセージ",
-      "設定",
+      "パブリックチャット",
+      "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
     expect(screen.getByTestId("col-c_following")).toHaveAttribute("data-header", "false");
@@ -131,13 +131,13 @@ describe("骨格", () => {
     mockViewport(500, { hover: false });
     const router = createMemoryRouter(routes, { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
-    expect(navLabels()).toEqual(["ホーム", "検索", "メッセージ", "通知", "設定"]);
+    expect(navLabels()).toEqual(["ホーム", "検索", "パブリックチャット", "通知", "アカウントのメニュー"]);
     expect(screen.queryByRole("img", { name: "Nostrism" })).not.toBeInTheDocument();
   });
 
   it("[#540] 439px は下部ナビ（レールは無い）", () => {
     renderAt(["/"], 439);
-    expect(navLabels()).toEqual(["ホーム", "検索", "メッセージ", "通知", "設定"]);
+    expect(navLabels()).toEqual(["ホーム", "検索", "パブリックチャット", "通知", "アカウントのメニュー"]);
     expect(screen.queryByRole("img", { name: "Nostrism" })).not.toBeInTheDocument();
   });
 
@@ -152,8 +152,8 @@ describe("骨格", () => {
       "通知",
       "カラム追加",
       "検索",
-      "メッセージ",
-      "設定",
+      "パブリックチャット",
+      "アカウントのメニュー",
     ]);
 
     act(() => {
@@ -165,9 +165,9 @@ describe("骨格", () => {
       "#nostr",
       "カラム追加",
       "検索",
-      "メッセージ",
+      "パブリックチャット",
       "通知",
-      "設定",
+      "アカウントのメニュー",
     ]);
   });
 });
@@ -212,9 +212,10 @@ describe("宛先", () => {
   it.each([
     ["/search", "検索", "検索"],
     ["/notifications", "通知", "通知"],
-    ["/messages", "メッセージ", "メッセージ"],
-    ["/settings", "設定", "設定"],
-    ["/settings/relays", "リレー", "設定"],
+    ["/messages", "DM", "アカウントのメニュー"],
+    ["/channels", "パブリックチャット", "パブリックチャット"],
+    ["/settings", "設定", "アカウントのメニュー"],
+    ["/settings/relays", "リレー", "アカウントのメニュー"],
   ])("%s は見出し「%s」とナビの「%s」を選択表示する", async (path, heading, nav) => {
     renderAt([path]);
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
@@ -341,7 +342,7 @@ describe("ナビ", () => {
     expect(useDeck.getState().jumpTarget).toBeNull();
   });
 
-  it("DM の未読があれば下部ナビ・レールの「メッセージ」に数を出す（#506）", () => {
+  it("DM の未読があれば下部ナビ・レールの自分のアイコンに数を出す（#506 / #797）", () => {
     useDm.getState().reset(PUBKEY);
     useDmSeen.setState({ me: PUBKEY, first: 0, peers: {} });
     useDm.getState().upsertMessages(
@@ -358,10 +359,14 @@ describe("ナビ", () => {
     );
     try {
       renderAt(["/"]);
-      expect(within(mainNav()).getByRole("button", { name: "メッセージ（未読 2 件）" })).toBeInTheDocument();
+      expect(
+        within(mainNav()).getByRole("button", { name: "アカウントのメニュー（未読 2 件）" }),
+      ).toBeInTheDocument();
       cleanup();
       renderAt(["/"], 1400);
-      expect(within(mainNav()).getByRole("button", { name: "メッセージ（未読 2 件）" })).toBeInTheDocument();
+      expect(
+        within(mainNav()).getByRole("button", { name: "アカウントのメニュー（未読 2 件）" }),
+      ).toBeInTheDocument();
     } finally {
       useDm.getState().reset(null);
       useDmSeen.setState({ me: null, first: 0, peers: {} });
