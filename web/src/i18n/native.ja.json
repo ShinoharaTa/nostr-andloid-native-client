@@ -546,6 +546,7 @@
   "thread_title": "スレッド",
   "thread_write_reply": "返信を書く…",
   "tile_profile": "プロフィール",
+  "tpl_channel_list_hint": "パブリックチャットのスレッド一覧（NIP-28）",
   "tpl_favs": "ふぁぼ欄",
   "tpl_favs_hint": "自分がリアクションした投稿",
   "tpl_following": "フォロー中",

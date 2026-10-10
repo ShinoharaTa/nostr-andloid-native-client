@@ -241,6 +241,7 @@ export type TemplateId =
   | "SEARCH"
   | "HASHTAG"
   | "FAVS"
+  | "CHANNEL_LIST"
   | "STATUS";
 
 /** テンプレの設定種別 */
@@ -254,8 +255,7 @@ export type ColumnTemplate = {
 };
 
 /**
- * カラム追加の一覧（ネイティブの ColumnTemplate.entries の順。表示名は templateLabel / templateHint）。
- * STATUS はネイティブに無いテンプレなので末尾に置く
+ * カラム追加の一覧（ネイティブの ColumnTemplate.entries と同じ順。表示名は templateLabel / templateHint）。
  */
 export const TEMPLATES: readonly ColumnTemplate[] = [
   { template: "FOLLOWING", config: "NONE", iconKind: "FOLLOWING" },
@@ -266,10 +266,11 @@ export const TEMPLATES: readonly ColumnTemplate[] = [
   { template: "SEARCH", config: "TEXT", iconKind: "GLOBAL" },
   { template: "HASHTAG", config: "TEXT", iconKind: "HASHTAG" },
   { template: "FAVS", config: "NONE", iconKind: "FAVS" },
+  { template: "CHANNEL_LIST", config: "NONE", iconKind: "CHANNEL_LIST" },
   { template: "STATUS", config: "NONE", iconKind: "STATUS" },
 ];
 
-/** テンプレの表示名（ネイティブの tpl_* / nav_dm） */
+/** テンプレの表示名（ネイティブの tpl_* / nav_dm / nav_public_chat） */
 export function templateLabel(template: TemplateId): string {
   switch (template) {
     case "FOLLOWING":
@@ -288,6 +289,8 @@ export function templateLabel(template: TemplateId): string {
       return t("tpl_hashtag");
     case "FAVS":
       return t("tpl_favs");
+    case "CHANNEL_LIST":
+      return t("nav_public_chat");
     case "STATUS":
       return t("web_tpl_status");
   }
@@ -306,6 +309,8 @@ export function templateHint(template: TemplateId): string | undefined {
       return t("tpl_hashtag_hint");
     case "FAVS":
       return t("tpl_favs_hint");
+    case "CHANNEL_LIST":
+      return t("tpl_channel_list_hint");
     case "STATUS":
       return t("web_tpl_status_hint");
     default:
@@ -456,6 +461,15 @@ export function buildColumn(
     }
     case "FAVS":
       return feedColumn(id, CANONICAL_TITLE.favs, CANONICAL_SUBTITLE.myReactions, "FAVS", { kinds: [7] });
+    case "CHANNEL_LIST":
+      // [#799] パブリックチャット画面の一覧（ネイティブ SampleData.channelListColumn）と同じタイトル・サブタイトル・filter。
+      // 一覧は REQ を張らずに取るので、filter は同期の形を揃えるためだけに持つ
+      return {
+        ...feedColumn(id, CANONICAL_TITLE.publicChat, "NIP-28 · channels", "CHANNEL_LIST", {
+          kinds: [40, 41],
+        }),
+        renderer: "CHANNEL_LIST",
+      };
     case "STATUS":
       // 対象（フォロー + 自分）は実行時に決めるので authors は持たない。種類の絞り込みはカラムの表示設定（同期しない）
       return feedColumn(id, CANONICAL_TITLE.status, "NIP-38", "STATUS", { kinds: [30315] });

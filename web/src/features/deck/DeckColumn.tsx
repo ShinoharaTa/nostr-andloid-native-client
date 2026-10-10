@@ -140,7 +140,7 @@ function DmColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean 
 }
 
 /**
- * NIP-28 のチャンネル一覧カラム（ネイティブ ChannelListColumn。同期で来たものを描く）。行を押すとルームを一時カラムで開き
+ * NIP-28 のチャンネル一覧カラム（ネイティブ ChannelListColumn。カラム追加の一覧・同期で来たものを描く）。行を押すとルームを一時カラムで開き
  * （戻るとこのカラムへ）、ピンで固定カラムにする。
  */
 function ChannelListColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean }) {
