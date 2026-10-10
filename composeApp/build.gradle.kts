@@ -35,6 +35,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.serialization)
     alias(libs.plugins.sqldelight)
+    alias(libs.plugins.aboutlibraries)
 }
 
 kotlin {
@@ -301,4 +302,40 @@ sqldelight {
             verifyMigrations.set(true)
         }
     }
+}
+
+// [#840] オープンソースライセンスの一覧（設定 → このアプリについて → オープンソースライセンス）。
+// AboutLibraries の exportLibraryDefinitions で、依存の一覧とライセンス文を
+// build/generated/aboutLibraries/composeResources/files/aboutlibraries.json に書き出す（build/ 配下なのでコミットしない）。
+// ライセンス文は SPDX の原文をタスクの実行時にネットから取る（取れなければ空になり、画面は URL を出す）。
+aboutLibraries {
+    collect {
+        // 配布物に入るものだけ: Android の release・Desktop・iOS（Kotlin/Native は *CompileClasspath を持たないので、
+        // iosMain のメタデータの classpath（commonMain の依存も含む）で拾う）。debug・テスト・Compose Hot Reload の dev 用は外す。
+        // 3 つの合算を全プラットフォームで同じ JSON として出す（Android だけの依存が Desktop の一覧に載る等は許容）。
+        filterVariants.addAll("release", "desktop", "metadataIosMain")
+        // BOM（kotlin-bom 等の platform 依存）は版合わせだけで中身が無いので載せない。
+        includePlatform = false
+    }
+    library {
+        // 自分のアプリ（app.nostrdeck）と内部モジュール（:nostr-core）は載せない。プロジェクト依存は元々集めないが、念のため。
+        exclusionPatterns.addAll(Regex("""^app\.nostrdeck""").toPattern(), Regex(""":nostr-core$""").toPattern())
+    }
+    export {
+        outputFile = layout.buildDirectory.file("generated/aboutLibraries/composeResources/files/aboutlibraries.json")
+        // 画面で使わない項目を落として小さくする（使うのは名前・版・Web サイト・開発者/組織・ライセンス）。
+        excludeFields.addAll("description", "funding", "scm")
+    }
+}
+
+compose.resources {
+    // [#840] 生成した aboutlibraries.json を Android / iOS / Desktop の Compose Resources に載せ、
+    // commonMain から Res.readBytes("files/aboutlibraries.json") で読む。
+    // customDirectory はそのソースセットの composeResources を「置き換える」ので、自前の composeResources を持たない
+    // androidMain / iosMain / desktopMain に付ける（commonMain に付けると文字列などが消える）。
+    // タスクの出力から作った Provider なので、リソースを使うタスクより先に exportLibraryDefinitions が走る。
+    val licensesDir = tasks.named("exportLibraryDefinitions").map {
+        layout.buildDirectory.dir("generated/aboutLibraries/composeResources").get()
+    }
+    listOf("androidMain", "iosMain", "desktopMain").forEach { customDirectory(it, licensesDir) }
 }

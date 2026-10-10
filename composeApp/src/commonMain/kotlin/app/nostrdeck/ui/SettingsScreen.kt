@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -106,6 +107,8 @@ import nostr_deck_client.composeapp.generated.resources.embed_youtube
 import nostr_deck_client.composeapp.generated.resources.group_app
 import nostr_deck_client.composeapp.generated.resources.group_nostr
 import nostr_deck_client.composeapp.generated.resources.section_about
+import nostr_deck_client.composeapp.generated.resources.section_licenses
+import nostr_deck_client.composeapp.generated.resources.licenses_open_sub
 import nostr_deck_client.composeapp.generated.resources.section_account
 import nostr_deck_client.composeapp.generated.resources.section_appearance
 import nostr_deck_client.composeapp.generated.resources.section_bookmarks
@@ -276,8 +279,8 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
         // 「ログイン方法」等のフォームが画面に収まらず操作できない問題の解消（全セクション既定でスクロール）。
         // dmrelays は #74 で LazyColumn → Column(forEach) にしたため、既定スクロール側に移した。
         // media は #269 でサーバ一覧をモーダル内 Column(forEach) にしたため、既定スクロール側に移した。
-        // 右ペインは「はみ出したらスクロール」が既定。自前の全画面リストを持つ3つだけ例外。
-        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute")
+        // 右ペインは「はみ出したらスクロール」が既定。自前の全画面リストを持つものだけ例外（[#840] licenses も）。
+        val selfScroll = sectionId in setOf("favs", "bookmarks", "mute", "licenses")
         val contentMod = Modifier.weight(1f).fillMaxWidth()
             .let { if (selfScroll) it else it.verticalScroll(rememberScrollState()) }
         Column(contentMod) {
@@ -296,10 +299,31 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "wallet" -> WalletSettings()
                 "data" -> DataSettings()
                 "appearance" -> AppearanceSettings()
+                "about" -> AboutSettings(state)   // [#840]
+                "licenses" -> LicensesScreen()     // [#840] 「このアプリについて」から開く（一覧には並べない）
                 else -> Text(stringResource(Res.string.section_unimplemented), color = DeckColors.Text3, fontSize = DeckType.Sub)
             }
         }
     }
+}
+
+/**
+ * [#840] このアプリについて。今はオープンソースライセンス（[LicensesScreen]）への導線だけ。
+ * ライセンスは設定の一覧に並ばない節 "licenses" として右ペイン（Compact は単独の画面）に開く。
+ */
+@Composable
+private fun AboutSettings(state: DeckState) {
+    SettingsNavRow(
+        label = stringResource(Res.string.section_licenses),
+        sublabel = stringResource(Res.string.licenses_open_sub),
+        leading = {
+            Icon(
+                Icons.Outlined.Description, contentDescription = null,
+                tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+            )
+        },
+        onClick = { state.settingsSection = "licenses" },
+    )
 }
 
 /**
@@ -1057,6 +1081,7 @@ private fun sectionTitle(sectionId: String): String = when (sectionId) {
     "appearance" -> stringResource(Res.string.section_appearance)
     "data" -> stringResource(Res.string.section_data)
     "about" -> stringResource(Res.string.section_about)
+    "licenses" -> stringResource(Res.string.section_licenses)   // [#840]
     "mute" -> stringResource(Res.string.section_mute)
     "favs" -> stringResource(Res.string.section_favs)
     "bookmarks" -> stringResource(Res.string.section_bookmarks)
