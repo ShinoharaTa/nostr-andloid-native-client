@@ -1,7 +1,11 @@
 import type { UIMatch } from "react-router";
 import { t } from "../i18n";
+import { isAccountIconActive } from "./accountMenuModel";
 
-/** 宛先（URL のパス）。messages = DM、channels = パブリックチャット（どちらもナビの「メッセージ」）。notFound = どのナビも選択しない */
+/**
+ * 宛先（URL のパス）。messages = DM（自分のアイコンのメニューから開く）、channels = パブリックチャット（ナビの 3 枠目）。
+ * notFound = どのナビも選択しない
+ */
 export type Dest = "home" | "search" | "messages" | "channels" | "notifications" | "settings" | "notFound";
 
 /** 宛先の上に重ねる詳細 */
@@ -22,10 +26,11 @@ export function routeHandleOf(matches: UIMatch[]): RouteHandle | null {
   return isRouteHandle(handle) ? handle : null;
 }
 
-export type NavKey = "home" | "search" | "messages" | "notifications" | "settings";
+/** account = 自分のアイコン（押すとメニュー。未ログインなら設定へ。#797） */
+export type NavKey = "home" | "search" | "channels" | "notifications" | "account";
 
 /** 下部ナビの順（ネイティブ BottomBar と同じ） */
-export const NAV_ORDER: readonly NavKey[] = ["home", "search", "messages", "notifications", "settings"];
+export const NAV_ORDER: readonly NavKey[] = ["home", "search", "channels", "notifications", "account"];
 
 /** ナビの表示名。言語の切り替えに追従するよう、定数ではなく呼ぶたびに引く */
 export function navLabel(key: NavKey): string {
@@ -34,21 +39,21 @@ export function navLabel(key: NavKey): string {
       return t("nav_home");
     case "search":
       return t("nav_search");
-    case "messages":
-      return t("nav_messages");
+    case "channels":
+      return t("nav_public_chat");
     case "notifications":
       return t("nav_notifications");
-    case "settings":
-      return t("settings_title");
+    case "account":
+      return t("web_nav_account_menu");
   }
 }
 
 export const NAV_PATH: Record<NavKey, string> = {
   home: "/",
   search: "/search",
-  messages: "/messages",
+  channels: "/channels",
   notifications: "/notifications",
-  settings: "/settings",
+  account: "/settings",
 };
 
 /** 通知が選択中か。通知画面、またはデッキで通知カラムを見ているとき（ネイティブ #405） */
@@ -73,9 +78,9 @@ export function bottomSelection(
   return {
     home: dest === "home" && !notifications,
     search: dest === "search",
-    messages: dest === "messages" || dest === "channels",
+    channels: dest === "channels",
     notifications,
-    settings: dest === "settings",
+    account: isAccountIconActive(dest),
   };
 }
 

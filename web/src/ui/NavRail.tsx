@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AccountMenu } from "../app/AccountMenu";
 import { type NavKey, navLabel } from "../app/navState";
 import { useT } from "../i18n";
 import { columnDisplayTitle } from "../i18n/columnTitles";
@@ -13,8 +14,10 @@ export type RailPinned = { id: string; title: string; kind: ColumnKind; active: 
 
 /**
  * Expanded の左レール（ネイティブ DeckRail）。表示だけで、押したら各コールバック。
- * ブランド → ホーム ｜ ピン留めの目次（ここだけ縦スクロール）→ カラム追加 ｜ 検索 → メッセージ →（通知カラムが無いときだけ）通知 ｜
- * 接続表示 → 自分（設定）。投稿ボタンはレールに無い。badges = 宛先のアイコンの右上に重ねる未読数（0・未指定は出さない）。
+ * ブランド → ホーム ｜ ピン留めの目次（ここだけ縦スクロール）→ カラム追加 ｜ 検索 → パブリックチャット →
+ * （通知カラムが無いときだけ）通知 ｜ 接続表示 → 自分。投稿ボタンはレールに無い。
+ * badges = 宛先のアイコンの右上に重ねる未読数（0・未指定は出さない）。
+ * [#797] 自分のアイコンは押すとメニュー（AccountMenu。レールの右へ出す。未ログインなら onSelect("account") で設定へ）。
  */
 export function NavRail({
   selected,
@@ -36,6 +39,7 @@ export function NavRail({
   onAddColumn(): void;
 }) {
   const t = useT();
+  const accountBadge = badges?.account ?? 0;
   const dest = (key: NavKey, active: boolean, icon: ReactNode) => {
     const badge = badges?.[key] ?? 0;
     return (
@@ -99,7 +103,7 @@ export function NavRail({
       <div className={styles.divider} />
       <div className={styles.block}>
         {dest("search", selected.search, <SearchIcon className={styles.icon} />)}
-        {dest("messages", selected.messages, <ChatIcon className={styles.icon} />)}
+        {dest("channels", selected.channels, <ChatIcon className={styles.icon} />)}
         {showNotifications &&
           dest("notifications", selected.notifications, <NotificationsIcon className={styles.icon} />)}
       </div>
@@ -109,7 +113,20 @@ export function NavRail({
         <span className={styles.relaySlot}>
           <RelayIndicator orientation="vertical" />
         </span>
-        {dest("settings", selected.settings, <AccountAvatar size={40} />)}
+        <AccountMenu
+          triggerClassName={styles.slot}
+          placement="beside"
+          current={selected.account}
+          dmUnread={accountBadge}
+          onFallback={() => onSelect("account")}
+        >
+          <AccountAvatar size={40} />
+          {accountBadge > 0 && (
+            <span className={styles.badge} aria-hidden="true">
+              {badgeText(accountBadge)}
+            </span>
+          )}
+        </AccountMenu>
       </div>
     </nav>
   );
