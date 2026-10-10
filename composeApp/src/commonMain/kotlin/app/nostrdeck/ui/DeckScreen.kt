@@ -501,10 +501,15 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     } else {
                         repo!!.subscribeColumn(spec.id, spec.filter)
                     }
-                    if (isProfile && profilePubkey != null) repo.loadProfile(profilePubkey)
+                    if (isProfile && profilePubkey != null) {
+                        repo.loadProfile(profilePubkey)
+                        // [#835] 本人のステータス（NIP-38。ヘッダに出す）。購読 id はカラムの id と分ける。
+                        repo.subscribeProfileStatuses("${spec.id}~status", profilePubkey)
+                    }
                     onDispose {
                         repo.unsubscribeColumn(spec.id)
                         if (isFollowingFeed) repo.unsubscribeColumn("home_notif")
+                        if (isProfile && profilePubkey != null) repo.unsubscribeColumn("${spec.id}~status")
                     }
                 }
             }

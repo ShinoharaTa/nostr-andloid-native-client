@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,12 @@ import nostr_deck_client.composeapp.generated.resources.status_type_music
 /** 期限切れを落とし、残り時間を進める間隔（Web と同じ 10 秒）。 */
 private const val STATUS_CLOCK_MS = 10_000L
 
+/** [#835] ステータスの時計（unix 秒。[STATUS_CLOCK_MS] ごとに進む）。カラムとプロフィールのヘッダで使う。 */
+@Composable
+internal fun rememberStatusClock(): State<Long> = produceState(currentUnixTime()) {
+    while (true) { delay(STATUS_CLOCK_MS); value = currentUnixTime() }
+}
+
 /**
  * [#772] ステータス（NIP-38）のカラム（Web #767 と同じ）。フォロー中の人 + 自分の general / music を、
  * 1 人・1 種類につき 1 枚で新しい順に並べる。ミュート対象は出さない（⋯ の「ミュートを表示」で出す）。
@@ -83,9 +90,7 @@ fun StatusColumn(
     val repo = LocalRepository.current
     val all by remember(repo) { repo?.statusesFlow() ?: flowOf(emptyList()) }.collectAsState(emptyList())
     val type = repo?.columnStatusTypesFlow()?.collectAsState()?.value?.get(spec.id)
-    val now by produceState(currentUnixTime()) {
-        while (true) { delay(STATUS_CLOCK_MS); value = currentUnixTime() }
-    }
+    val now by rememberStatusClock()
     // ミュート（Web と同じく投稿と同じ判定。⋯ の「ミュートを表示」で出せる）。自分のステータスは対象外。
     val matcher = rememberMuteMatcher()
     val revealed = rememberColumnRevealMuted(spec.id)
@@ -118,8 +123,7 @@ fun StatusColumn(
 }
 
 /**
- * [#772] ステータス 1 件のカード（Web の StatusCard と同じ組み方）。アバター・名前・相対時刻、種類の印（♪ / 吹き出し）+ 本文
- * （4 行で折りたたみ）、参照のリンク行と残り時間、http(s) の参照ならリンクカード（埋め込み設定に従う。廃人モードでは出さない）。
+ * [#772] ステータス 1 件のカード（Web の StatusCard と同じ組み方）。アバター・名前・相対時刻の下に中身（[StatusBody]）。
  * 全体のタップでその人のプロフィールを開く。返信・リアクション等の操作は出さない。
  */
 @Composable
@@ -127,12 +131,6 @@ private fun StatusCard(e: NostrEvent, now: Long, onAuthorClick: (String) -> Unit
     val repo = LocalRepository.current
     val profile by remember(e.pubkey) { repo?.profileFlow(e.pubkey) ?: flowOf(null) }.collectAsState(null)
     val name = profile?.name?.takeIf { it.isNotBlank() } ?: e.pubkey.take(10)
-    val music = UserStatuses.typeOf(e) == UserStatuses.Type.MUSIC
-    val pointer = remember(e.id) { UserStatuses.pointerOf(e) }
-    val url = (pointer as? Pointer.Url)?.url
-    val service = remember(url) { url?.let { UserStatuses.serviceLabelOf(it) } }
-    val expiration = remember(e.id) { UserStatuses.expirationOf(e) }
-    val emojis = remember(e.id) { e.tags.filter { it.size >= 3 && it[0] == "emoji" }.associate { it[1] to it[2] } }
     val dense = DeckDensity.isDense
 
     Column(Modifier.fillMaxWidth().clickable { onAuthorClick(e.pubkey) }) {
@@ -152,35 +150,55 @@ private fun StatusCard(e: NostrEvent, now: Long, onAuthorClick: (String) -> Unit
                     HintText(noteRelativeTime(e.createdAt))
                 }
                 Spacer(Modifier.size(DeckDensity.NoteGap))
-                Row {
-                    val typeLabel = stringResource(if (music) Res.string.status_type_music else Res.string.status_type_general)
-                    Icon(
-                        if (music) Icons.Outlined.MusicNote else Icons.AutoMirrored.Outlined.Chat,
-                        contentDescription = typeLabel,
-                        tint = if (music) DeckColors.Accent else DeckColors.Text3,
-                        modifier = Modifier.padding(top = 2.dp).size(16.dp),
-                    )
-                    Spacer(Modifier.width(DeckSpace.Xs))
-                    CollapsibleText(
-                        e.content, collapsedMaxLines = 4, emojis = emojis, authorPubkey = e.pubkey,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (pointer != null || expiration != null) {
-                    Spacer(Modifier.size(DeckSpace.Xs))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (pointer != null) StatusRef(pointer, service, Modifier.weight(1f, fill = false))
-                        if (pointer != null && expiration != null) Spacer(Modifier.width(DeckSpace.Sm))
-                        if (expiration != null) HintText(expiryText(expiration, now), maxLines = 1)
-                    }
-                }
-                if (url != null && service != null && !dense) {
-                    Spacer(Modifier.size(DeckSpace.Sm))
-                    LinkEmbeds(url)
-                }
+                StatusBody(e, now)
             }
         }
         HorizontalDivider(color = DeckColors.Border)
+    }
+}
+
+/**
+ * [#835] ステータス 1 件の中身（Web の StatusBody と同じ）。種類の印（♪ / 吹き出し）+ 本文（4 行で折りたたみ）、
+ * 参照のリンク行と残り時間、[linkCard] なら http(s) の参照のリンクカード（埋め込み設定に従う。廃人モードでは出さない）。
+ * カラムのカード（[StatusCard]）と、プロフィールのヘッダ（[ProfileStatuses]。アバター・名前・リンクカードなし）で使う。
+ */
+@Composable
+internal fun StatusBody(e: NostrEvent, now: Long, modifier: Modifier = Modifier, linkCard: Boolean = true) {
+    val music = UserStatuses.typeOf(e) == UserStatuses.Type.MUSIC
+    val pointer = remember(e.id) { UserStatuses.pointerOf(e) }
+    val url = (pointer as? Pointer.Url)?.url
+    val service = remember(url) { url?.let { UserStatuses.serviceLabelOf(it) } }
+    val expiration = remember(e.id) { UserStatuses.expirationOf(e) }
+    val emojis = remember(e.id) { e.tags.filter { it.size >= 3 && it[0] == "emoji" }.associate { it[1] to it[2] } }
+    val dense = DeckDensity.isDense
+
+    Column(modifier) {
+        Row {
+            val typeLabel = stringResource(if (music) Res.string.status_type_music else Res.string.status_type_general)
+            Icon(
+                if (music) Icons.Outlined.MusicNote else Icons.AutoMirrored.Outlined.Chat,
+                contentDescription = typeLabel,
+                tint = if (music) DeckColors.Accent else DeckColors.Text3,
+                modifier = Modifier.padding(top = 2.dp).size(16.dp),
+            )
+            Spacer(Modifier.width(DeckSpace.Xs))
+            CollapsibleText(
+                e.content, collapsedMaxLines = 4, emojis = emojis, authorPubkey = e.pubkey,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (pointer != null || expiration != null) {
+            Spacer(Modifier.size(DeckSpace.Xs))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (pointer != null) StatusRef(pointer, service, Modifier.weight(1f, fill = false))
+                if (pointer != null && expiration != null) Spacer(Modifier.width(DeckSpace.Sm))
+                if (expiration != null) HintText(expiryText(expiration, now), maxLines = 1)
+            }
+        }
+        if (linkCard && url != null && service != null && !dense) {
+            Spacer(Modifier.size(DeckSpace.Sm))
+            LinkEmbeds(url)
+        }
     }
 }
 
