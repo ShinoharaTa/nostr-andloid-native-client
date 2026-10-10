@@ -7,6 +7,7 @@ import { extractMedia } from "../../lib/media";
 import { authorOutbox$ } from "../../nostr/outbox";
 import { requestOnce, subscribeTo, useReadRelays } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
+import { STATUS_KIND } from "../status/statusModel";
 
 /** 開いている間に張る REQ の kind（プロフィール・投稿・リポスト・リレーリスト・記事。#534） */
 export const PROFILE_REQ_KINDS = [0, 1, 6, 16, 10002, 30023];
@@ -15,6 +16,8 @@ export const PROFILE_FEED_KINDS = [1, 6, 16];
 export const PROFILE_REQ_LIMIT = 100;
 /** 投稿タブの最大件数（ネイティブ feedAuthorsWithReposts の LIMIT 150。過去読みは無い） */
 export const PROFILE_FEED_MAX = 150;
+/** [#821] 本人のステータス（NIP-38）の種類。general / music の各最新 1 件（addressable なので limit 2 で足りる） */
+export const PROFILE_STATUS_TYPES = ["general", "music"];
 /** 開いた時の kind:0 / 10002 の取り直しを待つ時間 */
 export const PROFILE_OPEN_TIMEOUT_MS = 10_000;
 
@@ -34,7 +37,7 @@ export function hasProfileMedia(event: NostrEvent): boolean {
 
 /**
  * プロフィール画面の購読と投稿（ネイティブ ProfileScreen の subscribeColumn + loadProfile）。
- * 開いている間、本人の kind 0/1/6/16/10002 を自分のリレーと本人の書き込みリレー（アウトボックス）へ張り、
+ * 開いている間、本人の kind 0/1/6/16/10002 とステータス（kind:30315。#821）を自分のリレーと本人の書き込みリレー（アウトボックス）へ張り、
  * 開いた時に kind:0 / 10002 をインデクサと nprofile のリレーヒントからも取り直す。閉じたら CLOSE。
  */
 export function useProfileFeed(
@@ -58,7 +61,15 @@ export function useProfileFeed(
   const [loading, setLoading] = useState(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: epoch は refresh() で張り直すためのキー
   useEffect(() => {
-    const main = [{ kinds: PROFILE_REQ_KINDS, authors: [pubkey], limit: PROFILE_REQ_LIMIT }];
+    const main = [
+      { kinds: PROFILE_REQ_KINDS, authors: [pubkey], limit: PROFILE_REQ_LIMIT },
+      {
+        kinds: [STATUS_KIND],
+        authors: [pubkey],
+        "#d": PROFILE_STATUS_TYPES,
+        limit: PROFILE_STATUS_TYPES.length,
+      },
+    ];
     const hints = hintsKey === "" ? [] : hintsKey.split(",");
     setLoading(true);
     const done = () => setLoading(false);
