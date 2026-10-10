@@ -3,6 +3,8 @@
  * YouTube 埋め込みカードのタイトル帯用に oEmbed を中継する（upstream 固定。ユーザー入力は videoId だけ）。
  * GET /api/oembed?url=<X の投稿 URL>&lang=ja|en（#744）: X の投稿カードの日時用に publish.x.com の oEmbed を中継する
  * （upstream 固定。ユーザー入力は投稿者のハンドル・投稿 ID・lang だけで、upstream の URL は組み立て直す）。
+ * GET /api/oembed?url=<open.spotify.com の URL>（#820）: Spotify のリンクカードのタイトル・ジャケット用に
+ * open.spotify.com の oEmbed を中継する（upstream 固定。ユーザー入力は種類と ID だけで、upstream の URL は組み立て直す）。
  */
 import { fetchLimited, isJsonMediaType, isSameOrigin } from "../../server/guard";
 import { errorResponse, JSON_CONTENT_TYPE, jsonResponse } from "../../server/http";
@@ -19,6 +21,13 @@ const X_POST_PATH = /^\/([A-Za-z0-9_]{1,15})\/status(?:es)?\/(\d{1,25})\/?$/;
 /** アプリの EventRepository.fetchXPostDate と同じ URL（lang は ja / en のどちらかに正規化して渡す） */
 const xOembedUpstream = (handle: string, id: string, lang: "ja" | "en") =>
   `https://publish.x.com/oembed?url=${encodeURIComponent(`https://x.com/${handle}/status/${id}`)}&omit_script=1&hide_thread=1&lang=${lang}`;
+/** Spotify の URL（open.spotify.com の (intl-xx/)<種類>/<ID> だけ。クエリ・fragment は落とす） */
+const SPOTIFY_HOST = "open.spotify.com";
+const SPOTIFY_PATH =
+  /^\/(?:intl-[A-Za-z]{2}(?:-[A-Za-z0-9]{2,4})?\/)?(track|album|playlist|artist|episode|show)\/([A-Za-z0-9]{22})\/?$/;
+/** 正規化した URL（https://open.spotify.com/<種類>/<ID>）を渡す */
+const spotifyOembedUpstream = (type: string, id: string) =>
+  `https://open.spotify.com/oembed?url=${encodeURIComponent(`https://open.spotify.com/${type}/${id}`)}`;
 /** アプリの EventRepository.OGP_UA と同じ（fetchXPostDate がこの UA で取る） */
 const X_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
@@ -29,6 +38,15 @@ const OEMBED_CACHE_TTL_SEC = 24 * 60 * 60;
 
 // 全メソッドを受け、GET 以外は handleOembed が 405 を返す（onRequestGet だと POST 等は静的アセットへ落ちる）
 export const onRequest: PagesFunction = (ctx) => handleOembed(ctx.request, ctx);
+
+/** url のホスト（URL として読めなければ null）。Spotify と X の振り分け用 */
+function hostOf(input: string): string | null {
+  try {
+    return new URL(input).hostname;
+  } catch {
+    return null;
+  }
+}
 
 /** X の投稿 URL（クエリ・fragment・余分なパスは不可）から upstream を組み立てる。形が合わなければ null */
 function xUpstreamFor(input: string, langParam: string | null): string | null {
@@ -48,7 +66,15 @@ function xUpstreamFor(input: string, langParam: string | null): string | null {
   return xOembedUpstream(match[1], match[2], lang);
 }
 
-/** YouTube / X の oEmbed の中継（24 時間キャッシュ・64KB 上限・5 秒タイムアウト）。 */
+/** Spotify の URL（クエリ・fragment は落とす。余分なパスは不可）から upstream を組み立てる。形が合わなければ null */
+function spotifyUpstreamFor(target: URL): string | null {
+  if (target.protocol !== "https:" || target.port !== "") return null;
+  if (target.username !== "" || target.password !== "") return null;
+  const match = SPOTIFY_PATH.exec(target.pathname);
+  return match ? spotifyOembedUpstream(match[1], match[2]) : null;
+}
+
+/** YouTube / X / Spotify の oEmbed の中継（24 時間キャッシュ・64KB 上限・5 秒タイムアウト）。 */
 async function handleOembed(
   request: Request,
   ctx: Pick<EventContext<unknown, string, unknown>, "waitUntil">,
@@ -60,7 +86,11 @@ async function handleOembed(
   const postUrl = params.get("url");
   let upstream: string;
   let userAgent = UPSTREAM_USER_AGENT;
-  if (postUrl !== null) {
+  if (postUrl !== null && hostOf(postUrl) === SPOTIFY_HOST) {
+    const spotify = spotifyUpstreamFor(new URL(postUrl));
+    if (spotify === null) return errorResponse(400, "invalid_url");
+    upstream = spotify;
+  } else if (postUrl !== null) {
     const x = xUpstreamFor(postUrl, params.get("lang"));
     if (x === null) return errorResponse(400, "invalid_url");
     upstream = x;

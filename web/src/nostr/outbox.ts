@@ -67,6 +67,27 @@ export function isRecognizedRelayTag(t: readonly string[]): boolean {
   return normalizedRelayTagUrl(t) !== null;
 }
 
+/**
+ * kind:10002 の r タグのうち ws:// のリレー（正規化した URL、重複なし）。https のページからは接続できないので
+ * relayPrefsFromEvent には入れず、設定の一覧に「Web 版では接続できません」と出すためだけに使う（#776）。
+ */
+export function wsRelayUrlsFromEvent(event: NostrEvent): string[] {
+  const urls: string[] = [];
+  for (const t of event.tags) {
+    if (t[0] !== "r" || t.length < 2 || typeof t[1] !== "string") continue;
+    const raw = t[1].trim();
+    if (!raw.startsWith("ws://")) continue;
+    let url: string;
+    try {
+      url = normalizeURL(raw);
+    } catch {
+      continue;
+    }
+    if (!urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
 /** 手元（EventStore）にある pubkey の kind:10002 の読み書きリレー。無ければ空 */
 export function relayPrefsOf(pubkey: string): RelayPref[] {
   const event = eventStore.getReplaceable(10002, pubkey);

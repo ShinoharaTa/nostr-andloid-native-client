@@ -39,6 +39,11 @@ export function parseRelayInput(input: string): string | null {
   }
 }
 
+/** 入力が ws:// のリレーか（Web 版では使えないので、追加欄で専用の文言を出す。#776） */
+export function isWsRelayInput(input: string): boolean {
+  return input.trim().toLowerCase().startsWith("ws://");
+}
+
 /**
  * r タグ（ネイティブ publishRelayList と同じ: read + write = マーカー無し / 片方だけ = read・write /
  * 両方オフは出さない）。URL は末尾の / を落とす。

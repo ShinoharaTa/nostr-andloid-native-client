@@ -317,7 +317,10 @@ describe("リモート署名（NIP-46）", () => {
   });
 
   it.each([
-    ["invalid-uri", "bunker://… の形式で、wss:// のリレーを含む接続先を貼り付けてください"],
+    [
+      "invalid-uri",
+      "ws:// のリレーは Web 版では使えません。bunker://… の形式で wss:// のリレーを含む接続先を貼り付けるか、アプリ版をお使いください",
+    ],
     ["timeout", "署名アプリから応答がありませんでした。アプリで承認してから、もう一度お試しください"],
     ["rejected", "署名アプリに拒否されました"],
     ["unavailable", "このブラウザでは接続情報を保存できません。拡張機能（NIP-07）でログインしてください。"],
@@ -335,6 +338,21 @@ describe("リモート署名（NIP-46）", () => {
     await userEvent.click(screen.getByRole("button", { name: "接続" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
+  it("接続先が ws:// のリレーだけなら接続せず、Web 版では使えない旨を出す（#776）", async () => {
+    await installTestVault();
+    useSession.setState({ status: "out" });
+    renderAt("/login");
+    const input = await openBunkerForm();
+
+    await userEvent.type(input, bunker.uri({ relays: ["ws://192.168.0.10:7777"] }));
+    await userEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ws:// のリレーは Web 版では使えません。bunker://… の形式で wss:// のリレーを含む接続先を貼り付けるか、アプリ版をお使いください",
+    );
+    expect(useSession.getState().status).toBe("out");
   });
 
   it("接続中は他のログイン方法を押せず、「やめる」で戻る（エラーは出さない）", async () => {

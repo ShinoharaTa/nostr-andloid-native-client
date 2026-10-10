@@ -24,7 +24,7 @@
 </head>
 <body>
 <h1>プライバシーポリシー / Privacy Policy — Nostrism</h1>
-<p class="meta">最終更新 / Last updated: 2026-10-06</p>
+<p class="meta">最終更新 / Last updated: 2026-10-10</p>
 
 <hr>
 
@@ -74,10 +74,11 @@
   <li><strong>リンクカード</strong>：投稿内のリンクをカードで表示するため、リンク先の URL をサーバーへ送り、サーバーがリンク先のページの先頭部分を取得します。</li>
   <li><strong>YouTube の動画情報</strong>：YouTube のリンクにタイトルを表示するため、動画の ID をサーバーへ送り、サーバーが YouTube から取得します。</li>
   <li><strong>X（Twitter）の投稿の日時</strong>：X の投稿のリンクを投稿カードで表示するとき、日時を表示するため、投稿の URL（投稿者のハンドルと投稿 ID）と表示言語（日本語・英語の別）をサーバーへ送り、サーバーが X 公式の oEmbed（<code>publish.x.com</code>）から取得します。投稿の本文・写真・投稿者のアイコンは、リンクカードと同じく、リンク先のページ（<code>x.com</code>）をサーバーが取得して得ます。</li>
+  <li><strong>Spotify のリンクのタイトルとジャケット</strong>：Spotify のリンク（曲・アルバム・プレイリスト・アーティスト・エピソード・番組）をリンクカードで表示するとき、タイトルとジャケット画像を表示するため、リンクの URL（種類と ID）をサーバーへ送り、サーバーが Spotify 公式の oEmbed（<code>open.spotify.com</code>）から取得します。</li>
   <li><strong>パブリックチャットの一覧</strong>：パブリックチャット（NIP-28）の一覧を表示するとき、サーバーが <code>thread.nchan.vip</code> から取得します。</li>
   <li><strong>カスタム絵文字の作成</strong>：絵文字作成ページ（<code>/emoji</code>）で入力した文字・色・フォントの指定は、画像の URL としてサーバーへ送られ、サーバーが画像を生成します。サーバーへ送るのはこれらの指定だけです。生成した画像は、同じ指定に対して再利用するため Cloudflare のキャッシュに最長 1 年保存されます。画像の URL には入力した文字がそのまま含まれ、URL を知っていれば誰でも同じ画像を取得できます。投稿やカスタム絵文字リストに載せると誰でも見られます。</li>
 </ul>
-<p>サーバーは、ブラウザの Cookie 等を取得先へ転送しません。ただし Cloudflare の仕様により、利用者の IP アドレスがリクエストヘッダとして取得先（リンク先のサイト等）に伝わる場合があります。取得した内容は、利用者を識別しない形で Cloudflare のキャッシュに一時保存されます（リンクカード・動画情報・X の投稿の日時は最長 24 時間、チャットの一覧は 60 秒、絵文字画像は最長 1 年）。</p>
+<p>サーバーは、ブラウザの Cookie 等を取得先へ転送しません。ただし Cloudflare の仕様により、利用者の IP アドレスがリクエストヘッダとして取得先（リンク先のサイト等）に伝わる場合があります。取得した内容は、利用者を識別しない形で Cloudflare のキャッシュに一時保存されます（リンクカード・動画情報・X の投稿の日時・Spotify のタイトルとジャケットは最長 24 時間、チャットの一覧は 60 秒、絵文字画像は最長 1 年）。</p>
 
 <h4>4.3 Cloudflare による記録</h4>
 <ul>
@@ -167,10 +168,11 @@
   <li><strong>Link cards</strong>: to show a link in a post as a card, the link URL is sent to the server, which fetches the beginning of the linked page.</li>
   <li><strong>YouTube video info</strong>: to show the title of a YouTube link, the video ID is sent to the server, which fetches the information from YouTube.</li>
   <li><strong>Date of X (Twitter) posts</strong>: when a link to an X post is shown as a post card, the post URL (the author's handle and the post ID) and the display language (Japanese or English) are sent to the server, which fetches the date from X's official oEmbed (<code>publish.x.com</code>). The text, photo and author's icon of the post are obtained, as with link cards, by the server fetching the linked page (<code>x.com</code>).</li>
+  <li><strong>Title and cover art of Spotify links</strong>: when a Spotify link (track, album, playlist, artist, episode or show) is shown as a link card, the link URL (the type and the ID) is sent to the server, which fetches the title and cover art from Spotify's official oEmbed (<code>open.spotify.com</code>).</li>
   <li><strong>Public chat list</strong>: when the list of public chats (NIP-28) is shown, the server fetches it from <code>thread.nchan.vip</code>.</li>
   <li><strong>Creating custom emoji</strong>: the text, colors and font you enter on the emoji maker page (<code>/emoji</code>) are sent to the server as an image URL, and the server generates the image. Only these settings are sent to the server. To reuse the image for the same settings, the generated image is cached by Cloudflare for up to 1 year. The image URL contains the text you entered as is, and anyone who knows the URL can get the same image. If you put it in a post or a custom emoji list, anyone can see it.</li>
 </ul>
-<p>The server does not forward your browser's cookies or similar data to these destinations. However, due to how Cloudflare works, your IP address may be passed to the destination (such as the linked site) in a request header. Fetched content is cached by Cloudflare in a form that does not identify you (up to 24 hours for link cards, video info and the date of X posts, 60 seconds for the chat list, up to 1 year for emoji images).</p>
+<p>The server does not forward your browser's cookies or similar data to these destinations. However, due to how Cloudflare works, your IP address may be passed to the destination (such as the linked site) in a request header. Fetched content is cached by Cloudflare in a form that does not identify you (up to 24 hours for link cards, video info, the date of X posts and the title and cover art of Spotify links, 60 seconds for the chat list, up to 1 year for emoji images).</p>
 
 <h4>4.3 Records kept by Cloudflare</h4>
 <ul>

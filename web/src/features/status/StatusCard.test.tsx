@@ -99,13 +99,24 @@ describe("StatusCard", () => {
     expect(screen.getByRole("link", { name: "@bob" })).toHaveAttribute("href", `/p/${npubEncode(pubkey)}`);
   });
 
-  it("Spotify の r は OGP のカードを出す。埋め込み設定 spotify を OFF にすると出さない（取りにも行かない）", async () => {
-    const fetchMock = stubOgp("Spotify の曲のタイトル");
-    const url = "https://open.spotify.com/track/status-test-2";
+  it("Spotify の r は oEmbed のカード（ジャケット付き）を出す。埋め込み設定 spotify を OFF にすると出さない（取りにも行かない）", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        title: "Spotify の曲のタイトル",
+        thumbnail_url: "https://i.scdn.co/image/status-test-2",
+        provider_name: "Spotify",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const url = "https://open.spotify.com/track/StatusCardTrack0000002";
     const event = status("曲名", { d: "music", tags: [["r", url]] });
 
     const on = renderWithRouter(<StatusCard event={event} />);
     expect(await screen.findByRole("link", { name: /Spotify の曲のタイトル/ })).toHaveAttribute("href", url);
+    expect(on.container.querySelector(`.${linkCardStyles.thumb}`)?.getAttribute("src")).toContain(
+      "status-test-2",
+    );
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`/api/oembed?url=${encodeURIComponent(url)}`);
     on.unmount();
 
     fetchMock.mockClear();

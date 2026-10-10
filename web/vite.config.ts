@@ -2,6 +2,20 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+/**
+ * dist/ に置く静的ページ（docs/*.html と、assemble-dist.mjs が生成する licenses.html）の拡張子なしの URL（#688）。
+ * Pages は /privacy-policy.html を /privacy-policy へ 308 で飛ばすため、拡張子付きの URL を外すだけでは
+ * 飛んだ先で SW が index.html を返す。ページを足したらここにも足す（staticConfig.test.ts が dist の構成と突き合わせる）
+ */
+export const STATIC_PAGES = ["/privacy-policy", "/child-safety", "/themes", "/licenses"] as const;
+
+/** SW のフォールバック（index.html）にしない URL: /api/*、拡張子付きの URL、STATIC_PAGES */
+export const NAVIGATE_FALLBACK_DENYLIST: RegExp[] = [
+  /^\/api\//,
+  /\.[a-z0-9]+$/i,
+  ...STATIC_PAGES.map((path) => new RegExp(`^${path}$`)),
+];
+
 // アプリは / 配下で配信する（#647。/app は 301 で / へ引き継ぐだけの旧パス）。
 // dist/ の残り（LP 以外の docs・メタファイル）は scripts/assemble-dist.mjs が組み立てる。
 export default defineConfig({
@@ -42,8 +56,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
-        // /api/* とドキュメント拡張子付きの静的ページ（privacy-policy.html 等）は SW のフォールバックにしない
-        navigateFallbackDenylist: [/^\/api\//, /\.[a-z0-9]+$/i],
+        // /api/* と静的ページ（privacy-policy.html 等。拡張子なしの URL も）は SW のフォールバックにしない
+        navigateFallbackDenylist: NAVIGATE_FALLBACK_DENYLIST,
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
         runtimeCaching: [],
       },
