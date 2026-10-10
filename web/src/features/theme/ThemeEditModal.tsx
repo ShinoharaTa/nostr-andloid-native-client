@@ -58,7 +58,7 @@ export function ThemeEditModal({ initialTab, onDismiss }: { initialTab: ThemeEdi
           aria-pressed={tab === "customize"}
           onClick={() => setTab("customize")}
         >
-          {t("group_customize")}
+          {t("theme_tab_customize")}
         </button>
         <button
           type="button"

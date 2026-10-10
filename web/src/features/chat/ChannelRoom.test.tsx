@@ -18,7 +18,6 @@ import { useDm } from "../dm/dmStore";
 import { MessagesScreen } from "../dm/MessagesScreen";
 import { setMuteList } from "../mute/muteList";
 import { resetChannelsForTest, useChannels } from "./channels";
-import { MESSAGES_SEGMENT_KEY } from "./segment";
 
 // リレーへは張らない（呼ばれ方だけ見る）
 vi.mock("../../nostr/pool", async (importOriginal) => {
@@ -288,7 +287,7 @@ describe("メッセージ画面のチャット", () => {
     const router = createMemoryRouter(
       [
         { path: "/messages/:peer?", element: <MessagesScreen /> },
-        { path: "/channels/:id?", element: <MessagesScreen segment="chat" /> },
+        { path: "/channels/:id?", element: <MessagesScreen kind="chat" /> },
       ],
       { initialEntries: [path] },
     );
@@ -309,7 +308,7 @@ describe("メッセージ画面のチャット", () => {
     expect(within(channelRows()[0]).getByText("さびれたスナック")).toBeInTheDocument();
     expect(within(channelRows()[0]).getByText("酔っ払いが問わず語り")).toBeInTheDocument();
     expect(within(channelRows()[1]).getByText("comic magazine")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "チャット" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { level: 1, name: "パブリックチャット" })).toBeInTheDocument();
 
     await user.click(within(channelRows()[0]).getByRole("button", { name: /さびれたスナック/ }));
     expect(router.state.location.pathname).toBe(`/channels/${CH}`);
@@ -384,36 +383,6 @@ describe("メッセージ画面のチャット", () => {
     expect(useDeck.getState().jumpTarget).toBe(`room_${CH}`);
     expect(localStorage.getItem("nostrism.deck.columns")).toContain(`"id":"room_${CH}"`);
     expect(screen.getAllByRole("button", { name: "ピン留め" })[0]).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("「DM | チャット」: 押すと最後に使った側として覚え、その側へ置き換える。DM 側に未読数", async () => {
-    const user = userEvent.setup();
-    useChannels.setState({ channels: CHANNELS });
-    useDm.getState().reset(ME);
-    useDmSeen.setState({ me: ME, first: 0, peers: {} });
-    useDm.getState().upsertMessages([
-      {
-        owner: ME,
-        id: "d1",
-        peer: BOB,
-        sender: BOB,
-        content: "未読",
-        tags: [],
-        createdAt: 1,
-        proto: "nip17",
-      },
-    ]);
-    const router = renderAt("/messages", 400);
-    expect(screen.getByRole("tab", { name: "DM（未読 1 件）" })).toHaveAttribute("aria-selected", "true");
-
-    await user.click(screen.getByRole("tab", { name: "チャット" }));
-    expect(router.state.location.pathname).toBe("/channels");
-    expect(router.state.historyAction).toBe("REPLACE");
-    expect(localStorage.getItem(MESSAGES_SEGMENT_KEY)).toBe("chat");
-
-    await user.click(screen.getByRole("tab", { name: "DM（未読 1 件）" }));
-    expect(router.state.location.pathname).toBe("/messages");
-    expect(localStorage.getItem(MESSAGES_SEGMENT_KEY)).toBe("dm");
   });
 
   it("一覧に無いチャンネルは、一覧を取っている間「チャンネルを読み込み中…」、取れたらルームを開く", async () => {

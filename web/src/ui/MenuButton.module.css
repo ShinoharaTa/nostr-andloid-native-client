@@ -5,6 +5,8 @@
   margin: 0;
   box-sizing: border-box;
   min-width: 220px;
+  max-height: calc(100dvh - 2 * var(--sp-2));
+  overflow-y: auto;
   padding: var(--sp-1) 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -29,6 +31,7 @@
 .item {
   display: flex;
   align-items: center;
+  gap: var(--sp-3);
   width: 100%;
   min-height: var(--touch-sm);
   padding: 0 var(--sp-3);
@@ -49,4 +52,25 @@
 
 .danger {
   color: var(--warn);
+}
+
+/* 文言の左のモノクロのアイコン（ネイティブ DropdownMenuItem の leadingIcon。色は文言と同じ） */
+.itemIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.itemIcon > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 右端に添える表示（件数・状態） */
+.trailing {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--sp-2);
 }

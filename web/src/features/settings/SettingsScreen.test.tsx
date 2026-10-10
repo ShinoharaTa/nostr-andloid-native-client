@@ -1,6 +1,5 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { npubEncode } from "nostr-tools/nip19";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSession } from "../../signer/session";
@@ -11,6 +10,7 @@ import { setDefaultReaction, useDefaultReaction } from "../actions/reactionPrefs
 import { clearCacheAndReload } from "./cache";
 import { DEVELOPER_MODE_KEY, setDeveloperMode, useDeveloperMode } from "./devMode";
 import { SettingsScreen } from "./SettingsScreen";
+import { DEFAULT_SECTION_ID } from "./sections";
 
 // キャッシュ消去は DB を消して再読み込みするので差し替える（消す範囲は cache.test.ts）
 vi.mock("./cache", () => ({ clearCacheAndReload: vi.fn(async () => {}) }));
@@ -31,8 +31,9 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function renderAt(path: string, width: number) {
+function renderAt(path: string | { pathname: string; state?: unknown }[], width: number) {
   mockViewport(width);
+  const entries = typeof path === "string" ? [path] : path;
   const router = createMemoryRouter(
     [
       { path: "/settings/:section?", element: <SettingsScreen /> },
@@ -40,7 +41,7 @@ function renderAt(path: string, width: number) {
       { path: "/messages", element: <p>メッセージ画面</p> },
       { path: "/about", element: <p>LP</p> },
     ],
-    { initialEntries: [path] },
+    { initialEntries: entries, initialIndex: entries.length - 1 },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -55,7 +56,6 @@ describe("Compact", () => {
     const router = renderAt("/settings", 400);
     expect(screen.getByRole("heading", { level: 1, name: "設定" })).toBeInTheDocument();
     expect(within(items()).getByRole("button", { name: "このアプリについて" })).toBeInTheDocument();
-    expect(within(items()).getByRole("button", { name: "ミュート" })).toBeInTheDocument();
     expect(within(items()).getByRole("button", { name: "リレー" })).toBeInTheDocument();
 
     await userEvent.click(within(items()).getByRole("button", { name: "リレー" }));
@@ -71,20 +71,33 @@ describe("Compact", () => {
     expect(router.state.location.pathname).toBe("/about");
   });
 
-  it("よく使うの「プロフィール」は自分のプロフィールを開き、「DM」はメッセージ画面へ切り替える", async () => {
-    const router = renderAt("/settings", 400);
-    expect(within(items()).getByRole("button", { name: "プロフィール" })).toBeInTheDocument();
-    expect(within(items()).getByRole("button", { name: "DM" })).toBeInTheDocument();
-    expect(within(items()).getByRole("button", { name: "ふぁぼ" })).toBeInTheDocument();
+  it("[#807] 「よく使う」（プロフィール・DM・ふぁぼ・ブックマーク・ミュート）は一覧に無い。ふぁぼ・ブックマーク・ミュートは URL で開ける", () => {
+    renderAt("/settings", 400);
+    for (const name of ["プロフィール", "DM", "ふぁぼ", "ブックマーク", "ミュート"]) {
+      expect(within(items()).queryByRole("button", { name })).toBeNull();
+    }
+    expect(screen.queryByRole("heading", { name: "よく使う" })).toBeNull();
+    cleanup();
 
-    await userEvent.click(within(items()).getByRole("button", { name: "プロフィール" }));
-    expect(router.state.location.pathname).toBe(`/p/${npubEncode(PUBKEY)}`);
-    expect(router.state.historyAction).toBe("PUSH");
+    for (const [id, name] of [
+      ["favs", "ふぁぼ"],
+      ["bookmarks", "ブックマーク"],
+      ["mute", "ミュート"],
+    ]) {
+      renderAt(`/settings/${id}`, 400);
+      expect(screen.getByRole("heading", { level: 1, name })).toBeInTheDocument();
+      cleanup();
+    }
+  });
 
-    await act(() => router.navigate("/settings"));
-    await userEvent.click(within(items()).getByRole("button", { name: "DM" }));
+  it("[#807] 設定の外（自分のアイコンのメニュー・プロフィールの「編集」）から開いた項目の「←」は開く前の画面へ戻る", async () => {
+    const router = renderAt(
+      [{ pathname: "/messages" }, { pathname: "/settings/mute", state: { settingsFromOutside: true } }],
+      400,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "戻る" }));
     expect(router.state.location.pathname).toBe("/messages");
-    expect(router.state.historyAction).toBe("REPLACE");
+    expect(router.state.historyAction).toBe("POP");
   });
 
   it("直接開いた項目の「←」は一覧へ置き換える", async () => {
@@ -105,17 +118,32 @@ describe("Compact", () => {
 });
 
 describe("Expanded", () => {
-  it("左に一覧・右に内容。未選択ならタイル（プロフィール・DM）以外の先頭のふぁぼ（#643）、選ぶと右が替わる（履歴は置き換え）", async () => {
+  it("左に一覧・右に内容。未選択なら一覧の先頭のプロフィール編集（#643 / #807。「準備中」ではない）、選ぶと右が替わる（履歴は置き換え）", async () => {
     const router = renderAt("/settings", 1400);
-    expect(within(items()).getByRole("button", { name: "ふぁぼ" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("region", { name: "ふぁぼ" })).toBeInTheDocument();
+    expect(DEFAULT_SECTION_ID).toBe("profile-edit");
+    expect(within(items()).getByRole("button", { name: "プロフィール編集" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("region", { name: "プロフィール編集" })).toBeInTheDocument();
+    expect(screen.queryByText("この項目は準備中です")).toBeNull();
 
     await userEvent.click(within(items()).getByRole("button", { name: "表示" }));
     expect(router.state.location.pathname).toBe("/settings/display");
     expect(router.state.historyAction).toBe("REPLACE");
     expect(within(items()).getByRole("button", { name: "表示" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "表示" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "ふぁぼ" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "プロフィール編集" })).not.toBeInTheDocument();
+  });
+
+  it("[#807] メニューから開いた項目（一覧に無いミュート）は右に出し、一覧はどれも選択中にしない", () => {
+    renderAt("/settings/mute", 1400);
+    expect(screen.getByRole("region", { name: "ミュート" })).toBeInTheDocument();
+    expect(
+      within(items())
+        .getAllByRole("button")
+        .filter((b) => b.hasAttribute("aria-current")),
+    ).toEqual([]);
   });
 
   it("リアクション: 既定リアクションをスターにする（#587 で独立セクションに戻した）", async () => {
@@ -129,16 +157,36 @@ describe("Expanded", () => {
     setDefaultReaction("+", null);
   });
 
-  it("カスタマイズの並びはネイティブと同じ: リアクション → カスタム絵文字 → ハッシュタグ → 表示。テーマストアは独立セクションではない（#587）", () => {
+  it("[#807] 一覧は「Nostr の設定」8 つと「アプリの設定」4 つ（ネイティブと同じ順）。テーマストアは独立セクションではない（#587）", () => {
     renderAt("/settings", 1400);
-    const heading = screen.getByRole("heading", { level: 2, name: "カスタマイズ" });
-    const section = heading.closest("section");
-    if (!section) throw new Error("section not found");
-    expect(
-      within(section)
+    const groupButtons = (name: string) => {
+      const section = screen.getByRole("heading", { level: 2, name }).closest("section");
+      if (!section) throw new Error("section not found");
+      return within(section)
         .getAllByRole("button")
-        .map((b) => b.textContent),
-    ).toEqual(["リアクション", "カスタム絵文字", "ハッシュタグ", "表示"]);
+        .map((b) => b.textContent);
+    };
+    expect(
+      within(items())
+        .getAllByRole("heading", { level: 2 })
+        .map((h) => h.textContent),
+    ).toEqual(["Nostr の設定", "アプリの設定"]);
+    expect(groupButtons("Nostr の設定")).toEqual([
+      "プロフィール編集",
+      "カスタム絵文字",
+      "ハッシュタグ",
+      "リレー",
+      "DMリレー",
+      "メディアサーバー",
+      "ウォレット",
+      "アカウント",
+    ]);
+    expect(groupButtons("アプリの設定")).toEqual([
+      "表示",
+      "リアクション",
+      "データ・キャッシュ",
+      "このアプリについて",
+    ]);
     expect(screen.queryByRole("button", { name: "テーマストア" })).toBeNull();
   });
 

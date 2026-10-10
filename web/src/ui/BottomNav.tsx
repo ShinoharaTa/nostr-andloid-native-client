@@ -1,3 +1,4 @@
+import { AccountMenu } from "../app/AccountMenu";
 import { NAV_ORDER, type NavKey, navLabel } from "../app/navState";
 import { useT } from "../i18n";
 import { AccountAvatar } from "./AccountAvatar";
@@ -11,18 +12,19 @@ function NavIcon({ navKey }: { navKey: NavKey }) {
       return <HomeIcon className={styles.icon} />;
     case "search":
       return <SearchIcon className={styles.icon} />;
-    case "messages":
+    case "channels":
       return <ChatIcon className={styles.icon} />;
     case "notifications":
       return <NotificationsIcon className={styles.icon} />;
-    case "settings":
+    case "account":
       return <AccountAvatar size={24} />;
   }
 }
 
 /**
  * Compact の下部ナビ（ネイティブ BottomBar）。固定 5 枠・ラベル無し。表示だけで、押したら onSelect。
- * badges = アイコンの右上に重ねる未読数（0・未指定は出さない）
+ * badges = アイコンの右上に重ねる未読数（0・未指定は出さない）。
+ * [#797] 末尾の自分のアイコンは押すとメニュー（AccountMenu。未ログインなら onSelect("account") で設定へ）。
  */
 export function BottomNav({
   selected,
@@ -38,6 +40,30 @@ export function BottomNav({
     <nav className={styles.nav} aria-label={t("web_nav_main")}>
       {NAV_ORDER.map((key) => {
         const badge = badges?.[key] ?? 0;
+        const indicator = (
+          <span className={styles.indicator}>
+            <NavIcon navKey={key} />
+            {badge > 0 && (
+              <span className={styles.badge} aria-hidden="true">
+                {badgeText(badge)}
+              </span>
+            )}
+          </span>
+        );
+        if (key === "account") {
+          return (
+            <AccountMenu
+              key={key}
+              triggerClassName={styles.item}
+              placement="below"
+              current={selected[key]}
+              dmUnread={badge}
+              onFallback={() => onSelect(key)}
+            >
+              {indicator}
+            </AccountMenu>
+          );
+        }
         return (
           <button
             key={key}
@@ -48,14 +74,7 @@ export function BottomNav({
             aria-current={selected[key] ? "page" : undefined}
             onClick={() => onSelect(key)}
           >
-            <span className={styles.indicator}>
-              <NavIcon navKey={key} />
-              {badge > 0 && (
-                <span className={styles.badge} aria-hidden="true">
-                  {badgeText(badge)}
-                </span>
-              )}
-            </span>
+            {indicator}
           </button>
         );
       })}

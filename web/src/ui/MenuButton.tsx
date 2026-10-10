@@ -2,8 +2,20 @@ import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef,
 import { useCloseMenuOnBack } from "../app/history";
 import styles from "./MenuButton.module.css";
 
+/**
+ * 項目。icon = 文言の左のモノクロのアイコン、trailing = 右端に添える表示（件数・状態）、
+ * ariaLabel = 読み上げの名前（trailing を読ませたくないときなど。無ければ文言 + trailing）
+ */
 export type MenuEntry =
-  | { type: "item"; label: string; onSelect(): void; tone?: "danger" }
+  | {
+      type: "item";
+      label: string;
+      onSelect(): void;
+      tone?: "danger";
+      icon?: ReactNode;
+      trailing?: ReactNode;
+      ariaLabel?: string;
+    }
   | { type: "separator" }
   | { type: "header"; label: string };
 
@@ -26,18 +38,30 @@ function keyed(entries: MenuEntry[]): { key: string; entry: MenuEntry }[] {
 
 /**
  * ボタン + ドロップダウンメニュー（ネイティブの DeckDropdownMenu）。メニューは popover="auto" で最前面に出し、
- * トリガの右端に揃えて下に置く（下に入らなければ上）。項目・外側の押下・Escape・戻る・スクロール・リサイズで閉じる。
+ * トリガの右端に揃えて下に置く（下に入らなければ上）。placement="beside" はトリガの右に、下端を揃えて置く
+ * （左レールの下端のボタン用。#797）。画面より高いメニューは中でスクロールする。
+ * 項目・外側の押下・Escape・戻る・スクロール（メニューの中は除く）・リサイズで閉じる。項目を選んだらトリガへフォーカスを戻す。
+ * triggerLabel = トリガの読み上げ名（未読数を足すときなど。無ければ label）、title = トリガのツールチップ、
+ * current = トリガの aria-current="page"（ナビの選択表示）。
  */
 export function MenuButton({
   label,
   triggerClassName,
   children,
   entries,
+  placement = "below",
+  triggerLabel,
+  title,
+  current = false,
 }: {
   label: string;
   triggerClassName: string;
   children: ReactNode;
   entries: MenuEntry[];
+  placement?: "below" | "beside";
+  triggerLabel?: string;
+  title?: string;
+  current?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -54,22 +78,33 @@ export function MenuButton({
     if (!open || !el || !button) return;
     if (POPOVER_SUPPORTED) el.showPopover();
     const rect = button.getBoundingClientRect();
-    const left = Math.min(
-      Math.max(rect.right - el.offsetWidth, EDGE),
-      window.innerWidth - el.offsetWidth - EDGE,
-    );
-    let top = rect.bottom + GAP;
-    if (top + el.offsetHeight > window.innerHeight - EDGE && rect.top - GAP - el.offsetHeight >= EDGE) {
-      top = rect.top - GAP - el.offsetHeight;
+    let left: number;
+    let top: number;
+    if (placement === "beside") {
+      left = Math.min(rect.right + GAP, window.innerWidth - el.offsetWidth - EDGE);
+      top = Math.max(
+        Math.min(rect.bottom - el.offsetHeight, window.innerHeight - el.offsetHeight - EDGE),
+        EDGE,
+      );
+    } else {
+      left = Math.min(Math.max(rect.right - el.offsetWidth, EDGE), window.innerWidth - el.offsetWidth - EDGE);
+      top = rect.bottom + GAP;
+      if (top + el.offsetHeight > window.innerHeight - EDGE && rect.top - GAP - el.offsetHeight >= EDGE) {
+        top = rect.top - GAP - el.offsetHeight;
+      }
     }
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
     el.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-  }, [open]);
+  }, [open, placement]);
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    // メニューの中のスクロール（項目が画面に収まらないとき）では閉じない
+    const close = (e: Event) => {
+      if (e.type === "scroll" && e.target instanceof Node && menu.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (menu.current?.contains(target) || trigger.current?.contains(target)) return;
@@ -111,7 +146,9 @@ export function MenuButton({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={label}
+        aria-label={triggerLabel ?? label}
+        aria-current={current ? "page" : undefined}
+        title={title}
         className={triggerClassName}
         onPointerDown={() => {
           openAtPointerDown.current = open;
@@ -151,12 +188,16 @@ export function MenuButton({
                 type="button"
                 role="menuitem"
                 className={entry.tone === "danger" ? `${styles.item} ${styles.danger}` : styles.item}
+                aria-label={entry.ariaLabel}
                 onClick={() => {
                   setOpen(false);
+                  trigger.current?.focus({ preventScroll: true });
                   entry.onSelect();
                 }}
               >
+                {entry.icon && <span className={styles.itemIcon}>{entry.icon}</span>}
                 {entry.label}
+                {entry.trailing && <span className={styles.trailing}>{entry.trailing}</span>}
               </button>
             );
           })}

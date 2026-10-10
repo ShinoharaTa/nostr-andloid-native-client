@@ -1,0 +1,21 @@
+/* 「DM」の未読数（下部ナビ・レールのバッジと同じ丸。メニューの行の右端） */
+.count {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 18px;
+  padding: 1px var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--type-micro);
+  font-weight: var(--w-name);
+  line-height: 16px;
+  text-align: center;
+}
+
+/* 「リレー」の接続状態（ネイティブ: Text3・Label） */
+.relays {
+  color: var(--text-3);
+  font-size: var(--type-label);
+  white-space: nowrap;
+}

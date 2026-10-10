@@ -23,7 +23,15 @@ it("レールのホームは見ているカラムが目次に無いときだけ�
 it("目次の選択はデッキ表示中だけ", () => {
   expect(isPinnedActive("home", "c_hashtag", "c_hashtag")).toBe(true);
   expect(isPinnedActive("home", "c_notif", "c_hashtag")).toBe(false);
-  for (const dest of ["search", "messages", "notifications", "settings", "notFound"] as const) {
+  for (const dest of ["search", "messages", "channels", "notifications", "settings", "notFound"] as const) {
     expect(isPinnedActive(dest, "c_hashtag", "c_hashtag")).toBe(false);
   }
+});
+
+it("[#797] 3 枠目はパブリックチャット（channels のときだけ）、自分のアイコンは設定と DM のとき選択", () => {
+  expect(NAV_ORDER).toEqual(["home", "search", "channels", "notifications", "account"]);
+  expect(selectedKeys(bottomSelection("channels", null, null))).toEqual(["channels"]);
+  expect(selectedKeys(bottomSelection("messages", null, null))).toEqual(["account"]);
+  expect(selectedKeys(bottomSelection("settings", null, null))).toEqual(["account"]);
+  expect(selectedKeys(bottomSelection("search", null, null))).toEqual(["search"]);
 });
