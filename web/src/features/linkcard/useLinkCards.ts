@@ -2,33 +2,36 @@ import type { NostrEvent } from "nostr-tools/pure";
 import { useEffect, useMemo, useState } from "react";
 import { useEmbedPrefs } from "./embedPrefs";
 import { detectEmbeds, type LinkEmbed } from "./linkTargets";
-import { type OgpResult, ogpLoader } from "./ogpLoader";
+import type { OgpResult } from "./ogpLoader";
+import { linkCardLoaderFor } from "./spotifyLoader";
 
 /** 1 枚分。ogp が undefined = 取得中、null = カードにしない */
 export type LinkCardState = { url: string; kind: "ogp" | "spotify"; ogp: OgpResult | undefined };
 
 const NONE: readonly string[] = [];
 const NONE_DETECTED: readonly LinkEmbed[] = [];
-const NONE_CARDS: readonly (LinkEmbed & { kind: "ogp" | "spotify" })[] = [];
+type CardEmbed = LinkEmbed & { kind: "ogp" | "spotify" };
+const NONE_CARDS: readonly CardEmbed[] = [];
 
-type Results = { urls: readonly string[]; results: ReadonlyMap<string, OgpResult> };
+type Results = { embeds: readonly CardEmbed[]; results: ReadonlyMap<string, OgpResult> };
 
-function isCardEmbed(embed: LinkEmbed): embed is LinkEmbed & { kind: "ogp" | "spotify" } {
+function isCardEmbed(embed: LinkEmbed): embed is CardEmbed {
   return embed.kind === "ogp" || embed.kind === "spotify";
 }
 
 /** メモリにある結果だけで作る（スクロールで作り直されたときに取得中を挟まない） */
-function known(urls: readonly string[]): Results {
+function known(embeds: readonly CardEmbed[]): Results {
   const results = new Map<string, OgpResult>();
-  for (const url of urls) {
-    const result = ogpLoader.peek(url);
+  for (const { url, kind } of embeds) {
+    const result = linkCardLoaderFor(kind).peek(url);
     if (result !== undefined) results.set(url, result);
   }
-  return { urls, results };
+  return { embeds, results };
 }
 
 /**
  * 投稿のリンクカード（ogp・spotify の埋め込みごとの取得状態）と、カードを出した URL（本文から畳む）。
+ * Spotify は OGP の代わりに oEmbed から作る（spotifyLoader、#820）。
  * enabled = false（CW を開いていない）の間は取りに行かない。
  */
 export function useLinkCards(
@@ -42,28 +45,29 @@ export function useLinkCards(
     const cards = detected.filter(isCardEmbed).filter((e) => (e.kind === "ogp" ? prefs.ogp : prefs.spotify));
     return cards.length === 0 ? NONE_CARDS : cards;
   }, [detected, prefs.ogp, prefs.spotify]);
-  const urls = useMemo(() => cardEmbeds.map((e) => e.url), [cardEmbeds]);
-  const [state, setState] = useState(() => known(urls));
+  const [state, setState] = useState(() => known(cardEmbeds));
   // URL の並びが変わったら（CW を開いた等）メモリにある分から作り直す
-  const current = state.urls === urls ? state : known(urls);
+  const current = state.embeds === cardEmbeds ? state : known(cardEmbeds);
   if (current !== state) setState(current);
 
   useEffect(() => {
     let alive = true;
-    for (const url of urls) {
-      void ogpLoader.load(url).then((result) => {
-        if (!alive) return;
-        setState((prev) =>
-          prev.urls !== urls || (prev.results.has(url) && prev.results.get(url) === result)
-            ? prev
-            : { urls, results: new Map(prev.results).set(url, result) },
-        );
-      });
+    for (const { url, kind } of cardEmbeds) {
+      void linkCardLoaderFor(kind)
+        .load(url)
+        .then((result) => {
+          if (!alive) return;
+          setState((prev) =>
+            prev.embeds !== cardEmbeds || (prev.results.has(url) && prev.results.get(url) === result)
+              ? prev
+              : { embeds: cardEmbeds, results: new Map(prev.results).set(url, result) },
+          );
+        });
     }
     return () => {
       alive = false;
     };
-  }, [urls]);
+  }, [cardEmbeds]);
 
   const cards = cardEmbeds.map((e) => ({ url: e.url, kind: e.kind, ogp: current.results.get(e.url) }));
 
