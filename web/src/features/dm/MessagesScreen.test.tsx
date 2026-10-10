@@ -73,7 +73,10 @@ describe("一覧", () => {
   it("相手と最後のメッセージを新しい順に出し、表示したら復号を始める", () => {
     seed();
     renderAt("/messages", 400);
-    expect(screen.getByRole("heading", { level: 1, name: "メッセージ" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "DM" })).toBeInTheDocument();
+    // [#797] 見出しは通常のカラムヘッダ（DM / NIP-17）。「DM | チャット」の切り替えは無い
+    expect(screen.getByText("NIP-17")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     const rows = rowButtons();
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(ALICE.slice(0, 10));

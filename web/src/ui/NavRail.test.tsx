@@ -1,5 +1,6 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { expect, it, vi } from "vitest";
 import type { NavKey } from "../app/navState";
 import { NavRail, type RailPinned } from "./NavRail";
@@ -7,9 +8,9 @@ import { NavRail, type RailPinned } from "./NavRail";
 const NONE: Record<NavKey, boolean> = {
   home: false,
   search: false,
-  messages: false,
+  channels: false,
   notifications: false,
-  settings: false,
+  account: false,
 };
 
 const PINNED: RailPinned[] = [
@@ -20,15 +21,18 @@ const PINNED: RailPinned[] = [
 
 function renderRail(props: Partial<Parameters<typeof NavRail>[0]> = {}) {
   const handlers = { onSelect: vi.fn(), onOpenColumn: vi.fn(), onAddColumn: vi.fn() };
+  // 自分のアイコンのメニューが画面を移るので Router の中で描く
   render(
-    <NavRail
-      selected={NONE}
-      homeActive={false}
-      pinned={PINNED}
-      showNotifications={false}
-      {...handlers}
-      {...props}
-    />,
+    <MemoryRouter>
+      <NavRail
+        selected={NONE}
+        homeActive={false}
+        pinned={PINNED}
+        showNotifications={false}
+        {...handlers}
+        {...props}
+      />
+    </MemoryRouter>,
   );
   return handlers;
 }
@@ -41,7 +45,7 @@ function railItems() {
   );
 }
 
-it("ブランド → ホーム → 目次 → カラム追加 → 検索 → メッセージ → 設定の順（通知カラムがあれば通知は出さない）", () => {
+it("ブランド → ホーム → 目次 → カラム追加 → 検索 → パブリックチャット → 自分のアイコンの順（通知カラムがあれば通知は出さない）", () => {
   renderRail();
   expect(railItems()).toEqual([
     "img:Nostrism",
@@ -51,16 +55,16 @@ it("ブランド → ホーム → 目次 → カラム追加 → 検索 → メ
     "通知",
     "カラム追加",
     "検索",
-    "メッセージ",
-    "設定",
+    "パブリックチャット",
+    "アカウントのメニュー",
   ]);
   const nav = screen.getByRole("navigation", { name: "メイン" });
   expect(within(nav).getByRole("button", { name: /^リレー接続 / })).toBeInTheDocument();
 });
 
-it("通知カラムが無ければ検索・メッセージ・通知の順に出す", () => {
+it("通知カラムが無ければ検索・パブリックチャット・通知の順に出す", () => {
   renderRail({ pinned: PINNED.slice(0, 2), showNotifications: true });
-  expect(railItems().slice(-4)).toEqual(["検索", "メッセージ", "通知", "設定"]);
+  expect(railItems().slice(-4)).toEqual(["検索", "パブリックチャット", "通知", "アカウントのメニュー"]);
 });
 
 it("目次の選択は aria-current=true、ホームの選択は aria-current=page", () => {
@@ -84,19 +88,30 @@ it("目次で onOpenColumn、カラム追加で onAddColumn、宛先で onSelect
   expect(onSelect).toHaveBeenCalledWith("search");
 });
 
-it("メッセージの未読数をアイコンに重ねる（99+ まで）。0 なら出さない", async () => {
+it("[#797] 未読 DM の数を自分のアイコンに重ねる（99+ まで）。0 なら出さない。未ログインで押すと onSelect('account')（設定へ）", async () => {
   const user = userEvent.setup();
-  const { onSelect } = renderRail({ badges: { messages: 3 } });
-  const messages = screen.getByRole("button", { name: "メッセージ（未読 3 件）" });
-  expect(messages).toHaveTextContent("3");
-  await user.click(messages);
-  expect(onSelect).toHaveBeenCalledWith("messages");
+  const { onSelect } = renderRail({ badges: { account: 3 } });
+  const account = screen.getByRole("button", { name: "アカウントのメニュー（未読 3 件）" });
+  expect(account).toHaveTextContent("3");
+  await user.click(account);
+  expect(onSelect).toHaveBeenCalledWith("account");
   cleanup();
 
-  renderRail({ badges: { messages: 150 } });
-  expect(screen.getByRole("button", { name: "メッセージ（未読 150 件）" })).toHaveTextContent("99+");
+  renderRail({ badges: { account: 150 } });
+  expect(screen.getByRole("button", { name: "アカウントのメニュー（未読 150 件）" })).toHaveTextContent(
+    "99+",
+  );
   cleanup();
 
-  renderRail({ badges: { messages: 0 } });
-  expect(screen.getByRole("button", { name: "メッセージ" }).textContent).toBe("");
+  renderRail({ badges: { account: 0 } });
+  expect(screen.getByRole("button", { name: "アカウントのメニュー" })).not.toHaveTextContent(/\d/);
+});
+
+it("パブリックチャットを押すと onSelect('channels')、選択中は aria-current=page", async () => {
+  const user = userEvent.setup();
+  const { onSelect } = renderRail({ selected: { ...NONE, channels: true } });
+  const chat = screen.getByRole("button", { name: "パブリックチャット" });
+  expect(chat).toHaveAttribute("aria-current", "page");
+  await user.click(chat);
+  expect(onSelect).toHaveBeenCalledWith("channels");
 });

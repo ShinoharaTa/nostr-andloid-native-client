@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { renderWithRouter } from "../test/renderWithRouter";
@@ -41,6 +41,8 @@ it("押すと開き（aria-expanded）、最初の項目に focus。項目を押
   expect(retry).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("menu")).toBeNull();
   expect(trigger).toHaveAttribute("aria-expanded", "false");
+  // [#797] 項目を選んだらトリガへフォーカスを戻す
+  expect(trigger).toHaveFocus();
 });
 
 it("外側の押下・Escape（trigger へ focus を戻す）・もう一度 trigger で閉じる", async () => {
@@ -74,4 +76,34 @@ it("見出しと区切りを描く", async () => {
   expect(menu.querySelector("p")).toHaveTextContent("この投稿");
   expect(menu.querySelectorAll("hr")).toHaveLength(1);
   expect(screen.getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["再送", "削除"]);
+});
+
+it("[#797] 項目のアイコンと右端の表示（trailing）。ariaLabel があれば読み上げ名はそれ", async () => {
+  const user = userEvent.setup();
+  const trigger = renderMenu([
+    {
+      type: "item",
+      label: "DM",
+      onSelect: () => {},
+      icon: <svg data-testid="icon" />,
+      trailing: "2",
+      ariaLabel: "DM（未読 2 件）",
+    },
+    { type: "item", label: "リレー", onSelect: () => {}, trailing: "1 / 2 接続中" },
+  ]);
+  await user.click(trigger);
+  const dm = screen.getByRole("menuitem", { name: "DM（未読 2 件）" });
+  expect(dm).toHaveTextContent("DM2");
+  expect(dm.querySelector("[data-testid='icon']")).not.toBeNull();
+  expect(screen.getByRole("menuitem", { name: "リレー1 / 2 接続中" })).toBeInTheDocument();
+});
+
+it("[#797] メニューの中のスクロールでは閉じない（外のスクロールでは閉じる）", async () => {
+  const user = userEvent.setup();
+  const trigger = renderMenu([{ type: "item", label: "再送", onSelect: () => {} }]);
+  await user.click(trigger);
+  fireEvent.scroll(screen.getByRole("menu"));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  fireEvent.scroll(window);
+  expect(screen.queryByRole("menu")).toBeNull();
 });
