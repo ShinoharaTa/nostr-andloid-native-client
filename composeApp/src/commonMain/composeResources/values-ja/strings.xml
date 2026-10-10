@@ -20,6 +20,7 @@
     <string name="section_signer">アカウント</string>
     <string name="section_relays">リレー</string>
     <string name="section_dm_relays">DMリレー</string>
+    <string name="relay_ws_insecure_note">ws:// は暗号化されていない接続です。端末内や信頼できる LAN のリレーにだけ使ってください。</string>
     <string name="section_media">メディアサーバー</string>
     <string name="section_reaction">リアクション</string>
     <string name="section_appearance">表示</string>
