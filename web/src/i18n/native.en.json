@@ -547,6 +547,7 @@
   "thread_title": "Thread",
   "thread_write_reply": "Write a reply…",
   "tile_profile": "Profile",
+  "tpl_channel_list_hint": "Public chat threads (NIP-28)",
   "tpl_favs": "Favorites",
   "tpl_favs_hint": "Posts you reacted to",
   "tpl_following": "Following",

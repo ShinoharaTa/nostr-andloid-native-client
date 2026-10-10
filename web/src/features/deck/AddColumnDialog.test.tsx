@@ -85,6 +85,30 @@ it("「ステータス」は一覧の最後にあり、押すと設定入力な�
   expect(useDeck.getState().showAddColumn).toBe(false);
 });
 
+it("「パブリックチャット」はステータスの前にあり、押すと設定入力なしでチャンネル一覧のカラムが増える（#799）", async () => {
+  const user = userEvent.setup();
+  render(<AddColumnDialog />);
+  const items = within(screen.getByRole("list")).getAllByRole("button");
+  const item = items.at(-2);
+  expect(item).toHaveTextContent("パブリックチャット");
+  expect(item).toHaveTextContent("パブリックチャットのスレッド一覧（NIP-28）");
+
+  await user.click(item as HTMLElement);
+  const added = useDeck.getState().columns.at(-1);
+  expect(added).toMatchObject({
+    kind: "CHANNEL_LIST",
+    renderer: "CHANNEL_LIST",
+    title: "パブリックチャット",
+    subtitle: "NIP-28 · channels",
+    pinned: true,
+  });
+  expect(added?.id).toMatch(/^col_channel_list_\d+$/);
+  expect(added && encodeReqFilter(added.filter)).toBe('{"kinds":[40,41]}');
+  expect(decodeDeckColumns(localStorage.getItem(COLUMNS_KEY) ?? "")?.at(-1)?.kind).toBe("CHANNEL_LIST");
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(useDeck.getState().showAddColumn).toBe(false);
+});
+
 it("指定 npub の投稿に読めない文字列を入れるとエラーを出し、追加しない", async () => {
   const user = userEvent.setup();
   render(<AddColumnDialog />);

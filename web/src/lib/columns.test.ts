@@ -162,6 +162,42 @@ describe("buildColumn", () => {
   });
 });
 
+describe("buildColumn CHANNEL_LIST（#799）", () => {
+  it("パブリックチャット画面の一覧と同じ形のカラムを作り、同期の JSON がネイティブと同じになる", () => {
+    const spec = build("CHANNEL_LIST", {}, NONE, 1791283000);
+    expect(spec).toEqual({
+      id: "col_channel_list_1791283000",
+      title: "パブリックチャット",
+      subtitle: "NIP-28 · channels",
+      kind: "CHANNEL_LIST",
+      renderer: "CHANNEL_LIST",
+      filter: { ...defaultFilter(), kinds: [40, 41] },
+      pinned: true,
+      order: 0,
+    });
+    expect(encodeReqFilter(spec.filter)).toBe('{"kinds":[40,41]}');
+    const json = encodeDeckColumns([spec]);
+    expect(json).toBe(
+      '[{"id":"col_channel_list_1791283000","title":"パブリックチャット","subtitle":"NIP-28 · channels","kind":"CHANNEL_LIST","renderer":"CHANNEL_LIST","filter":{"kinds":[40,41]}}]',
+    );
+    expect(decodeDeckColumns(json)).toEqual([spec]);
+    // タイトルは正準キー（表示は nav_public_chat）
+    expect(columnLabel(spec)).toBe("パブリックチャット");
+  });
+
+  it("設定なしで追加でき、ふぁぼ欄とステータスの間に並ぶ（ネイティブ ColumnTemplate.entries と同じ順）", () => {
+    const templates = TEMPLATES.map((t) => t.template);
+    expect(templates.indexOf("CHANNEL_LIST")).toBe(templates.indexOf("FAVS") + 1);
+    expect(templates.indexOf("CHANNEL_LIST")).toBe(templates.indexOf("STATUS") - 1);
+    expect(TEMPLATES.find((t) => t.template === "CHANNEL_LIST")).toEqual({
+      template: "CHANNEL_LIST",
+      config: "NONE",
+      iconKind: "CHANNEL_LIST",
+    });
+    expect(editTemplate(build("CHANNEL_LIST", {}, NONE, 100))).toBeNull();
+  });
+});
+
 describe("buildListColumn", () => {
   it("投稿+リポストを著者で集める一時カラム。タイトルが空なら「リスト」", () => {
     const spec = buildListColumn("仲良し", ["a", "b"], 100);
