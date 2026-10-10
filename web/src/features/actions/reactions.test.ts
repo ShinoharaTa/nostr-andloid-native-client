@@ -160,19 +160,57 @@ describe("reactWithDefault", () => {
   });
 });
 
-it("publishRepost は常に kind:6・content 空で e → p", async () => {
-  const target = note(generateSecretKey(), { kind: 1111 });
-  await publishRepost(target);
-  expect(drafts()).toEqual([
-    {
-      kind: 6,
-      content: "",
-      tags: [
-        ["e", target.id, ""],
-        ["p", target.pubkey, ""],
-      ],
-    },
-  ]);
+describe("publishRepost（NIP-18）", () => {
+  it("kind:1 は kind:6・content 空で e → p", async () => {
+    const target = note(generateSecretKey(), { kind: 1 });
+    await publishRepost(target);
+    expect(drafts()).toEqual([
+      {
+        kind: 6,
+        content: "",
+        tags: [
+          ["e", target.id, ""],
+          ["p", target.pubkey, ""],
+        ],
+      },
+    ]);
+  });
+
+  it("[#810] kind:1 以外（パブリックチャットの発言・コメント）は kind:16 で e → p → k（元の kind）", async () => {
+    for (const kind of [42, 1111]) {
+      vi.mocked(publishEvent).mockClear();
+      const target = note(generateSecretKey(), { kind });
+      await publishRepost(target);
+      expect(drafts()).toEqual([
+        {
+          kind: 16,
+          content: "",
+          tags: [
+            ["e", target.id, ""],
+            ["p", target.pubkey, ""],
+            ["k", String(kind)],
+          ],
+        },
+      ]);
+    }
+  });
+
+  it("[#810] 置き換え可能なイベント（記事 kind:30023）は a（kind:pubkey:d）も付ける", async () => {
+    const target = note(generateSecretKey(), { kind: 30023, tags: [["d", "my-article"]] });
+    await publishRepost(target);
+    expect(drafts()).toEqual([
+      {
+        kind: 16,
+        content: "",
+        tags: [
+          ["e", target.id, ""],
+          ["p", target.pubkey, ""],
+          ["a", `30023:${target.pubkey}:my-article`],
+          ["k", "30023"],
+        ],
+      },
+    ]);
+  });
 });
 
 describe("requestDelete", () => {
@@ -261,6 +299,20 @@ describe("押下状態", () => {
       mine(6, "", [
         ["e", target.id],
         ["p", target.pubkey],
+      ]);
+    });
+    expect(result.current).toBe(true);
+  });
+
+  it("[#810] useIsReposted: 自分の kind:16（汎用リポスト）の e がこの投稿でも true", () => {
+    const target = note(generateSecretKey(), { kind: 42 });
+    const { result } = renderHook(() => useIsReposted(target.id));
+    expect(result.current).toBe(false);
+    act(() => {
+      mine(16, "", [
+        ["e", target.id],
+        ["p", target.pubkey],
+        ["k", "42"],
       ]);
     });
     expect(result.current).toBe(true);

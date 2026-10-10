@@ -1,3 +1,4 @@
+import { getReplaceableAddress } from "applesauce-core/helpers/event";
 import { use$ } from "applesauce-react/hooks/use-$";
 import type { NostrEvent } from "nostr-tools/pure";
 import { distinctUntilChanged, map, type Observable, type Subscription, shareReplay } from "rxjs";
@@ -81,20 +82,36 @@ export async function reactWithDefault(target: NostrEvent): Promise<void> {
   await publishReaction(target, content, image);
 }
 
-/** リポスト（常に kind:6。取り消しは無い = ネイティブと同じ） */
+/**
+ * リポストのタグ。e → p（ヒントは埋める）。[#810] kind:1 以外（kind:16 で出す）は、置き換え可能なら a（座標）、
+ * 最後に k（元の kind）を付ける（NIP-18）
+ */
+export function buildRepostTags(target: NostrEvent, hints: RelayHintLookup): string[][] {
+  const tags = fillRelayHints(
+    [
+      ["e", target.id],
+      ["p", target.pubkey],
+    ],
+    hints.eventHint,
+    hints.pubkeyHint,
+  );
+  if (target.kind === 1) return tags;
+  const address = getReplaceableAddress(target);
+  if (address !== null) tags.push(["a", address]);
+  tags.push(["k", String(target.kind)]);
+  return tags;
+}
+
+/**
+ * リポスト（取り消しは無い = ネイティブと同じ）。[#810] NIP-18 では kind:6 は kind:1 のリポスト専用なので、
+ * それ以外（パブリックチャットの発言 kind:42・記事 kind:30023 など）は汎用リポストの kind:16 で出す
+ */
 export async function publishRepost(target: NostrEvent): Promise<void> {
   const hints = storeRelayHints(useSession.getState().pubkey);
   await publishEvent({
-    kind: 6,
+    kind: target.kind === 1 ? 6 : 16,
     content: "",
-    tags: fillRelayHints(
-      [
-        ["e", target.id],
-        ["p", target.pubkey],
-      ],
-      hints.eventHint,
-      hints.pubkeyHint,
-    ),
+    tags: buildRepostTags(target, hints),
   });
 }
 
@@ -177,11 +194,11 @@ export function myReactionIndex$(me: string): Observable<ReadonlyMap<string, Nos
   return index$;
 }
 
-/** 自分の kind:6 の e タグの値。me ごとに 1 つを共有する */
+/** 自分のリポスト（kind:6 と、[#810] kind:1 以外の汎用リポスト kind:16）の e タグの値。me ごとに 1 つを共有する */
 export function myRepostTargets$(me: string): Observable<ReadonlySet<string>> {
   let targets$ = repostTargets.get(me);
   if (!targets$) {
-    targets$ = eventStore.timeline({ kinds: [6], authors: [me] }).pipe(
+    targets$ = eventStore.timeline({ kinds: [6, 16], authors: [me] }).pipe(
       map((events) => {
         const ids = new Set<string>();
         for (const event of events) for (const id of eTagValues(event)) ids.add(id);
