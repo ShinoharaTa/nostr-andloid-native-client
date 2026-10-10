@@ -1,5 +1,7 @@
-- Reacting with an emoji from the picker now shows "Reacted with …", so you can tell custom emoji reactions went through
-- X (Twitter) post links now show the post itself (avatar, name, date, text and photo) instead of a link card
-- You can now rotate and flip attached images before posting (tap the thumbnail)
-- "Handshake with Unyu" now covers more of the UI (accounts, relays, DMs, Zaps, notifications and more)
-- Fixed some photos being posted in the wrong orientation
+- Make emoji from text in the reaction picker and react with them
+- New "Statuses" column: Now Playing and statuses from people you follow
+- Public chat: links open the room, the list can be a column, friends' messages show in your timeline
+- Tap your icon for a menu (profile, DM, favs, bookmarks, mute, emoji, hashtags, relays, settings); Messages tab is now Public Chat
+- Settings split into Nostr and app settings
+- Paste a copied image to attach it
+- Columns fetch only from your read relays
