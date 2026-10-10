@@ -144,15 +144,11 @@ private fun ChannelRow(
             .clickable(onClick = onClick).padding(horizontal = DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(DeckDimens.AvatarSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
-            AvatarSquare(ch.name, ch.pictureUrl)
-        }
+        ChannelIcon(ch.name, ch.pictureUrl)
         Spacer(Modifier.width(DeckSpace.Md))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(ch.name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                    lineHeight = DeckType.LineTitle,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                ChannelNameText(ch.name, Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
                     Spacer(Modifier.width(DeckSpace.Xs))
@@ -165,12 +161,7 @@ private fun ChannelRow(
                 ch.about.isNotBlank() -> ch.about
                 else -> null
             }
-            if (secondary != null) {
-                // タイトル+説明の段差は行高（LineTitle/LineDesc）で統一（ColumnHeader と同一）。
-                Text(secondary, color = DeckColors.Text2, fontSize = DeckType.Caption,
-                    lineHeight = DeckType.LineDesc,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            if (secondary != null) ChannelSubText(secondary)
         }
         if (ch.unread > 0) {
             Spacer(Modifier.width(DeckSpace.Sm))
@@ -202,4 +193,33 @@ private fun ChannelRow(
                 modifier = Modifier.size(DeckDimens.IconSm))
         }
     }
+}
+
+/**
+ * [#839] チャンネルの画像（無ければ頭文字）。一覧の行と、本文の kind:40 の引用カード（[ChannelQuoteCard]）で共有する。
+ */
+@Composable
+internal fun ChannelIcon(name: String, pictureUrl: String?) {
+    Box(Modifier.size(DeckDimens.AvatarSize).clip(RoundedCornerShape(DeckRadius.Md)).background(DeckColors.Surface3)) {
+        AvatarSquare(name, pictureUrl)
+    }
+}
+
+/** [#839] チャンネル名の 1 行（一覧の行・引用カードで共有）。 */
+@Composable
+internal fun ChannelNameText(name: String, modifier: Modifier = Modifier) {
+    Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
+        lineHeight = DeckType.LineTitle,
+        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+/**
+ * [#839] チャンネル名の下の 1 行（一覧は直近の発言か説明、引用カードは説明）。
+ * タイトル+説明の段差は行高（LineTitle/LineDesc）で統一（ColumnHeader と同一）。
+ */
+@Composable
+internal fun ChannelSubText(text: String) {
+    Text(text, color = DeckColors.Text2, fontSize = DeckType.Caption,
+        lineHeight = DeckType.LineDesc,
+        maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
