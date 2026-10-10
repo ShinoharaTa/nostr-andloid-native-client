@@ -79,7 +79,10 @@ it("フォロー中: kind:3 未受信の間は自分だけで購読し、届い�
   expect(result.current.loading).toBe(true);
   expect(result.current.emptyText).toBeUndefined();
   expect(vi.mocked(subscribe)).toHaveBeenCalledWith({ kinds: [3], authors: [me] });
-  expect(lastRequest().filters).toEqual([{ kinds: [1, 6, 16, 5, 1111], authors: [me], limit: 100 }, ...mix]);
+  expect(lastRequest().filters).toEqual([
+    { kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 },
+    ...mix,
+  ]);
 
   act(() => {
     eventStore.add(signed(3, meKey, [["p", follow]]));
@@ -88,7 +91,7 @@ it("フォロー中: kind:3 未受信の間は自分だけで購読し、届い�
   expect(result.current.mode).toBe("following");
   expect(lastRequest().relays).toEqual(RELAYS);
   expect(lastRequest().filters).toEqual([
-    { kinds: [1, 6, 16, 5, 1111], authors: [follow, me], limit: 100 },
+    { kinds: [1, 6, 16, 5, 1111, 42], authors: [follow, me], limit: 100 },
     ...mix,
   ]);
 
@@ -113,7 +116,7 @@ it("フォロー中: kind:3 が届いてフォロー 0 件でも自分だけで�
     for (const f of call[1] as { authors?: string[]; "#p"?: string[] }[])
       expect(f.authors ?? f["#p"]).toBeDefined();
   }
-  expect(lastRequest().filters?.[0]).toEqual({ kinds: [1, 6, 16, 5, 1111], authors: [me], limit: 100 });
+  expect(lastRequest().filters?.[0]).toEqual({ kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 });
   expect(result.current.events).toEqual([]);
   expect(result.current.emptyText).toBeUndefined();
 });
@@ -392,7 +395,7 @@ it("フォロー中の loadOlder: 投稿の最古を until にして、通知・
   expect(vi.mocked(requestOnce)).toHaveBeenCalledWith(
     RELAYS,
     [
-      { kinds: [1, 6, 16, 5, 1111], authors: [follow, me], limit: 100, until: 900 },
+      { kinds: [1, 6, 16, 5, 1111, 42], authors: [follow, me], limit: 100, until: 900 },
       { kinds: [1, 6, 16, 7, 9735, 1111], "#p": [me], limit: 200, until: 900 },
       { kinds: [7], authors: [me], limit: 100, until: 900 },
     ],

@@ -90,6 +90,8 @@ function categoryLabel(category: FeedCategory): string {
       return t("cat_my_reactions");
     case "DMS":
       return t("cat_dms");
+    case "CHAT":
+      return t("cat_public_chat");
   }
 }
 

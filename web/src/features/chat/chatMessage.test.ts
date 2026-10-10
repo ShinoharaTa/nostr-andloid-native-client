@@ -1,4 +1,4 @@
-import { npubEncode } from "nostr-tools/nip19";
+import { decode, npubEncode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
 import { type MuteList, muteMatcherFrom } from "../mute/muteList";
@@ -8,7 +8,9 @@ import {
   channelHref,
   channelIdOf,
   isChatMessageMuted,
+  relayHintOf,
   replyParentIdOf,
+  roomHrefOf,
   withChatMedia,
 } from "./chatMessage";
 
@@ -170,5 +172,27 @@ describe("通知の行き先（ネイティブ openNotificationTarget）", () =>
     // 対象が取れていない・kind:1 ならスレッド
     expect(notificationHref(reaction)).toMatch(/^\/e\//);
     expect(notificationHref(reaction, { ...mine, kind: 1 })).toMatch(/^\/e\//);
+  });
+});
+
+describe("[#796] relayHintOf / roomHrefOf（タイムラインの発言からルームを開く）", () => {
+  it("id を指す e のリレーヒント。ws でないもの・空は null", () => {
+    const tags = [
+      ["e", CH, HINT, "root"],
+      ["e", PARENT, "https://not-a-relay", "reply"],
+    ];
+    expect(relayHintOf(tags, CH)).toBe(HINT);
+    expect(relayHintOf(tags, PARENT)).toBeNull();
+    expect(relayHintOf([["e", CH, "", "root"]], CH)).toBeNull();
+    expect(relayHintOf([["e", CH]], CH)).toBeNull();
+  });
+
+  it("チャンネル（kind:40）の nevent の /e/。ヒントがあれば付ける。チャンネルが分からなければ null", () => {
+    const href = roomHrefOf(ev({ tags: [["e", CH, HINT, "root"]] }));
+    const decoded = decode(href?.replace(/^\/e\//, "") ?? "");
+    expect(decoded.type).toBe("nevent");
+    expect(decoded.data).toMatchObject({ id: CH, kind: 40, relays: [HINT] });
+    expect(roomHrefOf(ev({ tags: [] }))).toBeNull();
+    expect(roomHrefOf(ev({ kind: 1, tags: [["e", CH, HINT, "root"]] }))).toBeNull();
   });
 });

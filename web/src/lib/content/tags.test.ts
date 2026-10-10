@@ -78,6 +78,20 @@ describe("replyParentPointerOf", () => {
     expect(replyParentPointerOf(event(1, [["e", ID_A, "", "root"]]))?.id).toBe(ID_A);
   });
 
+  it("[#796] kind:42 は reply マーカーの e だけ（root はチャンネルなので返信元にしない。ネイティブ Nip28.replyToOf）", () => {
+    const reply = event(42, [
+      ["e", ID_A, "", "root"],
+      ["e", ID_B, "wss://chat.example", "reply"],
+    ]);
+    expect(replyParentPointerOf(reply)).toEqual({ id: ID_B, relays: ["wss://chat.example"] });
+    expect(replyParentPointerOf(event(42, [["e", ID_A, "", "root"]]))).toBeNull();
+    const toChannel = event(42, [
+      ["e", ID_A, "", "root"],
+      ["e", ID_A, "", "reply"],
+    ]);
+    expect(replyParentPointerOf(toChannel)).toBeNull();
+  });
+
   it("マーカー無しが 2 本なら末尾が親", () => {
     expect(
       replyParentPointerOf(

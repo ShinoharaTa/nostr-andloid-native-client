@@ -1,7 +1,7 @@
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import type { NostrEvent } from "nostr-tools/pure";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useT } from "../../i18n";
 import { formatDateTimeLocal } from "../../i18n/format";
 import { avatarInitial, avatarShade } from "../../lib/avatar";
@@ -16,6 +16,8 @@ import { CatEars } from "../../ui/CatEars";
 import { useNyanApplies } from "../../ui/nyan";
 import { NoteActionButtons, NoteMoreMenu } from "../actions/NoteActionButtons";
 import { ArticleCards } from "../article/ArticleCard";
+import { ChatChannelLine } from "../chat/ChatChannelLine";
+import { roomHrefOf } from "../chat/chatMessage";
 import { NoteFooter } from "../compose/NoteFooter";
 import { LinkCards } from "../linkcard/LinkCard";
 import { useLinkCards } from "../linkcard/useLinkCards";
@@ -157,8 +159,13 @@ function RepostItem({ repost, openable }: { repost: NostrEvent; openable: boolea
   );
 }
 
-/** スレッドを開くリンク先。受け取ったリレーを 2 件までヒントに付ける */
+/**
+ * スレッドを開くリンク先。受け取ったリレーを 2 件までヒントに付ける。
+ * [#796] パブリックチャットの発言（kind:42）はそのチャンネルのルーム（スレッドにはチャンネル内の返信が出ないため。ネイティブと同じ）
+ */
 function threadHrefOf(target: NostrEvent): string {
+  const room = target.kind === 42 ? roomHrefOf(target) : null;
+  if (room !== null) return room;
   const seen = [...(getSeenRelays(target) ?? [])].slice(0, 2);
   return hrefForEvent(
     seen.length > 0
@@ -200,9 +207,13 @@ function NoteBody({
   );
   const media = extractMedia(event);
   const hasMedia = media.images.length + media.videos.length + media.youtube.length > 0;
+  // [#796] パブリックチャットの発言は、返信もそのチャンネルのルームで（ここから返すと kind:1 の返信になってしまう）
+  const navigate = useNavigate();
+  const roomHref = event.kind === 42 ? roomHrefOf(event) : null;
 
   return (
     <>
+      {!embedded && event.kind === 42 && <ChatChannelLine message={event} />}
       {!embedded && <ReplyContext event={event} />}
       <div className={styles.row}>
         {/* 名前と同じリンク先なので、読み上げ・タブ移動は名前の方だけにする */}
@@ -241,7 +252,11 @@ function NoteBody({
               <ArticleCards content={event.content} />
             </>
           )}
-          <NoteFooter event={event} more={<NoteMoreMenu event={event} />}>
+          <NoteFooter
+            event={event}
+            more={<NoteMoreMenu event={event} />}
+            onReply={roomHref !== null ? () => void navigate(roomHref) : undefined}
+          >
             <NoteActionButtons event={event} />
           </NoteFooter>
         </div>
