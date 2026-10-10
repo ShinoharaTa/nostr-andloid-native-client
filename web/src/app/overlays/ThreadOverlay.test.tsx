@@ -1,12 +1,14 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { neventEncode } from "nostr-tools/nip19";
+import { neventEncode, noteEncode } from "nostr-tools/nip19";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { VirtuosoMockContext } from "react-virtuoso";
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetChannelsForTest, useChannels } from "../../features/chat/channels";
 import { ComposeHost } from "../../features/compose/ComposeHost";
 import { useCompose } from "../../features/compose/composeStore";
 import { unixNow } from "../../lib/time";
+import { subscribeTo } from "../../nostr/pool";
 import { type EventDraft, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
@@ -84,4 +86,96 @@ it("返信ボックスから起点への返信を送れる（NIP-10 の root →
     ["p", focus.pubkey, expect.any(String)],
   ]);
   expect(useCompose.getState().request).toBeNull();
+});
+
+describe("[#798] パブリックチャットへのリンク", () => {
+  const created = finalizeEvent(
+    {
+      kind: 40,
+      created_at: 1_000,
+      tags: [],
+      content: JSON.stringify({ name: "雑談部屋", about: "なんでも" }),
+    },
+    generateSecretKey(),
+  );
+
+  beforeEach(() => {
+    useChannels.setState({
+      channels: [
+        {
+          id: created.id,
+          name: "雑談部屋",
+          about: "なんでも",
+          picture: null,
+          relays: [],
+          createdAt: 1_000,
+          lastAt: 1_000,
+        },
+      ],
+      loading: false,
+      failed: false,
+    });
+  });
+
+  afterEach(() => {
+    resetChannelsForTest();
+  });
+
+  it("kind:40 の nevent はそのチャンネルのルームを開く（取得を待たない）", () => {
+    renderWithRouter(
+      <ThreadOverlay refParam={neventEncode({ id: created.id, kind: 40 })} onBack={() => {}} />,
+    );
+    expect(screen.getByRole("heading", { name: "雑談部屋" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "スレッド" })).not.toBeInTheDocument();
+    expect(subscribeTo).toHaveBeenCalledWith(expect.any(Array), [
+      { kinds: [42], "#e": [created.id], limit: 200 },
+    ]);
+  });
+
+  it("kind の無い note でも、手元のチャンネル一覧にあればルームを開く", () => {
+    renderWithRouter(<ThreadOverlay refParam={noteEncode(created.id)} onBack={() => {}} />);
+    expect(screen.getByRole("heading", { name: "雑談部屋" })).toBeInTheDocument();
+  });
+
+  it("kind:42 は root のチャンネルのルームを開き、その発言を強調する", () => {
+    const msg = finalizeEvent(
+      { kind: 42, created_at: 1_100, tags: [["e", created.id, "", "root"]], content: "リンク先の発言" },
+      generateSecretKey(),
+    );
+    const other = finalizeEvent(
+      { kind: 42, created_at: 1_200, tags: [["e", created.id, "", "root"]], content: "ほかの発言" },
+      generateSecretKey(),
+    );
+    eventStore.add(msg);
+    eventStore.add(other);
+    renderWithRouter(<ThreadOverlay refParam={neventEncode({ id: msg.id, kind: 42 })} onBack={() => {}} />);
+
+    const room = screen.getByRole("region", { name: "雑談部屋" });
+    expect(within(room).getByText("リンク先の発言").closest("article")).toHaveAttribute("data-highlight");
+    expect(within(room).getByText("ほかの発言").closest("article")).not.toHaveAttribute("data-highlight");
+  });
+
+  it("一覧に無いチャンネルは「パブリックチャット」で開き、kind:40 が届けば名前を出す", async () => {
+    useChannels.setState({ channels: [] });
+    const later = finalizeEvent(
+      { kind: 40, created_at: 1_000, tags: [], content: JSON.stringify({ name: "あとから届く部屋" }) },
+      generateSecretKey(),
+    );
+    renderWithRouter(<ThreadOverlay refParam={neventEncode({ id: later.id, kind: 40 })} onBack={() => {}} />);
+    expect(screen.getByRole("heading", { name: "パブリックチャット" })).toBeInTheDocument();
+    act(() => {
+      eventStore.add(later);
+    });
+    expect(await screen.findByRole("heading", { name: "あとから届く部屋" })).toBeInTheDocument();
+  });
+
+  it("kind:1 の投稿はこれまでどおりスレッド", () => {
+    const note = stored([], "ふつうの投稿", 1_300);
+    renderWithRouter(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 2000, itemHeight: 100 }}>
+        <ThreadOverlay refParam={noteEncode(note.id)} onBack={() => {}} />
+      </VirtuosoMockContext.Provider>,
+    );
+    expect(screen.getByRole("heading", { name: "スレッド" })).toBeInTheDocument();
+  });
 });

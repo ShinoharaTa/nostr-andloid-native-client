@@ -45,6 +45,7 @@
   "chat_loading_channel": "チャンネルを読み込み中…",
   "chat_reply": "リプライ",
   "chat_reply_to_fmt": "%1$s に返信: %2$s",
+  "chat_room_unnamed": "パブリックチャット",
   "chat_select_channel": "チャンネルを選択",
   "chat_upload_failed": "添付をアップロードできませんでした。設定 → メディアサーバーを確認してください。",
   "chat_write_message": "✏️ メッセージを書く",
