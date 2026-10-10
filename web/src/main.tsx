@@ -7,7 +7,6 @@ import { startDm } from "./features/dm/dmService";
 import { startOwnLists } from "./features/lists/ownLists";
 import { startMuteList } from "./features/mute/muteSync";
 import { initTheme } from "./features/theme/themePrefs";
-import { t } from "./i18n";
 import { initLocale } from "./i18n/locale";
 import { startBackgroundPause } from "./nostr/backgroundPause";
 import { startConnStats } from "./nostr/connStats";
@@ -29,7 +28,7 @@ applyOsAttribute();
 void unregisterLegacyServiceWorker();
 
 const root = document.getElementById("root");
-if (!root) throw new Error(t("web_root_not_found"));
+if (!root) throw new Error("#root not found");
 
 // 保存済みセッションの復元は起動時に 1 度だけ（StrictMode の二重実行で拡張を 2 回呼ばない）
 void useSession.getState().restore();

@@ -307,7 +307,7 @@ function ImageUrlField({
           disabled={disabled || uploading}
           onClick={() => fileInput.current?.click()}
         >
-          {uploading ? t("web_settings_profile_uploading") : t("web_settings_profile_pick_image")}
+          {uploading ? t("web_uploading") : t("web_settings_profile_pick_image")}
         </button>
         <input
           ref={fileInput}

@@ -136,18 +136,18 @@ export function ReactionPickerDialog({
                     <div role="tablist" aria-label={t("web_picker_categories")} className={styles.tabs}>
                       {categories.map((category, i) => (
                         <button
-                          key={category.title}
+                          key={category.title()}
                           type="button"
                           role="tab"
                           aria-selected={i === activeTab}
                           className={styles.tab}
                           onClick={() => setActiveTab(i)}
                         >
-                          {category.title}
+                          {category.title()}
                         </button>
                       ))}
                     </div>
-                    <Section title={activeCategory.title}>
+                    <Section title={activeCategory.title()}>
                       {activeCategory.emojis.map((e) => (
                         <TextCell key={e.char} char={e.char} onClick={() => pick(e.char, null)} />
                       ))}

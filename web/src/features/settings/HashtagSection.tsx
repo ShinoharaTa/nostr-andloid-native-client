@@ -21,7 +21,7 @@ export function HashtagSection() {
       {pinned.length === 0 ? (
         <p className={styles.desc}>{t("hashtags_pinned_empty")}</p>
       ) : (
-        <ul className={styles.chips} aria-label={t("web_settings_hashtags_pinned_list_label")}>
+        <ul className={styles.chips} aria-label={t("web_hashtags_pinned_list_label")}>
           {pinned.map((tag) => (
             <li key={tag}>
               <button type="button" className={styles.chip} onClick={() => openHashtagManager()}>

@@ -432,7 +432,7 @@ function Composer({
         <button
           type="button"
           className={styles.attachButton}
-          aria-label={t("web_chat_attach_media")}
+          aria-label={t("web_attach_media")}
           disabled={sending}
           onClick={() => fileInput.current?.click()}
         >
@@ -497,7 +497,7 @@ function AttachmentList({
     ...attachments.filter((a) => a.kind === "video"),
   ];
   return (
-    <ul className={styles.attachments} aria-label={t("web_chat_attachments")}>
+    <ul className={styles.attachments} aria-label={t("web_attachments")}>
       {ordered.map((a) => (
         <li key={a.id} className={styles.attachment}>
           <div className={styles.thumb}>
@@ -513,7 +513,7 @@ function AttachmentList({
                 <video
                   className={styles.thumbMedia}
                   src={a.preview}
-                  aria-label={t("web_chat_attachment_video")}
+                  aria-label={t("web_attachment_video")}
                   muted
                   playsInline
                   preload="metadata"

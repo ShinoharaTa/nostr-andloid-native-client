@@ -115,6 +115,6 @@ describe("clear", () => {
     vi.spyOn(db.vault, "delete").mockRejectedValue(new Error("boom"));
 
     await expect(createNwcStore({ database: async () => db }).clear()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith("[vault] 削除に失敗");
+    expect(warn).toHaveBeenCalledWith("[vault] Failed to delete");
   });
 });

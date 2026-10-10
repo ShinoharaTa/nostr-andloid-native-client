@@ -4,7 +4,6 @@ import { type NostrEvent, verifyEvent } from "nostr-tools/pure";
 import { combineLatest, distinctUntilChanged, map, Subscription, timer } from "rxjs";
 import { db } from "../../db";
 import type { DmMessageRow, NostrismDb } from "../../db/schema";
-import { t } from "../../i18n";
 import { INDEXER_RELAYS, LOADING_TIMEOUT_MS } from "../../lib/columnRequest";
 import { readRelays, readRelays$, requestOnce, subscribeUnstored } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
@@ -104,7 +103,7 @@ export function startDm(opts: { database?: NostrismDb | null } = {}): () => void
       active = null;
       wantDecrypt = false;
       useDm.getState().reset(null);
-      void serial(t("web_log_dm_clear_failed"), async (database) => {
+      void serial("Failed to clear", async (database) => {
         await database.dmMessages.clear();
         await database.dmProcessed.clear();
       });
@@ -175,7 +174,7 @@ function begin(
   // ---- 復号 ----
   const record = (eventId: string, ok: boolean, row: DmMessageRow | null): Promise<void> => {
     if (stopped) return Promise.resolve();
-    return serial(t("web_log_dm_save_failed"), async (database) => {
+    return serial("Failed to save", async (database) => {
       if (row) await database.dmMessages.put(row);
       await database.dmProcessed.put({ owner: me, eventId, ok });
     });
@@ -266,7 +265,7 @@ function begin(
   };
 
   // 保存済みの DM を先に出し、処理済みの id を読んでから購読する（読み込み前に届いた分を復号し直さない）
-  void serial(t("web_log_dm_load_failed"), async (database) => {
+  void serial("Failed to load", async (database) => {
     await database.dmMessages.where("owner").notEqual(me).delete();
     await database.dmProcessed.where("owner").notEqual(me).delete();
     const rows = await database.dmMessages.where("owner").equals(me).toArray();
@@ -293,7 +292,7 @@ function begin(
       for (const eventId of eventIds) processed.add(eventId);
       useDm.getState().upsertMessages([row]);
       notePeers([row.peer]);
-      return serial(t("web_log_dm_save_failed"), async (database) => {
+      return serial("Failed to save", async (database) => {
         await database.dmMessages.put(row);
         for (const eventId of eventIds) await database.dmProcessed.put({ owner: me, eventId, ok: true });
       });
@@ -301,7 +300,7 @@ function begin(
     removeSent(id) {
       if (stopped) return Promise.resolve();
       useDm.getState().removeMessage(id);
-      return serial(t("web_log_dm_delete_failed"), (database) => database.dmMessages.delete([me, id]));
+      return serial("Failed to delete", (database) => database.dmMessages.delete([me, id]));
     },
     stop() {
       stopped = true;

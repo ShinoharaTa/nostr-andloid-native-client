@@ -7,7 +7,6 @@ import {
   verifyEvent,
 } from "nostr-tools/pure";
 import type { DmMessageRow } from "../../db/schema";
-import { t } from "../../i18n";
 import { unixNow } from "../../lib/time";
 import type { Signer } from "../../nostr/signer";
 import { VaultError } from "../../signer/webKeyVault";
@@ -189,7 +188,7 @@ export async function wrapGiftWrap(
   opts: { now?: number; random?: () => number } = {},
 ): Promise<NostrEvent> {
   const cipher = signer.nip44;
-  if (!cipher) throw new Error(t("web_dm_err_no_nip44"));
+  if (!cipher) throw new Error("The signer doesn't support NIP-44");
   const now = opts.now ?? unixNow();
   const random = opts.random ?? Math.random;
   const past = () => now - Math.floor(random() * WRAP_TIME_SPREAD_SEC);
@@ -200,7 +199,7 @@ export async function wrapGiftWrap(
     JSON.stringify({ id, pubkey, created_at, kind, tags, content }),
   );
   const seal = await signer.signEvent({ kind: 13, content: sealContent, tags: [], created_at: past() });
-  if (seal.pubkey !== rumor.pubkey || !verifyEvent(seal)) throw new Error(t("web_dm_err_bad_seal"));
+  if (seal.pubkey !== rumor.pubkey || !verifyEvent(seal)) throw new Error("Invalid seal signature");
 
   const sk = generateSecretKey();
   let ck: Uint8Array | null = null;

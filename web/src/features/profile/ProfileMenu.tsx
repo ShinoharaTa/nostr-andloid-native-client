@@ -92,7 +92,7 @@ export function ProfileMenu({
     setDialog(null);
     reportUser(pubkey, type).then(
       () => showToast(t("reported_toast")),
-      (e) => console.warn(`[profile] ${t("web_log_profile_report_failed")}`, e),
+      (e) => console.warn("[profile] Failed to report", e),
     );
   }
 

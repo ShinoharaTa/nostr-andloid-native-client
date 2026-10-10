@@ -230,7 +230,7 @@ function AddEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(emo
   return (
     <form className={styles.row} onSubmit={submit}>
       <label htmlFor={codeId} className="srOnly">
-        {t("web_settings_emoji_shortcode_label")}
+        {t("web_emoji_shortcode_label")}
       </label>
       <input
         id={codeId}
@@ -308,7 +308,7 @@ function MakeEmojiForm({ list, onAdd }: { list: readonly CustomEmoji[]; onAdd(em
       <EmojiMakerForm maker={maker} />
       <div className={makerStyles.field}>
         <label htmlFor={codeId} className={makerStyles.label}>
-          {t("web_settings_emoji_shortcode_label")}
+          {t("web_emoji_shortcode_label")}
         </label>
         <div className={styles.row}>
           <input

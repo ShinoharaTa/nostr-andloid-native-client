@@ -276,7 +276,7 @@ export function ChannelEditDialog({
               disabled={disabled || uploading}
               onClick={() => fileInput.current?.click()}
             >
-              {uploading ? t("web_channel_icon_uploading") : t("channel_icon_pick")}
+              {uploading ? t("web_uploading") : t("channel_icon_pick")}
             </button>
             {fields.picture !== "" && !uploading && (
               <button
