@@ -1,5 +1,4 @@
 import Dexie from "dexie";
-import { t } from "../i18n";
 import { eventStore } from "../nostr/store";
 import { SESSION_KEY } from "../signer/session";
 import { evictOnOpen } from "./events";
@@ -27,7 +26,7 @@ export async function openDatabase(create = createDatabase): Promise<NostrismDb 
     return await openOnce(create);
   } catch (e) {
     if (!RECREATE_ON.has((e as { name?: string } | null)?.name ?? "")) {
-      console.error(`[db] ${t("web_log_db_open_failed")}`, e);
+      console.error("[db] Can't open the database; running in memory only", e);
       return null;
     }
   }
@@ -35,7 +34,7 @@ export async function openDatabase(create = createDatabase): Promise<NostrismDb 
     await Dexie.delete(DB_NAME);
     return await openOnce(create);
   } catch (e) {
-    console.error(`[db] ${t("web_log_db_recreate_failed")}`, e);
+    console.error("[db] Still can't open it after recreating; running in memory only", e);
     return null;
   }
 }
@@ -74,29 +73,29 @@ export async function startPersistence(): Promise<void> {
   try {
     await evictOnOpen(db, { now: Math.floor(Date.now() / 1000), me });
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_evict_failed")}`, e);
+    console.warn("[db] Failed to clean up at startup", e);
   }
   // 削除記録（#579）はイベントの hydrate より先に読み込む（先に読まないと記録済みの行が戻ってしまう）
   try {
     await hydrateDeletionMemory(db);
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_deletion_restore_failed")}`, e);
+    console.warn("[db] Failed to restore deletion records", e);
   }
   // hydrate より先に張る（hydrate 分は hydratedSymbol で書き戻し対象外）
   try {
     attachPersistence(eventStore, db, me);
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_attach_failed")}`, e);
+    console.warn("[db] Failed to subscribe to writes", e);
   }
   try {
     attachDeletionPersistence(db);
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_deletion_attach_failed")}`, e);
+    console.warn("[db] Failed to subscribe to deletion records", e);
   }
   try {
     await hydrate(eventStore, db);
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_hydrate_failed")}`, e);
+    console.warn("[db] Failed to restore events", e);
   }
   void requestPersistentStorage();
 }

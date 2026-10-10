@@ -5,7 +5,6 @@ import { type EventTemplate, type NostrEvent, verifyEvent } from "nostr-tools/pu
 import { BehaviorSubject, merge, type Observable, Subject, type Subscription } from "rxjs";
 import { db } from "../db";
 import type { NostrismDb, PublishQueueRow } from "../db/schema";
-import { t } from "../i18n";
 import { SEARCH_RELAYS } from "../lib/columnRequest";
 import { unixNow } from "../lib/time";
 import { currentSigner, useSession } from "../signer/session";
@@ -155,7 +154,7 @@ export async function publishEvent(draft: EventDraft, opts?: PublishOptions): Pr
   try {
     await queueDb?.publishQueue.put(row);
   } catch (e) {
-    warn(t("web_log_publish_save_failed"), e);
+    warn("Failed to save the unsent post", e);
   }
   send(row, true);
   return signed;
@@ -195,7 +194,7 @@ export async function enqueueSigned(
   try {
     await queueDb?.publishQueue.put(row);
   } catch (e) {
-    warn(t("web_log_publish_save_failed"), e);
+    warn("Failed to save the unsent post", e);
   }
   send(row, opts.notify);
 }
@@ -256,14 +255,14 @@ function unconfirmed(id: string, notify: boolean): void {
   const attempts = row.attempts + 1;
   rows.set(id, { ...row, attempts });
   refreshUnsent();
-  queueDb?.publishQueue.update(id, { attempts }).catch((e) => warn(t("web_log_publish_attempts_failed"), e));
+  queueDb?.publishQueue.update(id, { attempts }).catch((e) => warn("Failed to save the attempt count", e));
   if (notify) notifyUnconfirmed();
 }
 
 function dequeue(id: string): void {
   if (!rows.delete(id)) return;
   refreshUnsent();
-  queueDb?.publishQueue.delete(id).catch((e) => warn(t("web_log_publish_delete_failed"), e));
+  queueDb?.publishQueue.delete(id).catch((e) => warn("Failed to delete the unsent post", e));
 }
 
 function notifyUnconfirmed(): void {
@@ -319,7 +318,7 @@ export async function startPublishQueue(opts?: { database?: NostrismDb | null })
     try {
       stored = await target.publishQueue.toArray();
     } catch (e) {
-      warn(t("web_log_publish_load_failed"), e);
+      warn("Failed to load unsent posts", e);
     }
     for (const row of stored) {
       try {
@@ -338,7 +337,7 @@ export async function startPublishQueue(opts?: { database?: NostrismDb | null })
           if (row.owner === undefined || row.owner === row.payload.pubkey) addVerified(current.payload);
         }
       } catch (e) {
-        warn(t("web_log_publish_restore_failed"), e);
+        warn("Failed to restore unsent posts", e);
       }
     }
     const storedIds = new Set(stored.map((row) => row.eventId));
@@ -347,7 +346,7 @@ export async function startPublishQueue(opts?: { database?: NostrismDb | null })
       try {
         await target.publishQueue.put(row);
       } catch (e) {
-        warn(t("web_log_publish_save_failed"), e);
+        warn("Failed to save the unsent post", e);
       }
     }
   }

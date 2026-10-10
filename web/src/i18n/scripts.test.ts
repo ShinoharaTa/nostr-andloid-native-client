@@ -48,3 +48,26 @@ it("check-i18n は日本語リテラルを検出して非 0 で終わり、コ�
     rmSync(dir, { recursive: true });
   }
 });
+
+it("check-i18n は console.*( と new Error( の引数を見ない（括弧の外の日本語は検出する）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "check-i18n-"));
+  try {
+    const log = join(dir, "log.ts");
+    writeFileSync(
+      log,
+      'console.warn("保存に失敗", f("(", x));\nconsole.error(\n  `[db] 開けない`,\n);\nthrow new Error("不正");\n',
+    );
+    expect(run("check-i18n.mjs", log).status).toBe(0);
+    const after = join(dir, "after.ts");
+    writeFileSync(
+      after,
+      'console.warn("失敗"); export const a = "保存";\nthrow new Error(`x`); const b = "取消";\n',
+    );
+    const r = run("check-i18n.mjs", after);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("after.ts:1");
+    expect(r.stderr).toContain("after.ts:2");
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});

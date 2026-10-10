@@ -2,6 +2,7 @@
 //   node scripts/check-i18n.mjs                 web/src の本体コード全体を検査する
 //   node scripts/check-i18n.mjs <file>...       指定したファイルを検査する（テスト用）
 // コメントは無視する。文字列リテラル・テンプレート・JSX テキストの日本語（ひらがな・カタカナ・漢字）を検出する。
+// ログ（console.*( の引数）と開発者向けの例外（new Error( の引数）も見ない（#722。利用者に見えないので英語で書き、辞書に入れない）。
 // 限界: JSX テキスト中の ' や // は文字列・コメントの開始と見なす（辞書化後のファイルには日本語が無い前提）。
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -97,9 +98,41 @@ export function stripComments(src) {
   return out;
 }
 
+const LOG_CALL = /\bconsole\.[A-Za-z]+\s*\(|\bnew\s+Error\s*\(/g;
+
+/**
+ * console.*( / new Error( の括弧の中を空白に置き換えたコードを返す（コメントを除いた後のコードを渡す。改行は保つ）。
+ * 括弧の対応は文字列・テンプレートの中を数えずに取る（限界: テンプレートの ${} の中に ` があると崩れる）。
+ */
+export function stripLogCalls(code) {
+  let out = "";
+  let last = 0;
+  for (const m of code.matchAll(LOG_CALL)) {
+    const open = m.index + m[0].length;
+    if (open <= last) continue;
+    let depth = 1;
+    let quote = null;
+    let i = open;
+    for (; i < code.length && depth > 0; i++) {
+      const c = code[i];
+      if (quote) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = null;
+      } else if (c === '"' || c === "'" || c === "`") quote = c;
+      else if (c === "(") depth++;
+      else if (c === ")") depth--;
+    }
+    // i は閉じ括弧の次（閉じていなければ末尾）。中身だけ空白にする
+    const close = depth === 0 ? i - 1 : i;
+    out += code.slice(last, open) + code.slice(open, close).replace(/[^\n]/g, " ");
+    last = close;
+  }
+  return out + code.slice(last);
+}
+
 /** 日本語を含む行 [{ line, text }] */
 export function findJapanese(src) {
-  return stripComments(src)
+  return stripLogCalls(stripComments(src))
     .split("\n")
     .flatMap((text, i) => (JA.test(text) ? [{ line: i + 1, text: text.trim() }] : []));
 }

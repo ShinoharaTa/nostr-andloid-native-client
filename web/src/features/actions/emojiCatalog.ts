@@ -5,10 +5,13 @@
  * データは npm の emojibase-data（MIT）。ja/en の compact.json（ラベル・タグ）と ja/messages.json（カテゴリ名）
  * だけをピッカーを開いたときに動的 import し、バンドルには含めない（他に読み込む場所がないので初期チャンクは増えない）。
  * 肌の色・髪型のバリエーション（group: "component"）は基本形のみにするため丸ごと除外する。国旗は含める。
+ * カテゴリ名は辞書から引く（#722。描画時に t() するので言語の切り替えに追従する）。
  */
 
+import { t } from "../../i18n";
+
 export type EmojiEntry = { char: string; keywords: readonly string[] };
-export type EmojiCategory = { title: string; emojis: readonly EmojiEntry[] };
+export type EmojiCategory = { title: () => string; emojis: readonly EmojiEntry[] };
 
 /** NFKC 正規化 + 小文字化 + カタカナ→ひらがな。検索キーワードと入力クエリの両方をこれで揃えてから比較する */
 function normalizeForSearch(s: string): string {
@@ -26,7 +29,7 @@ const e = (char: string, ...keywords: string[]): EmojiEntry => ({
 /** 読み込み前のフォールバック（ネイティブ EmojiCatalog.kt の写し。並び・キーワードは変えない） */
 const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
   {
-    title: "表情",
+    title: () => t("emoji_cat_faces"),
     emojis: [
       e("😀", "grin", "smile", "笑顔", "にこ"),
       e("😃", "smile", "happy", "笑顔", "うれしい"),
@@ -61,7 +64,7 @@ const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
     ],
   },
   {
-    title: "手・ジェスチャー",
+    title: () => t("emoji_cat_gestures"),
     emojis: [
       e("👍", "thumbs up", "good", "いいね", "グッド", "了解"),
       e("👎", "thumbs down", "bad", "だめ", "わるい"),
@@ -80,7 +83,7 @@ const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
     ],
   },
   {
-    title: "ハート・感情",
+    title: () => t("emoji_cat_hearts"),
     emojis: [
       e("❤️", "heart", "love", "好き", "ハート", "ラブ"),
       e("🧡", "orange heart", "オレンジ", "ハート"),
@@ -105,7 +108,7 @@ const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
     ],
   },
   {
-    title: "動物・自然",
+    title: () => t("emoji_cat_nature"),
     emojis: [
       e("🐶", "dog", "犬", "いぬ"),
       e("🐱", "cat", "猫", "ねこ"),
@@ -130,7 +133,7 @@ const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
     ],
   },
   {
-    title: "食べ物・飲み物",
+    title: () => t("emoji_cat_food"),
     emojis: [
       e("🍎", "apple", "りんご"),
       e("🍌", "banana", "バナナ"),
@@ -151,7 +154,7 @@ const FALLBACK_CATEGORIES: readonly EmojiCategory[] = [
     ],
   },
   {
-    title: "アクティビティ・記号",
+    title: () => t("emoji_cat_activity"),
     emojis: [
       e("⚽", "soccer", "サッカー"),
       e("⚾", "baseball", "野球"),
@@ -233,6 +236,19 @@ const JA_READING_TO_KANJI: readonly (readonly [reading: string, kanji: string])[
 /** 肌の色・髪型などの合成用パーツ（単体では出さない） */
 const EXCLUDED_GROUP_KEY = "component";
 
+/** emojibase のグループ（messages.json の key）→ カテゴリ名。ja は厳選リスト（emoji_cat_*）と同じ系統の言い方（emojibase の ja の誤訳「有効化」「フラグ」等は直してある） */
+const GROUP_TITLES: Readonly<Record<string, () => string>> = {
+  "smileys-emotion": () => t("web_picker_group_smileys_emotion"),
+  "people-body": () => t("web_picker_group_people_body"),
+  "animals-nature": () => t("web_picker_group_animals_nature"),
+  "food-drink": () => t("web_picker_group_food_drink"),
+  "travel-places": () => t("web_picker_group_travel_places"),
+  activities: () => t("web_picker_group_activities"),
+  objects: () => t("web_picker_group_objects"),
+  symbols: () => t("web_picker_group_symbols"),
+  flags: () => t("web_picker_group_flags"),
+};
+
 function buildFullCatalog(
   ja: readonly CompactEmojiEntry[],
   en: readonly CompactEmojiEntry[],
@@ -263,7 +279,11 @@ function buildFullCatalog(
     const list = byGroup.get(meta.order);
     if (!list || list.length === 0) continue;
     list.sort((a, b) => a.order - b.order);
-    categories.push({ title: meta.message, emojis: list.map((x) => x.entry) });
+    // 辞書に無いグループ（emojibase の更新で増えたもの）は messages.json の名前をそのまま出す
+    categories.push({
+      title: GROUP_TITLES[meta.key] ?? (() => meta.message),
+      emojis: list.map((x) => x.entry),
+    });
   }
   return categories;
 }

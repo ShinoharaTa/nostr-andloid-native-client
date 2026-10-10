@@ -1,7 +1,6 @@
 import type { EventStore } from "applesauce-core/event-store";
 import type { NostrEvent } from "nostr-tools/pure";
 import { bufferTime, filter } from "rxjs";
-import { t } from "../i18n";
 import { addVerifiedTo, deletionRecorded$, loadDeletionMemory } from "../nostr/store";
 import { EVENTS_TRIM_TO, fromRow, hydratedSymbol, PERSIST_KINDS, toRow, trimEvents } from "./events";
 import type { NostrismDb } from "./schema";
@@ -38,7 +37,7 @@ export function attachPersistence(eventStore: EventStore, db: NostrismDb, me: st
     )
     .subscribe((batch) => {
       db.events.bulkDelete(batch.map((e) => e.id)).catch((e: unknown) => {
-        console.warn(`[db] ${t("web_log_db_delete_event_failed")}`, e);
+        console.warn("[db] Failed to delete the event", e);
       });
     });
 
@@ -59,7 +58,7 @@ async function putEvents(db: NostrismDb, batch: NostrEvent[], me: string | null)
     return;
   } catch (e) {
     if (!isQuotaExceeded(e)) {
-      console.warn(`[db] ${t("web_log_db_save_event_failed")}`, e);
+      console.warn("[db] Failed to save the event", e);
       return;
     }
   }
@@ -69,7 +68,7 @@ async function putEvents(db: NostrismDb, batch: NostrEvent[], me: string | null)
     await trimEvents(db, { me, cap: trimTo, trimTo });
     await db.events.bulkPut(rows);
   } catch (e) {
-    console.warn(`[db] ${t("web_log_db_quota")}`, e);
+    console.warn("[db] Storage quota exceeded; dropping the data", e);
   }
 }
 
@@ -114,7 +113,7 @@ export function attachDeletionPersistence(db: NostrismDb): () => void {
         ? db.deletedEvents.put({ id: record.id, deletedAt: record.deletedAt })
         : db.deletedAddrs.put({ coord: record.coord, deletedAt: record.deletedAt });
     put.catch((e: unknown) => {
-      console.warn(`[db] ${t("web_log_db_save_deletion_failed")}`, e);
+      console.warn("[db] Failed to save the deletion record", e);
     });
   });
   return () => subscription.unsubscribe();

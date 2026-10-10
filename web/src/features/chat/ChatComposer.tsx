@@ -188,7 +188,7 @@ export function ChatComposer({
           const media = await uploadAttachments(list, { servers: uploadServers(mediaServer), signer });
           urls = media.map((m) => m.url);
         } catch (e) {
-          console.warn(`[chat] ${t("web_log_chat_upload_failed")}`, e);
+          console.warn("[chat] Failed to upload the attachment", e);
           showToast(t("chat_upload_failed"));
           return;
         }
@@ -208,7 +208,7 @@ export function ChatComposer({
       setAttachments([]);
       onSent?.();
     } catch (e) {
-      console.warn(`[chat] ${t("web_log_chat_send_failed")}`, e);
+      console.warn("[chat] Failed to send", e);
       showToast(t("dm_send_failed"));
     } finally {
       setSending(false);
@@ -251,7 +251,7 @@ export function ChatComposer({
         )
       )}
       {attachments.length > 0 && (
-        <ul className={styles.attachments} aria-label={t("web_chat_attachments")}>
+        <ul className={styles.attachments} aria-label={t("web_attachments")}>
           {attachments.map((a) => (
             <li key={a.id} className={styles.thumb}>
               {a.kind === "image" ? (
@@ -266,7 +266,7 @@ export function ChatComposer({
                   <video
                     className={styles.thumbMedia}
                     src={a.preview}
-                    aria-label={t("web_chat_attachment_video")}
+                    aria-label={t("web_attachment_video")}
                     muted
                     playsInline
                     preload="metadata"
@@ -337,7 +337,7 @@ export function ChatComposer({
         <button
           type="button"
           className={styles.tool}
-          aria-label={t("web_chat_attach_media")}
+          aria-label={t("web_attach_media")}
           disabled={sending}
           onClick={() => fileInput.current?.click()}
         >

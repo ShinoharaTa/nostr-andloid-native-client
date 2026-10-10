@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { EMOJI_ALL, EMOJI_CATEGORIES, loadEmojiCatalog, searchEmojis } from "./emojiCatalog";
 
 it("カテゴリはネイティブと同じ順・件数（計 120、重複なし）", () => {
-  expect(EMOJI_CATEGORIES.map((c) => c.title)).toEqual([
+  expect(EMOJI_CATEGORIES.map((c) => c.title())).toEqual([
     "表情",
     "手・ジェスチャー",
     "ハート・感情",
@@ -31,6 +31,18 @@ it("loadEmojiCatalog() で標準の絵文字全部（1,500件超）・カテゴ�
   expect(EMOJI_ALL.length).toBeGreaterThan(1500);
   // 表情・人体・動物・食べ物・旅行・活動・物・記号・国旗（肌の色などの合成用パーツは除く）
   expect(EMOJI_CATEGORIES.length).toBeGreaterThanOrEqual(9);
+  // カテゴリ名は辞書から引く（ja は厳選リストと同じ系統の言い方。emojibase の ja の名前は使わない）
+  expect(EMOJI_CATEGORIES.map((c) => c.title())).toEqual([
+    "表情・感情",
+    "人・体",
+    "動物・自然",
+    "食べ物・飲み物",
+    "旅行・場所",
+    "アクティビティ",
+    "物",
+    "記号",
+    "旗",
+  ]);
   // char の重複が無い
   expect(new Set(EMOJI_ALL.map((e) => e.char)).size).toBe(EMOJI_ALL.length);
 });

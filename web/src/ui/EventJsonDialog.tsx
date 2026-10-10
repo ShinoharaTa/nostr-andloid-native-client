@@ -66,7 +66,7 @@ export function EventJsonDialog({ event, onDismiss }: { event: NostrEvent; onDis
       await navigator.clipboard.writeText(json);
       showToast(t("json_copied_toast"));
     } catch {
-      showToast(t("web_eventjson_copy_failed"));
+      showToast(t("web_copy_failed"));
     }
   }
 

@@ -1,6 +1,5 @@
 import { db } from "../../db";
 import { createDatabase } from "../../db/schema";
-import { t } from "../../i18n";
 
 /**
  * キャッシュの DB（nostrism: イベント・送信待ち・OGP・復号済みの DM）を消す（ネイティブ purgeCache）。
@@ -21,7 +20,7 @@ export async function clearCacheAndReload(): Promise<void> {
   try {
     await clearCache();
   } catch (e) {
-    console.warn(t("web_settings_cache_purge_failed_log"), e);
+    console.warn("[settings] Failed to clear the cache", e);
   }
   window.location.reload();
 }

@@ -459,7 +459,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
         data-shape={isStar ? "star" : "heart"}
         onClick={() => {
           if (reacted) setDialog("unreact");
-          else reactWithDefault(message).catch(warn(t("web_log_chat_react_failed")));
+          else reactWithDefault(message).catch(warn("Failed to react"));
         }}
       >
         <Glyph className={styles.actionIcon} />
@@ -467,7 +467,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
       <button
         type="button"
         className={styles.action}
-        aria-label={t("web_chat_react_emoji")}
+        aria-label={t("web_emoji_reaction")}
         onClick={() => setDialog("picker")}
       >
         <AddReactionIcon className={styles.actionIcon} />
@@ -483,7 +483,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           <BoltIcon className={styles.actionIcon} />
         </button>
       )}
-      <MenuButton label={t("web_chat_more_actions")} triggerClassName={styles.action} entries={entries}>
+      <MenuButton label={t("web_more_actions")} triggerClassName={styles.action} entries={entries}>
         <MoreHorizIcon className={styles.actionIcon} />
       </MenuButton>
       {dialog === "zap" && (
@@ -502,7 +502,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           target={message}
           onPick={(c, url, made) =>
             void publishReaction(message, c, url)
-              .then(() => showToast(reactionSentMessage(c, made)), warn(t("web_log_chat_react_failed")))
+              .then(() => showToast(reactionSentMessage(c, made)), warn("Failed to react"))
               // [#768] 「自分の絵文字リストにも保存」は送信の後に（成否はリアクションとは別のトースト）
               .then(() => saveMadeEmoji(c, url, made))
           }
@@ -517,7 +517,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           destructive
           onConfirm={() => {
             setDialog(null);
-            reactWithDefault(message).catch(warn(t("web_log_chat_unreact_failed")));
+            reactWithDefault(message).catch(warn("Failed to undo the reaction"));
           }}
           onDismiss={() => setDialog(null)}
         />
@@ -539,7 +539,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
         <ReportDialog
           onPick={(type) => {
             setDialog(null);
-            reportNote(message, type).catch(warn(t("web_log_chat_report_failed")));
+            reportNote(message, type).catch(warn("Failed to report"));
           }}
           onDismiss={() => setDialog(null)}
         />
