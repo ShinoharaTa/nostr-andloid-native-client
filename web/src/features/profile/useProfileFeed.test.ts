@@ -49,7 +49,11 @@ function last<T>(fn: typeof subscribeTo | typeof requestOnce | typeof authorOutb
 
 it("開くと自分のリレー・アウトボックス・インデクサ（+ リレーヒント）へ張り、閉じるとすべてやめる", () => {
   const { unmount } = renderHook(() => useProfileFeed(pubkey, ["wss://hint", "https://bad"]));
-  const main = [{ kinds: [0, 1, 6, 16, 10002, 30023], authors: [pubkey], limit: 100 }];
+  const main = [
+    { kinds: [0, 1, 6, 16, 10002, 30023], authors: [pubkey], limit: 100 },
+    // [#821] 本人のステータス（NIP-38）の general / music
+    { kinds: [30315], authors: [pubkey], "#d": ["general", "music"], limit: 2 },
+  ];
 
   expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(["wss://relay.example"], main);
   expect(vi.mocked(authorOutbox$)).toHaveBeenCalledWith([pubkey], main);

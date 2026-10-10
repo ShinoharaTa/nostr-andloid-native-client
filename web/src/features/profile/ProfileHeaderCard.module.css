@@ -270,6 +270,23 @@ button.ring {
   color: var(--text);
 }
 
+/* [#821] 本人のステータス（NIP-38）。自己紹介の下に general → music の順 */
+.statuses {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+/* 1 件 = 種類の印 + 本文、その下にリンク行・残り時間 */
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
 .lud16 {
   max-width: 100%;
   margin: var(--sp-2) 0 0;
