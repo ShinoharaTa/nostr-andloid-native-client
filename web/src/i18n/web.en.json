@@ -43,7 +43,6 @@
   "web_deck_empty": "No columns. Add one with +",
   "web_deck_loading_aria": "Loading",
   "web_deck_pin": "Pin",
-  "web_deck_refresh": "Refresh",
   "web_deck_unsupported_column": "This type of column isn’t available on the web yet",
   "web_display_datasaver_desc": "While on, images load smaller and at lower quality to save data. Reloading or changing your browser’s data saver setting returns it to the browser’s setting.",
   "web_display_datasaver_title": "Data saver",
