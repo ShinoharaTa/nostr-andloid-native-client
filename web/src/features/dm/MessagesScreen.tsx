@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { parseProfileRef } from "../../app/overlays/refs";
 import { useT } from "../../i18n";
-import { badgeText } from "../../ui/badge";
+import { Icon } from "../../ui/icons";
 import { ScreenHeader } from "../../ui/ScreenHeader";
 import { type LayoutMode, useLayoutMode } from "../../ui/useLayoutMode";
 import { ChannelList } from "../chat/ChannelList";
@@ -11,11 +11,9 @@ import { ChannelRoom, RoomHeader } from "../chat/ChannelRoom";
 import { type Channel, ensureChannels, useChannel, useChannels } from "../chat/channels";
 import { channelHref } from "../chat/chatMessage";
 import { pinRoom, usePinnedRoomIds } from "../chat/pin";
-import { type MessagesSegment, SEGMENT_PATH, saveSegment } from "../chat/segment";
 import { ConversationList } from "./ConversationList";
 import { ConversationView } from "./ConversationView";
 import { startDecrypting } from "./dmService";
-import { useDmUnreadTotal } from "./dmStore";
 import styles from "./MessagesScreen.module.css";
 
 /** 一覧から開いた会話の履歴エントリの印（Compact の「←」で戻れるか） */
@@ -27,19 +25,24 @@ function openedFromList(state: unknown): boolean {
   );
 }
 
+/** パブリックチャットの一覧の URL（ナビの 3 枠目） */
+const CHANNELS_PATH = "/channels";
+
 /**
- * メッセージ（ネイティブ DmScreen / PublicChatScreen + TwoPane）。一覧の上に「DM | チャット」の切り替え（#422）。
- * segment = dm: URL は /messages/:peer?（npub。hex も受ける）、chat: /channels/:id?（チャンネルの id）。
+ * DM・パブリックチャット（ネイティブ DmScreen / PublicChatScreen + TwoPane）。
+ * [#797] 一覧の見出しは通常のカラムヘッダ（DM / NIP-17、パブリックチャット / NIP-28）。#422 の「DM | チャット」の切り替えはやめた
+ * （DM は自分のアイコンのメニューから、パブリックチャットはナビの 3 枠目から開く）。
+ * kind = dm: URL は /messages/:peer?（npub。hex も受ける）、chat: /channels/:id?（チャンネルの id）。
  * Expanded = 左に一覧・右に会話 / ルーム（未選択は「会話を選択」「チャンネルを選択」）、Compact/Rail = 一覧 → 会話 / ルーム
  * （「←」で一覧へ。[#661] Rail は内容が Compact と同じ 1 ペイン）。表示したら DM の復号を始める
  * （NIP-07 / NIP-46 はここまで署名者を呼ばない。DM 側の未読数にも使う）。
  */
-export function MessagesScreen({ segment = "dm" }: { segment?: MessagesSegment }) {
+export function MessagesScreen({ kind = "dm" }: { kind?: "dm" | "chat" }) {
   const mode = useLayoutMode();
   useEffect(() => {
     startDecrypting();
   }, []);
-  return segment === "chat" ? <ChannelsPanes mode={mode} /> : <DmPanes mode={mode} />;
+  return kind === "chat" ? <ChannelsPanes mode={mode} /> : <DmPanes mode={mode} />;
 }
 
 function DmPanes({ mode }: { mode: LayoutMode }) {
@@ -102,8 +105,7 @@ function ListPane({ selectedPeer, onSelect }: { selectedPeer: string | null; onS
   const t = useT();
   return (
     <div className={styles.list}>
-      <ScreenHeader title={t("nav_messages")} />
-      <SegmentBar current="dm" />
+      <ScreenHeader title={t("nav_dm")} subtitle="NIP-17" icon={<Icon name="mailOutline" size="lg" />} />
       <div className={styles.listBody}>
         <ConversationList selectedPeer={selectedPeer} onSelect={onSelect} showBanners showNewRow />
       </div>
@@ -125,59 +127,13 @@ function ConversationPane({
   if (peer === null) {
     return (
       <div className={styles.invalid}>
-        {onBack && <ScreenHeader title={t("nav_messages")} onBack={onBack} />}
+        {onBack && <ScreenHeader title={t("nav_dm")} onBack={onBack} />}
         <p className={styles.placeholder}>{t("web_dm_peer_unreadable")}</p>
       </div>
     );
   }
   // 相手が替わったら表示件数を戻す
   return <ConversationView key={peer} peer={peer} onBack={onBack} onClose={onClose} />;
-}
-
-/**
- * 「DM | チャット」（ネイティブ MessagesSegmentBar）。幅いっぱいの 2 分割、DM 側にだけ未読数。
- * 押すと最後に使った側として覚え、その側の一覧へ置き換える（宛先の切替は戻る対象にしない）。
- */
-function SegmentBar({ current }: { current: MessagesSegment }) {
-  const t = useT();
-  const navigate = useNavigate();
-  const unread = useDmUnreadTotal();
-
-  function select(segment: MessagesSegment) {
-    saveSegment(segment);
-    if (segment !== current) void navigate(SEGMENT_PATH[segment], { replace: true });
-  }
-
-  return (
-    <div className={styles.segmentBar}>
-      <div className={styles.segments} role="tablist" aria-label={t("web_dm_segment_label")}>
-        <button
-          type="button"
-          role="tab"
-          className={styles.segment}
-          aria-selected={current === "dm"}
-          aria-label={unread > 0 ? t("web_nav_unread_label", "DM", unread) : undefined}
-          onClick={() => select("dm")}
-        >
-          DM
-          {unread > 0 && (
-            <span className={styles.segmentBadge} aria-hidden="true">
-              {badgeText(unread)}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={styles.segment}
-          aria-selected={current === "chat"}
-          onClick={() => select("chat")}
-        >
-          {t("seg_chat")}
-        </button>
-      </div>
-    </div>
-  );
 }
 
 const HEX64 = /^[0-9a-f]{64}$/i;
@@ -206,18 +162,21 @@ function ChannelsPanes({ mode }: { mode: LayoutMode }) {
 
   function back() {
     if (openedFromList(location.state)) void navigate(-1);
-    else void navigate(SEGMENT_PATH.chat, { replace: true });
+    else void navigate(CHANNELS_PATH, { replace: true });
   }
 
   // Expanded の ✕（選択解除）。一覧はそのままなので置き換えでプレースホルダへ戻す
   function close() {
-    void navigate(SEGMENT_PATH.chat, { replace: true });
+    void navigate(CHANNELS_PATH, { replace: true });
   }
 
   const list = (
     <div className={styles.list}>
-      <ScreenHeader title={t("nav_messages")} />
-      <SegmentBar current="chat" />
+      <ScreenHeader
+        title={t("nav_public_chat")}
+        subtitle="NIP-28 · channels"
+        icon={<Icon name="tag" size="lg" />}
+      />
       <div className={styles.listBody}>
         <ChannelList selectedId={channelId ?? null} pinnedIds={pinnedIds} onSelect={select} onPin={pinRoom} />
       </div>
@@ -268,7 +227,7 @@ function RoomPane({
   if (channelId === null || (!channel && listLoading)) {
     return (
       <div className={styles.invalid}>
-        {onBack && <ScreenHeader title={t("nav_messages")} onBack={onBack} />}
+        {onBack && <ScreenHeader title={t("nav_public_chat")} onBack={onBack} />}
         <p className={styles.placeholder}>
           {channelId === null ? t("web_chat_channel_unreadable") : t("chat_loading_channel")}
         </p>

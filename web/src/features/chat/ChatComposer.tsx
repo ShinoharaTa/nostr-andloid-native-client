@@ -311,7 +311,7 @@ export function ChatComposer({
         <textarea
           ref={textarea}
           className={styles.input}
-          aria-label={t("nav_messages")}
+          aria-label={t("dm_title")}
           placeholder={t("chat_input_placeholder")}
           rows={1}
           value={value.text}

@@ -2,7 +2,6 @@ import { use$ } from "applesauce-react/hooks/use-$";
 import { npubEncode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { useT } from "../../i18n";
 import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
@@ -11,6 +10,7 @@ import { BoltIcon, ContentCopyIcon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
 import { Lightbox } from "../media/Lightbox";
 import { useMuteMatcher } from "../mute/muteList";
+import { useOpenSettingsSection } from "../settings/useOpenSettingsSection";
 import { RichText } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
 import { payInvoiceWithNwc, useNwc } from "../wallet/nwcManager";
@@ -89,7 +89,8 @@ export function ProfileHeaderCard({
   onShowFollowers: () => void;
 }) {
   const t = useT();
-  const navigate = useNavigate();
+  // [#807] 「編集」は設定のプロフィール編集を積んで開く（「←」でこのプロフィールへ戻る。ネイティブ openSettingsSection）
+  const openSettingsSection = useOpenSettingsSection();
   const profile = useProfile(pubkey);
   const profileEvent = use$(() => eventStore.replaceable(0, pubkey), [pubkey]);
   const picture = pictureOf(profile);
@@ -159,7 +160,7 @@ export function ProfileHeaderCard({
             <button
               type="button"
               className={`${styles.pill} ${styles.ghost}`}
-              onClick={() => navigate("/settings/profile-edit", { replace: true })}
+              onClick={() => openSettingsSection("profile-edit")}
             >
               {t("edit")}
             </button>

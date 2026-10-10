@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useMatches, useNavigate, useParams } from "react-router";
+import { Outlet, useLocation, useMatches, useNavigate, useParams } from "react-router";
 import { useShallow } from "zustand/react/shallow";
 import { ComposeHost } from "../features/compose/ComposeHost";
 import { AddColumnDialog } from "../features/deck/AddColumnDialog";
@@ -44,9 +44,9 @@ function DestScreen({ dest }: { dest: Dest }) {
     case "search":
       return <SearchScreen />;
     case "messages":
-      return <MessagesScreen segment="dm" />;
+      return <MessagesScreen kind="dm" />;
     case "channels":
-      return <MessagesScreen segment="chat" />;
+      return <MessagesScreen kind="chat" />;
     case "notifications":
       return <NotificationsScreen />;
     case "settings":
@@ -67,6 +67,7 @@ export function AppShell() {
   const mode = useLayoutMode();
   const handle = routeHandleOf(useMatches());
   const params = useParams();
+  const { key: locationKey } = useLocation();
   const navigate = useNavigate();
   // ソフトキーボードで縮んだ高さに骨格ごと収める（#594。iOS は 100dvh がキーボードに縮まないため）
   const shell = useRef<HTMLDivElement>(null);
@@ -74,7 +75,15 @@ export function AppShell() {
 
   // 詳細の背後に描く宛先。直リンク・リロードで詳細から始まったらデッキ
   const [baseDest, setBaseDest] = useState<Dest>(handle && "dest" in handle ? handle.dest : "home");
+  // [#807] 詳細の履歴エントリごとに、最初に開いたときの背後の宛先を覚える。詳細から積んだ設定の項目
+  // （自分のアイコンのメニュー・プロフィールの「編集」）から戻ったとき、背後を設定のままにしない
+  const overlayBases = useRef(new Map<string, Dest>());
   if (handle && "dest" in handle && handle.dest !== baseDest) setBaseDest(handle.dest);
+  else if (handle && "overlay" in handle) {
+    const remembered = overlayBases.current.get(locationKey);
+    if (remembered === undefined) overlayBases.current.set(locationKey, baseDest);
+    else if (remembered !== baseDest) setBaseDest(remembered);
+  }
   const dest: Dest = handle && "dest" in handle ? handle.dest : baseDest;
   const overlay: { kind: OverlayKind; ref: string } | null =
     handle && "overlay" in handle ? { kind: handle.overlay, ref: params.ref ?? "" } : null;
@@ -101,7 +110,8 @@ export function AppShell() {
   }, [jumpTarget, dest, overlayKind, navigate]);
 
   const selected = bottomSelection(dest, visibleColumnId, notifColumnId);
-  const badges = { messages: dmUnread };
+  // [#797] 未読 DM の件数は自分のアイコン（とそのメニューの「DM」）に出す。DM はそのメニューからだけ開く
+  const badges = { account: dmUnread };
   const railPinned = useMemo(
     () =>
       pinned.map((c) => ({

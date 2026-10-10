@@ -159,6 +159,6 @@ export function notificationKindLabel(kind: NotificationKind, tr: typeof t = t):
     case "zap":
       return "Zap";
     case "dm":
-      return tr("nav_messages");
+      return tr("dm_title");
   }
 }

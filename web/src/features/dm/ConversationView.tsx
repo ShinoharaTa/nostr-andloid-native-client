@@ -410,7 +410,7 @@ function Composer({
         <textarea
           ref={textarea}
           className={styles.input}
-          aria-label={t("nav_messages")}
+          aria-label={t("dm_title")}
           rows={1}
           value={value.text}
           disabled={sending}

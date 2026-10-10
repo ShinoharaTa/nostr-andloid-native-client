@@ -452,7 +452,7 @@ describe("フォロー", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Alice" })).toBeInTheDocument();
   });
 
-  it("自分のプロフィール: 「編集」があり「フォロー」は無い。押すと設定へ", async () => {
+  it("自分のプロフィール: 「編集」があり「フォロー」は無い。押すと設定のプロフィール編集を積む（戻るでプロフィールへ。#807）", async () => {
     const user = userEvent.setup();
     addProfile(meKey, { name: "Me" });
     const { router } = renderScreen(me);
@@ -461,6 +461,8 @@ describe("フォロー", () => {
     expect(vi.mocked(useContactsOf)).toHaveBeenCalledWith(null);
     await user.click(screen.getByRole("button", { name: "編集" }));
     expect(router.state.location.pathname).toBe("/settings/profile-edit");
+    expect(router.state.historyAction).toBe("PUSH");
+    expect(router.state.location.state).toEqual({ settingsFromOutside: true });
   });
 });
 

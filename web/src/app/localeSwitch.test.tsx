@@ -69,7 +69,8 @@ it("設定 → 表示 で English を選ぶと、ナビ・設定画面が即座�
   // en: ナビ・設定画面が英語。選択肢のラベルは固定
   const navEn = screen.getByRole("navigation", { name: "Main" });
   expect(within(navEn).getByRole("button", { name: "Home" })).toBeInTheDocument();
-  expect(within(navEn).getByRole("button", { name: "Settings" })).toBeInTheDocument();
+  expect(within(navEn).getByRole("button", { name: "Public chat" })).toBeInTheDocument();
+  expect(within(navEn).getByRole("button", { name: "Account menu" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Data saver" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "English" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "日本語" })).toHaveAttribute("aria-pressed", "false");

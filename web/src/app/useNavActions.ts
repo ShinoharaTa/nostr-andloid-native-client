@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { dmUnreadNow, loadSegment, messagesPath } from "../features/chat/segment";
 import { notificationsColumnId, useDeck } from "../store/deck";
 import { NAV_PATH, type NavKey } from "./navState";
 
@@ -41,10 +40,9 @@ export function useNavActions(): NavActions {
           } else {
             void navigate(NAV_PATH.notifications, { replace: true });
           }
-        } else if (key === "messages") {
-          // ネイティブ openMessages: 未読の DM があれば DM、無ければ最後に使った側（DM | チャット）
-          void navigate(messagesPath(dmUnreadNow(), loadSegment()), { replace: true });
         } else {
+          // パブリックチャット（ネイティブ openPublicChat: 常にチャンネル一覧）・検索・
+          // 自分のアイコン（未ログインのときだけここへ来る。設定へ）
           void navigate(NAV_PATH[key], { replace: true });
         }
       },
