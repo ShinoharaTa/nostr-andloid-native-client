@@ -1,5 +1,13 @@
 package app.nostrdeck.model
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.put
 import org.kotlincrypto.hash.sha2.SHA256
 
 /**
@@ -142,6 +150,41 @@ object EmojiMaker {
         val value = raw.trim().removePrefix(":").removeSuffix(":")
         return value.takeIf { it.isNotEmpty() && SHORTCODE.matches(it) }
     }
+
+    /** [#834] 前回の設定の保存値の版（Web の `lastMakerInput.ts` の `v`）。 */
+    private const val LAST_VERSION = 1
+
+    /**
+     * [#834] 作成フォームの前回の設定（Web #783 の `lastMakerInput.ts` と同じ形。docs/emoji-maker.md §7.6）。
+     * `{"v":1,"color":"rrggbb","stroke":"rrggbb"|null,"font":"notosans"|…}`。stroke が null なら縁取りなし。
+     * 使った絵文字の正規化した指定から作るので、**テキストは入らない**。端末ごと（アカウントに紐付けない・同期しない）。
+     */
+    fun encodeLast(params: Params): String = buildJsonObject {
+        put("v", LAST_VERSION)
+        put("color", params.color)
+        put("stroke", params.stroke)
+        put("font", params.font.id)
+    }.toString()
+
+    /**
+     * [#834] 前回の設定を初期値の入力にする（テキストは空）。Web の `loadLastMakerInput` と同じ規則:
+     * 無い・JSON でない・`v` が 1 でない・色が読めない（[normalizeColor]）・フォントが無い、のどれか 1 つでもあれば
+     * 全部捨てて既定（[Input] の初期値 = 黒文字 + 白縁取り、Noto Sans JP）。縁取りなしのときの縁取りの色は既定の色。
+     */
+    fun decodeLast(raw: String?): Input {
+        val o = raw?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return Input()
+        val v = (o["v"] as? JsonPrimitive)?.takeUnless { it.isString }?.doubleOrNull
+        val color = o["color"].stringOrNull()?.let(::normalizeColor)
+        val font = o["font"].stringOrNull()?.let { id -> Font.entries.firstOrNull { it.id == id } }
+        if (v != LAST_VERSION.toDouble() || color == null || font == null) return Input()
+        val stroke = when (val s = o["stroke"]) {
+            JsonNull -> null
+            else -> s.stringOrNull()?.let(::normalizeColor) ?: return Input()   // 無い・文字列でない・色でない
+        }
+        return Input(font = font, color = color, strokeOn = stroke != null, stroke = stroke ?: Input().stroke)
+    }
+
+    private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     /** 色のパレット（よく使う色。細かい色は 16 進で入れる）。 */
     val PALETTE = listOf(

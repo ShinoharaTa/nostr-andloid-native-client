@@ -171,4 +171,71 @@ class EmojiMakerTest {
         assertEquals("a-b_1", EmojiMaker.parseShortcode("a-b_1"))
         listOf("", "::", "あ", "a b", "a.b", "a:b").forEach { assertNull(EmojiMaker.parseShortcode(it), it) }
     }
+
+    // ---- 前回の設定（#834。Web #783 の lastMakerInput.ts / EmojiMakerRoute.test.tsx と同じ例） ----
+
+    private fun params(input: Input): EmojiMaker.Params = (EmojiMaker.parse(input) as Parsed.Ok).params
+
+    @Test
+    fun last_is_saved_in_the_same_json_as_web_without_text() {
+        assertEquals(
+            """{"v":1,"color":"000000","stroke":"ffffff","font":"notosans"}""",
+            EmojiMaker.encodeLast(params(Input(text = "草"))),
+        )
+        // 縁取りなしは null。色は正規化した値（使った絵文字の URL と同じ）。テキストは入らない。
+        val off = EmojiMaker.encodeLast(params(Input(text = "秘密", color = "#E53935", strokeOn = false, font = Font.DELAGOTHIC)))
+        assertEquals("""{"v":1,"color":"e53935","stroke":null,"font":"delagothic"}""", off)
+        assertTrue("秘密" !in off)
+    }
+
+    @Test
+    fun last_round_trips_to_the_initial_input_with_empty_text() {
+        val used = Input(text = "草", color = "43a047", strokeOn = true, stroke = "1e88e5", font = Font.MPLUSROUNDED)
+        assertEquals(used.copy(text = ""), EmojiMaker.decodeLast(EmojiMaker.encodeLast(params(used))))
+        // 縁取りなし → チェックを外し、縁取りの色は既定（白）。
+        val off = Input(text = "草", color = "e53935", strokeOn = false, stroke = "1e88e5", font = Font.DELAGOTHIC)
+        assertEquals(
+            Input(color = "e53935", strokeOn = false, stroke = "ffffff", font = Font.DELAGOTHIC),
+            EmojiMaker.decodeLast(EmojiMaker.encodeLast(params(off))),
+        )
+    }
+
+    @Test
+    fun last_colors_are_normalized_like_the_api() {
+        assertEquals(
+            Input(color = "ff0000", strokeOn = true, stroke = "aabbcc", font = Font.MPLUSROUNDED),
+            EmojiMaker.decodeLast("""{"v":1,"color":"#F00","stroke":"ABC","font":"mplusrounded"}"""),
+        )
+        assertEquals("e5393580", EmojiMaker.decodeLast("""{"v":1,"color":"e5393580","stroke":null,"font":"notosans"}""").color)
+    }
+
+    @Test
+    fun missing_or_broken_last_falls_back_to_black_text_with_white_outline() {
+        val default = Input()
+        listOf(
+            null, "", "{", "null", "[]", "1", "\"x\"",
+            """{"v":2,"color":"e53935","stroke":null,"font":"delagothic"}""",      // 版が違う
+            """{"v":"1","color":"e53935","stroke":null,"font":"delagothic"}""",    // 版が文字列
+            """{"color":"e53935","stroke":null,"font":"delagothic"}""",            // 版が無い
+            """{"v":1,"color":"red","stroke":null,"font":"delagothic"}""",         // 色が hex でない
+            """{"v":1,"color":123456,"stroke":null,"font":"delagothic"}""",        // 色が文字列でない
+            """{"v":1,"stroke":null,"font":"delagothic"}""",                       // 色が無い
+            """{"v":1,"color":"e53935","stroke":"zzz","font":"delagothic"}""",     // 縁取りが hex でない
+            """{"v":1,"color":"e53935","stroke":"","font":"delagothic"}""",        // 縁取りが空
+            """{"v":1,"color":"e53935","stroke":false,"font":"delagothic"}""",     // 縁取りが文字列・null でない
+            """{"v":1,"color":"e53935","font":"delagothic"}""",                    // 縁取りが無い
+            """{"v":1,"color":"e53935","stroke":null,"font":"comic"}""",           // 未知のフォント
+            """{"v":1,"color":"e53935","stroke":null,"font":"Noto Sans JP"}""",    // 表示名はフォントの id ではない
+            """{"v":1,"color":"e53935","stroke":null}""",                          // フォントが無い
+        ).forEach { assertEquals(default, EmojiMaker.decodeLast(it), it) }
+        assertEquals(default, Input(color = "000000", strokeOn = true, stroke = "ffffff", font = Font.NOTOSANS))
+    }
+
+    @Test
+    fun unknown_keys_in_last_are_ignored() {
+        assertEquals(
+            Input(color = "e53935", strokeOn = false, font = Font.DELAGOTHIC),
+            EmojiMaker.decodeLast("""{"v":1,"color":"e53935","stroke":null,"font":"delagothic","text":"草"}"""),
+        )
+    }
 }
