@@ -46,6 +46,7 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.CustomEmoji
+import app.nostrdeck.model.EmojiListEdit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.async
 import app.nostrdeck.model.TextScale
@@ -3910,13 +3911,13 @@ class EventRepository(
     /** [#287] 自分の絵文字リスト（kind:10030 直下の emoji タグのみ。30030 セット由来は含まない）。 */
     fun myEmojiListFlow(): StateFlow<List<CustomEmoji>> = emojiListRep.state
 
-    private fun emojiTagsToList(tags: List<List<String>>): List<CustomEmoji> =
-        tags.filter { it.size >= 3 && it[0] == "emoji" && it[1].isNotBlank() && it[2].isNotBlank() }
-            .map { CustomEmoji(it[1], it[2]) }
+    // [#838] 一覧に出す emoji タグの判定は保存時の差分計算（EmojiListEdit）と同じものを使う。
+    private fun emojiTagsToList(tags: List<List<String>>): List<CustomEmoji> = EmojiListEdit.emojis(tags)
 
     /**
-     * [#287] 絵文字エディタからの再発行。emoji タグを [emojis] で置き換え、
-     * それ以外のタグ（30030 参照の a タグ等）はそのまま維持する。
+     * [#287] 絵文字エディタからの再発行。
+     * [#838] emoji タグを作り直さず、取り直した最新版のタグに画面の一覧 [emojis] との差分（削除・追加・URL の差し替え）
+     * だけを当てる（規則は [EmojiListEdit]）。4 要素目付き・一覧に出さない emoji タグ、並び順、a タグ等、content は保つ。
      */
     suspend fun publishEmojiList(emojis: List<CustomEmoji>): Boolean {
         // [#478] エディタの下書きはリレーから新しい版が届くと置き換わるので、保存時点の手元の版が編集の土台。
@@ -3924,7 +3925,7 @@ class EventRepository(
         val basedOnAt = emojiListRep.at
         val r = refreshOwn(10030) { emojiListRep.at } as? OwnRefetch.Result.Reached ?: return false
         if (OwnRefetch.isStale(r.latest, basedOnAt)) { ownListErrors.tryEmit(OwnListError.STALE); return false }
-        return publishEmojiListNow(emojis)
+        return publishEmojiListNow(EmojiListEdit.edit(emojiListRep.tags, r.latest?.content.orEmpty(), emojis), emojis)
     }
 
     /** [#775] 絵文字を 1 つ自分の絵文字リストに足した結果。 */
@@ -3934,19 +3935,24 @@ class EventRepository(
      * [#775] 自分の絵文字リスト（kind:10030）に 1 つ足して公開する（ピッカーで作った絵文字の「保存」）。
      * [#478] 最新版を取り直してから、その版に足す（取れなければ公開しない。他の端末で足した絵文字を消さないため）。
      * 同じショートコードが既にあれば足さない。
+     * [#838] 足し方はエディタの保存と同じ [EmojiListEdit]（最新版のタグ・content はそのまま、末尾に 1 つ足す）。
+     * 同じショートコードの判定は一覧に出さない形の emoji タグも含める（Web と同じ）。
      */
     suspend fun appendToEmojiList(emoji: CustomEmoji): EmojiAppend {
-        if (refreshOwn(10030, notify = false) { emojiListRep.at } !is OwnRefetch.Result.Reached) return EmojiAppend.UNREACHABLE
-        val current = emojiListRep.state.value
-        if (current.any { it.shortcode == emoji.shortcode }) return EmojiAppend.DUPLICATE
-        return if (publishEmojiListNow(current + emoji)) EmojiAppend.SAVED else EmojiAppend.FAILED
+        val r = refreshOwn(10030, notify = false) { emojiListRep.at } as? OwnRefetch.Result.Reached
+            ?: return EmojiAppend.UNREACHABLE
+        val next = EmojiListEdit.append(emojiListRep.tags, r.latest?.content.orEmpty(), emoji) ?: return EmojiAppend.DUPLICATE
+        return if (publishEmojiListNow(next, emojiListRep.state.value + emoji)) EmojiAppend.SAVED else EmojiAppend.FAILED
     }
 
-    private suspend fun publishEmojiListNow(emojis: List<CustomEmoji>): Boolean = runCatching {
-        val keep = emojiListRep.tags.filter { !(it.size >= 3 && it[0] == "emoji") }
-        val tags = keep + emojis.map { listOf("emoji", it.shortcode, it.url) }
+    /**
+     * [#838] [EmojiListEdit] で組み立てた [next] を発行する。custom_emoji 表は今までどおり画面の一覧 [emojis] に合わせる
+     * （[emojis] を upsert し、手元の版の一覧から消えた shortcode を消す）。
+     */
+    private suspend fun publishEmojiListNow(next: UnsignedEvent, emojis: List<CustomEmoji>): Boolean = runCatching {
+        val tags = next.tags
         val removed = emojiListRep.state.value.map { it.shortcode }.toSet() - emojis.map { it.shortcode }.toSet()
-        val signed = publishSigned(UnsignedEvent(kind = 10030, content = "", tags = tags))
+        val signed = publishSigned(next)
         // 自分の最新版として記録（State/at/KV を同時に確定）し、購読エコーで古い扱いされないようにする。
         emojiListRep.commit(tags, signed.createdAt)
         val now = currentUnixTime()
