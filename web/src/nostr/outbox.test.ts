@@ -10,6 +10,7 @@ import {
   relayHintsOf,
   relayPrefsFromEvent,
   writeRelaysOf,
+  wsRelayUrlsFromEvent,
 } from "./outbox";
 import { requestOnce, subscribeTo } from "./pool";
 import { eventStore } from "./store";
@@ -86,6 +87,23 @@ describe("isRecognizedRelayTag", () => {
     expect(isRecognizedRelayTag(["r", "https://e"])).toBe(false);
     expect(isRecognizedRelayTag(["r"])).toBe(false);
     expect(isRecognizedRelayTag(["p", "wss://f"])).toBe(false);
+  });
+});
+
+describe("wsRelayUrlsFromEvent", () => {
+  it("r タグの ws:// だけを正規化して重複を除いて返す。wss:// ・不正 URL・r 以外は入れない（#776）", () => {
+    expect(
+      wsRelayUrlsFromEvent(
+        relayList([
+          ["r", "wss://a"],
+          ["r", "ws://localhost:7777", "write"],
+          ["r", " ws://localhost:7777/ "],
+          ["r", "ws://"],
+          ["r", "https://e"],
+          ["p", "ws://f"],
+        ]),
+      ),
+    ).toEqual(["ws://localhost:7777/"]);
   });
 });
 

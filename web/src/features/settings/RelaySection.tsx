@@ -2,14 +2,14 @@ import { use$ } from "applesauce-react/hooks/use-$";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { map } from "rxjs";
 import { t, useT } from "../../i18n";
-import { displayRelayUrl } from "../../nostr/outbox";
+import { displayRelayUrl, wsRelayUrlsFromEvent } from "../../nostr/outbox";
 import { addRelay, type RelayRow, removeRelay, setRelayReadWrite, useRelayRows } from "../../nostr/pool";
 import { type AuthPolicy, setAuthPolicy, useAuthPolicy } from "../../nostr/relayAuth";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { showToast } from "../../ui/toast";
-import { parseRelayInput, publishRelayList, RelayListError } from "./relayList";
+import { isWsRelayInput, parseRelayInput, publishRelayList, RelayListError } from "./relayList";
 import {
   RELAY_PRESETS,
   type RelayPresetCategory,
@@ -63,6 +63,9 @@ export function RelaySection() {
       me ? eventStore.timeline({ kinds: [10002], authors: [me] }).pipe(map(([e]) => e ?? null)) : undefined,
     [me],
   );
+  // kind:10002 に入っている ws:// のリレー。接続はせず、一覧に「Web 版では接続できません」として出すだけ
+  // （保存しても buildRelayListTemplate がそのまま引き継ぐ。#580 / #776）
+  const wsUrls = useMemo(() => (latest ? wsRelayUrlsFromEvent(latest) : []), [latest]);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -109,8 +112,13 @@ export function RelaySection() {
               onRemove={() => removeRelay(row.url)}
             />
           ))}
+          {wsUrls.map((url) => (
+            <WsRelayRowItem key={url} url={url} />
+          ))}
         </ul>
-        {rows.length === 0 && <p className={styles.desc}>{t("web_settings_relays_empty")}</p>}
+        {rows.length === 0 && wsUrls.length === 0 && (
+          <p className={styles.desc}>{t("web_settings_relays_empty")}</p>
+        )}
         <RelayRecsBlock me={me} list={rows} onAdd={(url) => addRelay(url)} />
       </div>
       {confirming && (
@@ -287,7 +295,9 @@ function AddRelayForm({ list, onAdd }: { list: readonly RelayRow[]; onAdd(url: s
     e.preventDefault();
     const url = parseRelayInput(value);
     if (!url) {
-      setError(t("web_settings_relay_url_invalid"));
+      setError(
+        isWsRelayInput(value) ? t("web_settings_relay_ws_unsupported") : t("web_settings_relay_url_invalid"),
+      );
       return;
     }
     if (list.some((p) => p.url === url)) {
@@ -374,6 +384,20 @@ function RelayRowItem({
       >
         {t("common_delete")}
       </button>
+    </li>
+  );
+}
+
+/** NIP-65 にある ws:// のリレーの行。接続しないので Read / Write・削除は出さない（#776） */
+function WsRelayRowItem({ url }: { url: string }) {
+  const label = url.replace(/\/$/, "");
+  return (
+    <li className={styles.relay}>
+      <span className={`${styles.relayUrl} ${styles.dimmed}`} title={url}>
+        {label}
+      </span>
+      <span className={styles.relayMeta}>NIP-65</span>
+      <span className={styles.relayMeta}>{t("web_settings_relay_ws_unreachable")}</span>
     </li>
   );
 }

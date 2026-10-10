@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { EMPTY, throwError } from "rxjs";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { followOwnRelayList } from "../../nostr/outbox";
 import {
   applyOwnRelayList,
   loadRelayTable,
@@ -117,6 +118,60 @@ it("wss:// だけ追加でき、削除・Read / Write の切り替えをして�
     ],
   });
   expect(useToast.getState().queue).toEqual(["リレーリストを公開しました"]);
+});
+
+it("ws:// は追加せず、Web 版では使えない旨を出す（#776）", async () => {
+  vi.mocked(requestOnce).mockReturnValue(EMPTY);
+  renderWithRouter(<RelaySection />);
+
+  await addRelay("ws://localhost:7777");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "ws:// のリレーは Web 版では使えません（ブラウザが https からの ws:// 接続を許さないため）。アプリ版をお使いください",
+  );
+  expect(rows()).toEqual(["nos.lol", "relay.damus.io"]);
+  expect(relayRows().map((r) => r.url)).not.toContain("ws://localhost:7777/");
+});
+
+it("NIP-65 にある ws:// のリレーは一覧に「Web 版では接続できません」として出し、接続しない（#776）", async () => {
+  vi.mocked(requestOnce).mockReturnValue(EMPTY);
+  eventStore.add(
+    finalizeEvent(
+      {
+        kind: 10002,
+        created_at: 1_000,
+        tags: [
+          ["r", "wss://mine.example"],
+          ["r", "ws://localhost:7777"],
+        ],
+        content: "",
+      },
+      meKey,
+    ),
+  );
+  // ログイン時の取り込み（自分の kind:10002 → リレー表）
+  const subscription = followOwnRelayList(me);
+  try {
+    renderWithRouter(<RelaySection />);
+
+    const items = within(screen.getByRole("list", { name: "リレーの一覧" })).getAllByRole("listitem");
+    const wsRow = items.find((li) => li.textContent?.includes("ws://localhost:7777"));
+    expect(wsRow?.textContent).toBe("ws://localhost:7777NIP-65Web 版では接続できません");
+    // Read / Write・削除は出さない
+    expect(within(wsRow as HTMLElement).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(wsRow as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+    // wss:// は通常の行
+    expect(items.find((li) => li.textContent?.includes("mine.example"))?.textContent).toContain("Read");
+
+    // 接続先（リレー表・購読・発行の送り先）には入れない
+    expect(relayRows().map((r) => r.url)).toEqual(["wss://mine.example/"]);
+    expect(useRelays.getState().read).toEqual(["wss://mine.example/"]);
+    expect(useRelays.getState().write).toEqual(["wss://mine.example/"]);
+    expect(vi.mocked(requestOnce).mock.calls.flatMap(([relays]) => relays)).not.toContain(
+      "ws://localhost:7777/",
+    );
+  } finally {
+    subscription.unsubscribe();
+  }
 });
 
 it("各行に source（NIP-65 / 手動 / 既定）のヒントを出す", async () => {

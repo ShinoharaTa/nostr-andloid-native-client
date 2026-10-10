@@ -7,6 +7,7 @@ import { PublishError, publishEvent } from "../../nostr/publish";
 import { addVerified } from "../../nostr/store";
 import {
   buildRelayListTemplate,
+  isWsRelayInput,
   OWN_RELAYLIST_REFETCH_MS,
   parseRelayInput,
   publishRelayList,
@@ -137,6 +138,13 @@ describe("タグ", () => {
     expect(parseRelayInput("https://relay.example")).toBeNull();
     expect(parseRelayInput("relay.example")).toBeNull();
     expect(parseRelayInput("wss://")).toBeNull();
+  });
+
+  it("ws:// の入力を見分ける（追加欄で Web 版では使えない旨を出す。#776）", () => {
+    expect(isWsRelayInput(" ws://localhost:7777 ")).toBe(true);
+    expect(isWsRelayInput("WS://relay.example")).toBe(true);
+    expect(isWsRelayInput("wss://relay.example")).toBe(false);
+    expect(isWsRelayInput("relay.example")).toBe(false);
   });
 });
 
