@@ -1,6 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { writeLicensesPage } from "../scripts/build-licenses.mjs";
 
 /**
  * static/ 配下は dist/ にそのままコピーされる Cloudflare Pages の設定ファイル（#647）。
@@ -74,5 +76,54 @@ describe("public/lp/lp.css（#647 / #664）", () => {
     );
     expect(selectors.length).toBeGreaterThan(50);
     expect(leaks).toEqual([]);
+  });
+});
+
+describe("/licenses（#688）", () => {
+  it("assemble-dist.mjs が dist/ に licenses.html を生成する（必須の依存とフォントが載る）", () => {
+    const assemble = readFileSync(join(process.cwd(), "scripts/assemble-dist.mjs"), "utf8");
+    expect(assemble).toContain("writeLicensesPage({ dir: webDir, outDir: distDir })");
+
+    // dist/ は汚さず一時ディレクトリへ出す
+    const outDir = mkdtempSync(join(tmpdir(), "nostrism-licenses-test-"));
+    try {
+      const { path } = writeLicensesPage({ outDir });
+      expect(path).toBe(join(outDir, "licenses.html"));
+      const html = readFileSync(path, "utf8");
+      for (const name of [
+        "emojibase-data",
+        "applesauce-core",
+        "applesauce-react",
+        "nostr-tools",
+        "react",
+        "react-dom",
+        "react-router",
+        "react-virtuoso",
+        "dexie",
+        "zustand",
+        "blurhash",
+        "Noto Sans JP",
+        "M PLUS Rounded 1c",
+        "Dela Gothic One",
+      ]) {
+        expect(html).toContain(`>${name}</a>`);
+      }
+      expect(html).toContain("Copyright (c) Meta Platforms, Inc. and affiliates.");
+      expect(html).toContain('<link rel="stylesheet" href="/lp/lp.css">');
+      // devDependencies（ビルド・テスト用）は載せない
+      for (const name of ["vite", "vitest", "wrangler", "@biomejs/biome", "@types/react"]) {
+        expect(html).not.toContain(`>${name}</a>`);
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("LP のフッタに、プライバシーポリシーの隣で /licenses へのリンクがある", () => {
+    const index = readFileSync(join(process.cwd(), "index.html"), "utf8");
+    const footer = index.slice(index.indexOf("<footer>"), index.indexOf("</footer>"));
+    expect(footer).toMatch(
+      /<a href="\/privacy-policy\.html">[^<]*<\/a>\s*<a href="\/licenses">オープンソースライセンス<\/a>/,
+    );
   });
 });

@@ -42,8 +42,9 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
-        // /api/* とドキュメント拡張子付きの静的ページ（privacy-policy.html 等）は SW のフォールバックにしない
-        navigateFallbackDenylist: [/^\/api\//, /\.[a-z0-9]+$/i],
+        // /api/* とドキュメント拡張子付きの静的ページ（privacy-policy.html 等）は SW のフォールバックにしない。
+        // /licenses は assemble-dist.mjs が生成する licenses.html の拡張子なしの URL（#688）
+        navigateFallbackDenylist: [/^\/api\//, /\.[a-z0-9]+$/i, /^\/licenses$/],
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
         runtimeCaching: [],
       },
