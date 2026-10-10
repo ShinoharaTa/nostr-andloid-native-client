@@ -11,8 +11,11 @@ import { showToast } from "../../ui/toast";
 import { Lightbox } from "../media/Lightbox";
 import { useMuteMatcher } from "../mute/muteList";
 import { useOpenSettingsSection } from "../settings/useOpenSettingsSection";
+import { StatusBody } from "../status/StatusCard";
+import { isStatusVisible, STATUS_KIND, type StatusType } from "../status/statusModel";
 import { RichText } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
+import { useNow } from "../timeline/useNow";
 import { payInvoiceWithNwc, useNwc } from "../wallet/nwcManager";
 import { ZapDialog } from "../zap/ZapDialog";
 import { parseAbout } from "./about";
@@ -26,6 +29,9 @@ import { ProfileRelays } from "./ProfileRelays";
 const ERROR_MS = 4_000;
 
 const WEB_URL = /^https?:\/\//i;
+
+/** ステータスの期限切れを落とす間隔（ステータスカードと同じ 10 秒） */
+const STATUS_CLOCK_MS = 10_000;
 
 /** kind:0 の値のうち、空でない文字列だけ（前後の空白は落とす） */
 function textOf(value: unknown): string | null {
@@ -66,7 +72,7 @@ function useTimedMessage(durationMs: number): [string | null, (message: string) 
 
 /**
  * プロフィールのヘッダ（ネイティブ ProfileHeaderCard）。バナー・アバター・⋯・フォロー / 編集、名前・NIP-05・npub・
- * フォロー中の件数と「フォロワーを確認」・自己紹介・lud16・website・使用リレー。バナーとアバターは押すと原寸で開く。
+ * フォロー中の件数と「フォロワーを確認」・自己紹介・ステータス（#821）・lud16・website・使用リレー。バナーとアバターは押すと原寸で開く。
  * 他人の lud16 は押すとプロフィール Zap。ミュート中なら名前の横に「ミュート中」。
  */
 export function ProfileHeaderCard({
@@ -210,6 +216,7 @@ export function ProfileHeaderCard({
             <RichText root={aboutRoot} size="sub" />
           </div>
         )}
+        <ProfileStatuses pubkey={pubkey} />
         {lud16 &&
           (isMe ? (
             <p className={styles.lud16}>{`⚡ ${lud16}`}</p>
@@ -246,6 +253,36 @@ export function ProfileHeaderCard({
       )}
     </div>
   );
+}
+
+/**
+ * [#821] 本人のステータス（NIP-38 kind:30315）。有効なもの（isStatusVisible）を general → music の順に各 1 件、
+ * 種類の印・本文・リンク行・残り時間だけ（カードの枠・アイコン・名前・リンクカードは出さない）。
+ * 無ければ何も出さない（余白も出さない）。期限が過ぎたらその場で消える。購読は useProfileFeed。
+ */
+function ProfileStatuses({ pubkey }: { pubkey: string }) {
+  const now = useNow(STATUS_CLOCK_MS);
+  const general = useStatus(pubkey, "general");
+  const music = useStatus(pubkey, "music");
+  const visible = [
+    general && isStatusVisible(general, "general", now) ? general : null,
+    music && isStatusVisible(music, "music", now) ? music : null,
+  ].filter((event) => event !== null);
+  if (visible.length === 0) return null;
+  return (
+    <div className={styles.statuses}>
+      {visible.map((event) => (
+        <div key={event.id} className={styles.status}>
+          <StatusBody event={event} linkCard={false} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 手元にある本人のステータスの最新版（addressable。d = 種類） */
+function useStatus(pubkey: string, type: StatusType): NostrEvent | undefined {
+  return use$(() => eventStore.replaceable({ kind: STATUS_KIND, pubkey, identifier: type }), [pubkey, type]);
 }
 
 /**
