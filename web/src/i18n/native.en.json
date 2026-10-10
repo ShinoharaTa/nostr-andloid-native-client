@@ -46,6 +46,7 @@
   "chat_loading_channel": "Loading channel…",
   "chat_reply": "Reply",
   "chat_reply_to_fmt": "Replying to %1$s: %2$s",
+  "chat_room_unnamed": "Public chat",
   "chat_select_channel": "Select a channel",
   "chat_upload_failed": "Could not upload the attachment. Check your upload server in Settings → Media servers.",
   "chat_write_message": "✏️ Write a message",

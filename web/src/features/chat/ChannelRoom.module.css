@@ -103,6 +103,22 @@
   margin-top: var(--sp-2);
 }
 
+/* [#798] 本文の kind:42 へのリンクから開いた発言（ネイティブ: Accent 18% を 1.2 秒点けてから 0.9 秒で消す） */
+.message[data-highlight] {
+  border-radius: var(--r-sm);
+  animation: messageFlash 2.1s ease-out forwards;
+}
+
+@keyframes messageFlash {
+  0%,
+  57% {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .avatarSlot {
   flex: none;
   display: flex;
