@@ -263,3 +263,36 @@ it("名前・引用カードを押すとそれぞれのリンク先へ行き、�
   expect(card.visited).toHaveLength(1);
   expect(threadIdOf(card.where())).toBe(target.id);
 });
+
+it("[#817] 対象が自分のチャット発言（kind:42）なら、行と時刻は /channels ではなく発言の nevent（kind:42）の /e/", async () => {
+  const user = userEvent.setup();
+  const channelId = "c".repeat(64);
+  const message = finalizeEvent(
+    {
+      kind: 42,
+      created_at: unixNow() - 3600,
+      tags: [["e", channelId, "wss://relay.test/", "root"]],
+      content: "チャットの発言",
+    },
+    meKey,
+  );
+  eventStore.add(message);
+  const reaction = signed(
+    7,
+    withProfile("dave"),
+    [
+      ["e", message.id],
+      ["p", me],
+    ],
+    "+",
+  );
+
+  const { container, where } = renderRow(itemOf(reaction));
+
+  const time = container.querySelector("time")?.closest("a")?.getAttribute("href") ?? "";
+  const pointer = decode(time.replace(/^\/e\//, ""));
+  expect(pointer.type === "nevent" ? pointer.data : null).toMatchObject({ id: message.id, kind: 42 });
+  await user.click(screen.getByRole("img", { name: "リアクション ❤️" }));
+  expect(where()).toBe(time);
+  expect(where()).not.toMatch(/^\/channels\//);
+});

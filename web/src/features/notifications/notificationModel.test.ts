@@ -188,3 +188,46 @@ describe("notificationSnippet / notificationHref", () => {
     expect(idOf(notificationHref(mention))).toBe(mention.id);
   });
 });
+
+describe("[#817] notificationHref（対象がパブリックチャット）", () => {
+  const CH = "d".repeat(64);
+  const HINT = "wss://yabu.me/";
+  const pointerOf = (href: string) => {
+    const decoded = decode(href.replace(/^\/e\//, ""));
+    if (decoded.type !== "nevent") throw new Error(`not a nevent: ${href}`);
+    return decoded.data;
+  };
+  const reactionTo = (id: string) => {
+    const item = toNotification(
+      ev({
+        kind: 7,
+        content: "+",
+        tags: [
+          ["e", id, HINT],
+          ["p", ME],
+        ],
+      }),
+    );
+    if (!item) throw new Error("not a notification");
+    return item;
+  };
+
+  it("対象が kind:42 なら /channels ではなく、その発言の nevent（kind:42）の /e/", () => {
+    const mine = ev({ id: A, pubkey: ME, kind: 42, tags: [["e", CH, HINT, "root"]] });
+    const href = notificationHref(reactionTo(A), mine);
+    expect(href).toMatch(/^\/e\/nevent1/);
+    expect(pointerOf(href)).toMatchObject({ id: A, kind: 42, relays: [HINT] });
+  });
+
+  it("対象が kind:40 ならチャンネル作成の nevent（kind:40）の /e/", () => {
+    const channel = ev({ id: CH, pubkey: ME, kind: 40, tags: [], content: '{"name":"room"}' });
+    expect(pointerOf(notificationHref(reactionTo(CH), channel))).toMatchObject({ id: CH, kind: 40 });
+  });
+
+  it("対象が取れていない・別の id・kind:1 なら kind を載せない（/e/ の側で決める）", () => {
+    const item = reactionTo(A);
+    expect(pointerOf(notificationHref(item)).kind).toBeUndefined();
+    expect(pointerOf(notificationHref(item, ev({ id: B, kind: 42 }))).kind).toBeUndefined();
+    expect(pointerOf(notificationHref(item, ev({ id: A, kind: 1 }))).kind).toBeUndefined();
+  });
+});

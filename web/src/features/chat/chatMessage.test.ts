@@ -2,7 +2,6 @@ import { decode, npubEncode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
 import { type MuteList, muteMatcherFrom } from "../mute/muteList";
-import { notificationHref, toNotification } from "../notifications/notificationModel";
 import {
   buildChannelMessage,
   channelHref,
@@ -16,7 +15,6 @@ import {
 
 const CH = "c".repeat(64);
 const PARENT = "d".repeat(64);
-const ME = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 const ALICE = "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
 const BOB = "b".repeat(64);
 const HINT = "wss://yabu.me/";
@@ -152,26 +150,9 @@ describe("isChatMessageMuted（ネイティブ MuteMatcher.muted(ChannelMessage)
   });
 });
 
-describe("通知の行き先（ネイティブ openNotificationTarget）", () => {
-  it("対象が kind:42 ならスレッドではなくそのチャンネルのルーム", () => {
-    const mine = ev({ id: PARENT, pubkey: ME, tags: [["e", CH, HINT, "root"]] });
-    const reaction = toNotification(
-      ev({
-        id: "1".repeat(64),
-        kind: 7,
-        content: "+",
-        tags: [
-          ["e", PARENT],
-          ["p", ME],
-        ],
-      }),
-    );
-    if (!reaction) throw new Error("not a notification");
-    expect(notificationHref(reaction, mine)).toBe(channelHref(CH));
+describe("channelHref", () => {
+  it("チャット画面のルームの URL", () => {
     expect(channelHref(CH)).toBe(`/channels/${CH}`);
-    // 対象が取れていない・kind:1 ならスレッド
-    expect(notificationHref(reaction)).toMatch(/^\/e\//);
-    expect(notificationHref(reaction, { ...mine, kind: 1 })).toMatch(/^\/e\//);
   });
 });
 

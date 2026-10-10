@@ -6,7 +6,6 @@ import { hrefForEvent, oneLine } from "../../lib/content/labels";
 import { articleTitleOf } from "../../lib/content/tags";
 import { zapAmountSats, zapSenderOf } from "../../lib/nip57";
 import { plainTextOf } from "../actions/noteLinks";
-import { channelHref, channelIdOf } from "../chat/chatMessage";
 import type { DmConversation } from "../dm/dmStore";
 import { normalizeReaction } from "../thread/engagement";
 
@@ -135,14 +134,17 @@ export function notificationSnippet(target: NostrEvent): string {
 }
 
 /**
- * 行を押したときに開くスレッド（対象があれば対象、無ければ通知そのもの）。DM は相手との会話、
- * 対象（取れていれば target）が kind:42 ならそのチャンネルのルーム（ネイティブ openNotificationTarget）
+ * 行を押したときに開くスレッド（対象があれば対象、無ければ通知そのもの）。DM は相手との会話。
+ * [#817] 対象（取れていれば target）が kind:42 / kind:40 なら、nevent に kind を載せて本文リンクと同じ /e/ にする
+ * （#798 の経路でルームを詳細に重ねて開き、kind:42 はその発言の位置へ送る。戻ると通知に戻る）
  */
 export function notificationHref(item: NotificationItem, target?: NostrEvent): string {
   if (item.kind === "dm") return `/messages/${npubEncode(item.actor)}`;
-  const channelId = target && target.id === item.target?.id ? channelIdOf(target) : null;
-  if (channelId !== null) return channelHref(channelId);
-  return hrefForEvent(item.target ?? { id: item.id });
+  if (!item.target) return hrefForEvent({ id: item.id });
+  const kind = target && target.id === item.target.id ? target.kind : undefined;
+  // 40 / 42 は eventLink.ts の KIND_CHANNEL_CREATE / KIND_CHANNEL_MESSAGE（あちらはローダーを読み込むので import しない）
+  if (kind === 40 || kind === 42) return hrefForEvent({ ...item.target, kind });
+  return hrefForEvent(item.target);
 }
 
 /** 種別の表示名。コンポーネントからは useT() の t を渡す（言語の変更で再描画される） */
