@@ -32,6 +32,40 @@
   font-weight: var(--w-name);
 }
 
+/* [#818] チャンネル作成（kind:40）の引用。ChannelList.module.css の .row / .texts / .name / .about と同じ */
+.channel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.channelTexts {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.channelName,
+.channelAbout {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.channelName {
+  font-size: var(--type-sub);
+  font-weight: var(--w-name);
+  line-height: var(--line-title);
+}
+
+.channelAbout {
+  color: var(--text-2);
+  font-size: var(--type-caption);
+  line-height: var(--line-desc);
+}
+
 .warning {
   display: block;
   margin-top: var(--sp-1);

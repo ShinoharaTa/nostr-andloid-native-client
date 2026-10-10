@@ -1,6 +1,6 @@
 import type { EventPointer } from "applesauce-core/helpers/pointers";
 import type { NostrEvent } from "nostr-tools/pure";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForEvent } from "../../lib/content/labels";
@@ -10,6 +10,9 @@ import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
 import { displayName, pictureOf, useEventByPointer, useProfile } from "../../nostr/loaders";
 import { PlayCircleIcon } from "../../ui/icons";
+import { ChannelIcon } from "../chat/ChannelList";
+import { ensureChannels, useChannel } from "../chat/channels";
+import { channelFromCreateEvent, KIND_CHANNEL_CREATE } from "../chat/eventLink";
 import { NoteContent } from "./NoteContent";
 import { Avatar } from "./NoteItem";
 import styles from "./QuoteCard.module.css";
@@ -18,6 +21,7 @@ import styles from "./QuoteCard.module.css";
  * 引用元のカード（ネイティブの QuotedNoteCard.kt）。カード全体が引用元へのリンク。
  * カード内のリンク・メンション・タグは装飾だけにし、入れ子の引用カードは出さない（1 段）。
  * compact（既定 false）はメディアを出さない（通知のリアクション・Zap の行。ネイティブの compact = true）。
+ * [#818] 引用元がチャンネル作成（kind:40）なら、チャンネルのカード（ChannelQuote）にする。押すと #798 の経路でルームを開く。
  */
 export function QuoteCard({
   pointer,
@@ -33,8 +37,39 @@ export function QuoteCard({
   if (!quoted) return <p className={`${styles.quote} ${styles.loading}`}>{t("web_quote_loading")}</p>;
   return (
     <Link className={styles.quote} to={hrefForEvent(encoded ?? pointer)} aria-label={t("web_quote_open")}>
-      <QuotedNote quoted={quoted} compact={compact} />
+      {quoted.kind === KIND_CHANNEL_CREATE ? (
+        <ChannelQuote created={quoted} />
+      ) : (
+        <QuotedNote quoted={quoted} compact={compact} />
+      )}
     </Link>
+  );
+}
+
+/**
+ * [#818] チャンネル作成（kind:40）の引用。パブリックチャット一覧の行（ChannelList の ChannelRow）と同じ画像・名前・説明 1 行。
+ * 中身は手元のチャンネル一覧（/api/nchan/channels。kind:41 の更新が載る）を優先し、無ければ kind:40 の content
+ * （ChannelRoomDetail・ChatChannelLine と同じ解決）。一覧がまだ無ければ取りに行く（ルームを直接開いたときと同じ
+ * ensureChannels）。名前が空なら「パブリックチャット」。
+ */
+function ChannelQuote({ created }: { created: NostrEvent }) {
+  const t = useT();
+  const listed = useChannel(created.id);
+  useEffect(() => {
+    ensureChannels();
+  }, []);
+  const channel = listed ?? channelFromCreateEvent(created);
+  const name = channel?.name || t("chat_room_unnamed");
+  const about = channel?.about ?? "";
+  const picture = channel?.picture ?? null;
+  return (
+    <span className={styles.channel}>
+      <ChannelIcon key={picture} name={name} url={picture} />
+      <span className={styles.channelTexts}>
+        <span className={styles.channelName}>{name}</span>
+        {about.trim() !== "" && <span className={styles.channelAbout}>{about}</span>}
+      </span>
+    </span>
   );
 }
 
