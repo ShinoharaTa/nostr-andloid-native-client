@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeLicensesPage } from "../scripts/build-licenses.mjs";
+import { NAVIGATE_FALLBACK_DENYLIST, STATIC_PAGES } from "../vite.config";
 
 /**
  * static/ 配下は dist/ にそのままコピーされる Cloudflare Pages の設定ファイル（#647）。
@@ -102,6 +103,12 @@ describe("/licenses（#688）", () => {
         "dexie",
         "zustand",
         "blurhash",
+        // vite-plugin-pwa（devDependency）が dist/workbox-*.js・sw.js・アプリのバンドルへ入れる workbox
+        "workbox-core",
+        "workbox-precaching",
+        "workbox-routing",
+        "workbox-strategies",
+        "workbox-window",
         "Noto Sans JP",
         "M PLUS Rounded 1c",
         "Dela Gothic One",
@@ -125,5 +132,36 @@ describe("/licenses（#688）", () => {
     expect(footer).toMatch(
       /<a href="\/privacy-policy\.html">[^<]*<\/a>\s*<a href="\/licenses">オープンソースライセンス<\/a>/,
     );
+  });
+});
+
+describe("SW の navigateFallbackDenylist（#688）", () => {
+  /** dir 配下の *.html（dir からの相対。assemble-dist.mjs と同じく screenshots/ は見ない） */
+  function htmlUnder(dir: string, prefix = ""): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      if (e.isDirectory())
+        return e.name === "screenshots" ? [] : htmlUnder(join(dir, e.name), `${prefix}${e.name}/`);
+      return e.name.endsWith(".html") ? [`${prefix}${e.name}`] : [];
+    });
+  }
+
+  it("dist に置く *.html（index.html と 404 系を除く）の拡張子なしの URL と STATIC_PAGES が一致する", () => {
+    // dist の *.html = vite build の index.html + docs/ + static/（assemble-dist.mjs）+ 生成する licenses.html
+    const pages = [...htmlUnder(join(process.cwd(), "../docs")), ...htmlUnder(staticDir), "licenses.html"]
+      .filter((path) => path !== "index.html" && !/^404/.test(basename(path)))
+      .map((path) => `/${path.replace(/\.html$/, "")}`);
+    expect([...STATIC_PAGES].sort()).toEqual([...new Set(pages)].sort());
+  });
+
+  it("拡張子なし・拡張子付きの静的ページと /api/* は外し、アプリのルートは外さない", () => {
+    const denied = (path: string) => NAVIGATE_FALLBACK_DENYLIST.some((re) => re.test(path));
+    for (const path of STATIC_PAGES) {
+      expect(denied(path)).toBe(true);
+      expect(denied(`${path}.html`)).toBe(true);
+    }
+    expect(denied("/api/og")).toBe(true);
+    for (const path of ["/", "/about", "/login", "/settings/about", "/themes-x", "/licenses/x"]) {
+      expect(denied(path)).toBe(false);
+    }
   });
 });

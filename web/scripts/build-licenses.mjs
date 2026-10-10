@@ -6,6 +6,7 @@
 //     起点にしない）。たどるのは dependencies と、optional でない peerDependencies（react・react-dom は
 //     applesauce-react・react-virtuoso の peer として入る）。optionalDependencies と @types/*（型だけで
 //     バンドルに入らない）はたどらない。名前・版・ライセンス・著作権表示・ライセンス文は node_modules/<name>/ から読む。
+//     devDependencies でも本番に出る workbox のランタイムは起点に足す（BUNDLED_DEV_ROOTS）。
 //   - フォント: 絵文字 API のグリフデータの元フォント（public/fonts/OFL-*.txt。public/fonts/README.md）
 // 体裁は LP（/lp/lp.css の #lp）に合わせる。生成物はコミットしない（dist/ ごと .gitignore）。
 // Pages のビルド環境で動くよう Node の標準モジュールだけで書く。
@@ -154,12 +155,25 @@ function resolveKey(packages, from, name) {
   }
 }
 
-/** package-lock.json から、dependencies を起点にたどった lockfile のキーの一覧 */
-export function productionKeys(lock) {
+/**
+ * devDependencies だが本番に出るもの（起点に足す）。vite-plugin-pwa（generateSW）が同梱する workbox のランタイム:
+ * dist/workbox-*.js（sw.js が読む。precaching・routing・strategies・core）と、virtual:pwa-register が
+ * アプリのバンドルへ入れる workbox-window。vite-plugin-pwa の設定（runtimeCaching 等）を変えたら dist を見て合わせる
+ */
+export const BUNDLED_DEV_ROOTS = [
+  "workbox-core",
+  "workbox-precaching",
+  "workbox-routing",
+  "workbox-strategies",
+  "workbox-window",
+];
+
+/** package-lock.json から、dependencies（と extraRoots）を起点にたどった lockfile のキーの一覧 */
+export function productionKeys(lock, extraRoots = BUNDLED_DEV_ROOTS) {
   const packages = lock.packages ?? {};
   const root = packages[""] ?? {};
   const seen = new Set();
-  const queue = Object.keys(root.dependencies ?? {}).map((name) => ["", name]);
+  const queue = [...Object.keys(root.dependencies ?? {}), ...extraRoots].map((name) => ["", name]);
   while (queue.length > 0) {
     const [from, name] = queue.shift();
     if (name.startsWith("@types/")) continue;

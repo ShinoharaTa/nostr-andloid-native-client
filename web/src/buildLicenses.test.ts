@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authorName,
+  BUNDLED_DEV_ROOTS,
   extractCopyright,
   normalizeLicense,
   productionKeys,
@@ -113,5 +114,20 @@ describe("productionKeys", () => {
       "node_modules/c",
       "node_modules/react",
     ]);
+  });
+
+  it("extraRoots（本番に出る devDependencies）も起点にしてたどる。lockfile に無いものは飛ばす", () => {
+    const lock = {
+      packages: {
+        "": { dependencies: {}, devDependencies: { "workbox-precaching": "1" } },
+        "node_modules/workbox-precaching": { dependencies: { "workbox-core": "1" } },
+        "node_modules/workbox-core": {},
+      },
+    };
+    expect(productionKeys(lock, ["workbox-precaching", "missing"]).sort()).toEqual([
+      "node_modules/workbox-core",
+      "node_modules/workbox-precaching",
+    ]);
+    expect(BUNDLED_DEV_ROOTS).toContain("workbox-core");
   });
 });
