@@ -65,10 +65,18 @@ it("保存する kind だけを 500ms ごとにまとめて書く", async () => 
   expect(await countKind(db, 1)).toBe(0);
 });
 
-it("400 件たまったら 500ms を待たずに書く", async () => {
+// 400 件の署名（鍵ごとに別の kind:0）で CPU を使うので、並列で走らせたときの既定の 5 秒では足りないことがある
+it("400 件たまったら 500ms を待たずに書く", { timeout: 30_000 }, async () => {
+  const events = Array.from({ length: 400 }, () => signed(0));
   const { db, store } = await setup();
-  for (let i = 0; i < 400; i++) store.add(signed(0));
+  const bulkPut = vi.spyOn(db.events, "bulkPut");
+  for (const event of events.slice(0, 399)) store.add(event);
+  expect(bulkPut).not.toHaveBeenCalled();
 
+  // 時間を進めないまま、400 件目で書き始める
+  store.add(events[399]);
+  expect(bulkPut).toHaveBeenCalledTimes(1);
+  await bulkPut.mock.results[0]?.value;
   expect(await db.events.count()).toBe(400);
 });
 

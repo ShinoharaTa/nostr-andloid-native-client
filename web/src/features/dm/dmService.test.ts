@@ -67,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
+  vi.useRealTimers();
   useSession.setState({ status: "loading", method: null, pubkey: null });
   useDm.getState().reset(null);
   useDmSeen.setState({ me: null, first: 0, peers: {} });
@@ -83,6 +84,11 @@ async function openDb(): Promise<NostrismDb> {
   await database.open();
   databases.push(database);
   return database;
+}
+
+/** 時間を止める。fake-indexeddb は setImmediate で進むので、それは本物のまま残す */
+function fakeTimers() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
 }
 
 function login(method: SessionMethod, pubkey = me) {
@@ -249,18 +255,25 @@ describe("復号と保存", () => {
   });
 
   it("NIP-07 では startDecrypting() まで署名者を呼ばない（保存済みの分は出す）", async () => {
+    const database = await openDb();
+    fakeTimers();
     login("nip07");
-    start(await openDb());
+    start(database);
     await subscribed();
     feed.next(wrapFromAlice("later"));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.waitFor(() => expect(useDm.getState().pending).toBe(1));
+    // 購読の読み込み待ち・プロフィールのまとめ・kind:10050 の待ちを越えても、時間では始まらない
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(decrypt44).not.toHaveBeenCalled();
     expect(useDm.getState()).toMatchObject({ pending: 1, decrypting: false });
 
     startDecrypting();
     expect(useDm.getState().decrypting).toBe(true);
-    await vi.waitFor(() => expect(contents()).toEqual(["later"]));
-    expect(useDm.getState().pending).toBe(0);
+    // 一覧に出るのは DB への記録より先（pending が 0 になるのは記録の後）なので両方を待つ
+    await vi.waitFor(() => {
+      expect(contents()).toEqual(["later"]);
+      expect(useDm.getState().pending).toBe(0);
+    });
   });
 
   it("nsec（local）ではログイン直後から復号する", async () => {
@@ -282,6 +295,7 @@ describe("復号と保存", () => {
 
   it("署名者の拒否は記録せず、3 回続いたら一時停止し、再開で続ける", async () => {
     const database = await openDb();
+    fakeTimers();
     decrypt44.mockRejectedValue(new Error("rejected"));
     login("nip07");
     start(database);
@@ -298,12 +312,15 @@ describe("復号と保存", () => {
       nip44.decrypt(ciphertext, nip44.getConversationKey(myKey, peer)),
     );
     resumeDecrypting();
-    await vi.waitFor(() => expect(contents()).toEqual(["m0"]));
-    expect(useDm.getState()).toMatchObject({ paused: false, pending: 0 });
+    await vi.waitFor(() => {
+      expect(contents()).toEqual(["m0"]);
+      expect(useDm.getState()).toMatchObject({ paused: false, pending: 0 });
+    });
   });
 
   it("nsec でも鍵の保管庫の失敗（VaultError）は invalid と記録せず、一時停止 → 再開で復号する", async () => {
     const database = await openDb();
+    fakeTimers();
     decrypt44.mockRejectedValue(new VaultError("unavailable"));
     login("local");
     start(database);
@@ -320,8 +337,10 @@ describe("復号と保存", () => {
       nip44.decrypt(ciphertext, nip44.getConversationKey(myKey, peer)),
     );
     resumeDecrypting();
-    await vi.waitFor(() => expect(contents()).toHaveLength(1));
-    expect(useDm.getState()).toMatchObject({ paused: false, pending: 0 });
+    await vi.waitFor(() => {
+      expect(contents()).toHaveLength(1);
+      expect(useDm.getState()).toMatchObject({ paused: false, pending: 0 });
+    });
     await vi.waitFor(async () => expect(await database.dmProcessed.count()).toBe(1));
     expect((await database.dmProcessed.toArray())[0].ok).toBe(true);
   });
