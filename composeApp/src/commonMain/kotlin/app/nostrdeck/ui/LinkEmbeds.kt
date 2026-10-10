@@ -46,6 +46,7 @@ import app.nostrdeck.model.EmbedKind
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.NetworkTier
 import app.nostrdeck.model.OgpData
+import app.nostrdeck.model.SpotifyLinks
 import app.nostrdeck.model.visibleEmbeds
 import app.nostrdeck.model.imetaThumbs
 import app.nostrdeck.theme.DeckColors
@@ -82,7 +83,13 @@ fun LinkEmbeds(
         visible.forEach { e ->
             when (e.kind) {
                 EmbedKind.YOUTUBE -> YouTubeEmbed(e.url, e.youtubeId!!)
-                EmbedKind.SPOTIFY -> OgpEmbed(e.url, loadImage = true)   // Spotify も OGP カードで表現
+                // [#836] Spotify の曲・アルバム等は公式 oEmbed からリンクカードを作る（OGP は中身の無いページを返す）。
+                // それ以外（/user 等）は従来の OGP カード。画像は設定に関係なく読む（従来どおり。Web も同じ）。
+                EmbedKind.SPOTIFY -> {
+                    val canonical = SpotifyLinks.canonicalUrl(e.url)
+                    if (canonical != null) SpotifyEmbed(e.url, canonical, loadImage = true)
+                    else OgpEmbed(e.url, loadImage = true)
+                }
                 // [#733] X の投稿 URL は、OGP から組み立てた投稿カード（本文が取れなければ従来のリンクカード）。
                 EmbedKind.OGP ->
                     if (XPosts.isPostUrl(e.url)) XPostEmbed(e.url, loadImage = prefs.ogpImages)
@@ -183,6 +190,21 @@ private fun OgpEmbed(url: String, loadImage: Boolean) {
     val repo = LocalRepository.current ?: return
     // 結果 null が「取得中」か「失敗」かを区別するため、完了フラグと対にして持つ。
     val fetched by produceState(false to null as OgpData?, url) { value = true to repo.fetchOgp(url) }
+    val (done, data) = fetched
+    OgpCard(url, data, done, loadImage)
+}
+
+/**
+ * [#836] Spotify の曲・アルバム・プレイリスト・アーティスト・エピソード・番組のリンク（[canonical] は正規化した URL）。
+ * 公式 oEmbed の title / thumbnail_url / provider_name をリンクカードのタイトル・画像（ジャケット）・サイト名にする。
+ * oEmbed が取れなければ（削除済み・通信失敗等）従来の OGP に落とす。
+ */
+@Composable
+private fun SpotifyEmbed(url: String, canonical: String, loadImage: Boolean) {
+    val repo = LocalRepository.current ?: return
+    val fetched by produceState(false to null as OgpData?, url) {
+        value = true to (repo.fetchSpotifyOembed(canonical) ?: repo.fetchOgp(url))
+    }
     val (done, data) = fetched
     OgpCard(url, data, done, loadImage)
 }
