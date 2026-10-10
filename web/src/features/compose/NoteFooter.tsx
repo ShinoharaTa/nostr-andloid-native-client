@@ -52,10 +52,13 @@ export function ActionButton({
 export function NoteFooter({
   event,
   more,
+  onReply,
   children,
 }: {
   event: NostrEvent;
   more?: ReactNode;
+  /** 返信を押したとき（無ければ返信の投稿シート。#796 のパブリックチャットの発言はルームを開く） */
+  onReply?: () => void;
   children?: ReactNode;
 }) {
   const t = useT();
@@ -68,7 +71,7 @@ export function NoteFooter({
         <div className={styles.primaryActions}>
           <ActionButton
             label={t("compose_reply")}
-            onClick={() => openCompose({ mode: "reply", target: event })}
+            onClick={onReply ?? (() => openCompose({ mode: "reply", target: event }))}
           >
             <ReplyIcon />
           </ActionButton>

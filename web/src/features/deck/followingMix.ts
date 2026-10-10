@@ -50,13 +50,16 @@ const CATEGORY_OF: Record<NotificationKind, FeedCategory | null> = {
  * - 自分宛ての通知のうちリアクションは常に。リポスト・返信・メンションは相手がフォロー外のときだけ
  *   （フォロー中なら本文側に流れて重複する）。Zap は混ぜない
  * - 自分がしたリアクションは常に（#337。対象を取得できたものだけ）
+ * - パブリックチャットの発言（kind:42。#796）は投稿として時刻順に混ぜる（CHAT を隠したら出さない）
  * - 未読のある DM 会話は 1 会話 1 行
  * - 隠した種別は除き、時刻の新しい順（同時刻は 投稿 → 通知・DM → 自分のリアクション の順）
  */
 export function mixFollowingFeed(input: MixInput): FeedRow[] {
   const hidden = new Set(input.hidden);
   const follows = new Set(input.follows ?? []);
-  const rows: FeedRow[] = input.posts.map((event) => ({
+  // [#796] パブリックチャットの発言（kind:42）は投稿と同じ行で流し、⋯ の「パブリックチャットの発言」で隠せる
+  const posts = hidden.has("CHAT") ? input.posts.filter((event) => event.kind !== 42) : input.posts;
+  const rows: FeedRow[] = posts.map((event) => ({
     type: "post",
     id: event.id,
     at: event.created_at,

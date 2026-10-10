@@ -724,3 +724,63 @@ it("失敗（unavailable）はトーストで知らせ、本文の下には何�
   await vi.waitFor(() => expect(useToast.getState().queue).toEqual(["翻訳できませんでした"]));
   expect(screen.queryByText("翻訳")).toBeNull();
 });
+
+/** /e/nevent1… の指す先（それ以外のパスは null） */
+function linkOf(pathname: string | null): { id: string; kind?: number; relays?: string[] } | null {
+  const match = pathname?.match(/^\/e\/(nevent1\w+)$/);
+  if (!match) return null;
+  const decoded = decode(match[1]);
+  return decoded.type === "nevent" ? decoded.data : null;
+}
+
+it("[#796] パブリックチャットの発言は「#チャンネル名 で発言」の行を出し、行・本文・返信はそのチャンネルのルームを開く", async () => {
+  const user = userEvent.setup();
+  const channel = finalizeEvent(
+    { kind: 40, created_at: 1, tags: [], content: JSON.stringify({ name: "雑談部屋" }) },
+    generateSecretKey(),
+  );
+  eventStore.add(channel);
+  const message = post("チャットの発言です", {
+    kind: 42,
+    tags: [["e", channel.id, "wss://chat.example", "root"]],
+  });
+  const room = { id: channel.id, kind: 40, relays: ["wss://chat.example"] };
+
+  const first = renderNote(<NoteItem event={message} />);
+  await user.click(await screen.findByRole("link", { name: "#雑談部屋 で発言" }));
+  expect(linkOf(first.where())).toEqual(room);
+  first.unmount();
+
+  const second = renderNote(<NoteItem event={message} />);
+  await user.click(screen.getByText("チャットの発言です"));
+  expect(linkOf(second.where())).toEqual(room);
+  second.unmount();
+
+  const third = renderNote(<NoteItem event={message} />);
+  await user.click(screen.getByRole("button", { name: "返信" }));
+  expect(linkOf(third.where())).toEqual(room);
+});
+
+it("[#796] チャンネル名が分からない間は「チャットで発言」", () => {
+  const message = post("名前の無い部屋の発言", { kind: 42, tags: [["e", "f".repeat(64), "", "root"]] });
+  renderNote(<NoteItem event={message} />);
+  expect(screen.getByRole("link", { name: "チャットで発言" })).toBeInTheDocument();
+});
+
+it("[#796] 発言への返信は返信元の 1 行も出す（root のチャンネルは返信元にしない）", async () => {
+  const channelId = "f".repeat(64);
+  const parent = stored("返信元の発言", {
+    key: withProfile({ name: "heidi" }),
+    kind: 42,
+    tags: [["e", channelId, "", "root"]],
+  });
+  const message = post("返信の発言", {
+    kind: 42,
+    tags: [
+      ["e", channelId, "", "root"],
+      ["e", parent.id, "", "reply"],
+    ],
+  });
+  renderNote(<NoteItem event={message} />);
+  expect(await screen.findByText("heidi: 返信元の発言")).toBeInTheDocument();
+});

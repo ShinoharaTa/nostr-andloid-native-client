@@ -71,7 +71,8 @@ function pointerFromCommentAddressTag(tag: string[] | undefined): EventPointer |
 
 /**
  * 返信先（親）の投稿。kind:1 は NIP-10（reply → root → マーカー無しの末尾）、
- * kind:1111 は NIP-22（小文字 e → a → 大文字 E → A）。それ以外の kind は null。
+ * kind:1111 は NIP-22（小文字 e → a → 大文字 E → A）、kind:42 は reply マーカーの e だけ（#796。root はチャンネル。
+ * ネイティブ Nip28.replyToOf）。それ以外の kind は null。
  */
 export function replyParentPointerOf(event: NostrEvent): EventPointer | null {
   if (event.kind === 1) {
@@ -85,6 +86,13 @@ export function replyParentPointerOf(event: NostrEvent): EventPointer | null {
       pointerFromCommentTag(event.tags.find((t) => t[0] === "E")) ??
       pointerFromCommentAddressTag(event.tags.find((t) => t[0] === "A"))
     );
+  }
+  if (event.kind === 42) {
+    const channel = event.tags.find((t) => t[0] === "e" && t[3] === "root")?.[1];
+    const reply = event.tags.find(
+      (t) => t.length >= 4 && t[0] === "e" && t[3] === "reply" && t[1] !== "" && t[1] !== channel,
+    );
+    return pointerFromCommentTag(reply);
   }
   return null;
 }

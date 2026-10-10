@@ -22,14 +22,18 @@ export const FEED_CAT_HIDDEN_KEY = "nostrism.deck.feedCatHidden";
 /** ステータスカラムで出す種類（{"<id>":"music"|"general"}。「すべて」は書かない。Web だけ・同期しない #767） */
 export const STATUS_TYPE_KEY = "nostrism.deck.statusType";
 
-/** フォロー中カラムに混ぜる行の種別（ネイティブ FeedNoticeCategory。⋯ メニューの並び順） */
-export type FeedCategory = "REACTIONS" | "REPLIES" | "REPOSTS" | "MY_REACTIONS" | "DMS";
+/**
+ * フォロー中カラムに混ぜる行の種別（ネイティブ FeedNoticeCategory。⋯ メニューの並び順）。
+ * [#796] CHAT = フォロー中の人（と自分）のパブリックチャットの発言（kind:42）。既定は表示（隠す集合に入れたときだけ隠す）
+ */
+export type FeedCategory = "REACTIONS" | "REPLIES" | "REPOSTS" | "MY_REACTIONS" | "DMS" | "CHAT";
 export const FEED_CATEGORIES: readonly FeedCategory[] = [
   "REACTIONS",
   "REPLIES",
   "REPOSTS",
   "MY_REACTIONS",
   "DMS",
+  "CHAT",
 ];
 
 export type DeckState = {

@@ -1,4 +1,5 @@
 import type { NostrEvent } from "nostr-tools/pure";
+import { hrefForEvent } from "../../lib/content/labels";
 import type { EventDraft } from "../../nostr/publish";
 import { emojiTagsIn, hashtagsIn, mentionPubkeysIn, rootOf } from "../compose/tags";
 import { type MuteMatcher, matchesWord } from "../mute/muteList";
@@ -66,4 +67,21 @@ export function isChatMessageMuted(m: MuteMatcher, message: NostrEvent): boolean
 /** チャンネルのルームを開く URL */
 export function channelHref(channelId: string): string {
   return `/channels/${channelId}`;
+}
+
+/** id を指す e タグのリレーヒント（3 番目。ws:// / wss:// のときだけ。ネイティブ Nip28.relayHintOf） */
+export function relayHintOf(tags: readonly string[][], id: string): string | null {
+  const hint = tags.find((t) => t.length >= 3 && t[0] === "e" && t[1] === id)?.[2]?.trim() ?? "";
+  return hint.startsWith("wss://") || hint.startsWith("ws://") ? hint : null;
+}
+
+/**
+ * [#796] 発言（kind:42）のチャンネルのルームを詳細に重ねて開く URL（kind:40 の nevent の /e/。#798 の経路でルームになる）。
+ * チャンネルが分からなければ null
+ */
+export function roomHrefOf(message: NostrEvent): string | null {
+  const channelId = channelIdOf(message);
+  if (channelId === null || channelId === "") return null;
+  const hint = relayHintOf(message.tags, channelId);
+  return hrefForEvent({ id: channelId, kind: 40, relays: hint ? [hint] : [] });
 }

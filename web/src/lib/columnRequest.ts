@@ -1,5 +1,6 @@
 import type { Filter } from "applesauce-core/helpers/filter";
 import type { NostrEvent } from "nostr-tools/pure";
+import { rootOf } from "../features/compose/tags";
 import { isStatusVisible, STATUS_KIND, STATUS_MAX_AGE_SEC } from "../features/status/statusModel";
 import type { ColumnKind, ColumnSpec, ReqFilter } from "./columns";
 import { unixNow } from "./time";
@@ -24,8 +25,11 @@ export const SEARCH_RELAYS: readonly string[] = [
   "wss://relay.noswhere.sh",
   "wss://search.nos.today",
 ];
-/** kind:1 本文 + kind:6/16 リポスト + kind:5 削除 + kind:1111 コメント */
-export const FOLLOWING_KINDS = [1, 6, 16, 5, 1111];
+/**
+ * kind:1 本文 + kind:6/16 リポスト + kind:5 削除 + kind:1111 コメント + kind:42 パブリックチャットの発言（#796）。
+ * ネイティブ subscribeFollowing と同じ並び
+ */
+export const FOLLOWING_KINDS = [1, 6, 16, 5, 1111, 42];
 /** 自分宛て（#p）の 投稿・リポスト・リアクション・Zap・コメント */
 export const NOTIF_REQ_KINDS = [1, 6, 16, 7, 9735, 1111];
 /** EOSE を返さない/遅いリレーだけでも「読み込み中」を出し続けない */
@@ -34,7 +38,12 @@ export const LOADING_TIMEOUT_MS = 8_000;
 export const OLDER_TIMEOUT_MS = 6_000;
 
 // kind:5 は EventStore が削除として処理するので表示の対象から外す
-const FOLLOWING_VIEW_KINDS = [1, 6, 16, 1111];
+const FOLLOWING_VIEW_KINDS = [1, 6, 16, 1111, 42];
+
+/** [#796] チャンネルの分からない発言（kind:42）は出さない（開く先が無い。ネイティブ toChatNoteUi と同じ） */
+function hasChannelIfChat(e: NostrEvent): boolean {
+  return e.kind !== 42 || rootOf(e.tags) !== null;
+}
 
 export type RequestPlan = { relays: readonly string[]; filters: Filter[] } | null;
 export type ViewPlan = { filters: Filter[]; predicate?: (e: NostrEvent) => boolean };
@@ -151,7 +160,7 @@ export function viewFor(spec: ColumnSpec, ctx: Ctx): ViewPlan {
       // REQ と同じ authors（#583）。空なら REQ を張らないのでストアからも読まない（手元にたまたまある他人の投稿を出さない）
       const authors = followAuthors(ctx.follows ?? [], ctx.me);
       if (authors.length === 0) return { filters: [] };
-      return { filters: [{ kinds: FOLLOWING_VIEW_KINDS, authors }] };
+      return { filters: [{ kinds: FOLLOWING_VIEW_KINDS, authors }], predicate: hasChannelIfChat };
     }
     case "NOTIFICATIONS":
       // カラムの filter.kinds（表示する種別）は見ない。全種別を出す（ネイティブの NotificationsColumn と同じ）

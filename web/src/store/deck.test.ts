@@ -193,6 +193,11 @@ it("setFeedCatHidden: カラムごとに保存し、空になったカラムは�
   expect(loadFeedCatHidden()).toEqual({});
   localStorage.setItem(FEED_CAT_HIDDEN_KEY, '{"c_a":["DMS","ZAPS",1],"c_b":[],"c_c":"DMS"}');
   expect(loadFeedCatHidden()).toEqual({ c_a: ["DMS"] });
+  // [#796] パブリックチャットの発言（ネイティブ FeedNoticeCategory.CHAT と同じ名前）。並びは ⋯ の順
+  useDeck.getState().setFeedCatHidden("c_following", "CHAT", true);
+  useDeck.getState().setFeedCatHidden("c_following", "DMS", true);
+  expect(localStorage.getItem(FEED_CAT_HIDDEN_KEY)).toBe('{"c_following":["DMS","CHAT"]}');
+  expect(loadFeedCatHidden()).toEqual({ c_following: ["DMS", "CHAT"] });
 });
 
 it("setStatusType: カラムごとに保存し、すべて（null）はキーを消す。再読み込み後も残り、カラムを消すと設定も消す。壊れた保存値は捨てる（#767）", async () => {

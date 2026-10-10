@@ -194,4 +194,23 @@ describe("mixFollowingFeed", () => {
     const rows = mix({ posts: [reply], notifications: [reply], follows: null });
     expect(kinds(rows)).toEqual(["post"]);
   });
+
+  it("[#796] パブリックチャットの発言は既定で投稿と時刻順に混ぜ、「パブリックチャットの発言」を隠すと出さない", () => {
+    const note = ev({ pubkey: FOLLOW, created_at: 900 });
+    const chat = ev({
+      pubkey: FOLLOW,
+      created_at: 1_000,
+      kind: 42,
+      tags: [["e", "f".repeat(64), "", "root"]],
+    });
+    const mine = ev({ pubkey: ME, created_at: 800, kind: 42, tags: [["e", "f".repeat(64), "", "root"]] });
+    const shown = mix({ posts: [chat, note, mine] });
+    expect(shown.map((r) => r.id)).toEqual([chat.id, note.id, mine.id]);
+    expect(mix({ posts: [chat, note, mine], hidden: ["CHAT"] }).map((r) => r.id)).toEqual([note.id]);
+    // 他の種別を隠しても発言は残る
+    expect(mix({ posts: [chat, note], hidden: ["REACTIONS", "DMS"] }).map((r) => r.id)).toEqual([
+      chat.id,
+      note.id,
+    ]);
+  });
 });
