@@ -5052,6 +5052,21 @@ class EventRepository(
         EmojiImage.Failed
     }
 
+    /**
+     * [#834] 絵文字作成フォームの前回の設定（文字色・縁取り・フォント。JSON は [EmojiMaker.encodeLast] の形）。
+     * 端末ごと（アカウントに紐付けない）で、同期しない（[SETTINGS_SYNC_WHITELIST] に入れない）。
+     * KV への書き込みは後追い（[putSettingAsync]）なので、保存した値は手元にも持ち、直後に開き直しても読めるようにする。
+     */
+    private var emojiMakerLast: String? = null
+
+    fun loadEmojiMakerLast(): String? =
+        emojiMakerLast ?: q.getSetting(EMOJI_MAKER_LAST).executeAsOneOrNull().also { emojiMakerLast = it }
+
+    fun saveEmojiMakerLast(value: String) {
+        emojiMakerLast = value
+        putSettingAsync(EMOJI_MAKER_LAST, value)
+    }
+
     suspend fun fetchXPostDate(url: String, lang: String): String? {
         val key = "x-oembed:$lang:$url"
         ogpMutex.withLock { if (ogpCache.containsKey(key)) return ogpCache[key]?.title }
@@ -5915,6 +5930,7 @@ class EventRepository(
 
 
         const val EMOJI_LIST_TAGS_KEY = "emoji_list_tags"
+        const val EMOJI_MAKER_LAST = "emoji_maker_last"   // [#834] 絵文字作成フォームの前回の設定（端末ごと・同期しない）
         const val PINNED_HASHTAGS_KEY = "pinned_hashtags"   // [#393] kind:30015(d=pinned) の t タグ順キャッシュ
         /** [#122][#374] 30078 の d タグ（このアプリのカラム構成を示す識別子）。#122 発行分と互換。 */
         const val DECK_COLUMNS_D = "app.nostrdeck:deck-columns"
