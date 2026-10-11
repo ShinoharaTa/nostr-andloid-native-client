@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  [#822] 平文の WebSocket（ws://）を許可する。
+  NIP-46 の bunker や Citrine のような端末内 / LAN のリレーは ws:// で待ち受けることが多い。
+  リレーはユーザーが指定するのでホストを列挙できず、ws:// はどのホストでも許す決定（#822）のため
+  base-config で許可する。Android 9（API 28）以降は既定で平文が禁止されている。
+  ws:// を入れたときは画面で「暗号化されていない接続」の注意書きを出す。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -12,6 +12,7 @@ import app.nostrdeck.nostr.RelayClient
 import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
+import app.nostrdeck.nostr.RelayUrl
 import fr.acinq.secp256k1.Secp256k1
 import kotlin.concurrent.Volatile  // JVM/Native 共通の @Volatile（iOS ビルド対応 #18）
 import kotlinx.coroutines.CompletableDeferred
@@ -31,7 +32,11 @@ import kotlinx.serialization.json.putJsonArray
 /** [#41] bunker:// URI（NIP-46）。remote-signer-pubkey(hex) + relay(s) + optional secret。 */
 data class BunkerUri(val remoteSignerPubkey: String, val relays: List<String>, val secret: String?)
 
-/** `bunker://<hex pubkey>?relay=wss://..&relay=..&secret=..` をパース。不正なら null。 */
+/**
+ * `bunker://<hex pubkey>?relay=wss://..&relay=..&secret=..` をパース。不正なら null。
+ * [#822] relay は `wss://` に加えて `ws://`（Citrine のような端末内 / LAN のリレー）も受ける。
+ * [RelayUrl] で正規化して重複を除き、`ws://` / `wss://` として読めないものは捨てる（残らなければ null）。
+ */
 fun parseBunkerUri(uri: String): BunkerUri? {
     val s = uri.trim()
     if (!s.startsWith("bunker://")) return null
@@ -45,7 +50,8 @@ fun parseBunkerUri(uri: String): BunkerUri? {
         rest.substring(qi + 1).split('&').forEach { p ->
             val eq = p.indexOf('='); if (eq < 0) return@forEach
             when (p.substring(0, eq)) {
-                "relay" -> relays.add(urlDecode(p.substring(eq + 1)))
+                "relay" -> RelayUrl.normalize(urlDecode(p.substring(eq + 1)))
+                    .takeIf { RelayUrl.isValid(it) && it !in relays }?.let { relays.add(it) }
                 "secret" -> secret = urlDecode(p.substring(eq + 1))
             }
         }
@@ -61,7 +67,10 @@ private fun urlDecode(s: String): String = buildString {
     while (i < s.length) {
         val c = s[i]
         when {
-            c == '%' && i + 3 <= s.length -> { append(s.substring(i + 1, i + 3).toInt(16).toChar()); i += 3 }
+            // [#822] 入力中の欄からも呼ぶので、壊れた %XX は例外にせずそのまま残す。
+            c == '%' && i + 3 <= s.length && s.substring(i + 1, i + 3).all { it in "0123456789abcdefABCDEF" } -> {
+                append(s.substring(i + 1, i + 3).toInt(16).toChar()); i += 3
+            }
             c == '+' -> { append(' '); i++ }
             else -> { append(c); i++ }
         }
