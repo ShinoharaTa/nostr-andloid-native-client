@@ -5098,6 +5098,56 @@ class EventRepository(
     }
 
     /**
+     * [#836] Spotify の曲・アルバム等のリンクカードの中身（Web #820 の移植）。open.spotify.com は OGP の取得に
+     * 中身の無いページ（title「Spotify – Web Player」、og:image 無し）を返すので、公式 oEmbed（認証不要）の
+     * title / thumbnail_url / provider_name から作る（[app.nostrdeck.model.SpotifyLinks.fromOembed]）。
+     * [canonical] は [app.nostrdeck.model.SpotifyLinks.canonicalUrl] で正規化した URL。
+     * OGP と同じ DB キャッシュ（キー `spotify-oembed:<canonical>`）に同じ TTL（成功 7 日・失敗 1 日）で持つ。
+     * 通信できなかったとき（オフライン等）は DB に残さない（Web と同じ。次の起動で取り直す）。
+     * 取れなければ null（呼び出し側は従来の OGP に落とす）。
+     */
+    suspend fun fetchSpotifyOembed(canonical: String): OgpData? {
+        val key = app.nostrdeck.model.SpotifyLinks.cacheKey(canonical)
+        ogpMutex.withLock { if (ogpCache.containsKey(key)) return ogpCache[key] }
+        val cached = withContext(Dispatchers.Default) { q.getOgpCache(key).executeAsOneOrNull() }
+        if (cached != null) {
+            val ttl = if (cached.ok != 0L) OGP_TTL_OK_SEC else OGP_TTL_NG_SEC
+            if (currentUnixTime() - cached.fetched_at < ttl) {
+                val data = if (cached.ok == 0L) null else OgpData(
+                    canonical, title = cached.title, image = cached.image,
+                    siteName = cached.site_name ?: app.nostrdeck.model.SpotifyLinks.SITE_NAME,
+                )
+                ogpMutex.withLock { putOgpMemory(key, data) }
+                return data
+            }
+        }
+        val data = try {
+            withContext(Dispatchers.Default) {
+                val resp = uploadHttp.get(app.nostrdeck.model.SpotifyLinks.oembedUrl(canonical))
+                if (resp.status.value != 200) return@withContext null
+                val o = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+                    ?: return@withContext null
+                fun str(name: String) = o[name]?.jsonPrimitive?.contentOrNull
+                app.nostrdeck.model.SpotifyLinks.fromOembed(canonical, str("title"), str("thumbnail_url"), str("provider_name"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            ogpMutex.withLock { putOgpMemory(key, null) }
+            return null
+        }
+        ogpMutex.withLock { putOgpMemory(key, data) }
+        // 失敗（404 等）も記録して、取れない URL の再試行を TTL(1日)に抑える。
+        scope.launch(relayDispatcher) {
+            q.putOgpCache(
+                key, currentUnixTime(), if (data != null) 1L else 0L,
+                data?.title, null, data?.image, data?.siteName,
+            )
+        }
+        return data
+    }
+
+    /**
      * URL の OGP(OpenGraph) メタを取得する。成功/失敗ともメモリキャッシュ（null もキャッシュ）。
      * HTML 先頭のみを走査して og:title/og:description/og:image/og:site_name を拾う簡易実装。
      * [#368] ボディは先頭のみ読んで打ち切り（通常200KB / Amazonは画像JSONが後半のため512KB）、
