@@ -27,6 +27,10 @@ kotlinx-serialization = "1.9.0"
 colorpicker = "1.1.2"
 # [#218] JNA for Windows Credential Manager native API
 jna = "5.14.0"
+# [#840] オープンソースライセンスの一覧。Gradle プラグインだけを使い、ビルド時に依存の一覧とライセンス文を JSON に書き出す
+# （読むのはアプリ側の kotlinx.serialization。aboutlibraries-core は kotlinx-serialization 1.11 を要求してアプリ全体の版を上げるため入れない）。
+# 15.x は Kotlin 2.4 製（kotlin-stdlib 2.4.x を要求）なので、Kotlin 2.3.20 に合わせて 14.2.1 に固定。
+aboutlibraries = "14.2.1"
 
 # Android SDK
 android-compileSdk = "36"
@@ -86,3 +90,4 @@ compose = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" 
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutlibraries" }   # [#840]
