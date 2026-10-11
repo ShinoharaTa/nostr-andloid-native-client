@@ -1288,6 +1288,38 @@ class EventRepository(
         }.flowOn(Dispatchers.Default)
 
     /**
+     * [#835] プロフィールのヘッダに出す本人のステータス（Web #821 の useProfileFeed と同じ）。general / music の最新版を
+     * 自分の読み込みリレーと、本人の書き込みリレー（アウトボックス。自分の読み込みリレーに無いものだけ）から取る。
+     * 本人の kind:10002 は一緒に張るプロフィールの購読（[subscribeAuthorOutbox] / [loadProfile]）が取りに行くので、
+     * ここでは届くのを待つだけ（最大 10 秒）。[subId] はカラムの id と分けること（`"$columnId~status"`）。
+     * 閉じるときは [unsubscribeColumn]（アウトボックスの追加購読と待ちのジョブもまとめて止まる）。
+     */
+    fun subscribeProfileStatuses(subId: String, pubkey: String) {
+        if (!openColumns.add(subId)) return
+        columnAuthors[subId] = listOf(pubkey)  // 表示中は本人の NIP-65 を退避させない
+        val filter = Filter(
+            kinds = listOf(UserStatuses.KIND), authors = listOf(pubkey),
+            dTags = UserStatuses.Type.entries.map { it.d }, limit = UserStatuses.Type.entries.size,
+        )
+        subscribeRead(subId, filter)
+        outboxJobs.remove(subId)?.cancel()
+        outboxJobs[subId] = scope.launch {
+            withTimeoutOrNull(10_000) { while (authorWriteRelays(pubkey).isEmpty()) delay(500) }
+            val own = withContext(relayDispatcher) { listRelays }
+            val targets = authorWriteRelays(pubkey).map { normalizeRelayUrl(it) }
+                .filter { it.isNotBlank() && it !in own }.toSet()
+            if (targets.isNotEmpty() && subId in openColumns) subscribeTargeted("$subId~outbox", targets, filter)
+        }
+    }
+
+    /**
+     * [#835] 本人のステータス（手元にある general / music の最新版。この順）。表示条件（空・期限切れ・古すぎる）は
+     * 呼び出し側が今の時刻で見る（[statusesFlow] と同じ）。
+     */
+    fun statusesOfFlow(pubkey: String): Flow<List<NostrEvent>> =
+        statuses.map { all -> UserStatuses.Type.entries.mapNotNull { all["$pubkey:${it.d}"] } }.distinctUntilChanged()
+
+    /**
      * [#53] カラムのプルリフレッシュ: 今の REQ を破棄して張り直す（取りこぼし解消・最新化）。
      * ソケットは張り直さず、同一接続上で unsubscribe→subscribe する（用途は最新化なので十分）。
      * 再購読で columnLoadedState もロード中に戻り、DB Flow 経由でタイムラインが再構成される。
