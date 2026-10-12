@@ -37,6 +37,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ユーザーが指定した LAN 内のリレー（NIP-46 の bunker 等）に接続するために使用します。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>画像を写真ライブラリに保存するために使用します。</string>
 	<key>UIApplicationSceneManifest</key>

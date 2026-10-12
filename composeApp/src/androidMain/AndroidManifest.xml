@@ -13,11 +13,13 @@
         </intent>
     </queries>
 
+    <!-- [#822] ws://（平文の WebSocket）のリレーへ繋ぐため、network security config で平文を許可する。 -->
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <!-- フォルダブル/大画面対応: リサイズ可能にして折り↔展開で幅が変わるようにする -->

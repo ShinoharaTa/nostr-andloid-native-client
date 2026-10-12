@@ -39,6 +39,14 @@ targets:
         # 暗号の輸出コンプライアンス: 標準TLSと Nostr 署名(secp256k1)のみで独自暗号は持たない。
         # false にすると TestFlight アップロード毎の輸出コンプライアンス質問を省ける（法的宣言）。
         ITSAppUsesNonExemptEncryption: false
+        # [#822] ws://（平文の WebSocket）のリレーへ繋ぐため ATS を緩める。ktor の Darwin エンジンは
+        # NSURLSession なので ATS に従う。リレーはユーザーが指定し、ws:// はどのホストでも許す決定（#822）。
+        # NSAllowsLocalNetworking は足さない: iOS 10 以降はこれがあると NSAllowsArbitraryLoads が無視され
+        # （NO 扱い）、ローカル以外の ws:// が通らなくなる。ArbitraryLoads はローカルのリレーも含む。
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # [#822] LAN 内のリレーへ繋ぐときに iOS 14 以降が出す「ローカルネットワーク」許可ダイアログの説明文。
+        NSLocalNetworkUsageDescription: ユーザーが指定した LAN 内のリレー（NIP-46 の bunker 等）に接続するために使用します。
         # 画像を写真ライブラリへ保存する際の利用目的（未設定だと保存時にクラッシュ）。追加のみ。
         NSPhotoLibraryAddUsageDescription: 画像を写真ライブラリに保存するために使用します。
         # Compose Multiplatform 必須: 未指定だと PlistSanityCheck が例外を投げてクラッシュする

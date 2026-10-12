@@ -24,6 +24,7 @@
     <string name="section_signer">Account</string>
     <string name="section_relays">Relays</string>
     <string name="section_dm_relays">DM relays</string>
+    <string name="relay_ws_insecure_note">ws:// is an unencrypted connection. Use it only for relays on this device or on a trusted LAN.</string>
     <string name="section_media">Media servers</string>
     <string name="section_reaction">Reaction</string>
     <string name="section_appearance">Appearance</string>
