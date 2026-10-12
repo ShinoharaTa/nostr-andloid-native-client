@@ -47,6 +47,8 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.DetailRoute
+import app.nostrdeck.state.detailRouteForEvent
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDensity
 import app.nostrdeck.theme.DeckDimens
@@ -85,7 +87,7 @@ fun NotificationsScreen(state: DeckState) {
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
             items, rememberLazyListState(),
-            onNoticeClick = { n -> openNotificationTarget(state, n) },
+            onNoticeClick = rememberNotificationOpener(state),  // [#837]
             onActorClick = { pk -> state.openProfile(pk) },
             // [#254] 引っ張って更新: REQ を張り直してリレーから取り直す。
             onRefresh = { repo.unsubscribeColumn("notifications"); repo.subscribeNotifications("notifications") },
@@ -94,14 +96,23 @@ fun NotificationsScreen(state: DeckState) {
 }
 
 /**
- * 通知の対象を開く。DM は相手との会話、対象が kind:42 ならパブリックチャットのそのチャンネル、
+ * 通知の対象を開く。DM は相手との会話、対象が kind:42 / 40（パブリックチャット）ならルームを重ね、
  * 他はスレッドを開く。
  *
  * [#419] 通知の行をタップしたときの**唯一の振り分け口**。通知画面・通知カラムだけでなく、
  * フォロー中TLに混ざった通知もここを通す（以前は TL 側が id だけ受け取って常にスレッドを
  * 開いており、DM は本文がスレッドに出て、チャンネルの通知もルームではなくスレッドが開いていた）。
+ *
+ * [#837] チャットの発言（kind:42）は「パブリックチャット」の画面へ移らず、本文のリンク（#791）と同じく
+ * ルームを詳細に重ねて発言の位置へ送る（戻ると通知へ戻る）。対象が手元に無く kind が分からなければ
+ * [openEvent]（本文リンクと同じ判定: 手元のイベント → チャンネル一覧 → 取得して待つ）に任せる。
+ * [openEvent] が無ければ（プレビュー等）従来どおりスレッド。
  */
-internal fun openNotificationTarget(state: DeckState, n: NotificationUi) {
+internal fun openNotificationTarget(
+    state: DeckState,
+    n: NotificationUi,
+    openEvent: ((eventId: String) -> Unit)? = null,
+) {
     // [#419] DM 通知は相手との会話を開く（対象ノートが無いので id でスレッドを開いても空になる）。
     if (n.kind == NotificationKind.DM) {
         state.clearDetail()
@@ -109,17 +120,30 @@ internal fun openNotificationTarget(state: DeckState, n: NotificationUi) {
         state.navDest = app.nostrdeck.state.NavDest.DM
         return
     }
-    openNotificationTarget(state, n.targetNoteId ?: n.id, n.targetChannelId)
+    notificationRoute(n)?.let { state.openDetail(it); return }
+    val targetId = n.targetNoteId ?: n.id
+    if (openEvent != null) openEvent(targetId) else state.openThreadDetail(targetId)
 }
 
-private fun openNotificationTarget(state: DeckState, noteId: String, channelId: String?) {
-    if (channelId != null) {
-        state.clearDetail()
-        state.navDest = app.nostrdeck.state.NavDest.CHANNELS
-        state.publicChatRoom = channelId
-    } else {
-        state.openThreadDetail(noteId)
-    }
+/**
+ * [#837] 通知の行の開き先のうち、[NotificationUi] だけで決まるもの。決まらなければ null（取得して決める）。
+ *  - 対象が無い（メンション等）… 通知そのもののスレッド（通知は kind:1 / 1111 等で、チャンネルではない）
+ *  - 対象が kind:42 … root のチャンネルのルーム。発言の位置へ送って強調する（[NotificationUi.targetChannelId]）
+ *  - 対象が手元にある … その kind で決める（kind:40 はそのルーム、それ以外はスレッド。[detailRouteForEvent]）
+ *  - 対象が手元に無い … null
+ */
+internal fun notificationRoute(n: NotificationUi): DetailRoute? {
+    val targetId = n.targetNoteId ?: return DetailRoute.ThreadView(n.id)
+    n.targetChannelId?.let { return DetailRoute.ChannelRoomView(it, messageId = targetId) }
+    val target = n.targetNote?.event?.takeIf { it.id == targetId } ?: return null
+    return detailRouteForEvent(targetId, target.kind, target.tags)
+}
+
+/** [#837] 通知の行のタップ。kind が手元で分からない対象は本文リンクと同じ経路（[LocalNoteNav]）で開き先を決める。 */
+@Composable
+internal fun rememberNotificationOpener(state: DeckState): (NotificationUi) -> Unit {
+    val openEvent = LocalNoteNav.current?.onEvent
+    return remember(state, openEvent) { { n -> openNotificationTarget(state, n, openEvent) } }
 }
 
 /**
@@ -149,9 +173,10 @@ fun NotificationsColumn(
     }
     val all = remember(spec.id) { repo.notificationsFeed() }.collectAsState().value
     val items = if (revealMuted || mute == null) all else all.filterNot { mute.muted(it) }
+    val openNotice = rememberNotificationOpener(state)  // [#837]
     // [#222] 通知カラムも j/k 選択と Enter/o（対象を開く）に対応する。
     val selIdx = kbNotificationSelection(state, spec.id, items.size, listState) { i ->
-        items.getOrNull(i)?.let { openNotificationTarget(state, it) }
+        items.getOrNull(i)?.let(openNotice)
     }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -163,7 +188,7 @@ fun NotificationsColumn(
         NotificationsBody(
             items, listState,
             selectedIndex = selIdx,
-            onNoticeClick = { n -> openNotificationTarget(state, n) },
+            onNoticeClick = openNotice,
             onActorClick = { pk -> state.openProfile(pk) },
             // [#254] 引っ張って更新: REQ を張り直してリレーから取り直す。
             onRefresh = { repo.unsubscribeColumn(spec.id); repo.subscribeNotifications(spec.id) },

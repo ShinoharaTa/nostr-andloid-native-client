@@ -557,7 +557,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
-                        onNoticeClick = { n -> openNotificationTarget(state, n) },  // [#419]
+                        onNoticeClick = rememberNotificationOpener(state),  // [#419][#837]
                         onRefresh = { repo!!.refreshFollowing(spec.id) },  // [#53] プルリフレッシュ
                         selectedIndex = selIdx,
                         onChannelClick = openChannel,  // [#793]
@@ -586,7 +586,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     FollowingFeedColumn(
                         spec, entries, modifier, listState, menu = menu,
                         onNoteClick = openThread, onReply = doReply, onQuote = doQuote, onAuthorClick = openProfile,
-                        onNoticeClick = { n -> openNotificationTarget(state, n) },  // [#419]
+                        onNoticeClick = rememberNotificationOpener(state),  // [#419][#837]
                         selectedIndex = selIdx,
                     )
                 }

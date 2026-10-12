@@ -85,8 +85,8 @@ fun detailRouteForKindHint(link: EventLink): DetailRoute? = when (val kind = lin
  * [#791] 本文リンクの開き先を決める。nevent の kind → 手元のイベント → 手元のチャンネル一覧 → 取得して待つ、の順。
  * どれでも分からなければスレッド（従来どおり）。取得の待ち時間の上限は [fetch] 側が持つ。
  *
- * kind:40 は取り込みで event テーブルに保存しないので、手元のイベントには出てこない。HTTP 由来の
- * チャンネル一覧（channel テーブル）に id があればチャンネルとみなす（[isKnownChannel]）。
+ * kind:40 が手元のイベント（event テーブル）にあるのは、リレーから取り込んだものだけ（[#839] から保存する）。
+ * HTTP 由来のチャンネル一覧（channel テーブル）の分は無いので、そこに id があればチャンネルとみなす（[isKnownChannel]）。
  */
 suspend fun resolveEventLinkRoute(
     link: EventLink,
