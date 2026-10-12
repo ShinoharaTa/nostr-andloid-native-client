@@ -243,6 +243,9 @@
     <string name="relay_status_empty">接続中のリレーはありません</string>
     <string name="relay_state_connected">接続</string>
     <string name="relay_state_connecting">接続中</string>
+    <string name="conn_monitor_drop_fmt">切断 ×%1$d（%2$s前）%3$s %4$s</string>
+    <string name="conn_monitor_connect_fail_fmt">接続失敗 ×%1$d（%2$s前）%3$s</string>
+    <string name="conn_monitor_reconnect_fmt">再接続 %1$s</string>
     <string name="relay_state_disconnected">切断</string>
     <string name="relayset_all">未選択＝全リレーから取得</string>
     <string name="relayset_count_fmt">%1$d 件のリレーへ配信</string>

@@ -538,7 +538,7 @@ class EventRepository(
         scope.launch(relayDispatcher) {
             relays.values.forEach {
                 it.start()   // pause 済みなら再開（購読中の REQ は接続時に自動で張り直される）。未 pause なら no-op
-                it.wake()    // バックオフ待機中なら即リトライ
+                it.wake()    // バックオフ待機中・[#849] ぶら下がった接続試行中なら即リトライ（後退も 1 秒へ戻る）
             }
         }
         retryUnsent()   // [#423] 未送信を送り直す

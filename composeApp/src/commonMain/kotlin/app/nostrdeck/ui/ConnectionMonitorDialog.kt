@@ -95,6 +95,28 @@ fun ConnectionMonitorDialog(onDismiss: () -> Unit) {
                             "  ⬇ ${formatBytes(r.bytesIn)} · ${r.eventsIn}ev · ⬆ ${formatBytes(r.bytesOut)}",
                             color = DeckColors.Text2,
                         )
+                        // [#849] 直近の切断の理由（種類・経過・回数・詳細）と、(再)接続にかかった時間・接続失敗。
+                        r.lastDisconnect?.let { d ->
+                            MonitorLine(
+                                "  " + stringResource(
+                                    Res.string.conn_monitor_drop_fmt,
+                                    r.disconnectCount, formatDuration(now - d.atSec), d.kind.name, d.detail,
+                                ).trimEnd(),
+                                color = DeckColors.Text2,
+                            )
+                        }
+                        val reconnect = if (r.lastReconnectMs >= 0) {
+                            stringResource(Res.string.conn_monitor_reconnect_fmt, formatMillis(r.lastReconnectMs))
+                        } else null
+                        val connectFail = r.lastConnectFailure?.let { f ->
+                            stringResource(
+                                Res.string.conn_monitor_connect_fail_fmt,
+                                r.connectFailureCount, formatDuration(now - f.atSec), f.detail,
+                            ).trimEnd()
+                        }
+                        if (reconnect != null || connectFail != null) {
+                            MonitorLine("  " + listOfNotNull(reconnect, connectFail).joinToString(" · "), color = DeckColors.Text2)
+                        }
                         r.subs.forEach { sub ->
                             MonitorLine(
                                 "    ${sub.subId}: ${formatBytes(sub.bytes)} · ${sub.events}ev",
@@ -178,6 +200,13 @@ private fun formatDuration(sec: Long): String {
         s >= 60 -> "${s / 60}m${s % 60}s"
         else -> "${s}s"
     }
+}
+
+/** [#849] ミリ秒を 850ms / 4.2s / 1m3s の形に。ロケール非依存（開発者向け表示）。 */
+private fun formatMillis(ms: Long): String = when {
+    ms < 1000 -> "${ms}ms"
+    ms < 60_000 -> "${ms / 1000}.${(ms % 1000) / 100}s"
+    else -> formatDuration(ms / 1000)
 }
 
 /** REQ フィルタの1行要約（開発者向け・ロケール非依存の記法）。 */
