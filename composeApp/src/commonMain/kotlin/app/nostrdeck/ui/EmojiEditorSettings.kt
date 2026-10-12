@@ -132,6 +132,7 @@ fun EmojiEditorSettings() {
                     if (url != null && code != null) {
                         draft = draft.filterNot { it.shortcode == code } + CustomEmoji(code, url)
                         newCode = ""
+                        makerState.saveLast()   // [#834] 使った（下書きに追加）ので、文字色・縁取り・フォントを覚える
                     }
                 },
             )

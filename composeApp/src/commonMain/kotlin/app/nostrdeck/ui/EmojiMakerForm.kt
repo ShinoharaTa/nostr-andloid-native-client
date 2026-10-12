@@ -69,10 +69,14 @@ import nostr_deck_client.composeapp.generated.resources.emoji_maker_text_label
 /**
  * [#775] 文字から絵文字を作るフォームの状態。入力（[input]）と、今の入力の画像 URL・プレビューを持つ。
  * 画像は Web と同じサーバーが作る（[EmojiMaker.imageUrl]）。[ready] は「今の入力のプレビューが届いた」（送れる・足せる）。
+ * [#834] [initial] は前回の設定（[rememberEmojiMakerState] が読む）。[onSaveLast] は [saveLast] の保存先。
  */
 @Stable
-class EmojiMakerState {
-    var input by mutableStateOf(EmojiMaker.Input())
+class EmojiMakerState(
+    initial: EmojiMaker.Input = EmojiMaker.Input(),
+    private val onSaveLast: (String) -> Unit = {},
+) {
+    var input by mutableStateOf(initial)
 
     val parsed: Parsed get() = EmojiMaker.parse(input)
 
@@ -83,10 +87,26 @@ class EmojiMakerState {
     internal var preview by mutableStateOf<Pair<String, EventRepository.EmojiImage>?>(null)
 
     val ready: Boolean get() = url != null && preview?.first == url && preview?.second is EventRepository.EmojiImage.Ok
+
+    /**
+     * [#834] 今の文字色・縁取り・フォントを端末に覚える（Web の `remember()`）。テキストは覚えない。
+     * 絵文字を「使った」とき（リアクションを送った・下書きに追加した）に呼ぶ。入力を変えただけでは呼ばない。
+     * 入力が正しくなければ何もしない（使えない入力は覚えない）。
+     */
+    fun saveLast() {
+        val ok = parsed as? Parsed.Ok ?: return
+        onSaveLast(EmojiMaker.encodeLast(ok.params))
+    }
 }
 
+/** [#834] 前回の設定（端末ごと。[EventRepository.loadEmojiMakerLast]）があればそれを初期値にする。無い・壊れていれば既定。 */
 @Composable
-fun rememberEmojiMakerState(): EmojiMakerState = remember { EmojiMakerState() }
+fun rememberEmojiMakerState(): EmojiMakerState {
+    val repo = LocalRepository.current
+    return remember(repo) {
+        EmojiMakerState(EmojiMaker.decodeLast(repo?.loadEmojiMakerLast())) { repo?.saveEmojiMakerLast(it) }
+    }
+}
 
 /** プレビューの背景（明るい地と暗い地。両方のテーマでの見え方。Web と同じ色）。 */
 private val PreviewLight = Color(0xFFFFFFFF)
