@@ -1,7 +1,8 @@
-- Make emoji from text in the reaction picker and react with them
-- New "Statuses" column: Now Playing and statuses from people you follow
-- Public chat: links open the room, the list can be a column, friends' messages show in your timeline
-- Tap your icon for a menu (profile, DM, favs, bookmarks, mute, emoji, hashtags, relays, settings); Messages tab is now Public Chat
-- Settings split into Nostr and app settings
-- Paste a copied image to attach it
-- Columns fetch only from your read relays
+- Profiles show Now Playing and status
+- Spotify links show as cards with title and artwork
+- Chat messages in notifications open the room at that message; channel quotes show as channel cards
+- Emoji maker remembers your last color, outline and font
+- Faster relay reconnection on return; iOS pauses relays after 5 min away
+- ws:// relays (e.g. local ones) work for relays and Bunker
+- Open source licenses in Settings > About this app
+- Saving your emoji list keeps details from other apps
