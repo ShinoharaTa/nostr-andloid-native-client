@@ -227,7 +227,10 @@ private fun ColumnScope.MakeEmojiPane(state: EmojiMakerState, onBack: () -> Unit
         enabled = state.ready && url != null && shortcode != null,
         modifier = Modifier.fillMaxWidth(),
         onClick = {
-            if (url != null && shortcode != null) onReact(MadeEmoji(shortcode, url, autoName = !typed, save = save))
+            if (url != null && shortcode != null) {
+                state.saveLast()   // [#834] 使った（リアクション・リストへの保存）ので、文字色・縁取り・フォントを覚える
+                onReact(MadeEmoji(shortcode, url, autoName = !typed, save = save))
+            }
         },
     )
 }
