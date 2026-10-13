@@ -26,6 +26,13 @@
     <string name="section_appearance">表示</string>
     <string name="section_data">データ・キャッシュ</string>
     <string name="section_about">このアプリについて</string>
+    <!-- [#840] オープンソースライセンス（設定 → このアプリについて） -->
+    <string name="section_licenses">オープンソースライセンス</string>
+    <string name="licenses_open_sub">このアプリが使っているライブラリとそのライセンス</string>
+    <string name="licenses_desc">Nostrism は、以下のオープンソースソフトウェアを利用しています。それぞれのライセンスに従い、著作権表示とライセンス文を掲載します（ライセンス文は原文の英語のままです）。この一覧は、アプリの依存からビルドのたびに生成しています。</string>
+    <string name="licenses_count_fmt">%1$s 件のライブラリ</string>
+    <string name="licenses_load_failed">ライセンスの一覧を読み込めませんでした。</string>
+    <string name="licenses_no_text_fmt">ライセンス文は同梱していません。%1$s を参照してください。</string>
     <string name="section_mute">ミュート</string>
     <string name="section_favs">ふぁぼ</string>
     <string name="section_bookmarks">ブックマーク</string>

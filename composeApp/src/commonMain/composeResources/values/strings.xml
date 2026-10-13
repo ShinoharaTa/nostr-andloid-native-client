@@ -30,6 +30,13 @@
     <string name="section_appearance">Appearance</string>
     <string name="section_data">Data &amp; cache</string>
     <string name="section_about">About this app</string>
+    <!-- [#840] open source licenses (Settings → About this app) -->
+    <string name="section_licenses">Open source licenses</string>
+    <string name="licenses_open_sub">Libraries this app uses and their licenses</string>
+    <string name="licenses_desc">Nostrism uses the open source software listed below. In accordance with their licenses, their copyright notices and license texts are shown here (license texts are in the original English). This list is generated from the app's dependencies at every build.</string>
+    <string name="licenses_count_fmt">%1$s libraries</string>
+    <string name="licenses_load_failed">Couldn't load the list of licenses.</string>
+    <string name="licenses_no_text_fmt">The license text is not bundled. See %1$s</string>
     <string name="section_mute">Mute</string>
     <string name="section_favs">Favorites</string>
     <string name="section_bookmarks">Bookmarks</string>
