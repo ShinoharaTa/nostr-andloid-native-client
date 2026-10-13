@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -83,11 +84,25 @@ fun BoxScope.FeedTopPill(count: Int, listState: LazyListState, onClick: () -> Un
     }
 }
 
-/** モノクロのピル本体（上部中央）。 */
+/**
+ * [#858] チャット（最新が下）の下端に出すピル。[FeedTopPill] と同じ判定で、置き場所と矢印だけ逆にする。
+ * チャットの一覧は reverseLayout なので、index 0（最新）が下端にあり、[rememberNewItemsCount] の「先頭」がそのまま下端になる。
+ */
 @Composable
-private fun BoxScope.Pill(label: String, onClick: () -> Unit) {
+fun BoxScope.ChatBottomPill(count: Int, listState: LazyListState, onClick: () -> Unit) {
+    val scrolledAway = rememberScrolledAway(listState)
+    when {
+        count > 0 -> Pill(stringResource(Res.string.pill_new_fmt, count), onClick, atBottom = true)
+        scrolledAway -> Pill(stringResource(Res.string.pill_back_latest), onClick, atBottom = true)
+    }
+}
+
+/** モノクロのピル本体（フィードは上部中央・上向き、[atBottom] ならチャットの下端中央・下向き）。 */
+@Composable
+private fun BoxScope.Pill(label: String, onClick: () -> Unit, atBottom: Boolean = false) {
     Row(
-        Modifier.align(Alignment.TopCenter).padding(top = DeckSpace.Sm)
+        Modifier.align(if (atBottom) Alignment.BottomCenter else Alignment.TopCenter)
+            .padding(top = if (atBottom) 0.dp else DeckSpace.Sm, bottom = if (atBottom) DeckSpace.Sm else 0.dp)
             .clip(RoundedCornerShape(DeckRadius.Full))
             .background(DeckColors.Text)
             .clickable(onClick = onClick)
@@ -95,7 +110,10 @@ private fun BoxScope.Pill(label: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        Icon(Icons.Outlined.ArrowUpward, null, tint = DeckColors.Bg, modifier = Modifier.padding(end = DeckSpace.Xs).size(15.dp))
+        Icon(
+            if (atBottom) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward, null,
+            tint = DeckColors.Bg, modifier = Modifier.padding(end = DeckSpace.Xs).size(15.dp),
+        )
         Text(
             label, color = DeckColors.Bg, fontSize = DeckType.Caption, fontWeight = DeckWeight.Strong,
         )
