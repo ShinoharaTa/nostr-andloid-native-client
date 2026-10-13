@@ -2,6 +2,7 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.background
 import app.nostrdeck.i18n.stringResource
+import nostr_deck_client.composeapp.generated.resources.chat_room_unnamed
 import nostr_deck_client.composeapp.generated.resources.media_video_badge
 import nostr_deck_client.composeapp.generated.resources.Res
 import androidx.compose.material3.Icon
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.removeUrls
 import app.nostrdeck.model.videoUrlsIn
@@ -43,6 +46,10 @@ import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
+import app.nostrdeck.state.EventLink
+import app.nostrdeck.state.KIND_CHANNEL_CREATE
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** [M8-repost] 引用リポスト（NIP-18 q タグ）の埋め込みカード。著者名 + 切り詰めた本文を枠内に。モノクロ。 */
 @Composable
@@ -52,6 +59,11 @@ fun QuotedNoteCard(
     // [#298] 1行モード。通知のリアクション/Zap 行で使う（本文1行・メディアは出さない）。
     compact: Boolean = false,
 ) {
+    // [#839] 引用元がチャンネル作成（kind:40）なら、content の JSON ではなくチャンネルのカードにする。
+    if (note.event.kind == KIND_CHANNEL_CREATE) {
+        ChannelQuoteCard(note.event, modifier)
+        return
+    }
     // [#124] カードタップで引用元イベントを開く（kind:1=スレッド / kind:30023=記事ビューワー）。
     // 従来はタップ不能で、nevent 参照の記事や引用元スレッドへ辿る導線が無かった。
     val nav = LocalNoteNav.current
@@ -138,6 +150,47 @@ fun QuotedNoteCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * [#839] チャンネル作成（kind:40）の引用カード。チャンネル一覧の行と同じ画像（無ければ頭文字）・名前・説明 1 行。
+ *  - 中身は手元のチャンネル一覧（kind:41 の更新が載る）を優先し、無ければ kind:40 の content
+ *    （ルームの詳細 [ChannelRoomDetail] と同じ解決）。名前が空なら「パブリックチャット」。
+ *  - タップでそのチャンネルのルームを詳細に重ねる（#791 の経路。kind を添えるので取得を待たない）。
+ */
+@Composable
+internal fun ChannelQuoteCard(created: NostrEvent, modifier: Modifier = Modifier) {
+    val nav = LocalNoteNav.current
+    val repo = LocalRepository.current
+    val channelId = created.id
+    val listed = if (repo != null) {
+        remember(repo, channelId) {
+            repo.channelsFlow().map { list -> list.firstOrNull { it.id == channelId } }.distinctUntilChanged()
+        }.collectAsState(null).value
+    } else null
+    val fromCreate = remember(created) { channelFromCreateEvent(created) }
+    val channel = listed ?: fromCreate
+    val unnamed = stringResource(Res.string.chat_room_unnamed)
+    val name = channel?.name?.ifBlank { null } ?: unnamed
+    val about = channel?.about.orEmpty().trim()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(DeckRadius.Md))
+            .clickable(enabled = nav != null) {
+                nav?.onEventLink?.invoke(EventLink(channelId, kind = KIND_CHANNEL_CREATE))
+            }
+            .background(DeckColors.Surface2, RoundedCornerShape(DeckRadius.Md))
+            .padding(DeckDensity.NoteGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChannelIcon(name, channel?.pictureUrl)
+        Spacer(Modifier.width(DeckSpace.Md))
+        Column(Modifier.weight(1f)) {
+            ChannelNameText(name)
+            if (about.isNotEmpty()) ChannelSubText(about)
         }
     }
 }
