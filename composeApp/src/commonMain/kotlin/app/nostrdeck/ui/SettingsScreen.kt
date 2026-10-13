@@ -93,6 +93,8 @@ import app.nostrdeck.signer.NosskeyHost
 import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
+import app.nostrdeck.signer.parseBunkerUri
+import app.nostrdeck.nostr.RelayUrl
 import app.nostrdeck.state.DeckState
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.embed_ogp
@@ -712,12 +714,13 @@ private fun DmRelaySettings() {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DeckTextField(value = input, onValueChange = { input = it }, placeholder = "wss://…", modifier = Modifier.weight(1f))
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton(stringResource(Res.string.common_add), enabled = input.isNotBlank(), onClick = {
-            val next = (relays + input.trim()).distinct()
+        DeckButton(stringResource(Res.string.common_add), enabled = RelayUrl.isValid(input), onClick = {
+            val next = (relays + RelayUrl.normalize(input)).distinct()
             scope.launch { repo.publishDmRelays(next) }
             input = ""
         })
     }
+    if (RelayUrl.isInsecure(input)) InsecureRelayNote()   // [#822]
     Spacer(Modifier.size(DeckSpace.Md))
     HorizontalDivider(color = DeckColors.Border)
 
@@ -1848,6 +1851,9 @@ private fun Nip46Login() {
             placeholder = "bunker://…",
             modifier = Modifier.fillMaxWidth(),
         )
+        // [#822] relay=ws://…（Citrine 等の端末内 / LAN のリレー）を含む bunker URI には注意書きを添える。
+        val insecureBunker = remember(uri) { parseBunkerUri(uri)?.relays?.any(RelayUrl::isInsecure) == true }
+        if (insecureBunker) InsecureRelayNote()
         Spacer(Modifier.size(DeckSpace.Sm))
         DeckButton(if (busy) stringResource(Res.string.connecting) else stringResource(Res.string.nip46_connect_bunker), enabled = !busy && uri.trim().startsWith("bunker://"), onClick = {
             busy = true; error = null
@@ -1976,8 +1982,10 @@ private fun RelaySettings() {
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(DeckSpace.Sm))
-        DeckButton(stringResource(Res.string.common_add), onClick = { repo.addRelay(input); input = "" }, enabled = input.isNotBlank())
+        // [#822] ws:// / wss:// として読めるものだけ追加する（ws:// は端末内・LAN のリレー向け。下に注意書き）。
+        DeckButton(stringResource(Res.string.common_add), onClick = { repo.addRelay(RelayUrl.normalize(input)); input = "" }, enabled = RelayUrl.isValid(input))
     }
+    if (RelayUrl.isInsecure(input)) InsecureRelayNote()
 
     Spacer(Modifier.size(DeckSpace.Md))
     // 保存 = kind:10002 をネットワークへ公開する外向き操作なので確認を挟む。
@@ -2089,6 +2097,13 @@ private fun RelaySettings() {
             onDismiss = { confirmSave = false },
         )
     }
+}
+
+/** [#822] `ws://` のリレーを入れたときだけ出す 1 行の注意書き（暗号化されない接続である旨）。 */
+@Composable
+private fun InsecureRelayNote() {
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(stringResource(Res.string.relay_ws_insecure_note), color = DeckColors.Warn, fontSize = DeckType.Label)
 }
 
 /** リレー行の Read/Write チェック（ラベル + Checkbox・モノクロ）。 */
