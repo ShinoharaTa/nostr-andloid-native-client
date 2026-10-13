@@ -681,6 +681,14 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="chat_input_placeholder">Type a message…</string>
     <string name="send">Send</string>
     <string name="channel_pin">Pin</string>
+    <!-- [#421] 参加中のルーム（NIP-51 kind:10005） -->
+    <string name="channel_joined_section">Joined</string>
+    <string name="channel_all_section">All rooms</string>
+    <string name="channel_join">Join</string>
+    <string name="channel_leave">Leave</string>
+    <string name="channel_joined_toast">Joined the room</string>
+    <string name="channel_left_toast">Left the room</string>
+    <string name="channel_join_failed">Couldn't save your joined rooms</string>
     <string name="search_hint_add">Add words / #tags to search (multiple conditions are OR-ed)</string>
     <string name="search_placeholder">Word / #tag</string>
     <string name="search_syntax_hint">Space-separated = multiple; OR to combine</string>

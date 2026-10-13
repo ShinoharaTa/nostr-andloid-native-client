@@ -677,6 +677,14 @@
     <string name="chat_input_placeholder">メッセージを入力…</string>
     <string name="send">送信</string>
     <string name="channel_pin">ピン留め</string>
+    <!-- [#421] 参加中のルーム（NIP-51 kind:10005） -->
+    <string name="channel_joined_section">参加中</string>
+    <string name="channel_all_section">すべてのルーム</string>
+    <string name="channel_join">参加する</string>
+    <string name="channel_leave">参加をやめる</string>
+    <string name="channel_joined_toast">ルームに参加しました</string>
+    <string name="channel_left_toast">ルームの参加をやめました</string>
+    <string name="channel_join_failed">参加中のルームを保存できませんでした</string>
     <string name="search_hint_add">単語・#タグを追加して検索してください（複数は OR で並びます）</string>
     <string name="search_placeholder">単語 / #タグ</string>
     <string name="search_syntax_hint">スペース区切りで複数・OR で並ぶ</string>
