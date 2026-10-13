@@ -255,6 +255,9 @@
     <string name="relay_status_empty">No connected relays</string>
     <string name="relay_state_connected">Connected</string>
     <string name="relay_state_connecting">Connecting</string>
+    <string name="conn_monitor_drop_fmt">Drop ×%1$d (%2$s ago) %3$s %4$s</string>
+    <string name="conn_monitor_connect_fail_fmt">Connect failed ×%1$d (%2$s ago) %3$s</string>
+    <string name="conn_monitor_reconnect_fmt">Reconnect %1$s</string>
     <string name="relay_state_disconnected">Disconnected</string>
     <string name="relayset_all">None selected = fetch from all relays</string>
     <string name="relayset_count_fmt">Publish to %1$d relays</string>
