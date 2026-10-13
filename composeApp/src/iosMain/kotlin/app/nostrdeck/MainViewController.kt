@@ -46,7 +46,12 @@ private val repository: EventRepository by lazy {
     app.nostrdeck.wallet.NwcManager.restore()
     val db = createDatabase(DriverFactory())
     EventRepository(db, appScope, DEFAULT_RELAYS).apply { start() }
+        // [#848] 前面・背面の切り替えをリレー接続につなぐ（Android の MainActivity.onStart / onStop と対）。
+        .also { repo -> appLifecycle = AppLifecycle(repo).apply { register() } }
 }
+
+// [#848] 前面・背面の通知の受け口。リポジトリと同じくアプリで1つ、生存中ずっと持つ。
+private var appLifecycle: AppLifecycle? = null
 
 // 左端エッジスワイプ戻るのターゲット。ジェスチャは target を弱参照するため、
 // GC されないようトップレベルで保持する（アプリ生存中ずっと有効）。
