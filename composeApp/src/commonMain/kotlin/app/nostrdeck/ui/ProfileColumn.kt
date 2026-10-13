@@ -157,6 +157,8 @@ private fun ProfileHeaderCard(
                 color = DeckColors.Text3, fontSize = DeckType.Label,
             )
         }
+        // [#835] 本人のステータス（NIP-38）。このカードは自己紹介を出さないので npub の下。無ければ何も出さない。
+        ProfileStatuses(pubkey, Modifier.padding(top = DeckSpace.Md))
     }
 }
 

@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,6 +71,7 @@ import app.nostrdeck.model.buildListColumn
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.UserStatuses
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -133,7 +135,12 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
         val subId = "profile_overlay_$pubkey"
         // [#134] リポスト(kind:6/16)も購読して投稿タブに混ぜる。
         repo?.subscribeColumn(subId, ReqFilter(kinds = listOf(0, 1, 6, 16, 10002), authors = listOf(pubkey)))
-        onDispose { repo?.unsubscribeColumn(subId) }
+        // [#835] 本人のステータス（NIP-38。ヘッダの自己紹介の下）。購読 id はプロフィールの購読と分ける。
+        repo?.subscribeProfileStatuses("$subId~status", pubkey)
+        onDispose {
+            repo?.unsubscribeColumn(subId)
+            repo?.unsubscribeColumn("$subId~status")
+        }
     }
 
     val profile = repo?.let { remember(pubkey) { it.profileFlow(pubkey) } }?.collectAsState(null)?.value
@@ -292,6 +299,9 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
             "profile_overlay_$pubkey",
             ReqFilter(kinds = listOf(0, 1, 6, 16, 10002), authors = listOf(pubkey)),
         )
+        // [#835] ステータスも取り直す（Web の refresh と同じ）。
+        repo?.unsubscribeColumn("profile_overlay_$pubkey~status")
+        repo?.subscribeProfileStatuses("profile_overlay_$pubkey~status", pubkey)
         Unit
     }
     // [#384] タブごとに中身の型が違う（ノート / 記事）ので、本文は LazyListScope の
@@ -833,6 +843,8 @@ private fun ProfileHeaderCard(
                 // bio もリッチテキスト（URL/メンション/ハッシュタグをリンク化）。
                 Text(noteAnnotated(it), color = DeckColors.Text, fontSize = DeckType.Sub, lineHeight = 19.sp)
             }
+            // [#835] 本人のステータス（NIP-38）。無ければ何も出さない（余白も出さない）。
+            ProfileStatuses(pubkey, Modifier.padding(top = DeckSpace.Md))
             profile?.lud16?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(DeckSpace.Sm))
                 Text("⚡ $it", color = DeckColors.Zap, fontSize = DeckType.Caption, maxLines = 1)
@@ -893,6 +905,35 @@ private fun ProfileHeaderCard(
         )
     }
 }
+
+/**
+ * [#835] 本人のステータス（NIP-38 kind:30315。Web #821 の ProfileStatuses と同じ）。有効なもの（[UserStatuses.isVisible]）を
+ * general → music の順に各 1 件、種類の印・本文・リンク行・残り時間だけ出す（[StatusBody]。アバター・名前・リンクカードは出さない）。
+ * 無ければ何も出さない（余白も出さない）。期限が過ぎたら時計（10 秒ごと）でその場で消える。
+ * 本人のプロフィールなのでミュートは当てない。購読は呼び出し側（[EventRepository.subscribeProfileStatuses]）。
+ */
+@Composable
+internal fun ProfileStatuses(pubkey: String, modifier: Modifier = Modifier) {
+    val repo = LocalRepository.current ?: return
+    val all by remember(repo, pubkey) { repo.statusesOfFlow(pubkey) }.collectAsState(emptyList())
+    val now by rememberStatusClock()
+    val visible = remember(all, now) { profileStatusesOf(all, now) }
+    if (visible.isEmpty()) return
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        visible.forEach { e -> key(e.id) { StatusBody(e, now, linkCard = false) } }
+    }
+}
+
+/**
+ * [#835] プロフィールのヘッダに出す本人のステータス。種類ごとに最新版（置き換え可能の規則 [UserStatuses.replaces]）を選び、
+ * 表示条件を満たすものだけを general → music の順で返す（最新版が空 = クリアなら、古い版が手元にあっても出さない）。
+ */
+internal fun profileStatusesOf(events: List<NostrEvent>, now: Long): List<NostrEvent> =
+    UserStatuses.Type.entries.mapNotNull { type ->
+        val latest = events.filter { UserStatuses.typeOf(it) == type }
+            .fold(null as NostrEvent?) { cur, e -> if (UserStatuses.replaces(cur, e)) e else cur }
+        latest?.takeIf { UserStatuses.isVisible(it, type, now) }
+    }
 
 /**
  * [#386] そのユーザーが使っているリレー（NIP-65 kind:10002 の `r` タグ）の折りたたみ。
