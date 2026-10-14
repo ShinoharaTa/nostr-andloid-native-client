@@ -707,6 +707,17 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="emoji_cat_nature">Animals &amp; nature</string>
     <string name="emoji_cat_food">Food &amp; drink</string>
     <string name="emoji_cat_activity">Activities &amp; symbols</string>
+    <!-- [#868] 標準の絵文字すべて（emojibase）のカテゴリ名。Web の web_picker_group_* と同じ言い方 -->
+    <string name="emoji_group_smileys_emotion">Smileys &amp; emotion</string>
+    <string name="emoji_group_people_body">People &amp; body</string>
+    <string name="emoji_group_animals_nature">Animals &amp; nature</string>
+    <string name="emoji_group_food_drink">Food &amp; drink</string>
+    <string name="emoji_group_travel_places">Travel &amp; places</string>
+    <string name="emoji_group_activities">Activities</string>
+    <string name="emoji_group_objects">Objects</string>
+    <string name="emoji_group_symbols">Symbols</string>
+    <string name="emoji_group_flags">Flags</string>
+    <string name="picker_typed_emoji">Typed emoji</string>   <!-- [#869] 検索欄に打った絵文字 -->
     <string name="profile_save_failed">Couldn’t save your profile. Check your login/signing and try again.</string>
     <string name="section_emoji">Custom emoji</string>
     <string name="emoji_note">Your custom emoji list (NIP-51). These appear in the reaction picker and can be used in posts as :shortcode:. Emoji from subscribed emoji sets are managed separately and not shown here.</string>
