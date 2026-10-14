@@ -1,7 +1,10 @@
 /**
  * 文字の配置（仕様: docs/emoji-maker.md §5）。1 em = 1000 単位の「単位レイアウト」を作り、
- * インクの bbox の高さが HEIGHT − 2·PAD（縁取りがあればさらに − 2r）になるスケールで中央に置く。
- * 画像の高さは HEIGHT 固定、幅はインクに合わせて MIN_WIDTH 以上（[#863] 長い文字は横長の画像）。
+ * bbox の高さが HEIGHT − 2·PAD（縁取りがあればさらに − 2r）になるスケールで中央に置く。
+ * 画像の高さは HEIGHT 固定、幅はインクに合わせて MIN_WIDTH〜MAX_WIDTH（[#863] 長い文字は横長の画像。
+ * 縦横比 1:10 で頭打ちにし、そのときは幅に収まるように縮める）。
+ * bbox の縦は、インクと「各行に置いた基準の字（REFERENCE_CHAR）の箱」の和にする（「ー」「…」「_」のような
+ * 背の低い字を漢字 1 文字分の高さを基準に描く）。横はインクのまま。
  * 行間は em 箱（ascender − descender）基準、スケールはインク基準。カーニング・合字は使わない。
  */
 import {
@@ -19,6 +22,10 @@ import {
 export const HEIGHT = 128;
 /** 画像の最小の幅（px）。短い文字は HEIGHT × MIN_WIDTH の正方形 */
 export const MIN_WIDTH = 128;
+/** 画像の最大の幅（px）。縦横比 1:10 */
+export const MAX_WIDTH = HEIGHT * 10;
+/** 縦の大きさの基準にする字（全角の「国」）。インクの縦の範囲を各行の箱として bbox に足す */
+export const REFERENCE_CHAR = 0x56fd;
 /** 画像の外周の余白（px） */
 export const PAD = 4;
 /** 行間（em。em 箱の下端から次の行の em 箱の上端まで） */
@@ -47,7 +54,7 @@ export interface Layout {
   ty: number;
   /** 縁取り半径（px）。縁取り無しなら 0 */
   strokeRadius: number;
-  /** 画像の幅（px。MIN_WIDTH 以上） */
+  /** 画像の幅（px。MIN_WIDTH〜MAX_WIDTH） */
   width: number;
   /** 画像の高さ（px。HEIGHT） */
   height: number;
@@ -64,6 +71,10 @@ export function layoutLines(font: FontData, lines: readonly string[], withStroke
   let bx1 = Number.NEGATIVE_INFINITY;
   let by0 = Number.POSITIVE_INFINITY;
   let by1 = Number.NEGATIVE_INFINITY;
+  // 基準の字の縦の範囲（フォント単位・y 上向き）。フォントに無ければインクだけで決める
+  const reference = glyphIndex(font, REFERENCE_CHAR);
+  const refYMax = reference >= 0 ? glyphYMax(font, reference) : Number.NEGATIVE_INFINITY;
+  const refYMin = reference >= 0 ? glyphYMin(font, reference) : Number.POSITIVE_INFINITY;
 
   lines.forEach((line, i) => {
     const baseline = i * pitch;
@@ -91,21 +102,25 @@ export function layoutLines(font: FontData, lines: readonly string[], withStroke
       by0 = Math.min(by0, baseline - glyphYMax(font, glyph));
       by1 = Math.max(by1, baseline - glyphYMin(font, glyph));
     }
+    // インクのある行には基準の字の箱を足す（空白だけの行は数えない）
+    by0 = Math.min(by0, baseline - refYMax);
+    by1 = Math.max(by1, baseline - refYMin);
   });
 
   const bw = bx1 - bx0;
   const bh = by1 - by0;
   if (placements.length === 0 || !(bw > 0) || !(bh > 0)) return null;
 
-  // 縁取りの半径・スケールは高さだけで決める（幅は文字に合わせて伸ばす）
-  const inner = HEIGHT - 2 * PAD;
+  // 縁取りの半径・スケールは高さで決め、幅が MAX_WIDTH を超えるときだけ幅で縮める
+  const innerH = HEIGHT - 2 * PAD;
+  const innerW = MAX_WIDTH - 2 * PAD;
   let strokeRadius = 0;
   if (withStroke) {
-    const fontSize0 = (inner / bh) * UNITS_PER_EM;
+    const fontSize0 = Math.min(innerH / bh, innerW / bw) * UNITS_PER_EM;
     strokeRadius = Math.min(STROKE_MAX_PX, Math.max(STROKE_MIN_PX, Math.round(STROKE_RATIO * fontSize0)));
   }
-  const scale = (inner - 2 * strokeRadius) / bh;
-  const width = Math.max(MIN_WIDTH, Math.ceil(bw * scale + 2 * PAD + 2 * strokeRadius));
+  const scale = Math.min((innerH - 2 * strokeRadius) / bh, (innerW - 2 * strokeRadius) / bw);
+  const width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.ceil(bw * scale + 2 * PAD + 2 * strokeRadius)));
   return {
     placements,
     scale,

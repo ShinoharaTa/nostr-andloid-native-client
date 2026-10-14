@@ -1,6 +1,6 @@
 // /api/emoji.png の生成（server/emoji/render.ts）の CPU 時間を Node で測る。`node scripts/bench-emoji.mjs`。
 // 仕様: docs/emoji-maker.md §8.1。合格ライン: 最悪ケース（4 行 × 10 文字の漢字・縁取りあり）の p95 ≤ 4 ms。
-// [#863] 高さ固定・横長の画像にしてからは、画素が最も多い (d) 1 行 × 10 文字の漢字・縁取りありも最悪ケースとして見る。
+// [#863] 高さ固定・横長の画像にしてからは、画素が多い (d)〜(f)（1 行 × 10 文字。幅は最大 1280）も最悪ケースとして見る。
 // server/emoji/*.ts は Node 24 の型消去で直接読む（拡張子なしの相対 import は下のフックで .ts を補う）。
 // リポジトリルートからでも web/ からでも動く（パスはスクリプトの位置から解決）。
 import { readFileSync } from "node:fs";
@@ -36,6 +36,14 @@ const CASES = [
   { name: "(b) 4 行 × 10 文字・縁取りあり", lines: WORST, color: "000000", stroke: "ffffff" },
   { name: "(c) 英数字 1 行", lines: ["Nostr 2026"], color: "000000", stroke: null },
   { name: "(d) 1 行 × 10 文字・縁取りあり", lines: [WORST[0]], color: "000000", stroke: "ffffff" },
+  // 縁取りありで最も幅が広くなる 1 行（Dela Gothic One は 1280 で頭打ち。他の 2 書体は 1 行 10 文字では 1280 に届かない）
+  { name: "(e) 「一」× 10・縁取りあり", lines: ["一".repeat(10)], color: "000000", stroke: "ffffff" },
+  {
+    name: "(f) 「一」× 10・縁取りなし（1280 で頭打ち）",
+    lines: ["一".repeat(10)],
+    color: "000000",
+    stroke: null,
+  },
 ];
 
 /** PNG の IHDR の幅 × 高さ。 */
