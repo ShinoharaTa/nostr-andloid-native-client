@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.UploadProtocol
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -346,10 +347,12 @@ private fun MediaSettings() {
     var showServers by remember { mutableStateOf(false) }
     var showCompress by remember { mutableStateOf(false) }
 
-    val selectedUrl = servers.firstOrNull { it.enabled != 0L }?.url
+    // [#872] 選択中の送信先は「名前 · 方式」で出す。
+    val selected = servers.firstOrNull { it.enabled != 0L }
     SettingsNavRow(
         label = stringResource(Res.string.media_servers_open),
-        sublabel = selectedUrl ?: stringResource(Res.string.media_no_server),
+        sublabel = selected?.let { "${uploadServerName(it.url)} · ${UploadProtocol.of(it.protocol).label}" }
+            ?: stringResource(Res.string.media_no_server),
         leading = {
             Icon(
                 Icons.Outlined.CloudUpload, contentDescription = null,
@@ -403,19 +406,21 @@ private fun SettingsSheet(title: String, onDismiss: () -> Unit, content: @Compos
 }
 
 /**
- * [M11][#269] アップロード先サーバー（NIP-96/NIP-98）のモーダル。追加・選択・削除・候補。
+ * [M11][#269] アップロード先サーバーのモーダル。追加・選択・削除・候補。
  * シート自体がスクロールするため一覧は Column(forEach)（件数は少ない）。
+ * [#872] 方式（NIP-96 / Blossom）をバッジで出し、手で足すときは方式を選ぶ。候補も方式で分ける。
  */
 @Composable
 private fun MediaServersSheet(repo: app.nostrdeck.data.EventRepository, onDismiss: () -> Unit) {
     val servers by repo.mediaServersFlow().collectAsState(emptyList())
     var input by remember { mutableStateOf("") }
+    var inputProtocol by remember { mutableStateOf(UploadProtocol.NIP96) }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var showMediaPresets by remember { mutableStateOf(false) }
 
-    SettingsSheet(title = stringResource(Res.string.media_title), onDismiss = onDismiss) {
+    SettingsSheet(title = stringResource(Res.string.media_servers_title), onDismiss = onDismiss) {
         Text(
-            stringResource(Res.string.media_desc),
+            stringResource(Res.string.media_servers_desc),
             color = DeckColors.Text3, fontSize = DeckType.Label,
         )
         Spacer(Modifier.size(DeckSpace.Md))
@@ -426,7 +431,28 @@ private fun MediaServersSheet(repo: app.nostrdeck.data.EventRepository, onDismis
                 placeholder = "https://…", modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(DeckSpace.Sm))
-            DeckButton(stringResource(Res.string.common_add), onClick = { repo.addMediaServer(input); input = "" }, enabled = input.isNotBlank())
+            DeckButton(
+                stringResource(Res.string.common_add),
+                onClick = { repo.addMediaServer(input, inputProtocol); input = "" },
+                enabled = input.isNotBlank(),
+            )
+        }
+        Spacer(Modifier.size(DeckSpace.Sm))
+        // [#872] 手で足すサーバーの方式。
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HintText(stringResource(Res.string.media_add_protocol))
+            UploadProtocol.entries.forEach { p ->
+                Spacer(Modifier.size(DeckSpace.Sm))
+                val on = p == inputProtocol
+                Text(
+                    p.label,
+                    color = if (on) DeckColors.Bg else DeckColors.Text2, fontSize = DeckType.Label,
+                    modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Full))
+                        .background(if (on) DeckColors.Accent else DeckColors.Surface2)
+                        .clickable { inputProtocol = p }
+                        .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Xs),
+                )
+            }
         }
 
         Spacer(Modifier.size(DeckSpace.Md))
@@ -452,8 +478,11 @@ private fun MediaServersSheet(repo: app.nostrdeck.data.EventRepository, onDismis
                         unselectedColor = DeckColors.Text3,
                     ),
                 )
-                Text(s.url, color = DeckColors.Text, fontSize = DeckType.Sub,
-                    modifier = Modifier.weight(1f))
+                Text(uploadServerName(s.url), color = DeckColors.Text, fontSize = DeckType.Sub,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Spacer(Modifier.size(DeckSpace.Sm))
+                UploadProtocolBadge(UploadProtocol.of(s.protocol))   // [#872]
+                Spacer(Modifier.weight(1f))
                 DeckTextButton(stringResource(Res.string.common_delete), color = DeckColors.Warn, onClick = { confirmRemove = s.url })
             }
             HorizontalDivider(color = DeckColors.Border)
@@ -468,7 +497,7 @@ private fun MediaServersSheet(repo: app.nostrdeck.data.EventRepository, onDismis
         if (showMediaPresets) {
             Spacer(Modifier.size(DeckSpace.Sm))
             val registeredMedia = servers.map { normalizePresetUrl(it.url) }.toSet()
-            PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it) })
+            PresetPicker(MEDIA_PRESETS, registeredMedia, onAdd = { repo.addMediaServer(it.url, it.protocol ?: UploadProtocol.NIP96) })
         }
     }
 
@@ -2090,7 +2119,7 @@ private fun RelaySettings() {
             else -> {
                 HintText(stringResource(Res.string.relays_recs_empty))
                 Spacer(Modifier.size(DeckSpace.Sm))
-                PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it) })
+                PresetPicker(RELAY_PRESETS, registeredRelays, onAdd = { repo.addRelay(it.url) })
             }
         }
     }

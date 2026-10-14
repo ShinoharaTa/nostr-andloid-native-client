@@ -30,7 +30,7 @@ Kotlin + **Compose Multiplatform**（Android / iOS / iPadOS / macOS）。
 | SQLDelight SSOT（cache-first・マイグレーション 1〜8.sqm） | ✅ |
 | kind:0 バッチ解決 / NIP-65 アウトボックス（リレー設定UI含む） | ✅ |
 | 投稿（kind:1）・返信(NIP-10)・リポスト/引用(NIP-18)・リアクション(NIP-25/30) | ✅ |
-| 画像/動画（グリッド/カルーセル/Lightbox・インライン再生）・NIP-96 アップロード（圧縮つき） | ✅ |
+| 画像/動画（グリッド/カルーセル/Lightbox・インライン再生）・NIP-96 / Blossom アップロード（圧縮つき・投稿ごとに送信先を変更可） | ✅ |
 | 通知（メンション/リプライ/リアクション/リポスト/Zap） | ✅ |
 | パブリックチャット（NIP-28 kind:40/41/42）— 一覧は thread.nchan.vip 由来、作成/編集はアプリ内 | ✅ |
 | 検索（NIP-50・キーワード/タグ複合） | ✅ |

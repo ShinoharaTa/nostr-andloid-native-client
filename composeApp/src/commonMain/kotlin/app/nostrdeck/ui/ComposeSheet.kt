@@ -197,6 +197,10 @@ fun ComposeSheet(
     // [#248] 低/中は選択時にトランスコード（H.264/mp4）。高は無変換（従来挙動）。
     val videos = remember { mutableStateListOf<VideoAttachment>() }
     var videoResolution by remember { mutableStateOf(ImageResolution.MID) }
+    // [#872] この投稿だけの送信先（null = 設定の送信先）。閉じたら捨てる（設定は変えない）。
+    var uploadTarget by remember { mutableStateOf<String?>(null) }
+    val mediaServers by (repo?.mediaServersFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsState(emptyList())
     val videoProcessor = rememberVideoProcessor()
     val videoPrefs by (repo?.videoCompressionFlow()?.collectAsState()
         ?: remember { mutableStateOf(app.nostrdeck.model.VideoCompressionPrefs.DEFAULT) })
@@ -350,7 +354,7 @@ fun ComposeSheet(
                         async {
                             slots.withPermit {
                                 val p = att.processed ?: processImage(att.src, imgPrefs.maxDimFor(resolution), imgPrefs.quality, att.edit)
-                                val url = repo?.uploadImage(p.bytes, p.mime, p.name)
+                                val url = repo?.uploadImage(p.bytes, p.mime, p.name, server = uploadTarget)
                                 uploadProgress.update { n -> n + 1 }  // 完了枚数（並列でも CAS で安全）
                                 url
                             }
@@ -364,7 +368,7 @@ fun ComposeSheet(
                                 val p = v.processed
                                     ?: videoProcessor(v.src, videoPrefs.heightFor(videoResolution))
                                 // [#685] 端末で変換済み（低/中）ならサーバの再変換を断る。高・変換失敗は従来どおり。
-                                val url = repo?.uploadImage(p.bytes, p.mime, p.name, noTransform = p !== v.src)
+                                val url = repo?.uploadImage(p.bytes, p.mime, p.name, noTransform = p !== v.src, server = uploadTarget)
                                 uploadProgress.update { n -> n + 1 }
                                 url
                             }
@@ -619,6 +623,12 @@ fun ComposeSheet(
                                 ResolutionSelector(videoResolution, onSelect = { videoResolution = it })
                             }
                         }
+                    }
+
+                    // [#872] 送信先（添付があるときだけ）。選んだ送信先はこの投稿だけに効く。
+                    if (repo != null && (images.isNotEmpty() || videos.isNotEmpty())) {
+                        Spacer(Modifier.height(DeckSpace.Sm))
+                        UploadTargetSelector(mediaServers, uploadTarget, onSelect = { uploadTarget = it })
                     }
                 }
 
