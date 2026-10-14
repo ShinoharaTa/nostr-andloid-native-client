@@ -52,10 +52,23 @@
   }
 }
 
-/* カスタム絵文字は文字と同じ高さ（ネイティブの 1.4em 角） */
+/*
+ * [#862] カスタム絵文字は高さ固定・幅は画像の縦横比どおり（読み込む前は正方形。ネイティブの 20.75sp）。
+ * 高さは行の高さよりわずかに大きくし、上下の負のマージンでマージン込みの高さを行の高さにそろえる。
+ * vertical-align: top で行ボックスの上端に付けるので、絵文字のある行も行の高さのまま広がらない。
+ * 絵文字だけの行を縦に並べても（分割した絵文字で 1 枚の絵を作る投稿など）行の間に隙間が出ない。
+ */
 .emoji {
-  width: 1.4em;
-  height: 1.4em;
-  vertical-align: middle;
+  height: calc(var(--line-body) * 1.0375);
+  width: auto;
+  aspect-ratio: auto 1 / 1;
+  margin-block: calc(var(--line-body) * -0.01875);
+  vertical-align: top;
   object-fit: contain;
+}
+
+/* 引用カードの行の高さは --line-body ではない（カード側から継承）。その行の高さ（1lh）を基準にする */
+.quote .emoji {
+  height: calc(1lh * 1.0375);
+  margin-block: calc(1lh * -0.01875);
 }

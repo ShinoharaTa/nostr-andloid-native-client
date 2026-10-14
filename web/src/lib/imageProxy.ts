@@ -38,19 +38,34 @@ export function isDataSaver(): boolean {
 /**
  * width px 幅・webp・品質 quality に圧縮した URL を返す。
  * animated = true なら n=-1 で全フレームを保持する（wsrv.nl は既定で先頭 1 フレームのみ返す）。
+ * height を渡すと幅ではなく高さで縮める（カスタム絵文字。横長の絵文字を幅で縮めると高さが潰れるため。#862）。
  * 既にプロキシ拒否と分かっているホストは、プロキシを介さず元 URL を返す。
  */
-export function proxied(url: string, width = 600, quality = 75, animated = false): string {
+export function proxied(url: string, width = 600, quality = 75, animated = false, height?: number): string {
   // kind:0 の picture には前後空白が混ざることがある（例: yabu.me のアイコン）。必ず trim する
   const clean = url.trim();
   if (clean === "") return clean;
   const host = hostOf(clean);
   if (host && blockedHosts.has(host)) return clean;
-  const w = dataSaver ? Math.floor((width * 2) / 3) : width;
+  // 縮める基準（幅 w= か高さ h=）。縦横比は保たれる
+  const size =
+    height !== undefined
+      ? `h=${dataSaver ? Math.floor((height * 2) / 3) : height}`
+      : `w=${dataSaver ? Math.floor((width * 2) / 3) : width}`;
   const q = dataSaver ? Math.min(quality, 60) : quality;
   // we = 拡大しない（元が小さければそのまま）
   const frames = animated ? "&n=-1" : "";
-  return `${HOST}?url=${encodeParameter(clean)}&w=${w}&output=webp&q=${q}&we${frames}`;
+  return `${HOST}?url=${encodeParameter(clean)}&${size}&output=webp&q=${q}&we${frames}`;
+}
+
+/** カスタム絵文字をプロキシに縮めさせるときの高さ（px。ネイティブの EMOJI_PROXY_HEIGHT_PX と同じ） */
+export const EMOJI_PROXY_HEIGHT = 96;
+
+/**
+ * カスタム絵文字の URL（高さ基準・アニメーション保持）。表示は高さ固定・幅は縦横比どおり（#862）。
+ */
+export function proxiedEmoji(url: string, quality = 80): string {
+  return proxied(url, 600, quality, true, EMOJI_PROXY_HEIGHT);
 }
 
 /**

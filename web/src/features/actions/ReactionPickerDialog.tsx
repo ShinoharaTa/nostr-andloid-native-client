@@ -1,7 +1,7 @@
 import type { NostrEvent } from "nostr-tools/pure";
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useT } from "../../i18n";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { displayName, useProfile } from "../../nostr/loaders";
 import { useSession } from "../../signer/session";
 import { ArrowBackIcon } from "../../ui/icons";
@@ -324,7 +324,7 @@ function TextCell({ char, onClick }: { char: string; onClick(): void }) {
 
 /** カスタム絵文字の画像。プロキシが読めなければ元 URL で 1 度だけ取り直し、それも読めなければ :code: の文字 */
 function ImageCell({ label, url, onClick }: { label: string; url: string; onClick(): void }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 64, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
 
   function onError() {
     const origin = originOf(src);
@@ -337,7 +337,13 @@ function ImageCell({ label, url, onClick }: { label: string; url: string; onClic
   }
 
   return (
-    <button type="button" className={styles.cell} aria-label={label} onClick={onClick}>
+    <button
+      type="button"
+      // [#862] 画像のセルは横長の絵文字に合わせて横に広がる（読めずに :code: を出すときは今までどおり正方形）
+      className={src !== null ? `${styles.cell} ${styles.imageCell}` : styles.cell}
+      aria-label={label}
+      onClick={onClick}
+    >
       {src !== null ? (
         <img
           src={src}

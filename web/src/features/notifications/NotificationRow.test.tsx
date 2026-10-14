@@ -113,7 +113,7 @@ describe("リアクション", () => {
     const mark = screen.getByRole("img", { name: "リアクション :cat:" });
     const img = mark.querySelector("img");
     expect(img?.getAttribute("src")).toContain("https://wsrv.nl/");
-    expect(img?.getAttribute("src")).toContain("w=64");
+    expect(img?.getAttribute("src")).toContain("&h=96&");
     expect(img?.getAttribute("src")).toContain("n=-1");
     if (!img) throw new Error("no img");
     fireEvent.error(img);

@@ -2,7 +2,7 @@ import { use$ } from "applesauce-react/hooks/use-$";
 import type { NostrEvent } from "nostr-tools/pure";
 import { type FormEvent, useId, useMemo, useState } from "react";
 import { t, useT } from "../../i18n";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { showToast } from "../../ui/toast";
@@ -120,7 +120,7 @@ export function EmojiSection() {
 
 function EmojiRow({ emoji, onRemove }: { emoji: CustomEmoji; onRemove(): void }) {
   const t = useT();
-  const [src, setSrc] = useState<string | null>(() => proxied(emoji.url, 48, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(emoji.url, 80));
 
   function onError() {
     const origin = originOf(src);

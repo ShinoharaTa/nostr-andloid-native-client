@@ -119,7 +119,7 @@ it("カスタム絵文字はプロキシ経由の画像にし、失敗したら�
   expect(img).toHaveAttribute("alt", ":cat:");
   const src = img.getAttribute("src") ?? "";
   expect(src.startsWith("https://wsrv.nl/?url=")).toBe(true);
-  expect(src).toContain("w=64");
+  expect(src).toContain("&h=96&");
   expect(src).toContain("n=-1");
   expect(container).toHaveTextContent(":dog:");
 
