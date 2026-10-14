@@ -1,20 +1,55 @@
 package app.nostrdeck.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import app.nostrdeck.model.nfkc
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
 
 /**
- * リアクションピッカー用の軽量 Unicode 絵文字カタログ。
- * フルデータセット(数百KB)は同梱せず、よく使うものを厳選して日英キーワードで検索できるようにする。
- * 各エントリの [keywords] は小文字英語＋日本語の両方を持たせ、[EmojiCatalog.search] で前方/部分一致する。
+ * リアクションピッカー用の Unicode 絵文字カタログ。
+ *
+ * [#868] 標準の絵文字すべて（emojibase-data。Web #684 と同じ版・同じ規則）を `files/emoji-catalog.json` に同梱し、
+ * ピッカーを開いたときに読み込む（[EmojiPickerCatalog]）。読み込むまでは、手で選んだ 120 個（[EmojiCatalog.fallbackCategories]）を使う。
+ * 一覧ファイルは `scripts/gen-emoji-catalog.mjs` で作る（手で編集しない）。
+ * 検索は Web の `searchEmojis` と同じ: ja / en のラベル・タグの部分一致と、絵文字そのものとの一致。
+ * キーワードと検索語は NFKC + 小文字 + カタカナ→ひらがな にそろえてから比べる。
  */
 data class EmojiEntry(val char: String, val keywords: List<String>)
-data class EmojiCategory(val title: StringResource, val emojis: List<EmojiEntry>)
+
+/** [title] が null のカテゴリ（emojibase の更新で増えたもの等）は [fallbackTitle]（データの名前）を出す。 */
+data class EmojiCategory(val title: StringResource?, val emojis: List<EmojiEntry>, val fallbackTitle: String = "")
+
+/** [#868] 同梱の一覧ファイルを読んだ結果。[source] は `emojibase-data@<版>`。 */
+data class FullEmojiCatalog(val source: String, val categories: List<EmojiCategory>)
 
 object EmojiCatalog {
 
-    val categories: List<EmojiCategory> = listOf(
+    /** [#868] 同梱の一覧ファイルの場所（`Res.readBytes` に渡すパス）。 */
+    const val FULL_CATALOG_PATH = "files/emoji-catalog.json"
+
+    /**
+     * 読み込む前のフォールバック（手で選んだ 120 個）。Web の FALLBACK_CATEGORIES と同じ並び・キーワード。
+     * キーワードは検索用に正規化しておく。
+     */
+    val fallbackCategories: List<EmojiCategory> get() = fallback
+
+    private val fallback: List<EmojiCategory> by lazy {
+        curated.map { c -> c.copy(emojis = c.emojis.map { e -> e.copy(keywords = e.keywords.map(::normalizeForSearch)) }) }
+    }
+
+    private val curated: List<EmojiCategory> = listOf(
         EmojiCategory(
             Res.string.emoji_cat_faces,
             listOf(
@@ -167,15 +202,93 @@ object EmojiCatalog {
         ),
     )
 
-    /** 全エントリ（重複は char で除去）。「最近」が空のときのフォールバック等にも使う。 */
-    val all: List<EmojiEntry> = categories.flatMap { it.emojis }.distinctBy { it.char }
+    /** カテゴリを頭から見て、char の重複を除いた全エントリ。 */
+    fun flatten(categories: List<EmojiCategory>): List<EmojiEntry> = categories.flatMap { it.emojis }.distinctBy { it.char }
 
-    /** 日英キーワード/絵文字そのもの の部分一致で検索（小文字無視）。 */
-    fun search(query: String): List<EmojiEntry> {
-        val q = query.trim().lowercase()
-        if (q.isEmpty()) return emptyList()
-        return all.filter { e ->
-            e.char == query || e.keywords.any { it.contains(q) }
+    /** NFKC + 小文字 + カタカナ→ひらがな（Web の normalizeForSearch と同じ）。 */
+    fun normalizeForSearch(s: String): String = buildString {
+        for (ch in nfkc(s).lowercase()) append(if (ch in 'ァ'..'ヶ') ch - 0x60 else ch)
+    }
+
+    /**
+     * emojibase の ja のラベル・タグは漢字（笑う・嬉しい 等）なので、ひらがなの読みで打つと一致しない。
+     * よく使う感情語の完全な読みだけ漢字へ橋渡しする（Web の JA_READING_TO_KANJI と同じ表）。
+     */
+    private val JA_READING_TO_KANJI = listOf(
+        "わらう" to "笑", "なく" to "泣", "おこる" to "怒", "いかり" to "怒", "かなしい" to "悲",
+        "うれしい" to "嬉", "たのしい" to "楽", "こわい" to "怖", "すき" to "好", "ねむい" to "眠", "おどろく" to "驚",
+    )
+
+    /** [entries] から、日英キーワードの部分一致か、絵文字そのものとの一致で探す。空なら空（Web の searchEmojis と同じ）。 */
+    fun search(query: String, entries: List<EmojiEntry>): List<EmojiEntry> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val q = normalizeForSearch(trimmed)
+        val kanjiHints = JA_READING_TO_KANJI.filter { (reading, _) -> q.contains(reading) }.map { it.second }
+        return entries.filter { e ->
+            e.char == trimmed || e.keywords.any { k -> k.contains(q) || kanjiHints.any { k.contains(it) } }
         }
     }
+
+    /** emojibase のグループ（key）→ カテゴリ名（Web の web_picker_group_* と同じ言い方）。 */
+    private val GROUP_TITLES: Map<String, StringResource> = mapOf(
+        "smileys-emotion" to Res.string.emoji_group_smileys_emotion,
+        "people-body" to Res.string.emoji_group_people_body,
+        "animals-nature" to Res.string.emoji_group_animals_nature,
+        "food-drink" to Res.string.emoji_group_food_drink,
+        "travel-places" to Res.string.emoji_group_travel_places,
+        "activities" to Res.string.emoji_group_activities,
+        "objects" to Res.string.emoji_group_objects,
+        "symbols" to Res.string.emoji_group_symbols,
+        "flags" to Res.string.emoji_group_flags,
+    )
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * 同梱の一覧ファイル（[FULL_CATALOG_PATH]）を読む。形が違えば null（呼び出し側はフォールバックのまま）。
+     * 各絵文字は `[文字, 正規化済みキーワード…]` の配列。
+     */
+    fun parseFull(text: String): FullEmojiCatalog? = runCatching {
+        val root = json.parseToJsonElement(text).jsonObject
+        val source = root["source"]?.jsonPrimitive?.content.orEmpty()
+        val categories = root.getValue("groups").jsonArray.map { g ->
+            val o = g.jsonObject
+            val key = o.getValue("key").jsonPrimitive.content
+            val emojis = o.getValue("emojis").jsonArray.map { row ->
+                val cells = (row as JsonArray).map { it.jsonPrimitive.content }
+                EmojiEntry(cells.first(), cells.drop(1))
+            }
+            EmojiCategory(GROUP_TITLES[key], emojis, fallbackTitle = o["message"]?.jsonPrimitive?.content ?: key)
+        }
+        FullEmojiCatalog(source, categories).takeIf { categories.isNotEmpty() }
+    }.getOrNull()
+}
+
+/**
+ * [#868] ピッカーが使う今の一覧。初めは手で選んだ 120 個で、[ensureLoaded] が終わると標準の絵文字すべてに差し替わる
+ * （snapshot state なので、開いているピッカーはそのまま組み直される）。読み込みはプロセスで 1 回だけ。
+ */
+object EmojiPickerCatalog {
+    var categories: List<EmojiCategory> by mutableStateOf(EmojiCatalog.fallbackCategories)
+        private set
+    private var all: List<EmojiEntry> by mutableStateOf(EmojiCatalog.flatten(EmojiCatalog.fallbackCategories))
+    private val mutex = Mutex()
+    private var loaded = false
+
+    suspend fun ensureLoaded() {
+        if (loaded) return
+        mutex.withLock {
+            if (loaded) return
+            val full = withContext(Dispatchers.Default) {
+                runCatching { Res.readBytes(EmojiCatalog.FULL_CATALOG_PATH).decodeToString() }.getOrNull()
+                    ?.let(EmojiCatalog::parseFull)
+            } ?: return
+            categories = full.categories
+            all = EmojiCatalog.flatten(full.categories)
+            loaded = true
+        }
+    }
+
+    fun search(query: String): List<EmojiEntry> = EmojiCatalog.search(query, all)
 }

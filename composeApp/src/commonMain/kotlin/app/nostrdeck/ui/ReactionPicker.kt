@@ -12,7 +12,13 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.runtime.LaunchedEffect
+import app.nostrdeck.model.TypedEmoji
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,6 +90,8 @@ fun ReactionPickerSheet(
     val customs by remember(repo) { repo?.customEmojisFlow() ?: flowOf(emptyList()) }
         .collectAsState(emptyList())
     var query by remember { mutableStateOf("") }
+    // [#868] 開いたら標準の絵文字すべてを読み込む（終わるまでは手で選んだ 120 個のまま）。
+    LaunchedEffect(Unit) { EmojiPickerCatalog.ensureLoaded() }
 
     // [#284] ボトムシート → Dialog（AppModalSheet）。グリッドのスクロールとシートのドラッグの競合を断つ。
     AppModalSheet(
@@ -120,51 +128,63 @@ fun ReactionPickerSheet(
             }
             Spacer(Modifier.size(DeckSpace.Sm))
 
-            Column(
-                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
-            ) {
+            // [#868] 標準の絵文字すべて（約 1,900 個）を並べるので、見えている行だけ組み立てる（LazyColumn）。
+            // Unicode の絵文字は固定幅のボタンなので、幅から 1 行の個数を決めて行ごとに分ける。
+            val cell = 40.dp.scaledByText()
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val perRow = ((maxWidth + EMOJI_GAP) / (cell + EMOJI_GAP)).toInt().coerceAtLeast(1)
                 val q = query.trim()
-                if (q.isNotEmpty()) {
-                    // 検索: カスタム（shortcode 部分一致）＋ Unicode（キーワード）
-                    val matchedCustom = customs.filter { it.shortcode.contains(q, ignoreCase = true) }
-                    val matchedUnicode = EmojiCatalog.search(q)
-                    if (matchedCustom.isEmpty() && matchedUnicode.isEmpty()) {
-                        EmptyHint(stringResource(Res.string.picker_no_match))
+                LazyColumn(Modifier.fillMaxSize()) {
+                    if (q.isNotEmpty()) {
+                        // 検索: カスタム（shortcode 部分一致）＋ Unicode（キーワード）
+                        val matchedCustom = customs.filter { it.shortcode.contains(q, ignoreCase = true) }
+                        val matchedUnicode = EmojiPickerCatalog.search(q)
+                        // [#869] 打った文字が絵文字だけで、一覧に同じものが無ければ、そのまま選べるように先頭に出す
+                        val typed = TypedEmoji.parse(query)?.takeIf { t -> matchedUnicode.none { it.char == t } }
+                        if (typed == null && matchedCustom.isEmpty() && matchedUnicode.isEmpty()) {
+                            item("empty") { EmptyHint(stringResource(Res.string.picker_no_match)) }
+                        } else {
+                            if (typed != null) {
+                                item("typed_label") { SectionLabel(stringResource(Res.string.picker_typed_emoji)) }
+                                item("typed") { EmojiFlow { UnicodeEmojiButton(typed) { onPick(typed, null); onDismiss() } } }
+                            }
+                            if (matchedCustom.isNotEmpty()) {
+                                item("custom_label") { SectionLabel(stringResource(Res.string.picker_custom)) }
+                                item("custom") {
+                                    EmojiFlow {
+                                        matchedCustom.forEach { CustomEmojiButton(it) { onPick(":${it.shortcode}:", it.url); onDismiss() } }
+                                    }
+                                }
+                            }
+                            if (matchedUnicode.isNotEmpty()) {
+                                item("unicode_label") { SectionLabel(stringResource(Res.string.picker_emoji)) }
+                                emojiRows("match", matchedUnicode, perRow) { e -> onPick(e.char, null); onDismiss() }
+                            }
+                        }
                     } else {
-                        if (matchedCustom.isNotEmpty()) {
-                            SectionLabel(stringResource(Res.string.picker_custom))
-                            EmojiFlow {
-                                matchedCustom.forEach { CustomEmojiButton(it) { onPick(":${it.shortcode}:", it.url); onDismiss() } }
+                        if (recents.isNotEmpty()) {
+                            item("recent_label") { SectionLabel(stringResource(Res.string.picker_recent)) }
+                            item("recent") {
+                                EmojiFlow {
+                                    recents.forEach { r -> RecentEmojiButton(r) { onPick(r.content, r.imageUrl); onDismiss() } }
+                                }
                             }
                         }
-                        if (matchedUnicode.isNotEmpty()) {
-                            SectionLabel(stringResource(Res.string.picker_emoji))
-                            EmojiFlow {
-                                matchedUnicode.forEach { e -> UnicodeEmojiButton(e.char) { onPick(e.char, null); onDismiss() } }
+                        if (customs.isNotEmpty()) {
+                            item("customs_label") { SectionLabel(stringResource(Res.string.picker_custom_emoji)) }
+                            item("customs") {
+                                EmojiFlow {
+                                    customs.forEach { c -> CustomEmojiButton(c) { onPick(":${c.shortcode}:", c.url); onDismiss() } }
+                                }
                             }
                         }
-                    }
-                } else {
-                    if (recents.isNotEmpty()) {
-                        SectionLabel(stringResource(Res.string.picker_recent))
-                        EmojiFlow {
-                            recents.forEach { r -> RecentEmojiButton(r) { onPick(r.content, r.imageUrl); onDismiss() } }
+                        EmojiPickerCatalog.categories.forEachIndexed { i, cat ->
+                            item("cat_label_$i") { SectionLabel(cat.title?.let { stringResource(it) } ?: cat.fallbackTitle) }
+                            emojiRows("cat_$i", cat.emojis, perRow) { e -> onPick(e.char, null); onDismiss() }
                         }
                     }
-                    if (customs.isNotEmpty()) {
-                        SectionLabel(stringResource(Res.string.picker_custom_emoji))
-                        EmojiFlow {
-                            customs.forEach { c -> CustomEmojiButton(c) { onPick(":${c.shortcode}:", c.url); onDismiss() } }
-                        }
-                    }
-                    EmojiCatalog.categories.forEach { cat ->
-                        SectionLabel(stringResource(cat.title))
-                        EmojiFlow {
-                            cat.emojis.forEach { e -> UnicodeEmojiButton(e.char) { onPick(e.char, null); onDismiss() } }
-                        }
-                    }
+                    item("bottom") { Spacer(Modifier.size(DeckSpace.Lg)) }
                 }
-                Spacer(Modifier.size(DeckSpace.Lg))
             }
           }
         }
@@ -280,9 +300,22 @@ private fun EmptyHint(text: String) {
 private fun EmojiFlow(content: @Composable () -> Unit) {
     FlowRow(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(EMOJI_GAP),
+        verticalArrangement = Arrangement.spacedBy(EMOJI_GAP),
     ) { content() }
+}
+
+/** 絵文字のボタンの間隔（縦横）。 */
+private val EMOJI_GAP = 4.dp
+
+/** [#868] Unicode の絵文字を [perRow] 個ずつの行に分けて、LazyColumn の行として並べる（見えている行だけ組み立てる）。 */
+private fun LazyListScope.emojiRows(keyPrefix: String, emojis: List<EmojiEntry>, perRow: Int, onClick: (EmojiEntry) -> Unit) {
+    val rows = emojis.chunked(perRow)
+    items(rows.size, key = { "$keyPrefix:$it" }) { i ->
+        Row(Modifier.fillMaxWidth().padding(bottom = EMOJI_GAP), horizontalArrangement = Arrangement.spacedBy(EMOJI_GAP)) {
+            rows[i].forEach { e -> UnicodeEmojiButton(e.char) { onClick(e) } }
+        }
+    }
 }
 
 @Composable
