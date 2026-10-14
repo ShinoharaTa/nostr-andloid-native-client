@@ -169,9 +169,21 @@
   }
 }
 
+/*
+ * [#862] カスタム絵文字のセルは高さ固定・幅は最小で正方形。横長の絵文字はセルごと横に広がる
+ * （ネイティブ ReactionPicker.kt と同じ。左右に少し余白を取る）。
+ */
+.imageCell {
+  width: auto;
+  min-width: calc(var(--touch-sm) * clamp(1, var(--text-scale), 1.3));
+  padding-inline: var(--sp-1);
+}
+
+/* [#862] 高さ固定・幅は縦横比どおり */
 .cell img {
-  width: var(--type-display);
   height: var(--type-display);
+  width: auto;
+  aspect-ratio: auto 1 / 1;
   object-fit: contain;
 }
 

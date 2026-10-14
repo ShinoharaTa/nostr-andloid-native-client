@@ -1,7 +1,7 @@
 import type { NostrEvent } from "nostr-tools/pure";
 import { useMemo, useState } from "react";
 import { useT } from "../../i18n";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { BoltIcon, RepeatIcon } from "../../ui/icons";
 import type { NoteZaps } from "../zap/zapTotals";
 import { countEngagement, groupReactions, reactionTotal, repostersOf } from "./engagement";
@@ -84,7 +84,7 @@ export function FocusNoteStats({
  * それも読めなければ :code: の文字に戻す（NoteContent の EmojiImage と同じ）。
  */
 function ReactionImage({ url, display }: { url: string; display: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 48, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
   if (!src) return <span className={styles.emojiText}>{display}</span>;
 
   function onError() {

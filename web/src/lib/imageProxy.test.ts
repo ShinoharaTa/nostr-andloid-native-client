@@ -1,5 +1,12 @@
 import { afterEach, expect, it } from "vitest";
-import { markProxyBlocked, originOf, proxied, setDataSaver } from "./imageProxy";
+import {
+  EMOJI_PROXY_HEIGHT,
+  markProxyBlocked,
+  originOf,
+  proxied,
+  proxiedEmoji,
+  setDataSaver,
+} from "./imageProxy";
 
 afterEach(() => {
   setDataSaver(false);
@@ -44,4 +51,24 @@ it("originOf はプロキシ URL から元 URL を復元し、それ以外は nu
   expect(originOf("https://dev.sabotenism.cc/img/ruri.webp")).toBeNull();
   expect(originOf(null)).toBeNull();
   expect(originOf(42)).toBeNull();
+});
+
+it("height を渡すと w= の代わりに h= で縮める（カスタム絵文字。#862）", () => {
+  const src = "https://example.com/wide.webp";
+  const byHeight = proxied(src, 600, 80, true, 96);
+  expect(byHeight).toBe(
+    "https://wsrv.nl/?url=https%3A%2F%2Fexample.com%2Fwide.webp&h=96&output=webp&q=80&we&n=-1",
+  );
+  expect(byHeight).not.toContain("&w=");
+  expect(originOf(byHeight)).toBe(src);
+  expect(proxiedEmoji(src)).toBe(proxied(src, 600, 80, true, EMOJI_PROXY_HEIGHT));
+  expect(proxiedEmoji(src, 75)).toContain(`&h=${EMOJI_PROXY_HEIGHT}&output=webp&q=75&we&n=-1`);
+});
+
+it("データセーバー中は h= も 2/3 に落とす", () => {
+  setDataSaver(true);
+  const src = "https://cdn.example.com/e?id=1&h=2";
+  const url = proxiedEmoji(src);
+  expect(url).toContain("&h=64&output=webp&q=60&we&n=-1");
+  expect(originOf(url)).toBe(src);
 });

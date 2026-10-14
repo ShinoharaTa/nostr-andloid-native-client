@@ -261,9 +261,11 @@
   line-height: var(--line-desc);
 }
 
+/* [#862] 高さ固定・幅は縦横比どおり */
 .reactionImage {
-  width: 16px;
   height: 16px;
+  width: auto;
+  aspect-ratio: auto 1 / 1;
   object-fit: contain;
 }
 

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { t, useT } from "../../i18n";
 import { oneLine } from "../../lib/content/labels";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
 import { relativeTime } from "../../lib/time";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
@@ -350,7 +350,7 @@ function ReactionChips({ groups }: { groups: readonly ReactionGroup[] }) {
 
 /** カスタム絵文字の画像。プロキシが読めなければ元 URL で 1 度だけ取り直し、それも読めなければ :code: の文字 */
 function ReactionImage({ url, text }: { url: string; text: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 64, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
   if (!src) return <span aria-hidden="true">{text}</span>;
 
   function onError() {
