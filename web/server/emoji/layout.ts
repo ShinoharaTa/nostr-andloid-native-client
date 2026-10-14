@@ -1,6 +1,7 @@
 /**
  * 文字の配置（仕様: docs/emoji-maker.md §5）。1 em = 1000 単位の「単位レイアウト」を作り、
- * インクの bbox が CANVAS − 2·PAD（縁取りがあればさらに − 2r）に収まる最大のスケールで中央に置く。
+ * インクの bbox の高さが HEIGHT − 2·PAD（縁取りがあればさらに − 2r）になるスケールで中央に置く。
+ * 画像の高さは HEIGHT 固定、幅はインクに合わせて MIN_WIDTH 以上（[#863] 長い文字は横長の画像）。
  * 行間は em 箱（ascender − descender）基準、スケールはインク基準。カーニング・合字は使わない。
  */
 import {
@@ -14,7 +15,10 @@ import {
   glyphYMin,
 } from "./fontData";
 
-export const CANVAS = 128;
+/** 画像の高さ（px。固定） */
+export const HEIGHT = 128;
+/** 画像の最小の幅（px）。短い文字は HEIGHT × MIN_WIDTH の正方形 */
+export const MIN_WIDTH = 128;
 /** 画像の外周の余白（px） */
 export const PAD = 4;
 /** 行間（em。em 箱の下端から次の行の em 箱の上端まで） */
@@ -43,6 +47,10 @@ export interface Layout {
   ty: number;
   /** 縁取り半径（px）。縁取り無しなら 0 */
   strokeRadius: number;
+  /** 画像の幅（px。MIN_WIDTH 以上） */
+  width: number;
+  /** 画像の高さ（px。HEIGHT） */
+  height: number;
 }
 
 /**
@@ -89,19 +97,22 @@ export function layoutLines(font: FontData, lines: readonly string[], withStroke
   const bh = by1 - by0;
   if (placements.length === 0 || !(bw > 0) || !(bh > 0)) return null;
 
-  const inner = CANVAS - 2 * PAD;
+  // 縁取りの半径・スケールは高さだけで決める（幅は文字に合わせて伸ばす）
+  const inner = HEIGHT - 2 * PAD;
   let strokeRadius = 0;
   if (withStroke) {
-    const fontSize0 = Math.min(inner / bw, inner / bh) * UNITS_PER_EM;
+    const fontSize0 = (inner / bh) * UNITS_PER_EM;
     strokeRadius = Math.min(STROKE_MAX_PX, Math.max(STROKE_MIN_PX, Math.round(STROKE_RATIO * fontSize0)));
   }
-  const scale = Math.min((inner - 2 * strokeRadius) / bw, (inner - 2 * strokeRadius) / bh);
-  const center = CANVAS / 2;
+  const scale = (inner - 2 * strokeRadius) / bh;
+  const width = Math.max(MIN_WIDTH, Math.ceil(bw * scale + 2 * PAD + 2 * strokeRadius));
   return {
     placements,
     scale,
-    tx: center - (scale * (bx0 + bx1)) / 2,
-    ty: center - (scale * (by0 + by1)) / 2,
+    tx: width / 2 - (scale * (bx0 + bx1)) / 2,
+    ty: HEIGHT / 2 - (scale * (by0 + by1)) / 2,
     strokeRadius,
+    width,
+    height: HEIGHT,
   };
 }

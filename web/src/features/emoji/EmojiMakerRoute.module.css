@@ -202,13 +202,16 @@
   font-size: var(--type-body);
 }
 
+/* 両テーマでの見え方を横に 2 枚並べる。各枠は行の半分まで（ネイティブの weight(1f, fill = false)） */
 .previews {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--sp-3);
 }
 
 .preview {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc((100% - var(--sp-3)) / 2);
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -216,18 +219,29 @@
   gap: var(--sp-1);
 }
 
-/* 128×128 をそのまま（等倍）。両テーマでの見え方を並べる */
+/*
+ * [#863] 画像は高さ 128 固定・幅は文字に合わせて 128 以上。枠の幅は画像に合わせ、最小で正方形。
+ * 行の半分に収まらない長い画像は、縦横比を保ったまま枠の幅に縮めて（contain）中央に置く。
+ */
 .previewBox {
-  width: 128px;
-  height: 128px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(128px + 2px);
+  min-width: min(calc(128px + 2px), 100%);
+  max-width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
 }
 
 .previewBox img {
   display: block;
-  width: 128px;
   height: 128px;
+  width: auto;
+  aspect-ratio: auto 1 / 1;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .previewLight {

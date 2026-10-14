@@ -1,5 +1,6 @@
 // /api/emoji.png の生成（server/emoji/render.ts）の CPU 時間を Node で測る。`node scripts/bench-emoji.mjs`。
 // 仕様: docs/emoji-maker.md §8.1。合格ライン: 最悪ケース（4 行 × 10 文字の漢字・縁取りあり）の p95 ≤ 4 ms。
+// [#863] 高さ固定・横長の画像にしてからは、画素が最も多い (d) 1 行 × 10 文字の漢字・縁取りありも最悪ケースとして見る。
 // server/emoji/*.ts は Node 24 の型消去で直接読む（拡張子なしの相対 import は下のフックで .ts を補う）。
 // リポジトリルートからでも web/ からでも動く（パスはスクリプトの位置から解決）。
 import { readFileSync } from "node:fs";
@@ -34,7 +35,14 @@ const CASES = [
   { name: "(a) 草・縁取りなし", lines: ["草"], color: "000000", stroke: null },
   { name: "(b) 4 行 × 10 文字・縁取りあり", lines: WORST, color: "000000", stroke: "ffffff" },
   { name: "(c) 英数字 1 行", lines: ["Nostr 2026"], color: "000000", stroke: null },
+  { name: "(d) 1 行 × 10 文字・縁取りあり", lines: [WORST[0]], color: "000000", stroke: "ffffff" },
 ];
+
+/** PNG の IHDR の幅 × 高さ。 */
+function pngSize(png) {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return `${view.getUint32(16)}×${view.getUint32(20)}`;
+}
 
 function stats(samples) {
   const sorted = [...samples].sort((a, b) => a - b);
@@ -57,7 +65,7 @@ for (const id of FONTS) {
   }
   const load = stats(loadSamples);
   rows.push(
-    `| ${id} | font.bin の読込（parseFontData） | ${ms(load.p50)} | ${ms(load.p95)} | ${ms(load.max)} |`,
+    `| ${id} | font.bin の読込（parseFontData） | - | ${ms(load.p50)} | ${ms(load.p95)} | ${ms(load.max)} |`,
   );
 
   for (const c of CASES) {
@@ -65,14 +73,16 @@ for (const id of FONTS) {
     if (missing !== null) throw new Error(`${id}: ${c.name} の「${missing}」が無い`);
     for (let i = 0; i < WARMUP; i++) await render(font, c);
     const samples = [];
+    let size = "";
     for (let i = 0; i < RUNS; i++) {
       const t0 = performance.now();
       const result = await render(font, c);
       samples.push(performance.now() - t0);
       if (!result.ok) throw new Error(`${id}: ${c.name}: ${result.error}`);
+      size = pngSize(result.png);
     }
     const s = stats(samples);
-    rows.push(`| ${id} | ${c.name} | ${ms(s.p50)} | ${ms(s.p95)} | ${ms(s.max)} |`);
+    rows.push(`| ${id} | ${c.name} | ${size} | ${ms(s.p50)} | ${ms(s.p95)} | ${ms(s.max)} |`);
   }
 }
 
@@ -80,6 +90,6 @@ console.log(
   `Node ${process.version}、各 ${RUNS} 回（ウォームアップ ${WARMUP} 回）。PNG エンコードまで含む。単位 ms`,
 );
 console.log("");
-console.log("| 書体 | ケース | p50 | p95 | max |");
-console.log("|---|---|---|---|---|");
+console.log("| 書体 | ケース | W×H | p50 | p95 | max |");
+console.log("|---|---|---|---|---|---|");
 for (const row of rows) console.log(row);
