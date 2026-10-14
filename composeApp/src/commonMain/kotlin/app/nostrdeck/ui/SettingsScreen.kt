@@ -1050,11 +1050,9 @@ private fun CustomReactionChoice(
     ) {
         when {
             // カスタム絵文字（NIP-30）は画像で表示。
-            selected && !imageUrl.isNullOrBlank() -> AsyncImage(
-                model = imageUrl,
-                contentDescription = content,
-                modifier = Modifier.size(20.dp),
-            )
+            // [#861] 高さ固定・幅は縦横比どおり。
+            selected && !imageUrl.isNullOrBlank() ->
+                AnimatedEmoji(imageUrl, contentDescription = content, modifier = Modifier.emojiSize(imageUrl, 20.dp))
             selected && !content.isNullOrBlank() -> Text(content, fontSize = DeckType.Sub)
             else -> Icon(
                 Icons.Outlined.Mood, contentDescription = null,

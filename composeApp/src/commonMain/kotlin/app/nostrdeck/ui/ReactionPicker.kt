@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -289,8 +291,9 @@ private fun EmojiFlow(content: @Composable () -> Unit) {
 private fun EmojiCell(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         // [#339] 文字サイズ設定に追従（老眼モードでセルとグリフが一緒に大きくなる）。
-        Modifier.size(40.dp.scaledByText()).clip(RoundedCornerShape(DeckRadius.Sm))
-            .background(DeckColors.Surface2).clickable(onClick = onClick),
+        // [#861] 高さは固定、幅は最小で正方形。横長のカスタム絵文字はセルごと横に広がる。
+        Modifier.height(40.dp.scaledByText()).widthIn(min = 40.dp.scaledByText()).clip(RoundedCornerShape(DeckRadius.Sm))
+            .background(DeckColors.Surface2).clickable(onClick = onClick).padding(horizontal = DeckSpace.Xs),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -317,5 +320,6 @@ private fun RecentEmojiButton(emoji: UsedEmoji, onClick: () -> Unit) {
 private fun EmojiImage(url: String, desc: String) {
     // [#277] iOS/Desktop でも GIF/アニメ WebP を動かすため共通コンポーネントへ。
     // [#308] 隣に並ぶ Unicode 絵文字ボタン（Display）と同じ大きさに揃える。
-    AnimatedEmoji(url, contentDescription = desc, modifier = Modifier.size(DeckType.Display.asEmojiSize()))
+    // [#861] 高さ固定・幅は縦横比どおり。
+    AnimatedEmoji(url, contentDescription = desc, modifier = Modifier.emojiSize(url, DeckType.Display.asEmojiSize()))
 }

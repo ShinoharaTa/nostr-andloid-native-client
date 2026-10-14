@@ -26,13 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.theme.DeckColors
+import kotlin.math.roundToInt
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import app.nostrdeck.i18n.stringResource
@@ -71,13 +72,24 @@ fun CollapsibleText(
         noteAnnotated(text, { names[it] }, emojis, nav, linkColor = linkColor, nyaize = nyaize)
     }
     // NIP-30 カスタム絵文字のインライン描画（shortcode→画像）。
-    val inline = remember(emojis) {
+    // [#861] 高さは固定、幅は画像の縦横比どおり（EmojiAspect。読み込めた時点で記録され、ここが組み直される）。
+    // 大きさは画面の画素数で整数に丸める。端数（例: 2 倍の画面で 41.5px）だと、隣り合う絵文字の間に
+    // 半端な隙間が残り、分割した絵文字で作った絵に細い線が入る。
+    val density = LocalDensity.current
+    val ratios = emojis.values.map { EmojiAspect.of(it) }
+    val inline = remember(emojis, ratios, density) {
+        val heightPx = with(density) { INLINE_EMOJI_HEIGHT.toPx() }.roundToInt().coerceAtLeast(1)
         emojis.entries.associate { (code, url) ->
+            val widthPx = (heightPx * EmojiAspect.of(url)).roundToInt().coerceAtLeast(1)
             "emoji:$code" to InlineTextContent(
-                Placeholder(width = 1.4.em, height = 1.4.em, placeholderVerticalAlign = PlaceholderVerticalAlign.Center),
+                Placeholder(
+                    width = with(density) { widthPx.toSp() },
+                    height = with(density) { heightPx.toSp() },
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                ),
             ) {
                 // [#277] iOS/Desktop でも GIF/アニメ WebP を動かすため共通コンポーネントへ。
-                // [#308] 大きさは Placeholder(1.4em) が決める。以前は 20dp 固定だったため、
+                // [#308] 大きさは Placeholder が決める。以前は 20dp 固定だったため、
                 // 文字サイズ設定を上げると枠だけ広がって絵文字が中で浮いていた。
                 AnimatedEmoji(url, contentDescription = ":$code:", modifier = Modifier.fillMaxSize())
             }
@@ -87,7 +99,7 @@ fun CollapsibleText(
         Text(
             annotated,
             // [#327] 本文ウェイトはトークンから。太字ON時に Medium へ上がる。
-            color = color, fontSize = DeckType.Body, fontWeight = DeckWeight.Body, lineHeight = 20.sp,
+            color = color, fontSize = DeckType.Body, fontWeight = DeckWeight.Body, lineHeight = BODY_LINE_HEIGHT,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
             overflow = TextOverflow.Ellipsis,
             inlineContent = inline,
@@ -118,3 +130,14 @@ fun CollapsibleText(
         }
     }
 }
+
+/** 本文の行の高さ。 */
+private val BODY_LINE_HEIGHT = 20.sp
+
+/**
+ * [#861] 本文に混ざるカスタム絵文字の高さ。行の高さよりわずかに大きくして、絵文字だけの行を縦に並べたとき
+ * （分割した絵文字で 1 枚の絵を作る投稿など）に行の間へ隙間が出ないようにする。
+ * 以前は 1.4em（19.6sp）で行（20sp）より小さく、画素への丸めで行の間に 1px ほどの線が出ていた。
+ * Android は行の高さを固定したまま絵文字が 1px 未満はみ出して重なり、iOS / Desktop は絵文字の行だけわずかに高くなる。
+ */
+private val INLINE_EMOJI_HEIGHT = 20.75.sp

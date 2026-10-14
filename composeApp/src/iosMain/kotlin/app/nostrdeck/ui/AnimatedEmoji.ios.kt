@@ -23,6 +23,8 @@ actual fun AnimatedEmoji(url: String, contentDescription: String?, modifier: Mod
         Box(modifier)
         return
     }
+    // [#861] 縦横比を記録する（表示の幅を決めるため）。
+    LaunchedEffect(f) { EmojiAspect.record(url, f.frames[0].width, f.frames[0].height) }
     var idx by remember(f) { mutableStateOf(0) }
     if (f.frames.size > 1) {
         LaunchedEffect(f) {

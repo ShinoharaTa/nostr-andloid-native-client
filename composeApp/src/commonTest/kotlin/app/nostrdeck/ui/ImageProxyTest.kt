@@ -31,6 +31,18 @@ class ImageProxyTest {
     }
 
     @Test
+    fun height_resizes_by_height_instead_of_width() {
+        // [#861] カスタム絵文字は高さで縮める（幅で縮めると横長の絵文字の高さが潰れる）。
+        val src = "https://example.com/wide.png"
+        val byHeight = ImageProxy.proxied(src, quality = 80, animated = true, height = 96)
+        assertTrue(byHeight.contains("&h=96&"), byHeight)
+        assertTrue(!byHeight.contains("&w="), byHeight)
+        assertEquals(src, ImageProxy.originOf(byHeight))
+        val byWidth = ImageProxy.proxied(src, width = 64)
+        assertTrue(byWidth.contains("&w=64&") && !byWidth.contains("&h="), byWidth)
+    }
+
+    @Test
     fun originOf_returns_null_for_non_proxy_input() {
         assertNull(ImageProxy.originOf("https://dev.sabotenism.cc/img/ruri.webp"))
         assertNull(ImageProxy.originOf(null))

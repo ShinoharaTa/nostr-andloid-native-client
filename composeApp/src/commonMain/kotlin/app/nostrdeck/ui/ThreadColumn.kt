@@ -21,9 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Repeat
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -236,13 +233,8 @@ private fun FocusNoteStats(
                 leading = {
                     val img = g.imageUrl
                     if (img != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalPlatformContext.current)
-                                .data(ImageProxy.proxied(img, width = 48, quality = 80, animated = true)).build(),
-                            // [#308] 文字側(Sub)と同じトークンから引く。
-                            contentDescription = g.display,
-                            modifier = Modifier.size(DeckType.Sub.asEmojiSize()),
-                        )
+                        // [#308] 文字側(Sub)と同じトークンから引く。[#861] 高さ固定・幅は縦横比どおり。
+                        AnimatedEmoji(img, contentDescription = g.display, modifier = Modifier.emojiSize(img, DeckType.Sub.asEmojiSize()))
                     } else {
                         Text(g.display, fontSize = DeckType.Sub)
                     }
