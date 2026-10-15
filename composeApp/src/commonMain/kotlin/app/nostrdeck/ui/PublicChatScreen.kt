@@ -8,6 +8,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.nostrdeck.data.SampleData
+import app.nostrdeck.model.Channel
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.state.DeckState
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -22,13 +23,18 @@ import app.nostrdeck.i18n.stringResource
 @Composable
 fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
     val repo = LocalRepository.current
-    // 画面表示時に一覧を取得（HTTP エンドポイントから upsert）。
-    LaunchedEffect(repo) { repo?.refreshChannels() }
+    // 画面表示時に一覧を取得（HTTP エンドポイントから upsert）。[#421] 参加中で一覧に無いルームは kind:40 を取りに行く。
+    LaunchedEffect(repo) { repo?.refreshChannels(); repo?.ensureJoinedChannels() }
     val channels = if (repo != null) {
         remember { repo.channelsFlow() }.collectAsState(emptyList()).value
     } else SampleData.channels
+    val joinedIds = if (repo != null) remember(repo) { repo.joinedChannelIdsFlow() }.collectAsState().value else emptyList()
 
-    val selected = state.publicChatRoom?.let { id -> channels.firstOrNull { it.id == id } }
+    // [#421] 参加中で一覧にまだ無いルームも開けるようにする（名前は kind:40 が届くまで既定名）。
+    val selected = state.publicChatRoom?.let { id ->
+        channels.firstOrNull { it.id == id } ?: if (id in joinedIds) Channel(id, name = "", about = "") else null
+    }
+    val unnamed = stringResource(Res.string.chat_room_unnamed)
 
     TwoPane(
         isCompact = isCompact,
@@ -57,6 +63,7 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                     chScope.launch { repo.updateChannel(id, name, about, picture) }
                 }) else null,
                 // [#794] 見出しは通常のカラムヘッダ（パブリックチャット）。#422 の「DM | チャット」切り替えはやめた。
+                joinedChannelIds = joinedIds,
             )
         },
         detail = {
@@ -64,7 +71,7 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                 state.publicChatRoom == null -> DetailPlaceholder(stringResource(Res.string.chat_select_channel))
                 selected == null -> DetailPlaceholder(stringResource(Res.string.chat_loading_channel))
                 else -> LiveChannelRoom(
-                    spec = SampleData.roomColumnFor(selected),
+                    spec = SampleData.roomColumnFor(selected).let { it.copy(title = it.title.ifBlank { unnamed }) },
                     channelId = selected.id,
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
                     onClose = if (isCompact) null else ({ state.publicChatRoom = null }),
