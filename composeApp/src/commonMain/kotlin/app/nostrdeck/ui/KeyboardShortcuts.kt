@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,9 +71,29 @@ fun handleDeckKey(state: DeckState, event: KeyEvent, onReload: () -> Unit = {}):
 /** [#275] KeyDown を処理できたキー（対応する KeyUp を黙って消費するため）。 */
 private val downHandledKeys = mutableSetOf<Key>()
 
+/**
+ * [#858] デッキの中の入力欄（ルームのカラムの常設の入力欄）にフォーカスがある間は、キーをショートカットに使わない。
+ * DeckArea は onPreviewKeyEvent（親が先に受け取る）で受けているので、譲らないと入力中の j / k / r などを横取りする。
+ * 入力欄ごとの印（token）で持ち、フォーカスが外れたとき・画面から消えたときに外す。
+ */
+internal object DeckTextInputFocus {
+    private val tokens = mutableSetOf<Any>()
+    val active: Boolean get() = tokens.isNotEmpty()
+    fun set(token: Any, focused: Boolean) {
+        if (focused) tokens.add(token) else tokens.remove(token)
+    }
+}
+
+/**
+ * [#858] デッキの入力欄から抜けたときに、ショートカットの受け口（DeckArea）へフォーカスを戻す。
+ * 入力欄のフォーカスを外すだけだとどこにもフォーカスが無くなり、キーが DeckArea に届かなくなるため。
+ * DeckArea の外（パブリックチャット画面・DM・詳細オーバーレイ）では何もしない。
+ */
+internal val LocalRestoreDeckShortcuts = staticCompositionLocalOf<() -> Unit> { {} }
+
 private fun handleDeckKeyDown(state: DeckState, event: KeyEvent, onReload: () -> Unit): Boolean {
-    // 投稿作成シート表示中は全キーをそちら（テキスト入力）に譲る。
-    if (state.showCompose) return false
+    // 投稿作成シート表示中・[#858] デッキの入力欄に入力中は、全キーをそちら（テキスト入力）に譲る。
+    if (state.showCompose || DeckTextInputFocus.active) return false
 
     // [#14] 修飾キー（Mac=Cmd / それ以外=Ctrl）付きは一般的なキーバインドに寄せる。
     //  - Cmd/Ctrl+R = 接続を破棄して再接続（タイムライン再構築）。
