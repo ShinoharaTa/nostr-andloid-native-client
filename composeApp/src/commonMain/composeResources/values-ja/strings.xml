@@ -240,7 +240,6 @@
     <string name="preset_general">汎用</string>
     <string name="preset_japan">日本</string>
     <string name="preset_paid">ペイド</string>
-    <string name="preset_image">画像特化</string>
     <string name="preset_note_paid">有料</string>
     <string name="preset_note_search">検索対応</string>
     <string name="presets_title">候補（おすすめ）</string>
@@ -285,6 +284,14 @@
     <string name="media_unavailable">メディアサーバー情報を利用できません</string>
     <string name="media_title">画像アップロード先（NIP-96 / 認証は NIP-98）</string>
     <string name="media_desc">投稿に画像を添付すると、選択中のサーバへアップロードします。</string>
+    <!-- [#872] アップロード先（NIP-96 / Blossom）と投稿画面での一時的な切り替え -->
+    <string name="media_servers_title">アップロード先（NIP-96 / Blossom）</string>
+    <string name="media_servers_desc">投稿に画像や動画を添付すると、選択中のサーバーへアップロードします。投稿画面から、その投稿だけ送信先を変えることもできます。</string>
+    <string name="media_protocol_nip96">NIP-96</string>
+    <string name="media_protocol_blossom">Blossom</string>
+    <string name="media_add_protocol">方式</string>
+    <string name="compose_upload_target">送信先</string>
+    <string name="compose_upload_target_hint">この投稿だけ送信先を変えます（設定は変わりません）</string>
     <string name="img_compress_title">画像アップロードの圧縮</string>
     <string name="img_compress_desc">投稿画像は「低/中」選択時に下の長辺(px)へリサイズして再エンコードします（Android=WebP / iOS=JPEG）。「高」は常に原寸のままです。既定値: 低=640px・中=1200px・品質=85%（範囲: 長辺128〜8192 / 品質30〜100）。</string>
     <string name="img_low_dim_label">「低」の長辺（px）</string>

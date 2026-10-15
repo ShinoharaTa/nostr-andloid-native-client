@@ -35,9 +35,18 @@ class DesktopDbMigrationTest {
     private fun Connection.tables() = strings("SELECT name FROM sqlite_master WHERE type = 'table'")
     private fun Connection.columns(table: String) = strings("SELECT name FROM pragma_table_info('$table')")
 
-    /** 以前の Desktop の作り方（番号を記録せずに現行スキーマを作る）。 */
+    /**
+     * 以前の Desktop の作り方（番号を記録せずにその頃の現行スキーマを作る）。番号を記録しなかったのは #736 より前、
+     * つまり版 13 までなので、今のスキーマを作ってから版 14 以降で足した列を落として版 13 の形にする。
+     * **N.sqm を足したら、ここで落とす列・表も足すこと**（[version_is_inferred_from_tables_and_columns] の版の確認が知らせる）。
+     */
     private fun createLikeOldDesktop() {
         JdbcSqliteDriver(url).use { NostrDb.Schema.create(it) }
+        jdbc { c ->
+            c.exec(
+                "ALTER TABLE media_server DROP COLUMN protocol",   // 13.sqm（#872）
+            )
+        }
     }
 
     private fun open() = DriverFactory(file).createDriver().close()
@@ -115,6 +124,7 @@ class DesktopDbMigrationTest {
         assertEquals(6L, infer(setOf("event_tag", "relay", "used_hashtag"), profile = setOf("lud16", "banner")))
         assertEquals(9L, infer(setOf("app_setting", "media_server", "custom_emoji", "publish_queue"), queue = setOf("event_id")))
         assertEquals(13L, infer(setOf("ogp_cache", "deleted_event", "publish_queue"), queue = setOf("ref_id")))
-        assertEquals(13L, NostrDb.Schema.version)
+        // 版を上げたら createLikeOldDesktop が版 13 の形を作れているか見直す（その版で足した列・表を落とす）。
+        assertEquals(14L, NostrDb.Schema.version)
     }
 }
