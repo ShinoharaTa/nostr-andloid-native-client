@@ -30,7 +30,7 @@ internal object EmojiFrameCache {
     suspend fun load(url: String): EmojiFrames? {
         mutex.withLock { if (cache.containsKey(url)) return cache[url] }
         val decoded = withContext(Dispatchers.Default) {
-            fetchAndDecode(ImageProxy.proxied(url, width = 96, quality = 80, animated = true))
+            fetchAndDecode(ImageProxy.proxied(url, height = EMOJI_PROXY_HEIGHT_PX, quality = 80, animated = true))   // [#861] 高さ基準
                 ?: fetchAndDecode(url.trim())
         }
         mutex.withLock {

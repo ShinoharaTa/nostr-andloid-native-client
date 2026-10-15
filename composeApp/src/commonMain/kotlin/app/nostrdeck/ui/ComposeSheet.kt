@@ -921,12 +921,8 @@ internal fun EmojiSuggestChip(emoji: app.nostrdeck.model.CustomEmoji, onClick: (
             .clickable(onClick = onClick).padding(horizontal = DeckSpace.Sm, vertical = DeckSpace.Xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalPlatformContext.current)
-                .data(ImageProxy.proxied(emoji.url, width = 64, quality = 80, animated = true)).build(),
-            contentDescription = emoji.shortcode,
-            modifier = Modifier.size(20.dp),
-        )
+        // [#861] 高さ固定・幅は縦横比どおり（横長の絵文字を正方形に縮めない）。
+        AnimatedEmoji(emoji.url, contentDescription = emoji.shortcode, modifier = Modifier.emojiSize(emoji.url, 20.dp))
         Spacer(Modifier.width(DeckSpace.Xs))
         Text(":${emoji.shortcode}:", color = DeckColors.Text2, fontSize = DeckType.Caption, maxLines = 1)
     }

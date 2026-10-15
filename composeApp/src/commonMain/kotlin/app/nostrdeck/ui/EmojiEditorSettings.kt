@@ -91,7 +91,7 @@ fun EmojiEditorSettings() {
                 Modifier.fillMaxWidth().padding(vertical = DeckSpace.Xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AnimatedEmoji(e.url, contentDescription = e.shortcode, modifier = Modifier.size(24.dp))
+                AnimatedEmoji(e.url, contentDescription = e.shortcode, modifier = Modifier.emojiSize(e.url, 24.dp))   // [#861]
                 Spacer(Modifier.width(DeckSpace.Sm))
                 Text(
                     ":${e.shortcode}:", color = DeckColors.Text, fontSize = DeckType.Sub,

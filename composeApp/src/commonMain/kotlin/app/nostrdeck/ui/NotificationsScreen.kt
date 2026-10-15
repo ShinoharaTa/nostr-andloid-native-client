@@ -402,7 +402,7 @@ private fun KindMark(n: NotificationUi) {
             // [#308] 画像側も文字と同じ EmojiLg から引く（以前は 17dp 固定で通常絵文字の 77%）。
             AnimatedEmoji(
                 n.reactionImageUrl, contentDescription = n.reaction,
-                modifier = Modifier.size(DeckType.EmojiLg.asEmojiSize()),
+                modifier = Modifier.emojiSize(n.reactionImageUrl, DeckType.EmojiLg.asEmojiSize()),   // [#861] 高さ固定・幅は縦横比どおり
             )
         n.kind == NotificationKind.REACTION ->
             Text(n.reaction ?: "❤️", fontSize = DeckType.EmojiLg, maxLines = 1)
