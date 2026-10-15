@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.ColumnKind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -213,7 +214,11 @@ private fun ContentWithCompose(
         // 全幅の詳細ルート（プロフィール/スレッド）。非空なら宛先の上に重ねる。
         if (state.hasDetail) DetailOverlay(state, isCompact = isCompact, stateHolder = detailStateHolder)
         // 投稿 FAB はホームのタイムライン操作。詳細ルート表示中は隠す。
-        if (state.navDest == NavDest.HOME && !state.hasDetail) {
+        // [#858] シングルカラム表示でルームのカラムを開いているときも隠す（カラムに常設の入力欄があり、
+        // 右下の FAB がその送信ボタンを覆ってしまうため）。
+        val onRoomPage = isCompact &&
+            state.columns.firstOrNull { it.id == state.visibleColumnId }?.kind == ColumnKind.CHANNEL_ROOM
+        if (state.navDest == NavDest.HOME && !state.hasDetail && !onRoomPage) {
             FloatingActionButton(
                 onClick = { state.showCompose = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Lg),
