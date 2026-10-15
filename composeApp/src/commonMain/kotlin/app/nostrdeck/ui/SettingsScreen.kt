@@ -478,11 +478,13 @@ private fun MediaServersSheet(repo: app.nostrdeck.data.EventRepository, onDismis
                         unselectedColor = DeckColors.Text3,
                     ),
                 )
-                Text(uploadServerName(s.url), color = DeckColors.Text, fontSize = DeckType.Sub,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Spacer(Modifier.size(DeckSpace.Sm))
-                UploadProtocolBadge(UploadProtocol.of(s.protocol))   // [#872]
-                Spacer(Modifier.weight(1f))
+                // [#872] 名前とバッジは左に寄せ、削除は行の右端にそろえる（名前の長さで位置が動かないように）。
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(uploadServerName(s.url), color = DeckColors.Text, fontSize = DeckType.Sub,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.size(DeckSpace.Sm))
+                    UploadProtocolBadge(UploadProtocol.of(s.protocol))
+                }
                 DeckTextButton(stringResource(Res.string.common_delete), color = DeckColors.Warn, onClick = { confirmRemove = s.url })
             }
             HorizontalDivider(color = DeckColors.Border)
