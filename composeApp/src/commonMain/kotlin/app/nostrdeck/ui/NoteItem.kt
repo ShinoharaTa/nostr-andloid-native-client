@@ -719,7 +719,7 @@ private fun formatSats(sats: Long): String = when {
 
 /** アイコンのみのアクションボタン。タッチ領域は 40dp の実ボックス、グリフは気持ち小さめ(IconMd)。 */
 @Composable
-private fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
+internal fun ActionButton(icon: ImageVector, tint: Color, onClick: (() -> Unit)? = null) {
     Box(
         // [#339][#348] グリフだけ文字サイズに追従させ、タッチ領域は 40dp のまま。
         // 領域ごと拡大するとアクション行(元々264/270dpで満杯 #312)が fontScale 1.3 で
@@ -744,7 +744,7 @@ private val ReactStarColor = Color(0xFFF5B301)
  * 送信失敗時は数秒で pending を解除して元に戻す。付与済み＝塗り＋鮮色、未付与＝枠線＋淡色。
  */
 @Composable
-private fun DefaultReactionButton(content: String, active: Boolean, onClick: () -> Unit) {
+internal fun DefaultReactionButton(content: String, active: Boolean, onClick: () -> Unit) {
     val isStar = content == "⭐" || content == "★"
     var pending by remember(active) { mutableStateOf(false) }
     LaunchedEffect(pending) { if (pending && !active) { delay(6000); pending = false } }

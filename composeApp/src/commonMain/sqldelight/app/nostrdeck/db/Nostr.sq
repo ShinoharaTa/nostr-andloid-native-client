@@ -520,10 +520,11 @@ JOIN event_tag et ON e.id = et.event_id
 WHERE e.kind = 7 AND e.pubkey = ? AND et.tag = 'e';
 
 -- [M8-counts] 自分がリポスト済みのノート id 集合。
+-- [#875] kind:16（汎用リポスト。kind:7 やチャットの発言のリポスト）も数える。
 myRepostedNoteIds:
 SELECT et.value FROM event e
 JOIN event_tag et ON e.id = et.event_id
-WHERE e.kind = 6 AND e.pubkey = ? AND et.tag = 'e';
+WHERE e.kind IN (6, 16) AND e.pubkey = ? AND et.tag = 'e';
 
 -- [M8-counts] 指定ノートに対する自分のリアクション(kind7) id（取り消し=NIP-09 削除の対象）。
 myReactionIdFor:
