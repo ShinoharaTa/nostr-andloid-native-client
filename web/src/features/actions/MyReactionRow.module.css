@@ -24,9 +24,11 @@
   line-height: 1;
 }
 
+/* [#862] 高さ固定・幅は縦横比どおり */
 .emoji {
-  width: var(--type-emoji-lg);
   height: var(--type-emoji-lg);
+  width: auto;
+  aspect-ratio: auto 1 / 1;
   object-fit: contain;
 }
 

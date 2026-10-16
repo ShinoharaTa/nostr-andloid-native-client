@@ -68,7 +68,7 @@
   "web_emoji_color_palette_label": "文字色のパレット",
   "web_emoji_copied": "URLをコピーしました",
   "web_emoji_copy_failed": "コピーできませんでした。URLを選択したので、手動でコピーしてください",
-  "web_emoji_desc": "文字から 128×128 の絵文字画像を作ります。URL をそのままカスタム絵文字に登録できます",
+  "web_emoji_desc": "文字から高さ 128px の絵文字画像を作ります（長い文字は横長になります）。URL をそのままカスタム絵文字に登録できます",
   "web_emoji_error_empty_text": "描ける文字がありません",
   "web_emoji_error_font_unavailable": "フォントを読み込めませんでした。しばらくしてからもう一度お試しください",
   "web_emoji_error_invalid_color": "文字色は16進（例: ff0000）で指定してください",

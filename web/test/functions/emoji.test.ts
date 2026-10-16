@@ -10,6 +10,9 @@ const ORIGIN = "https://nostrism.shino3.net";
 // Pages Functions が受け取る型（cf プロパティ付き）
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
+/** 長い 1 行（漢字 10 文字・縁取りあり）。[#863] 高さ 128 のまま横長の画像になる */
+const LONG_QUERY = `text=${encodeURIComponent("議識護警競露騰欄織職")}&stroke=ffffff`;
+
 /** テストで使うクエリ（キャッシュは各テストの前に消す）。 */
 const QUERIES = [
   "text=%E8%8D%89",
@@ -19,6 +22,7 @@ const QUERIES = [
   "text=%E3%81%9D%E3%82%8C%0A%E3%81%AA&font=delagothic",
   "text=%E3%81%9D%E3%82%8C%0A%E3%81%AA&font=mplusrounded",
   "text=x",
+  LONG_QUERY,
 ];
 
 /** emoji.png.ts のキャッシュキーと同じ組み立て（自オリジンの /api/emoji.png?<正規クエリ>&v=<RENDER_VERSION>）。 */
@@ -102,6 +106,24 @@ describe("GET /api/emoji.png", () => {
     const opaque = pixels(image).filter((p) => p[3] === 255);
     expect(opaque.length).toBeGreaterThan(100);
     for (const p of opaque) expect(p.slice(0, 3)).toEqual([255, 0, 0]);
+  });
+
+  it("[#863] 長い文字は高さ 128 のまま横長の PNG（外周は透明・左右の端の近くまでインクがある）", async () => {
+    const response = await call(LONG_QUERY);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    const image = await decodePng(response);
+    expect(image.height).toBe(128);
+    expect(image.width).toBeGreaterThan(128 * 5);
+    const columnHasInk = (x: number) => {
+      for (let y = 0; y < image.height; y++) if (pixel(image, x, y)[3] > 0) return true;
+      return false;
+    };
+    expect(columnHasInk(0)).toBe(false);
+    expect(columnHasInk(image.width - 1)).toBe(false);
+    // 余白は PAD + r（4 + 8）なので、端から 16 px 以内にインクがある（正方形に縮めていない）
+    expect(columnHasInk(16)).toBe(true);
+    expect(columnHasInk(image.width - 17)).toBe(true);
   });
 
   it("stroke を指定すると縁取りの色の画素がある", async () => {

@@ -2,7 +2,7 @@ import { memo, type ReactNode, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForProfile } from "../../lib/content/labels";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { relativeTime } from "../../lib/time";
 import { displayName, pictureOf, useEventByPointer, useProfile } from "../../nostr/loaders";
 import { AlternateEmailIcon, BoltIcon, MailOutlineIcon, RepeatIcon, ReplyIcon } from "../../ui/icons";
@@ -138,7 +138,7 @@ function KindMark({ item }: { item: NotificationItem }) {
 
 /** カスタム絵文字の画像。プロキシが読めなければ元 URL で 1 度だけ取り直し、それも読めなければ :code: の文字 */
 function ReactionImage({ url, text }: { url: string; text: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 64, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
   if (!src) return <span className={styles.emojiText}>{text}</span>;
 
   function onError() {

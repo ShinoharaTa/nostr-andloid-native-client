@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useT } from "../../i18n";
-import { proxied } from "../../lib/imageProxy";
+import { proxiedEmoji } from "../../lib/imageProxy";
 import { FavoriteIcon, MoodIcon, StarIcon } from "../../ui/icons";
 import { ReactionPickerDialog } from "../actions/ReactionPickerDialog";
 import { setDefaultReaction, useDefaultReaction } from "../actions/reactionPrefs";
@@ -51,7 +51,7 @@ export function ReactionSection() {
           {isOther && image ? (
             <img
               className={styles.choiceEmoji}
-              src={proxied(image, 64, 75, true)}
+              src={proxiedEmoji(image, 75)}
               alt={content}
               decoding="async"
               referrerPolicy="no-referrer"

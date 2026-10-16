@@ -22,7 +22,7 @@ import {
   shortUrlLabel,
 } from "../../lib/content/labels";
 import { parseNoteContent, splitTrailingPunct, withoutLinks, withoutMention } from "../../lib/content/parse";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { useProfile } from "../../nostr/loaders";
 import { nyaize, useNyanApplies } from "../../ui/nyan";
 import styles from "./NoteContent.module.css";
@@ -153,7 +153,7 @@ function EmojiNode({ node }: { node: Emoji }) {
  * それも読めなければ :code: の文字に戻す。
  */
 function EmojiImage({ url, code }: { url: string; code: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 64, 75, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 75));
   const label = `:${code}:`;
   if (!src) return label;
 

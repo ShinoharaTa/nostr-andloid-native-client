@@ -8,17 +8,17 @@
 ## 0. 何のために
 
 - Nostr の NIP-30 カスタム絵文字は「画像 URL」があれば使える。しかし文字だけの絵文字（「草」「それな」「🔥 と同じ色の文字」等）を作るのに画像編集ツールが要る。
-- URL のクエリでテキスト・色・フォントを指定すると 128×128 の透明 PNG が返る API と、それを GUI で組み立てる作成ページを Nostrism Web に足す。
+- URL のクエリでテキスト・色・フォントを指定すると高さ 128 px（幅は文字に合わせて 128 px 以上）の透明 PNG が返る API と、それを GUI で組み立てる作成ページを Nostrism Web に足す。
 - 同じ指定は同じ画像。Cloudflare のキャッシュに載せ、2 回目以降は生成しない。
 
 ## 1. 決定事項（ユーザーと合意済み + この文書での決定）
 
 | 項目 | 決定 |
 |---|---|
-| 出力 | 128×128、RGBA PNG、背景透明 |
+| 出力 | 高さ 128 px 固定・幅は文字に合わせて可変（128〜1280 px。縦横比 1:10 で頭打ち。短い文字は 128×128 の正方形、長い文字は横長。[#863]）、RGBA PNG、背景透明 |
 | 改行 | `\n`（U+005C U+006E の 2 文字）、`¥n`（U+00A5 U+006E）、実改行（`%0A`）の 3 つを改行とみなす |
 | 縁取り | 色を指定したときだけ描く。太さは自動（フォントサイズ比、§5） |
-| レイアウト | 縦横比を保ち、一番長い行と行数の両方が収まる最大サイズで中央寄せ。引き伸ばさない。行ごとに中央揃え |
+| レイアウト | 縦横比を保ち、高さに収まる大きさで中央寄せ（幅が 1280 px を超えるときだけ幅で縮める）。縦の大きさはインクと各行の基準の字「国」の箱の和で決める（「ー」「…」「_」のような背の低い字を引き伸ばさない）。引き伸ばさない。行ごとに中央揃え |
 | フォント | Noto Sans JP（Bold）/ M PLUS Rounded 1c（Bold）/ Dela Gothic One（Regular）。すべて SIL OFL 1.1 |
 | 置き場所 | 画像: `GET /api/emoji.png?…`（Pages Functions）。作成ページ: `/emoji`（SPA のルート。ログイン不要） |
 | 生成方式 | **自前の軽量ラスタライザ + ビルド時に前処理したグリフデータ**（§2 案 C）。wasm・satori・opentype.js は本番バンドルに入れない |
@@ -189,7 +189,7 @@ point (M × 4 B)               i16 x, i16 y
 - パラメータの順: `text`, `color`, `stroke`, `font`。既定値と同じものは**省略**（`color=000000`、`font=notosans`、`stroke` 無し）。
 - `text` は `URLSearchParams` の規則でエンコード（改行は `%0A`、空白は `+`）。
 - 例: `https://nostrism.shino3.net/api/emoji.png?text=%E3%81%9D%E3%82%8C%0A%E3%81%AA&color=00ff00&stroke=ffffff&font=delagothic`
-- キャッシュキー（Cache API 用。公開しない）: `new URL("/api/emoji.png", request.url の origin)` に正規化パラメータを入れ、最後に `v=1`（`RENDER_VERSION`。描画アルゴリズム・フォント `.bin` を変えたら上げる）を足した URL 文字列。
+- キャッシュキー（Cache API 用。公開しない）: `new URL("/api/emoji.png", request.url の origin)` に正規化パラメータを入れ、最後に `v=<RENDER_VERSION>`（今は 2。描画アルゴリズム・フォント `.bin` を変えたら上げる。§6.1）を足した URL 文字列。
 - リクエスト URL が正規形でなくてもリダイレクトしない。正規化して同じキーで返す。
 
 ### 4.5 エラー
@@ -210,12 +210,15 @@ point (M × 4 B)               i16 x, i16 y
 
 ## 5. レイアウトの数式
 
-座標: 画像は左上原点・y 下向き。フォントデータは upm=1000・y 上向き。`W = H = 128`。
+座標: 画像は左上原点・y 下向き。フォントデータは upm=1000・y 上向き。画像の高さ `H = HEIGHT = 128` は固定、幅 `W` は手順 7 で決める（`MIN_WIDTH = 128` 〜 `MAX_WIDTH = 1280`）。[#863]
 
 定数（`web/server/emoji/layout.ts` に名前付きで置く）:
 
 ```
-CANVAS = 128
+HEIGHT = 128            // 画像の高さ（px。固定）
+MIN_WIDTH = 128         // 画像の最小の幅（px）
+MAX_WIDTH = HEIGHT × 10 // 画像の最大の幅（px。縦横比 1:10）= 1280
+REFERENCE_CHAR = U+56FD // 縦の大きさの基準にする字（全角の「国」）
 PAD = 4                 // 画像の外周の余白（px）
 LINE_GAP_EM = 0.08      // 行間（em。em 箱の下端から次の行の em 箱の上端まで）
 STROKE_RATIO = 0.07     // 縁取り半径 = フォントサイズ × これ
@@ -227,21 +230,26 @@ STROKE_MIN_PX = 2, STROKE_MAX_PX = 8
 1. 各行 i（0 始まり）について、グリフを左から並べる。グリフ g の x 原点 `penX_g` は前のグリフの advance の累積。行の**インク範囲** `inkL_i = min(penX_g + xMin_g)`、`inkR_i = max(penX_g + xMax_g)`（輪郭の無いグリフ＝空白は無視。行にインクが無ければ `inkL_i = inkR_i = 0`）。
 2. 行 i のベースライン `base_i = i × pitch`、`pitch = (ascender − descender) + LINE_GAP_EM × 1000`（単位: 1000=1em。y は**下向き**で数える。つまり画像座標系で後で使う）。
 3. 行ごとに中央揃え: 行の水平オフセット `shift_i = −(inkL_i + inkR_i) / 2`。グリフ g の最終 x = `penX_g + shift_i`。
-4. ブロックのインク bbox（全行の全グリフ）: `bx0 = min(shift_i + penX_g + xMin_g)`, `bx1 = max(… + xMax_g)`, `by0 = min(base_i − yMax_g)`, `by1 = max(base_i − yMin_g)`（y 上向きの yMax が上端なので符号反転）。`bw = bx1 − bx0`, `bh = by1 − by0`。`bw == 0 || bh == 0` → 400 `empty_text`（空白だけ）。
-5. 縁取り半径 r（px）: `stroke` 無しなら `r = 0`。有りなら、まず `r = 0` でスケール `s0 = min((CANVAS − 2·PAD) / bw, (CANVAS − 2·PAD) / bh)`（px/単位）、フォントサイズ `fs0 = s0 × 1000`（px）、`r = clamp(round(STROKE_RATIO × fs0), STROKE_MIN_PX, STROKE_MAX_PX)`。
-6. 最終スケール `s = min((CANVAS − 2·PAD − 2·r) / bw, (CANVAS − 2·PAD − 2·r) / bh)`。
-7. 平行移動: ブロック bbox の中心を (64, 64) に。`tx = 64 − s × (bx0 + bx1) / 2`, `ty = 64 − s × (by0 + by1) / 2`。
-8. 各輪郭点 (px, py)（フォント単位・y 上向き）の画像座標: `X = tx + s × (shift_i + penX_g + px)`, `Y = ty + s × (base_i − py)`。
+4. ブロックの bbox: 横はインク（全行の全グリフ）`bx0 = min(shift_i + penX_g + xMin_g)`, `bx1 = max(… + xMax_g)`。縦はインク `by0 = min(base_i − yMax_g)`, `by1 = max(base_i − yMin_g)`（y 上向きの yMax が上端なので符号反転）に、**インクのある各行 i の基準の字の箱**を足す: `by0 = min(by0, base_i − yMax_ref)`, `by1 = max(by1, base_i − yMin_ref)`（`yMin_ref`・`yMax_ref` はその書体の「国」のインクの縦範囲。空白だけの行は数えない。フォントに「国」が無ければインクだけ）。`bw = bx1 − bx0`, `bh = by1 − by0`。インクが無い → 400 `empty_text`（空白だけ）。
+5. 縁取り半径 r（px）: `stroke` 無しなら `r = 0`。有りなら、まず `r = 0` のスケール `s0 = min((H − 2·PAD) / bh, (MAX_WIDTH − 2·PAD) / bw)`（px/単位）、フォントサイズ `fs0 = s0 × 1000`（px）、`r = clamp(round(STROKE_RATIO × fs0), STROKE_MIN_PX, STROKE_MAX_PX)`。
+6. 最終スケール `s = min((H − 2·PAD − 2·r) / bh, (MAX_WIDTH − 2·PAD − 2·r) / bw)`（高さで決め、幅が MAX_WIDTH を超えるときだけ幅で縮める）。
+7. 画像の幅 `W = max(MIN_WIDTH, min(MAX_WIDTH, ceil(bw × s + 2·PAD + 2·r)))`。
+8. 平行移動: ブロック bbox の中心を (W/2, H/2) に。`tx = W/2 − s × (bx0 + bx1) / 2`, `ty = H/2 − s × (by0 + by1) / 2`。
+9. 各輪郭点 (px, py)（フォント単位・y 上向き）の画像座標: `X = tx + s × (shift_i + penX_g + px)`, `Y = ty + s × (base_i − py)`。
 
 備考:
 - カーニング・合字は使わない（前処理で GSUB/GPOS を捨てている）。
-- 1 文字の行だけなら、その字のインクがほぼ画像いっぱい（120 px − 縁取り）になる。
-- 行間は em 箱基準・スケールは インク基準、という組み合わせは意図したもの（「g」や「あ」が混ざっても行がガタつかず、かつ余白を最小にする）。
+- bbox の高さは、幅で頭打ちにならない限り `H − 2·PAD − 2·r`（120 px − 縁取り）。インクは上下左右に `PAD + r` 以上の余白を残して収まる。
+- 幅で頭打ち（W = 1280）になったときは、文字は 128 より低く描かれて上下中央に置かれる（「一」×10・「…」×10・Dela Gothic One の漢字 10 文字など）。
+- 基準の字の箱により、背の低い字は漢字 1 文字分の高さを基準に拡大され、その中で本来の縦位置に置かれる（「ー」は中ほど、「_」は下寄り、ラテン小文字はベースライン付近）。漢字だけの文字列は「国」の箱とほぼ同じ高さなので、箱が無いときとほぼ同じ大きさ。
+- 短い文字（`bw × s + 2·PAD + 2·r ≤ 128`）は 128×128 の正方形。
+- 長い文字は横長になる（画数の多い漢字 1 行 10 文字で幅 1,100〜1,280 px）。
+- 行間は em 箱基準・スケールは インク基準（縦は基準の字の箱を足す）、という組み合わせは意図したもの（「g」や「あ」が混ざっても行がガタつかず、かつ余白を最小にする）。
 
 ### 5.1 塗りの作り方（`raster.ts`）
 
-- 輪郭（閉じた折れ線）を **符号付き面積累積法**（font-rs / stb_truetype の accumulation rasterizer）で 128×128 の `Float32Array coverage` に描く。各線分 (x0,y0)→(x1,y1) について、交差する各走査線 y で、線分の y 方向の長さを符号（dy の向き）付きで、x の通過位置に応じて左右 2 画素に按分して累積バッファに足す。最後に行ごとに前から累積和を取り `cov = min(1, |acc|)`。これで 1 パス・アンチエイリアス付き・nonzero 相当（重なりは 1 に飽和。逆向きの重なりは相殺されるが、今回のフォントでは問題にならない前提。問題が出た書体があれば §12 に上げる）。
-- 画素中心は (x + 0.5, y + 0.5)。画像外にはみ出す線分はクリップ（x < 0 は列 0 に、x ≥ 128 は捨てる。y は範囲外の走査線を飛ばす）。
+- 輪郭（閉じた折れ線）を **符号付き面積累積法**（font-rs / stb_truetype の accumulation rasterizer）で W×H の `Float32Array coverage` に描く。各線分 (x0,y0)→(x1,y1) について、交差する各走査線 y で、線分の y 方向の長さを符号（dy の向き）付きで、x の通過位置に応じて左右 2 画素に按分して累積バッファに足す。最後に行ごとに前から累積和を取り `cov = min(1, |acc|)`。これで 1 パス・アンチエイリアス付き・nonzero 相当（重なりは 1 に飽和。逆向きの重なりは相殺されるが、今回のフォントでは問題にならない前提。問題が出た書体があれば §12 に上げる）。
+- 画素中心は (x + 0.5, y + 0.5)。画像外にはみ出す線分はクリップ（x < 0 は列 0 に、x ≥ W は捨てる。y は範囲外の走査線を飛ばす）。縁取り（§5.2）・合成（§5.3）も同じ W×H で作る。
 
 ### 5.2 縁取り（`outline.ts`）
 
@@ -258,7 +266,7 @@ STROKE_MIN_PX = 2, STROKE_MAX_PX = 8
 
 ### 5.4 PNG（`png.ts`）
 
-- IHDR: 128×128、bit depth 8、color type 6（RGBA）、圧縮 0、フィルタ 0、インターレース 0。
+- IHDR: W×H（§5）、bit depth 8、color type 6（RGBA）、圧縮 0、フィルタ 0、インターレース 0。
 - 各行の先頭にフィルタ種別 0 を付け、`new CompressionStream("deflate")`（zlib 形式。workerd・Node 両対応）で圧縮して IDAT 1 つ。IEND。
 - CRC32 はテーブル（256 エントリ）を自前で持つ。
 - 依存を足さない。
@@ -280,6 +288,8 @@ response = pngResponse(png)
 ctx.waitUntil(caches.default.put(cacheKey, response.clone()))
 return response
 ```
+
+- [#863] 高さ固定・横長に描き方を変えたとき、URL（クエリの規則・正規化）は変えずに `RENDER_VERSION` を 1 → 2 に上げた。Cache API のキーが変わるので、デプロイ後は前に置いた正方形の画像を返さない（ブラウザ・wsrv.nl・他クライアントの手元に残った分は、消えるまで正方形のまま）。
 
 ### 6.2 応答ヘッダ（200）
 
@@ -324,8 +334,8 @@ return response
 
 フォーム（`EmojiMakerForm`。`/emoji`・ピッカー §7.5・設定「文字から作る」の 3 か所で共通）は 2〜6。[#783] ネイティブ（`EmojiMakerForm.kt`）と同じく、プレビューとエラーを先頭に置く（スマホでキーボードやスクロールで隠れないように）。
 
-1. 見出し `web_emoji_title`、説明 `web_emoji_desc`（「文字から 128×128 の絵文字画像を作ります。URL をそのままカスタム絵文字に登録できます」）。
-2. **プレビュー**: 128×128 の `<img>` を 2 枚（明るい地 `#fff` と暗い地 `#0c0c10`。両テーマでの見え方）。入力変更から **400 ms デバウンス**して `fetch(url)`（同一オリジン）。200 なら `URL.createObjectURL(blob)` を src に（前の objectURL は revoke）。4xx なら JSON の `error` を `web_emoji_error_<code>` の文言で表示（`unsupported_char` は `char` を `%1$s` で埋める）。通信失敗は `web_emoji_error_network`。エラーはプレビューのすぐ下。
+1. 見出し `web_emoji_title`、説明 `web_emoji_desc`（「文字から高さ 128px の絵文字画像を作ります（長い文字は横長になります）。URL をそのままカスタム絵文字に登録できます」）。
+2. **プレビュー**: `<img>` を 2 枚（明るい地 `#fff` と暗い地 `#0c0c10`。両テーマでの見え方）。[#863] 高さ 128 px 固定・幅は画像の縦横比どおり（`width: auto`・`aspect-ratio: auto 1 / 1`・`object-fit: contain`）。地の色の枠も幅は画像に合わせて最小で正方形、2 枚が横に並ぶよう各枠は行の半分まで（ネイティブの `Modifier.weight(1f, fill = false)` と同じ）。半分に収まらない長い画像は縦横比を保って枠の幅に縮める。入力変更から **400 ms デバウンス**して `fetch(url)`（同一オリジン）。200 なら `URL.createObjectURL(blob)` を src に（前の objectURL は revoke）。4xx なら JSON の `error` を `web_emoji_error_<code>` の文言で表示（`unsupported_char` は `char` を `%1$s` で埋める）。通信失敗は `web_emoji_error_network`。エラーはプレビューのすぐ下。
 3. **テキスト** `<textarea rows=4>`（`web_emoji_text_label`）。入力中に行数・1 行の文字数を数え、超えたら赤字で `web_emoji_limit`（「4 行・1 行 10 文字まで」）。
 4. **フォント**: 3 つのラジオ（`web_emoji_font_notosans` = "Noto Sans JP"、`web_emoji_font_mplusrounded` = "M PLUS Rounded 1c"、`web_emoji_font_delagothic` = "Dela Gothic One"。固有名詞なのでキーは作るが ja/en 同文）。
 5. **文字色**: パレット + 16 進の欄（下記）。
@@ -500,3 +510,4 @@ return response
 | 7 | privacy-policy.html 冒頭の旧 URL `/app/` の修正（本件とは別） | 別 issue | ユーザー |
 | 8 | Noto Sans JP の Bold 化を可変フォントのインスタンス化で行うか、静的 Bold を使うか | 可変フォントのインスタンス化。opentype.js 2.0.0 の `font.variation.set({ wght: 700 })` + `font.variation.getTransform(glyph)` で gvar・HVAR が効く（advance も wght 700 の値。例: `a` は wght 400 で 563、700 で 591）。静的 Bold は使っていない | implementer（実装済み。`web/public/fonts/README.md`） |
 | 9 | M PLUS Rounded 1c の OFL に RFN があるか | 無し。google/fonts の `ofl/mplusrounded1c/` には `OFL.txt` が無い（履歴上も一度も無い）。フォントの name テーブルの著作権表示は "Copyright 2016 The Rounded M+ Project Authors."、ライセンスは OFL 1.1 で RFN の指定は無い。`OFL-mplusrounded1c.txt` はこの著作権表示 + OFL 1.1 本文で作った | implementer（確認済み。`web/public/fonts/README.md`） |
+| 10 | [#863] 高さ固定にすると、インクの低い字（「一」「ー」「…」「_」など）が高さに合わせて大きく描かれ、1 文字でも幅 250〜860 px、1 行 10 文字で幅 10,000 px 前後（画素数は正方形の約 80 倍。N100 の Node で 1 枚 50〜150 ms）になった | (1) 縦横比の上限を 1:10（`MAX_WIDTH = 1280`）にし、超えるときは幅に収まるように縮める。(2) 縦の大きさはインクと各行の基準の字「国」（U+56FD）の箱の和で決める（背の低い字は漢字 1 文字分の高さを基準に、本来の縦位置に描く）。§5 | ユーザー（決定） |
