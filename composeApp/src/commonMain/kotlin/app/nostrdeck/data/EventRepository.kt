@@ -26,7 +26,6 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import app.nostrdeck.model.EmojiMaker
 import app.nostrdeck.model.MadeEmoji
-import io.ktor.client.statement.readRawBytes
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLParameter
@@ -4678,6 +4677,9 @@ class EventRepository(
         }
     }
 
+    /** [#879] 文字から作る絵文字のフォント（作成フォームのプレビューを端末で描く。初回だけ取ってくる）。 */
+    val emojiFonts = EmojiFonts(uploadHttp, scope)
+
     /** [M11] DB のメディアサーバ一覧（Settings 用）。enabled/順序つき。 */
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
         q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
@@ -5057,33 +5059,6 @@ class EventRepository(
      * 削除済み・非公開は 404 で null。OGP と同じ DB キャッシュ（キー `x-oembed:<lang>:<url>`、title に日時）に
      * 同じ TTL で持ち、カードを出すたびに取りに行かない。
      */
-    /** [#775] 文字から作る絵文字の画像（プレビュー用）の取得結果。 */
-    sealed interface EmojiImage {
-        class Ok(val bytes: ByteArray) : EmojiImage
-        /** サーバーが作れなかった。[code] は応答の `error`（`unsupported_char` は描けない文字を [char] に持つ）。 */
-        data class Rejected(val code: String, val char: String? = null) : EmojiImage
-        /** 通信できなかった。 */
-        data object Failed : EmojiImage
-    }
-
-    /**
-     * [#775] 文字から作る絵文字の画像を取る（[EmojiMaker.imageUrl]。Web と同じサーバーが作り、Cloudflare にキャッシュされる）。
-     * 400 / 503 は応答の JSON の `error` を返す（作成フォームが理由を出す）。
-     */
-    suspend fun fetchEmojiImage(url: String): EmojiImage = try {
-        withContext(Dispatchers.Default) {
-            val resp = uploadHttp.get(url)
-            if (resp.status.value == 200) return@withContext EmojiImage.Ok(resp.readRawBytes())
-            val obj = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
-            val code = obj?.get("error")?.jsonPrimitive?.contentOrNull ?: "unknown"
-            EmojiImage.Rejected(code, obj?.get("char")?.jsonPrimitive?.contentOrNull)
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Throwable) {
-        EmojiImage.Failed
-    }
-
     /**
      * [#834] 絵文字作成フォームの前回の設定（文字色・縁取り・フォント。JSON は [EmojiMaker.encodeLast] の形）。
      * 端末ごと（アカウントに紐付けない）で、同期しない（[SETTINGS_SYNC_WHITELIST] に入れない）。

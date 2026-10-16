@@ -1086,7 +1086,7 @@ class ComposeAttachment(val src: PickedImage) {
 }
 
 /** バイト数を 1.5MB / 293KB / 512B のように人間可読へ（KMP 共通実装）。 */
-private fun humanSize(bytes: Int): String = when {
+internal fun humanSize(bytes: Int): String = when {
     bytes >= 1024 * 1024 -> {
         val mb = (bytes * 10L / (1024 * 1024)) / 10.0  // 小数第1位まで
         "${mb}MB"

@@ -105,6 +105,8 @@ private val repository: EventRepository by lazy {
     // [#7] NWC（ウォレット接続）。保存済み接続があれば復元する。
     app.nostrdeck.wallet.NwcManager.init(appScope, app.nostrdeck.wallet.DesktopNwcStore(appDir))
     app.nostrdeck.wallet.NwcManager.restore()
+    // [#879] 文字から作る絵文字のフォント（初回に取ってきたものを置く）。
+    app.nostrdeck.data.EmojiFontFiles.dir = File(appDir, "emoji-fonts")
     val db = createDatabase(DriverFactory(File(appDir, "nostr.db")))
     val relays = defaultRelaysFor(Locale.getDefault().language)
     EventRepository(db, appScope, relays).apply { start() }
