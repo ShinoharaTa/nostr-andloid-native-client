@@ -5,6 +5,7 @@ import { t, useT } from "../../i18n";
 import { PullToRefreshIndicator } from "../../ui/PullToRefreshIndicator";
 import { usePullToRefresh } from "../../ui/usePullToRefresh";
 import { KbRow, useKbList } from "../keyboard/KbList";
+import { NewItemsPill } from "./NewItemsPill";
 import { NoteItem } from "./NoteItem";
 import styles from "./Timeline.module.css";
 
@@ -130,7 +131,6 @@ export function Timeline<T extends { id: string } = NostrEvent>({
   );
 
   const newCount = atTop ? 0 : positionOf(events, anchor.seenTopId);
-  const pill = newCount > 0 ? t("pill_new_fmt", newCount) : scrolledAway ? t("pill_back_latest") : null;
 
   const { ref: scrollerRef, progress, refreshing } = usePullToRefresh(onRefresh);
 
@@ -148,17 +148,13 @@ export function Timeline<T extends { id: string } = NostrEvent>({
   return (
     <div className={styles.timeline}>
       <PullToRefreshIndicator progress={progress} refreshing={refreshing} />
-      {pill !== null && (
-        <button
-          type="button"
-          className={styles.pill}
-          // 新着は firstItemIndex で先頭に差し込むので、virtuoso はそのずれを内部の補正で持つ。
-          // ピクセル位置 0（scrollTo）では先頭に届かないため、行の番号で戻す（#782）
-          onClick={() => list.current?.scrollToIndex({ index: 0, align: "start", behavior: "smooth" })}
-        >
-          ↑ {pill}
-        </button>
-      )}
+      <NewItemsPill
+        count={newCount}
+        scrolledAway={scrolledAway}
+        // 新着は firstItemIndex で先頭に差し込むので、virtuoso はそのずれを内部の補正で持つ。
+        // ピクセル位置 0（scrollTo）では先頭に届かないため、行の番号で戻す（#782）
+        onClick={() => list.current?.scrollToIndex({ index: 0, align: "start", behavior: "smooth" })}
+      />
       <Virtuoso
         ref={list}
         className={styles.list}

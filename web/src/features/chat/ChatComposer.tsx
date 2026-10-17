@@ -5,7 +5,16 @@ import { useT } from "../../i18n";
 import { oneLine } from "../../lib/content/labels";
 import { displayName, useProfile } from "../../nostr/loaders";
 import { currentSigner, useSession } from "../../signer/session";
-import { CloseIcon, ImageIcon, PlayArrowIcon, ReplyIcon, SendIcon } from "../../ui/icons";
+import {
+  AddIcon,
+  CloseIcon,
+  ImageIcon,
+  PlayArrowIcon,
+  ReplyIcon,
+  SendIcon,
+  VideocamIcon,
+} from "../../ui/icons";
+import { MenuButton } from "../../ui/MenuButton";
 import { showToast } from "../../ui/toast";
 import { EmojiInsertButton } from "../actions/EmojiInsertButton";
 import { plainTextOf } from "../actions/noteLinks";
@@ -44,6 +53,8 @@ const MENTION_MAX = 4;
 const EMOJI_MAX = 8;
 /** 添付を選ぶ input の accept（スマホではカメラ / ギャラリーが開く） */
 const ATTACH_ACCEPT = "image/*,video/*";
+/** [#859] 入力欄の幅（内側）がこれ未満なら、添付のボタンを「＋」のメニューにまとめる（ネイティブ COMPACT_COMPOSER_WIDTH） */
+const COMPACT_COMPOSER_WIDTH = 320;
 
 /** 候補のボタンを押しても本文のフォーカス（= ソフトキーボード）を外さない */
 function keepFocus(e: MouseEvent) {
@@ -55,6 +66,8 @@ function keepFocus(e: MouseEvent) {
  * `:` の絵文字補完・`@` のメンション補完・画像 / 動画の添付・送信。Enter は改行、Ctrl / Cmd + Enter で送信。
  * 画像添付があるときは解像度チップ（低/中/高。ComposeDialog と同じ。CH4 / 挙動4.4）。
  * 添付は送信時にアップロードし、URL を本文の後ろに足す（1 件でも失敗したら送らず、添付を残す）。
+ * [#859] 幅が COMPACT_COMPOSER_WIDTH 未満（デッキの幅「狭」のカラム）では、添付を「＋」のメニュー（画像 / 動画）にまとめる。
+ * Esc で入力欄から抜ける（フォーカスを外し、デッキのショートカットに戻る）。
  */
 export function ChatComposer({
   channelId,
@@ -62,14 +75,12 @@ export function ChatComposer({
   replyTo,
   onCancelReply,
   onSent,
-  autoFocus = false,
 }: {
   channelId: string;
   channelRelays: readonly string[];
   replyTo: NostrEvent | null;
   onCancelReply(): void;
   onSent?: () => void;
-  autoFocus?: boolean;
 }) {
   const t = useT();
   const me = useSession((s) => s.pubkey);
@@ -100,9 +111,27 @@ export function ChatComposer({
     setAttachments(reprocessImages(list, maxDim, compressionPrefs.quality));
   }, [resolution, compressionPrefs]);
 
-  useEffect(() => {
-    if (autoFocus) textarea.current?.focus();
-  }, [autoFocus]);
+  // [#859] 入力欄の幅（内側）を測り、狭ければ添付を「＋」にまとめる（測れない間は広い形のまま）
+  const root = useRef<HTMLDivElement>(null);
+  const [compactAttach, setCompactAttach] = useState(false);
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0;
+      setCompactAttach(width > 0 && width < COMPACT_COMPOSER_WIDTH);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  /** 添付を選ぶ（accept で画像だけ・動画だけに絞れる） */
+  function pickFiles(accept: string) {
+    const input = fileInput.current;
+    if (!input) return;
+    input.accept = accept;
+    input.click();
+  }
 
   // 返信を選んだら入力欄へ
   useEffect(() => {
@@ -216,7 +245,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className={styles.composer}>
+    <div ref={root} className={styles.composer}>
       {replyTo && <ReplyingTo target={replyTo} onCancel={onCancelReply} />}
       {emojiHits.length > 0 ? (
         <div className={styles.chips}>
@@ -325,24 +354,52 @@ export function ChatComposer({
             setValue((v) => (v.cursor === cursor ? v : { ...v, cursor }));
           }}
           onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
+            if (e.nativeEvent.isComposing) return;
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               void send();
+            } else if (e.key === "Escape") {
+              // [#859] 入力欄から抜ける（デッキのショートカットに戻る）
+              e.preventDefault();
+              e.currentTarget.blur();
             }
           }}
           onPaste={(e) => {
             if (addFiles(Array.from(e.clipboardData.files))) e.preventDefault();
           }}
         />
-        <button
-          type="button"
-          className={styles.tool}
-          aria-label={t("web_attach_media")}
-          disabled={sending}
-          onClick={() => fileInput.current?.click()}
-        >
-          <ImageIcon className={styles.toolIcon} />
-        </button>
+        {compactAttach ? (
+          <MenuButton
+            label={t("chat_attach_menu")}
+            triggerClassName={styles.tool}
+            entries={[
+              {
+                type: "item",
+                label: t("compose_attach_image"),
+                icon: <ImageIcon />,
+                onSelect: () => pickFiles("image/*"),
+              },
+              {
+                type: "item",
+                label: t("compose_attach_video"),
+                icon: <VideocamIcon />,
+                onSelect: () => pickFiles("video/*"),
+              },
+            ]}
+          >
+            <AddIcon className={styles.toolIcon} />
+          </MenuButton>
+        ) : (
+          <button
+            type="button"
+            className={styles.tool}
+            aria-label={t("web_attach_media")}
+            disabled={sending}
+            onClick={() => pickFiles(ATTACH_ACCEPT)}
+          >
+            <ImageIcon className={styles.toolIcon} />
+          </button>
+        )}
         <input
           ref={fileInput}
           type="file"

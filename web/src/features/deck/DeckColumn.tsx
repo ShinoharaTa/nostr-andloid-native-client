@@ -162,7 +162,7 @@ function ChannelListColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader:
   );
 }
 
-/** NIP-28 のルームカラム（ネイティブ LiveChannelRoom の deckMode）。⋯ の「ミュートを表示」が効く */
+/** NIP-28 のルームカラム（ネイティブ LiveChannelRoom。[#859] メッセージ画面と同じ形）。⋯ の「ミュートを表示」が効く */
 function RoomColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean }) {
   const t = useT();
   const revealed = useDeck((s) => isMutedRevealed(s, spec.id));
@@ -181,7 +181,6 @@ function RoomColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolea
       key={channelId}
       channelId={channelId}
       title={columnLabel(spec)}
-      mode="column"
       header={header}
       revealMuted={revealed}
     />

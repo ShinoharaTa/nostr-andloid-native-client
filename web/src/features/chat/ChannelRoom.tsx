@@ -32,7 +32,6 @@ import {
 } from "../../ui/icons";
 import { MenuButton, type MenuEntry } from "../../ui/MenuButton";
 import { showToast } from "../../ui/toast";
-import { useVisualViewportHeight } from "../../ui/useVisualViewportHeight";
 import { copyText, plainTextOf } from "../actions/noteLinks";
 import { reactionSentMessage, saveMadeEmoji } from "../actions/pickedReaction";
 import { ReactionPickerDialog } from "../actions/ReactionPickerDialog";
@@ -50,6 +49,7 @@ import { useMuteMatcher } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { useDeveloperMode } from "../settings/devMode";
 import type { ReactionGroup } from "../thread/engagement";
+import { NewItemsPill } from "../timeline/NewItemsPill";
 import { NoteContent } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
 import { useNow } from "../timeline/useNow";
@@ -63,25 +63,35 @@ import { useChannelRoom } from "./useChannelRoom";
 
 /** 同じ送り手でこの秒数未満の連投は名前・アバターを省く（ネイティブ continuation） */
 const CONTINUATION_SEC = 300;
+/** 下端（最新）からこの距離以内なら「最新にいる」とみなす（フィードの Timeline と同じ 40px） */
+const AT_LATEST_THRESHOLD = 40;
+/** 下端に見えている発言がこの位置以降なら、新着が無くても「最新へ戻る」を出す（Timeline と同じ 3） */
+const SCROLLED_AWAY_INDEX = 3;
+
+/** 発言の位置 = それより新しい（下にある）件数（見つからなければ 0） */
+function positionOf(messages: readonly NostrEvent[], id: string | undefined): number {
+  const index = messages.findIndex((m) => m.id === id);
+  return index < 0 ? 0 : index;
+}
 
 /**
- * チャンネルのルーム（ネイティブ LiveChannelRoom + ChannelRoomColumn）。
- * screen = メッセージ画面: 最新が下（column-reverse。DOM は新しい順）・下端に常設の入力欄。
- * column = デッキのカラム: 最新が上・入力欄は置かず「✏️ メッセージを書く」でモーダル（ネイティブ deckMode）。
+ * チャンネルのルーム（ネイティブ LiveChannelRoom + ChannelRoomColumn）。メッセージ画面とデッキのカラムで同じ形:
+ * 最新が下（column-reverse。DOM は新しい順）・下端に常設の入力欄。
+ * [#859] 以前はカラムだけ最新が上・「✏️ メッセージを書く」のモーダルだった（同じルームで並びが逆になり使いにくい。#858）。
+ * 新着が届いたとき、最新の近くにいれば最新へ寄せ、上（過去）を読んでいれば位置を保つ。自分の発言が届いたら最新へ送る。
+ * 最新から離れているときは下端に「↓ N 件の新着」「↓ 最新へ戻る」（フィードと同じピル）。
  * 吹き出しは全員左寄せ（自分も左。ネイティブ mineOnRight=false）。ミュートした人・ワードの発言は出さない（revealMuted なら出す）。
  * [#798] highlightMessageId（本文の kind:42 へのリンクから開いたとき）は、届いたらその位置まで送って短く強調する。
  */
 export function ChannelRoom({
   channelId,
   title,
-  mode,
   header,
   revealMuted = false,
   highlightMessageId = null,
 }: {
   channelId: string;
   title: string;
-  mode: "screen" | "column";
   header: ReactNode;
   revealMuted?: boolean;
   highlightMessageId?: string | null;
@@ -90,7 +100,6 @@ export function ChannelRoom({
   const me = useSession((s) => s.pubkey);
   const { loading, messages, reactions, channelRelays } = useChannelRoom(channelId, revealMuted);
   const [replyTo, setReplyTo] = useState<NostrEvent | null>(null);
-  const [composing, setComposing] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (me) ensureMyReactionsSubscribed(me);
@@ -98,11 +107,58 @@ export function ChannelRoom({
 
   // [#594] 常設の入力欄（textarea）にフォーカスしたら最新のメッセージ（column-reverse の scrollTop 0）を見せる
   function onComposerFocus(e: FocusEvent<HTMLElement>) {
-    if (mode !== "screen" || e.target.tagName !== "TEXTAREA" || !scroller.current) return;
+    if (e.target.tagName !== "TEXTAREA" || !scroller.current) return;
     scroller.current.scrollTop = 0;
   }
 
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+
+  // ---- 最新への追従と新着のピル（[#859] ネイティブ ChannelRoomColumn の LaunchedEffect と ChatBottomPill） ----
+  const newestId = messages[0]?.id;
+  const newestMine = me !== null && messages[0]?.pubkey === me;
+  const [atLatest, setAtLatest] = useState(true);
+  const [scrolledAway, setScrolledAway] = useState(false);
+  /** 最後に最新の位置で見た発言。これより新しい件数を新着として数える */
+  const [seenNewestId, setSeenNewestId] = useState(newestId);
+  const follow = useRef({ newestId, atLatest: true });
+
+  function onScroll() {
+    const el = scroller.current;
+    if (!el) return;
+    // column-reverse の scrollTop は下端が 0、上へ読むほど負
+    const near = -el.scrollTop < AT_LATEST_THRESHOLD;
+    follow.current.atLatest = near;
+    setAtLatest(near);
+    if (near) setSeenNewestId(follow.current.newestId);
+    // 新しい方から SCROLLED_AWAY_INDEX 件目が見えている範囲より下にあれば、最新から離れている
+    const row = el.children[SCROLLED_AWAY_INDEX - 1];
+    setScrolledAway(
+      row instanceof HTMLElement && row.getBoundingClientRect().top >= el.getBoundingClientRect().bottom,
+    );
+  }
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const previous = follow.current.newestId;
+    follow.current.newestId = newestId;
+    if (!el || newestId === undefined || previous === newestId) return;
+    // 自分の発言（読み込み中の過去分は除く）はどこを読んでいても最新へ。最新の近くにいれば最新へ寄せる
+    if ((newestMine && !loading) || follow.current.atLatest) {
+      el.scrollTop = 0;
+      follow.current.atLatest = true;
+      setAtLatest(true);
+      setSeenNewestId(newestId);
+      return;
+    }
+    // 上を読んでいる間は位置を保つ: 下端に増えた分（最新の発言と前の最新の下端の差）だけ上へずらす
+    const before = previous === undefined ? null : el.querySelector(`[data-message-id="${previous}"]`);
+    const latest = el.firstElementChild;
+    if (before && latest) {
+      el.scrollTop -= latest.getBoundingClientRect().bottom - before.getBoundingClientRect().bottom;
+    }
+  }, [newestId, newestMine, loading]);
+
+  const newCount = atLatest ? 0 : positionOf(messages, seenNewestId);
 
   // [#798] 強調する発言。届いたらその位置へ送り、そこで強調を点ける（CSS のアニメーションで消える）。
   // 最初の EOSE までは後から届く発言で位置がずれるので、読み込みが終わったところでもう 1 度だけ送る
@@ -119,14 +175,9 @@ export function ChannelRoom({
     setFlashId(highlightMessageId);
   }, [hasTarget, loading, highlightMessageId]);
 
-  function reply(message: NostrEvent) {
-    setReplyTo(message);
-    if (mode === "column") setComposing(true);
-  }
-
-  // messages は新しい順。連投の「頭」は見た目の上側: screen = 古い側、column = 新しい側
+  // messages は新しい順。連投の「頭」は見た目の上側（古い側）
   const rows = messages.map((message, i) => {
-    const neighbor = mode === "screen" ? messages[i + 1] : messages[i - 1];
+    const neighbor = messages[i + 1];
     const continuation =
       neighbor !== undefined &&
       neighbor.pubkey === message.pubkey &&
@@ -141,7 +192,7 @@ export function ChannelRoom({
         parent={parentId === null ? undefined : byId.get(parentId)}
         reactions={reactions.get(message.id)}
         highlighted={message.id === flashId}
-        onReply={() => reply(message)}
+        onReply={() => setReplyTo(message)}
       />
     );
   });
@@ -149,56 +200,28 @@ export function ChannelRoom({
   return (
     <section className={styles.root} aria-label={title} aria-busy={loading} onFocus={onComposerFocus}>
       {header}
-      <div ref={scroller} className={mode === "screen" ? styles.chatScroller : styles.feedScroller}>
-        {messages.length === 0 ? (
-          <p className={styles.empty}>{loading ? t("loading") : t("web_chat_empty")}</p>
-        ) : (
-          rows
-        )}
-      </div>
-      {mode === "screen" ? (
-        <ChatComposer
-          channelId={channelId}
-          channelRelays={channelRelays}
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onSent={() => setReplyTo(null)}
-        />
-      ) : (
-        <div className={styles.writeBar}>
-          <button
-            type="button"
-            className={styles.write}
-            onClick={() => {
-              setReplyTo(null);
-              setComposing(true);
-            }}
-          >
-            {t("chat_write_message")}
-          </button>
+      <div className={styles.body}>
+        <div ref={scroller} className={styles.scroller} onScroll={onScroll}>
+          {messages.length === 0 ? (
+            <p className={styles.empty}>{loading ? t("loading") : t("web_chat_empty")}</p>
+          ) : (
+            rows
+          )}
         </div>
-      )}
-      {composing && (
-        <ComposeModal
-          title={title}
-          onClose={() => {
-            setComposing(false);
-            setReplyTo(null);
-          }}
-        >
-          <ChatComposer
-            channelId={channelId}
-            channelRelays={channelRelays}
-            replyTo={replyTo}
-            onCancelReply={() => setReplyTo(null)}
-            onSent={() => {
-              setComposing(false);
-              setReplyTo(null);
-            }}
-            autoFocus
-          />
-        </ComposeModal>
-      )}
+        <NewItemsPill
+          count={newCount}
+          scrolledAway={scrolledAway}
+          atBottom
+          onClick={() => scroller.current?.scrollTo?.({ top: 0, behavior: "smooth" })}
+        />
+      </div>
+      <ChatComposer
+        channelId={channelId}
+        channelRelays={channelRelays}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+        onSent={() => setReplyTo(null)}
+      />
     </section>
   );
 }
@@ -546,65 +569,5 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
       )}
       {dialog === "json" && <EventJsonDialog event={message} onDismiss={() => setDialog(null)} />}
     </div>
-  );
-}
-
-/**
- * デッキのカラムの投稿モーダル（ネイティブ ChannelRoomColumn の Dialog: チャンネル名 + 入力欄）。
- * 背景・Esc / 戻る・✕ で閉じる。
- */
-function ComposeModal({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
-  const t = useT();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const latestOnClose = useRef(onClose);
-  useLayoutEffect(() => {
-    latestOnClose.current = onClose;
-  });
-
-  useEffect(() => {
-    const d = dialog.current;
-    if (d && !d.open) d.showModal();
-  }, []);
-
-  // ソフトキーボードが出たら見えている高さにカードを収める（ComposeDialog と同じ --compose-vvh。#594）
-  useVisualViewportHeight(dialog, "--compose-vvh");
-
-  // カードの外（dialog 自身 = 背景）の押下
-  useEffect(() => {
-    const d = dialog.current;
-    if (!d) return;
-    const onClick = (e: MouseEvent) => {
-      if (e.target === d) latestOnClose.current();
-    };
-    d.addEventListener("click", onClick);
-    return () => d.removeEventListener("click", onClick);
-  }, []);
-
-  return (
-    <dialog
-      ref={dialog}
-      className={styles.modal}
-      aria-label={title}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      onClose={() => onClose()}
-    >
-      <div className={styles.modalCard}>
-        <div className={styles.modalHead}>
-          <span className={styles.modalTitle}>{title}</span>
-          <button
-            type="button"
-            className={styles.modalClose}
-            aria-label={t("common_close")}
-            onClick={onClose}
-          >
-            <CloseIcon className={styles.modalCloseIcon} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </dialog>
   );
 }

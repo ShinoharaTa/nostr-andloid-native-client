@@ -33,7 +33,6 @@ export function ChannelRoomDetail({
       key={channelId}
       channelId={channelId}
       title={title}
-      mode="screen"
       highlightMessageId={messageId}
       header={
         <RoomHeader

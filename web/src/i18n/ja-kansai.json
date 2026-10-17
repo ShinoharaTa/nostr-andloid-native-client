@@ -418,7 +418,6 @@
   "unmute_confirm_text": "このユーザーの投稿が、またタイムラインに出てくるようになるで。",
   "followers_scope_note": "リレーで見えた範囲だけ表示してるで（全部やないで）",
   "chat_select_channel": "チャンネルを選んでな",
-  "chat_write_message": "✏️ メッセージ、書いてな",
   "chat_reply_to_fmt": "%1$s に返信: %2$s",
   "chat_cancel_reply": "返信、やめとく",
   "search_hint_add2": "単語か #タグを足して検索してな",

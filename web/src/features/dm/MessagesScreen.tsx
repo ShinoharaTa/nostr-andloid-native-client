@@ -241,7 +241,6 @@ function RoomPane({
       key={channelId}
       channelId={channelId}
       title={title}
-      mode="screen"
       header={
         <RoomHeader
           title={title}

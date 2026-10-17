@@ -96,6 +96,11 @@ export function AppShell() {
 
   const jumpTarget = useDeck((s) => s.jumpTarget);
   const visibleColumnId = useDeck((s) => s.visibleColumnId);
+  // [#859] 1 カラム表示（Compact / Rail）でルームのカラムを開いているときは投稿ボタン（FAB）を出さない。
+  // カラムに常設の入力欄があり、FAB がその送信ボタンを覆うため（ネイティブ AppScaffold の onRoomPage。#858）
+  const onRoomPage = useDeck(
+    (s) => mode !== "expanded" && s.columns.find((c) => c.id === s.visibleColumnId)?.kind === "CHANNEL_ROOM",
+  );
   const showAddColumn = useDeck((s) => s.showAddColumn);
   const editingColumnId = useDeck((s) => s.editingColumnId);
   const hashtagManagerOpen = useHashtagManager((s) => s.open);
@@ -155,7 +160,7 @@ export function AppShell() {
             )}
           </DetailOverlay>
         )}
-        <ComposeHost showFab={dest === "home" && overlay === null} />
+        <ComposeHost showFab={dest === "home" && overlay === null && !onRoomPage} />
         <KeyboardShortcuts enabled={dest === "home"} hasDetail={overlay !== null} />
         <ConnectionPill />
         <UpdateToast />
