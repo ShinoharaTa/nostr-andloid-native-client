@@ -95,7 +95,7 @@ describe("reactionKey / reactionDisplay", () => {
 });
 
 describe("publishReaction", () => {
-  it("既定は + で e → p（ヒントが無ければ空）", async () => {
+  it("既定は + で e → p → k（ヒントが無ければ空）", async () => {
     const target = note();
     await publishReaction(target);
     expect(drafts()).toEqual([
@@ -105,6 +105,7 @@ describe("publishReaction", () => {
         tags: [
           ["e", target.id, ""],
           ["p", target.pubkey, ""],
+          ["k", String(target.kind)],
         ],
       },
     ]);
@@ -112,11 +113,17 @@ describe("publishReaction", () => {
     expect(loadRecentEmojis()).toEqual([]);
   });
 
-  it("カスタム絵文字は emoji タグを 3 番目に付け、「最近」に記録する", async () => {
+  it("カスタム絵文字は emoji タグを k の次に付け、「最近」に記録する", async () => {
     const target = note();
     await publishReaction(target, ":cat:", "https://e/cat.png");
-    expect(drafts()[0].tags[2]).toEqual(["emoji", "cat", "https://e/cat.png"]);
+    expect(drafts()[0].tags[3]).toEqual(["emoji", "cat", "https://e/cat.png"]);
     expect(loadRecentEmojis()).toMatchObject([{ content: ":cat:", imageUrl: "https://e/cat.png", uses: 1 }]);
+  });
+
+  it("[#882] リアクション（kind:7）へのリアクションは k=7", async () => {
+    const target = note(undefined, { kind: 7 });
+    await publishReaction(target, "👍");
+    expect(drafts()[0].tags).toContainEqual(["k", "7"]);
   });
 
   it("画像 URL が無ければ emoji タグを付けない", async () => {

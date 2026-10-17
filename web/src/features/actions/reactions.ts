@@ -36,7 +36,13 @@ export function buildReactionTags(
 ): string[][] {
   const custom = imageUrl && content.length >= 2 && content.startsWith(":") && content.endsWith(":");
   return fillRelayHints(
-    [["e", target.id], ["p", target.pubkey], ...(custom ? [["emoji", content.slice(1, -1), imageUrl]] : [])],
+    // [#882] NIP-25: 対象の kind（ネイティブ #875 と同じ並び e, p, k, emoji）。kind:7 へのリアクションもある
+    [
+      ["e", target.id],
+      ["p", target.pubkey],
+      ["k", String(target.kind)],
+      ...(custom ? [["emoji", content.slice(1, -1), imageUrl]] : []),
+    ],
     hints.eventHint,
     hints.pubkeyHint,
   );
