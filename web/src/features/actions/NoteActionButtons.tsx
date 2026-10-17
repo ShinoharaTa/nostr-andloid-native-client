@@ -67,10 +67,7 @@ function warn(message: string) {
  * 均等配置する箱）の外に置き、行の右端に固定するため NoteFooter の more props へ別に渡す。
  */
 export function NoteActionButtons({ event }: { event: NostrEvent }) {
-  const me = useSession((s) => s.pubkey);
-  useEffect(() => {
-    if (me) ensureMyReactionsSubscribed(me);
-  }, [me]);
+  useMyReactionsSubscribed();
   return (
     <>
       <RepostButton event={event} />
@@ -79,6 +76,31 @@ export function NoteActionButtons({ event }: { event: NostrEvent }) {
       <ZapAction event={event} />
     </>
   );
+}
+
+/**
+ * [#878] 受け取ったリアクション（kind:7）への操作（ネイティブ ReactionNotice.kt ReactionEventActions）。
+ * 投稿の操作行と同じ部品で、そのリアクションを対象にリポスト（メニューで引用リポスト）→ 既定リアクション → 絵文字。
+ * リポストは対象が kind:7 なので kind:16 + k=7（buildRepostTags）。
+ */
+export function ReactionEventActions({ event }: { event: NostrEvent }) {
+  const t = useT();
+  useMyReactionsSubscribed();
+  return (
+    <fieldset aria-label={t("web_note_actions_label")} className={styles.reactionActions}>
+      <RepostButton event={event} />
+      <DefaultReactionButton event={event} />
+      <EmojiReactionButton event={event} />
+    </fieldset>
+  );
+}
+
+/** 既定リアクションの押下状態のため、自分の kind:7 を購読しておく（ensureMyReactionsSubscribed） */
+function useMyReactionsSubscribed() {
+  const me = useSession((s) => s.pubkey);
+  useEffect(() => {
+    if (me) ensureMyReactionsSubscribed(me);
+  }, [me]);
 }
 
 /** リポスト。押すと「リポスト」「引用リポスト」。自分がリポスト済みなら緑 */

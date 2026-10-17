@@ -47,17 +47,9 @@
   color: var(--accent);
 }
 
-.emojiText {
-  font-size: var(--type-emoji-lg);
-  line-height: 1;
-}
-
-/* [#862] 高さ固定・幅は縦横比どおり */
-.emojiImg {
-  height: var(--type-emoji-lg);
-  width: auto;
-  aspect-ratio: auto 1 / 1;
-  object-fit: contain;
+/* [#878] リアクションは ♡ のアイコン（ネイティブ DeckColors.Like。投稿の操作行のリアクション済みと同じ色） */
+[data-kind="reaction"] .markIcon {
+  color: var(--react-heart);
 }
 
 .main {
@@ -119,6 +111,19 @@
   text-decoration: none;
 }
 
+/* [#878] リアクションの絵文字の行 = 左に絵文字（残り幅）、右端にそのリアクションへの操作 */
+.reactionLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.reactionEmoji {
+  flex: 1;
+  min-width: 0;
+}
+
 /* DM の本体 = 未読の数の 1 行（本文は出さない） */
 .dmText {
   margin: 0;
@@ -133,7 +138,7 @@
 /*
  * [#674] 廃人モード: NoteItem.module.css と同じ規則。.row を grid にして .mark を 1 行目の 1 列目、
  * .main を display: contents、見出し（.head / 返信・メンションの .snippet）を 1 行目の 2 列目、
- * それ以外（本体）は 2 行目以降で全幅にする。
+ * それ以外（本体。[#878] リアクションの絵文字の行を含む）は 2 行目以降で全幅にする。
  */
 :root[data-density="dense"] .row {
   display: grid;

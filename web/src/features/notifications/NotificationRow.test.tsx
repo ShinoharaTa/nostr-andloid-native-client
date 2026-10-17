@@ -1,24 +1,59 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { decode } from "nostr-tools/nip19";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { NEVER } from "rxjs";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { proxiedEmoji } from "../../lib/imageProxy";
 import { unixNow } from "../../lib/time";
+import { type EventDraft, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
+import { useSession } from "../../signer/session";
+import { installDialogPolyfill } from "../../test/dialog";
+import actionStyles from "../actions/NoteActionButtons.module.css";
+import { useCompose } from "../compose/composeStore";
 import { NotificationRow } from "./NotificationRow";
 import { type NotificationItem, toNotification } from "./notificationModel";
 
 // applesauce の Tokens.link はホストにドットを要求するため、テストの URL は *.test にする
+
+// [#878] 受け取ったリアクションへの操作: 署名・送信はしない（publishEvent だけ差し替えて draft を見る）
+vi.mock("../../nostr/publish", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../nostr/publish")>();
+  return { ...actual, publishEvent: vi.fn() };
+});
+
+// 自分の kind:7 の購読はリレーへ張らない
+vi.mock("../../nostr/pool", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../nostr/pool")>();
+  return { ...actual, subscribe: vi.fn(() => NEVER) };
+});
 
 const CARD = { name: "引用元の投稿を開く" } as const;
 
 let meKey: Uint8Array;
 let me: string;
 
+beforeAll(() => {
+  installDialogPolyfill();
+});
+
 beforeEach(() => {
   meKey = generateSecretKey();
   me = getPublicKey(meKey);
+  vi.mocked(publishEvent).mockReset();
+  vi.mocked(publishEvent).mockImplementation(async (draft: EventDraft) =>
+    finalizeEvent(
+      { kind: draft.kind, content: draft.content, tags: draft.tags, created_at: unixNow() },
+      meKey,
+    ),
+  );
+});
+
+afterEach(() => {
+  useCompose.setState({ request: null });
+  useSession.setState({ status: "loading", method: null, pubkey: null });
 });
 
 /** 名前を持つプロフィールを入れ、その鍵を返す */
@@ -72,7 +107,7 @@ function threadIdOf(href: string | null | undefined): string | null {
 }
 
 describe("リアクション", () => {
-  it("マークは絵文字、名前はプロフィール、時刻は対象のスレッド、本体は対象の引用カード（メディア無し）", async () => {
+  it("[#878] マークは ♡ のアイコン（読み上げは「リアクション ❤️」）、本体は見出し → 絵文字の行 → 対象の引用カード（メディア無し）", async () => {
     const target = myPost("自分の投稿 https://i.test/photo.jpg");
     const reaction = signed(
       7,
@@ -86,7 +121,22 @@ describe("リアクション", () => {
 
     const { container } = renderRow(itemOf(reaction));
 
-    expect(screen.getByRole("img", { name: "リアクション ❤️" })).toBeInTheDocument();
+    const mark = screen.getByRole("img", { name: "リアクション ❤️" });
+    expect(mark.querySelector("svg")).not.toBeNull();
+    expect(mark).toHaveTextContent("");
+    // 絵文字の行（左に ❤️、右端に操作）は見出しの後・引用カードの前
+    const order = [
+      container.querySelector("time"),
+      screen.getByText("❤️"),
+      screen.getByRole("group", { name: "操作" }),
+      screen.getByRole("link", CARD),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      const prev = order[i - 1];
+      const next = order[i];
+      if (!prev || !next) throw new Error("missing element");
+      expect(prev.compareDocumentPosition(next)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
     const name = await screen.findByRole("link", { name: "alice" });
     expect(name.getAttribute("href")).toMatch(/^\/p\/npub1/);
     const time = container.querySelector("time")?.closest("a");
@@ -96,7 +146,7 @@ describe("リアクション", () => {
     expect(card.querySelectorAll("img")).toHaveLength(0);
   });
 
-  it("カスタム絵文字は画像（wsrv の 64px・全フレーム）。2 回読めなければ :code: の文字", () => {
+  it("カスタム絵文字は絵文字の行の画像（proxiedEmoji: wsrv の高さ 96・全フレーム）。2 回読めなければ :code: の文字", () => {
     const reaction = signed(
       7,
       generateSecretKey(),
@@ -111,18 +161,18 @@ describe("リアクション", () => {
     renderRow(itemOf(reaction));
 
     const mark = screen.getByRole("img", { name: "リアクション :cat:" });
-    const img = mark.querySelector("img");
-    expect(img?.getAttribute("src")).toContain("https://wsrv.nl/");
-    expect(img?.getAttribute("src")).toContain("&h=96&");
-    expect(img?.getAttribute("src")).toContain("n=-1");
-    if (!img) throw new Error("no img");
-    fireEvent.error(img);
-    const origin = mark.querySelector("img");
-    expect(origin?.getAttribute("src")).toBe("https://emoji-a.test/cat.png");
-    if (!origin) throw new Error("no img");
-    fireEvent.error(origin);
     expect(mark.querySelector("img")).toBeNull();
-    expect(mark).toHaveTextContent(":cat:");
+    const img = screen.getByRole("img", { name: ":cat:" });
+    expect(img.getAttribute("src")).toBe(proxiedEmoji("https://emoji-a.test/cat.png", 80));
+    expect(img.getAttribute("src")).toContain("https://wsrv.nl/");
+    expect(img.getAttribute("src")).toContain("&h=96&");
+    expect(img.getAttribute("src")).toContain("n=-1");
+    fireEvent.error(img);
+    const origin = screen.getByRole("img", { name: ":cat:" });
+    expect(origin.getAttribute("src")).toBe("https://emoji-a.test/cat.png");
+    fireEvent.error(origin);
+    expect(screen.queryByRole("img", { name: ":cat:" })).toBeNull();
+    expect(screen.getByText(":cat:")).toBeInTheDocument();
   });
 
   it("絵文字の画像が http:// なら文字のまま", () => {
@@ -139,9 +189,126 @@ describe("リアクション", () => {
 
     renderRow(itemOf(reaction));
 
-    const mark = screen.getByRole("img", { name: "リアクション :cat:" });
-    expect(mark.querySelector("img")).toBeNull();
-    expect(mark).toHaveTextContent(":cat:");
+    expect(screen.getByRole("img", { name: "リアクション :cat:" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: ":cat:" })).toBeNull();
+    expect(screen.getByText(":cat:")).toBeInTheDocument();
+  });
+});
+
+describe("[#878] 受け取ったリアクションへの操作", () => {
+  /** ログインした自分の投稿への、他人のリアクション */
+  function receivedReaction(): NostrEvent {
+    useSession.setState({ status: "in", method: "nip07", pubkey: me });
+    const target = myPost("リアクションされた投稿");
+    return signed(
+      7,
+      withProfile("erin"),
+      [
+        ["e", target.id],
+        ["p", me],
+      ],
+      "+",
+    );
+  }
+
+  function lastDraft(): EventDraft {
+    const calls = vi.mocked(publishEvent).mock.calls;
+    return calls[calls.length - 1][0];
+  }
+
+  /** 自分のイベントをストアに入れる */
+  function addMine(kind: number, tags: string[][], content = "") {
+    act(() => {
+      eventStore.add(finalizeEvent({ kind, created_at: unixNow(), tags, content }, meKey));
+    });
+  }
+
+  it("絵文字の行の右端に リポスト・リアクション・絵文字でリアクション（返信・Zap は無い）", () => {
+    renderRow(itemOf(receivedReaction()));
+    const group = screen.getByRole("group", { name: "操作" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["リポスト", "リアクション", "絵文字でリアクション"]);
+  });
+
+  it("リアクションのイベントが無ければ操作は出さない（絵文字の行だけ）", () => {
+    renderRow({ ...itemOf(receivedReaction()), event: null });
+    expect(screen.getByText("❤️")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "操作" })).toBeNull();
+  });
+
+  it("リポストはそのリアクション（kind:7）を対象に kind:16 + k=7。引用リポストは投稿シート。行の移動は起きない", async () => {
+    const user = userEvent.setup();
+    const reaction = receivedReaction();
+    const { visited } = renderRow(itemOf(reaction));
+
+    await user.click(screen.getByRole("button", { name: "リポスト" }));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["リポスト", "引用リポスト"]);
+    await user.click(screen.getByRole("menuitem", { name: "リポスト" }));
+    expect(lastDraft()).toEqual({
+      kind: 16,
+      content: "",
+      tags: [
+        ["e", reaction.id, ""],
+        ["p", reaction.pubkey, ""],
+        ["k", "7"],
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "リポスト" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用リポスト" }));
+    expect(useCompose.getState().request).toEqual({ mode: "quote", target: reaction });
+    // メニュー・ダイアログは戻るで閉じるため同じパスの履歴を積む。行（スレッド /e/…）へは移動しない
+    expect(visited.filter((path) => path !== "/")).toEqual([]);
+  });
+
+  it("自分の kind:16 がそのリアクションを指していればリポストが緑（reposted）", () => {
+    const reaction = receivedReaction();
+    renderRow(itemOf(reaction));
+    expect(screen.getByRole("button", { name: "リポスト" })).not.toHaveClass(actionStyles.reposted);
+    addMine(16, [
+      ["e", reaction.id],
+      ["p", reaction.pubkey],
+      ["k", "7"],
+    ]);
+    expect(screen.getByRole("button", { name: "リポスト" })).toHaveClass(actionStyles.reposted);
+  });
+
+  it("既定リアクションはそのリアクションへの kind:7。付与済みなら確認ダイアログ。行の移動は起きない", async () => {
+    const user = userEvent.setup();
+    const reaction = receivedReaction();
+    const { visited } = renderRow(itemOf(reaction));
+
+    await user.click(screen.getByRole("button", { name: "リアクション" }));
+    expect(lastDraft()).toMatchObject({ kind: 7, content: "+" });
+    expect(lastDraft().tags[0]).toEqual(["e", reaction.id, ""]);
+    addMine(7, [["e", reaction.id]], "+");
+    expect(screen.getByRole("button", { name: "リアクション" })).toHaveAttribute("aria-pressed", "true");
+
+    vi.mocked(publishEvent).mockClear();
+    await user.click(screen.getByRole("button", { name: "リアクション" }));
+    const dialog = screen.getByRole("dialog", { name: "リアクションを取り消しますか？" });
+    expect(publishEvent).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "キャンセル" }));
+    expect(publishEvent).not.toHaveBeenCalled();
+    // メニュー・ダイアログは戻るで閉じるため同じパスの履歴を積む。行（スレッド /e/…）へは移動しない
+    expect(visited.filter((path) => path !== "/")).toEqual([]);
+  });
+
+  it("絵文字でリアクションはピッカーを開き、選ぶとそのリアクションへの kind:7。行の移動は起きない", async () => {
+    const user = userEvent.setup();
+    const reaction = receivedReaction();
+    const { visited } = renderRow(itemOf(reaction));
+
+    await user.click(screen.getByRole("button", { name: "絵文字でリアクション" }));
+    const dialog = screen.getByRole("dialog", { name: "リアクション" });
+    await user.click(within(dialog).getByRole("button", { name: "😄" }));
+    expect(lastDraft()).toMatchObject({ kind: 7, content: "😄" });
+    expect(lastDraft().tags[0]).toEqual(["e", reaction.id, ""]);
+    // メニュー・ダイアログは戻るで閉じるため同じパスの履歴を積む。行（スレッド /e/…）へは移動しない
+    expect(visited.filter((path) => path !== "/")).toEqual([]);
   });
 });
 
