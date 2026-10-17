@@ -108,6 +108,7 @@ import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.nostr.RelayTraffic
 import app.nostrdeck.signer.SignerProvider
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -119,6 +120,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
@@ -398,6 +400,7 @@ class EventRepository(
                 // リストが変わったらステータス表示を更新（外れたリレーは一覧から消す）。
                 // カラムの購読（読み込みリレーだけに張る分）も新しい読み込みリレーへ張り替える。
                 withContext(relayDispatcher) { retargetReadSubs(read); refreshRelayConns() }
+                reevaluateAuth()   // [#887] 自分のリレーが変わった（AUTH に応答する相手の判定に効く）
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
@@ -446,6 +449,8 @@ class EventRepository(
         restoreOwnLists()
         // [NIP-42] AUTH 応答ポリシーを KV から復元。
         loadAuthPolicy()
+        // [#887] ログインして鍵が使えるようになったら、見送っていた AUTH のチャレンジに応答する。
+        scope.launch { myPubkeyFlow.filterNotNull().collect { reevaluateAuth() } }
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
         loadUnreadSeen()
         scope.launch { eventBatchLoop() }
@@ -519,14 +524,16 @@ class EventRepository(
             client.start()
             scope.launch { client.messages.collect { onMessage(it, client) } }
             // 接続状態の変化を集約フローへ反映（レール/カラムのステータス表示用）。
-            // [NIP-42/#16] 切断時は AUTH の応答済みチャレンジを破棄し、再接続で確実に再 AUTH する。
+            // [NIP-42/#16][#887] 切断時は AUTH の状態（チャレンジ・応答済み）を捨て、再接続で確実に再 AUTH する。
             //   （再接続時は RelayClient が activeReqs を自動で張り直すため購読は自己修復する）
             scope.launch {
                 client.state.collect { st ->
-                    if (st == RelayConnState.DISCONNECTED) authChallengeByRelay.remove(key)
                     // [#423] つながったら未送信を送り直す（間隔の制限つき。立て続けの再接続で暴発させない）。
                     if (st == RelayConnState.CONNECTED) retryUnsent()
-                    withContext(relayDispatcher) { refreshRelayConns() }
+                    withContext(relayDispatcher) {
+                        if (st == RelayConnState.DISCONNECTED) authTracker.onDisconnected(key)
+                        refreshRelayConns()
+                    }
                 }
             }
             // 限定なし(subTargets 無)のサブ、または新リレーが対象集合に含まれるサブだけ張り直す。
@@ -590,7 +597,7 @@ class EventRepository(
             tier = _networkTier.value,
             bgPausedCount = bgPausedCount,
             lastBgPausedAtSec = lastBgPausedAtSec,
-            relays = relays.values.map { it.trafficSnapshot() },
+            relays = relays.entries.map { (url, c) -> c.trafficSnapshot().copy(auth = authTracker.describe(url)) },
             reqs = activeSubs.map { (id, filters) -> ActiveReqUi(id, subTargets[id]?.toList(), filters) }
                 .sortedBy { it.subId },
         )
@@ -618,8 +625,12 @@ class EventRepository(
      * relayDispatcher 上で呼ぶこと。
      */
     private fun closeIdleTransientRelays() {
-        val neededByTargeted = subTargets.values.flatten().toSet()
-        val closable = relays.keys.filter { it !in listRelays && it !in neededByTargeted }
+        val closable = RelayRouting.idleTransients(
+            connected = relays.keys,
+            listRelays = listRelays,
+            targeted = subTargets.values.flatten().toSet(),
+            pinned = transientPins.filterValues { it.isNotEmpty() }.keys,
+        )
         if (closable.isEmpty()) return
         closable.forEach { url ->
             relays.remove(url)?.stop()
@@ -710,12 +721,25 @@ class EventRepository(
         }
     }
 
+    /**
+     * [#885] 開いているカラムが掴んでいる一時接続（url → 掴んでいる購読 id）。チャンネルの content.relays は
+     * 限定 REQ ではなく全リレー向けの REQ で読むので [subTargets] に出ない。カラムを閉じる（[unsubscribeAll]）まで閉じない。
+     * relayDispatcher 上でだけ触る。
+     */
+    private val transientPins = mutableMapOf<String, MutableSet<String>>()
+
     private fun unsubscribeAll(subId: String) {
         scope.launch(relayDispatcher) {
             activeSubs.remove(subId)
             subTargets.remove(subId)
             readSubs.remove(subId)
             relays.values.forEach { it.unsubscribe(subId) }
+            // [#885] この購読が掴んでいた一時接続を放し、用済みの一時接続（インデクサ・ヒント）を閉じる。
+            // 以前は REQ だけ閉じて接続を残していたため、起動時に繋いだインデクサ（nos.lol など）が
+            // セッション中ずっと繋がったまま（切れても再接続し続ける）だった。
+            transientPins.values.forEach { it.remove(subId) }
+            transientPins.entries.removeAll { it.value.isEmpty() }
+            closeIdleTransientRelays()
         }
     }
 
@@ -1602,17 +1626,21 @@ class EventRepository(
     /** チャンネルルーム表示時に購読開始（kind:42 #e=channelId）。チャンネルのリレーへも接続する。 */
     fun subscribeChannel(columnId: String, channelId: String) {
         if (!openColumns.add(columnId)) return
-        connectChannelRelays(channelId)
+        connectChannelRelays(channelId, owner = columnId)
         subscribeAll(columnId, Filter(kinds = listOf(42), eTags = listOf(channelId), limit = 200))
     }
 
-    /** チャンネルの content.relays へ一時接続して REQ/EVENT が届くようにする（上限つき）。 */
-    private fun connectChannelRelays(channelId: String) {
+    /**
+     * チャンネルの content.relays へ一時接続して REQ/EVENT が届くようにする（上限つき）。
+     * [#885] [owner]（カラムの購読 id）が閉じるまで接続を掴む（[transientPins]）。
+     */
+    private fun connectChannelRelays(channelId: String, owner: String) {
         val urls = channelRelays[channelId] ?: return
         scope.launch(relayDispatcher) {
             for (raw in urls) {
                 val url = normalizeRelayUrl(raw)
                 if (!url.startsWith("wss://") && !url.startsWith("ws://")) continue
+                transientPins.getOrPut(url) { mutableSetOf() }.add(owner)
                 if (relays.containsKey(url)) continue
                 if (hintRelays.size >= HINT_RELAY_CAP) break
                 if (hintRelays.add(url)) ensureRelay(url)
@@ -3355,9 +3383,13 @@ class EventRepository(
     fun setAuthPolicy(p: AuthPolicy) {
         authPolicyState.value = p
         putSettingAsync(AUTH_POLICY, when (p) { AuthPolicy.OFF -> "off"; AuthPolicy.ALWAYS -> "always"; AuthPolicy.DM_AND_MINE -> "dm" })
+        reevaluateAuth()   // [#887] 見送っていたチャレンジに応答する（OFF → 常に、など）
     }
 
-    private val authChallengeByRelay = mutableMapOf<String, String>()  // url → 応答済みチャレンジ（重複応答の抑止）
+    /** [#887] リレーごとの AUTH の状態（チャレンジ・送信済み・成立・失敗・成立後に送り直すもの）。relayDispatcher 上でだけ触る。 */
+    private val authTracker = RelayAuthTracker()
+    /** [#887] 送った kind:22242 の id → その OK を待つ側。relayDispatcher 上でだけ触る。 */
+    private val authOkWaiters = mutableMapOf<String, CompletableDeferred<Pair<Boolean, String>>>()
     /** ポリシー判定: この URL の AUTH 要求に応答するか。 */
     private fun shouldAuth(url: String): Boolean = when (authPolicyState.value) {
         AuthPolicy.OFF -> false
@@ -3371,26 +3403,92 @@ class EventRepository(
     }
 
     /**
-     * [NIP-42] リレーの AUTH チャレンジに kind:22242 で応答し、成立後に購読を張り直す。
-     * ポリシー該当リレーのみ。自分の pubkey をそのリレーに証明するため、既定は自分/DMリレー限定。
+     * [NIP-42][#887] 保留中のチャレンジに kind:22242 で応答する（relayDispatcher 上）。
+     * 「応答済み」は OK true を受けてから。署名できなかったら保留のまま残し、次の契機（[reevaluateAuth]）で試す。
+     * 成立したら購読を since 無しで張り直し（制限で届いていなかった kind:1059 等を取り直す）、
+     * auth-required で弾かれていた EVENT を送り直す。以前は署名の前に応答済みにし、OK を待たず 300ms で張り直していた。
      */
-    private suspend fun handleAuthChallenge(client: RelayClient, challenge: String) {
-        if (challenge.isBlank() || !shouldAuth(client.url)) return
-        // 同じチャレンジには一度だけ応答（relayDispatcher 直列化で dedup がアトミック）。
+    private suspend fun tryAuth(client: RelayClient) {
         val key = normalizeRelayUrl(client.url)
-        if (authChallengeByRelay[key] == challenge) return
-        authChallengeByRelay[key] = challenge
-        val signed = runCatching {
+        val challenge = authTracker.challengeToAnswer(key) ?: return
+        if (!shouldAuth(key)) { authTracker.onSkipped(key); return }
+        authTracker.onSigning(key)
+        val signed = try {
             SignerProvider.current().sign(
                 UnsignedEvent(
                     kind = 22242, content = "",
                     tags = listOf(listOf("relay", client.url), listOf("challenge", challenge)),
-                )
+                ),
             )
-        }.getOrNull() ?: return
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            authTracker.onSignFailed(key, (t.message ?: t::class.simpleName ?: "sign failed").take(80))
+            return
+        }
+        // 署名を待つ間に切断された・別のチャレンジが来たなら、この署名は送らない
+        if (relays[key] !== client || authTracker.status(key)?.challenge != challenge) return
+        val waiter = CompletableDeferred<Pair<Boolean, String>>()
+        authOkWaiters[signed.id] = waiter
+        authTracker.onSent(key, signed.id)
         client.publish(RelayProtocol.auth(signed))
-        delay(300)  // AUTH の OK を待ってから購読(1059 等の制限イベント)を取り直す
+        val result = try {
+            withTimeoutOrNull(AUTH_OK_TIMEOUT_MS) { waiter.await() }
+        } finally {
+            authOkWaiters.remove(signed.id)
+        }
+        when {
+            // OK を返さないリレーでも、従来どおり購読は張り直す（制限イベントの取り直し）
+            result == null -> { authTracker.onNoOk(key); if (relays[key] === client) client.resendSubscriptions() }
+            result.first -> afterAuth(client, key)
+            else -> Unit   // 失敗の理由は onOkForAuth が記録済み（接続モニタに出る）
+        }
+    }
+
+    /** [#887] AUTH 成立後: 購読を since 無しで張り直し、auth-required で弾かれていた EVENT を送り直す。 */
+    private fun afterAuth(client: RelayClient, key: String) {
+        if (relays[key] !== client) return
         client.resendSubscriptions()
+        authTracker.takeDeferredPublishes(key).forEach { id -> publishPayloadOf(id)?.let { client.publish(it) } }
+    }
+
+    /**
+     * [#887] 送った EVENT の JSON。publish_queue にある間だけ（受理されて消えていれば null）。
+     * DB の event 行からは作らない（kind:7 は保存時に content を正規化していて、組み立て直すと署名が合わない）。
+     */
+    private fun publishPayloadOf(eventId: String): String? = q.publishPayloadById(eventId).executeAsOneOrNull()
+
+    /** [#887] この接続で受けた OK。送った kind:22242 への OK なら待ち側へ渡す。auth-required で弾かれた EVENT は成立後に送り直すよう覚える。 */
+    private suspend fun onOkForAuth(client: RelayClient, msg: RelayMessage.Ok) {
+        val key = normalizeRelayUrl(client.url)
+        if (authTracker.onOk(key, msg.eventId, msg.accepted, msg.message)) {
+            authOkWaiters[msg.eventId]?.complete(msg.accepted to msg.message)
+            return
+        }
+        if (msg.accepted || !RelayAuthTracker.isAuthRequired(msg.message)) return
+        if (authTracker.status(key)?.authed == true) return   // 認証済みでも弾かれた＝そのリレーの制限。送り直さない
+        authTracker.onPublishAuthRequired(key, msg.eventId)
+        tryAuth(client)
+    }
+
+    /** [#887] auth-required で閉じられた REQ。成立前なら応答を試みる（成立後に全部張り直す）。成立後なら 1 回だけその REQ を張り直す。 */
+    private suspend fun onClosedAuthRequired(client: RelayClient, subId: String) {
+        val key = normalizeRelayUrl(client.url)
+        val first = authTracker.onClosedAuthRequired(key, subId)
+        if (authTracker.status(key)?.authed == true) {
+            if (first) client.resubscribe(subId)
+        } else {
+            tryAuth(client)
+        }
+    }
+
+    /** [#887] 条件が変わった（ログイン・ポリシー・自分のリレー・DM リレー）ので、見送っていたチャレンジに応答し直す。 */
+    private fun reevaluateAuth() {
+        scope.launch(relayDispatcher) {
+            authTracker.pending().forEach { url ->
+                relays[url]?.let { c -> scope.launch(relayDispatcher) { tryAuth(c) } }
+            }
+        }
     }
 
     private fun onMessage(msg: RelayMessage, client: RelayClient) {
@@ -3400,18 +3498,26 @@ class EventRepository(
                 // [#478] 取り直しの一時 REQ は結果を直接集める（取り込み経路にも流すので手元の状態も追いつく）。
                 ownRefetches.value[msg.subscriptionId]?.events?.update { it + msg.event }
             }
-            // [NIP-42] AUTH 応答は relayDispatcher(直列)で処理し、チャレンジ重複応答を dedup する。
+            // [NIP-42][#887] AUTH は relayDispatcher(直列)で処理し、同じチャレンジへの重複応答を防ぐ。
             is RelayMessage.Auth -> scope.launch(relayDispatcher) {
-                authRequestedRelays.add(normalizeRelayUrl(client.url))   // [#411] ヒントには出さない
-                handleAuthChallenge(client, msg.challenge)
+                val key = normalizeRelayUrl(client.url)
+                authRequestedRelays.add(key)   // [#411] ヒントには出さない
+                if (msg.challenge.isNotBlank() && authTracker.onChallenge(key, msg.challenge)) tryAuth(client)
             }
             // [#17] EOSE = 蓄積イベント送信完了。どこか1リレーから来たらそのカラムを「読込済み」に。
             is RelayMessage.Eose -> {
                 columnLoadedState.value = columnLoadedState.value + msg.subscriptionId
                 ownRefetches.value[msg.subscriptionId]?.eose?.update { it + client.url }   // [#478]
             }
-            // [#423] 送信の受理確認。待っている id だけ記録する。
-            is RelayMessage.Ok -> if (PublishAck.isAccepted(msg.accepted, msg.message)) recordAck(msg.eventId, client.url)
+            // [#423] 送信の受理確認。待っている id だけ記録する。[#887] AUTH の OK と auth-required は別に扱う。
+            is RelayMessage.Ok -> {
+                if (PublishAck.isAccepted(msg.accepted, msg.message)) recordAck(msg.eventId, client.url)
+                scope.launch(relayDispatcher) { onOkForAuth(client, msg) }
+            }
+            // [#887] 認証が要ると閉じられた REQ は、AUTH 成立後に張り直す。
+            is RelayMessage.Closed -> if (RelayAuthTracker.isAuthRequired(msg.message)) {
+                scope.launch(relayDispatcher) { onClosedAuthRequired(client, msg.subscriptionId) }
+            }
             else -> {}
         }
     }
@@ -5691,6 +5797,7 @@ class EventRepository(
             subscribeTargeted("dm_inbox_relays", urls.toSet(), Filter(kinds = listOf(1059), pTags = listOf(e.pubkey)))
             subscribeTargeted("dm4_relays", urls.toSet(), Filter(kinds = listOf(4), pTags = listOf(e.pubkey)))
         }
+        if (e.pubkey == myPubkey) reevaluateAuth()   // [#887] 自分の DM リレーが分かった（AUTH に応答する相手の判定に効く）
     }
 
     private fun connectedReadRelays(): List<String> =
@@ -5999,7 +6106,6 @@ class EventRepository(
             "wss://purplepag.es",
             "wss://relay.nostr.band",
             "wss://relay.damus.io",
-            "wss://nos.lol",
             "wss://relay.primal.net",
         )
 
@@ -6016,6 +6122,8 @@ class EventRepository(
         const val SEARCH_FETCH_LIMIT = 300
         // [#358] バックグラウンドでリレーを一時停止するまでの猶予（5分）。
         const val BG_PAUSE_DELAY_MS = 5 * 60 * 1000L
+        /** [#887] kind:22242 の OK を待つ上限。過ぎたら OK を返さないリレーとみなして購読だけ張り直す。 */
+        const val AUTH_OK_TIMEOUT_MS = 10_000L
         // [#368] OGP の DB キャッシュ TTL（秒）。成功は7日、失敗は1日で取り直す。
         const val OGP_TTL_OK_SEC = 7L * 24 * 3600
         const val OGP_TTL_NG_SEC = 24L * 3600
