@@ -20,6 +20,7 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
@@ -28,7 +29,10 @@ import app.nostrdeck.model.EmojiMaker
 import app.nostrdeck.model.MadeEmoji
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.Headers
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.content.ByteArrayContent
+import io.ktor.http.isSuccess
 import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
 import io.ktor.utils.io.cancel
@@ -82,6 +86,8 @@ import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.tokenizeNostrContent
 import app.nostrdeck.model.AuthPolicy
 import app.nostrdeck.model.FeedNoticeCategory
+import app.nostrdeck.model.Blossom
+import app.nostrdeck.model.UploadProtocol
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.Profile
@@ -395,7 +401,7 @@ class EventRepository(
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
-        DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong()) }
+        DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong(), UploadProtocol.NIP96.id) }
         // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
         scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
@@ -4745,12 +4751,12 @@ class EventRepository(
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
         q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
 
-    /** [M11] メディアサーバを手動追加（末尾に。enabled 既定 true）。 */
-    fun addMediaServer(url: String) {
+    /** [M11] メディアサーバを手動追加（末尾に。enabled 既定 true）。[#872] 方式（NIP-96 / Blossom）も持つ。 */
+    fun addMediaServer(url: String, protocol: UploadProtocol = UploadProtocol.NIP96) {
         val u = url.trim().trimEnd('/')
         if (u.isBlank()) return
         val next = q.allMediaServers().executeAsList().size.toLong()
-        q.insertMediaServerIfAbsent(u, 1, next)
+        q.insertMediaServerIfAbsent(u, 1, next, protocol.id)
     }
 
     /** [M11] メディアサーバを設定から除去。 */
@@ -5847,19 +5853,25 @@ class EventRepository(
 
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。
-     * 有効なメディアサーバ(NIP-96)を順に試し、最初に成功した URL を返す。全滅なら null。
+     * 有効なメディアサーバを順に試し、最初に成功した URL を返す。全滅なら null。
      * [#685] noTransform = true は NIP-96 の no_transform を送り、サーバ側の再変換を断る
      * （端末でトランスコード済みの動画用。nostrcheck.me は再変換で動画を 640x480 に潰していた）。
+     * [#872] [server] を渡すと、その送信先だけに送る（投稿画面で一時的に選んだ送信先。無効にしてあっても使う）。
      */
     suspend fun uploadImage(
         bytes: ByteArray,
         mime: String,
         filename: String = "image",
         noTransform: Boolean = false,
+        server: String? = null,
     ): String? =
         withContext(Dispatchers.Default) {
-            for (s in q.enabledMediaServers().executeAsList()) {
-                val url = runCatching { uploadToServer(s.url, bytes, mime, filename, noTransform) }.getOrNull()
+            val targets = if (server != null) listOfNotNull(q.mediaServerByUrl(server).executeAsOneOrNull())
+            else q.enabledMediaServers().executeAsList()
+            for (s in targets) {
+                val url = runCatching {
+                    uploadToServer(s.url, UploadProtocol.of(s.protocol), bytes, mime, filename, noTransform)
+                }.getOrNull()
                 if (!url.isNullOrBlank()) return@withContext url
             }
             null
@@ -5873,11 +5885,13 @@ class EventRepository(
      */
     private suspend fun uploadToServer(
         server: String,
+        protocol: UploadProtocol,
         bytes: ByteArray,
         mime: String,
         filename: String,
         noTransform: Boolean,
     ): String? {
+        if (protocol == UploadProtocol.BLOSSOM) return uploadToBlossom(server, bytes, mime, filename)
         val base = server.trim().trimEnd('/')
         val apiUrl = discoverApiUrl(base) ?: "$base/api/v1/media"
         val parts = formData {
@@ -5895,6 +5909,28 @@ class EventRepository(
             setBody(MultiPartFormDataContent(parts))
         }
         return parseUploadResponse(resp.bodyAsText())
+    }
+
+    /**
+     * [#872] Blossom（BUD-02）へ 1 ファイルを送る。本文をそのまま `<server>/upload` へ PUT し、
+     * kind:24242（t=upload・x=sha256・expiration）で認証する（[Blossom]。eHagaki と同じ形）。
+     * 返ってきた記述子の sha256 と size が送ったものと一致するときだけ url を返す。
+     * Blossom はサーバーで作り直さないので、no_transform は無い（送った動画がそのまま配られる）。
+     */
+    private suspend fun uploadToBlossom(server: String, bytes: ByteArray, mime: String, filename: String): String? {
+        val sha = Blossom.sha256Hex(bytes)
+        val signed = SignerProvider.current().sign(Blossom.uploadAuth(sha, filename, currentUnixTime()))
+        val auth = Blossom.authorizationHeader(eventToJson(signed).encodeToByteArray().encodeBase64())
+        val resp = uploadHttp.put(Blossom.uploadUrl(server)) {
+            header(HttpHeaders.Authorization, auth)
+            setBody(ByteArrayContent(bytes, runCatching { ContentType.parse(mime) }.getOrDefault(ContentType.Application.OctetStream)))
+        }
+        if (!resp.status.isSuccess()) {
+            println("Nostrism Blossom upload rejected by $server: ${resp.status.value} ${resp.headers["X-Reason"].orEmpty()}")
+            return null
+        }
+        val descriptor = Blossom.parseDescriptor(resp.bodyAsText()) ?: return null
+        return descriptor.url.takeIf { Blossom.matches(descriptor, sha, bytes.size.toLong()) }
     }
 
     /** [M11] NIP-96 ディスカバリ。api_url（絶対/相対）を返す。失敗時 null。 */

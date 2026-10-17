@@ -586,18 +586,24 @@ DELETE FROM event WHERE id = ?;
 deleteTagsForEvent:
 DELETE FROM event_tag WHERE event_id = ?;
 
--- ============ [M11] media_server: 画像アップロード先（NIP-96）の設定 ============
+-- ============ [M11] media_server: 画像アップロード先（NIP-96 / Blossom）の設定 ============
 -- ユーザーが編集できるメディアサーバ集合。uploadImage が enabled 順に試す。
 -- 既定値は EventRepository.start() で insert-if-absent して投入する。
+-- [#872] protocol: 'nip96'（nip96.json の api_url へ POST）/ 'blossom'（<url>/upload へ PUT）。
 CREATE TABLE media_server (
     url        TEXT NOT NULL PRIMARY KEY,
     enabled    INTEGER NOT NULL DEFAULT 1,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    protocol   TEXT NOT NULL DEFAULT 'nip96'
 );
 
 -- SQLite 3.18 は UPSERT 不可なので INSERT OR IGNORE（relay/used_hashtag と同方針）。
 insertMediaServerIfAbsent:
-INSERT OR IGNORE INTO media_server(url, enabled, sort_order) VALUES (?, ?, ?);
+INSERT OR IGNORE INTO media_server(url, enabled, sort_order, protocol) VALUES (?, ?, ?, ?);
+
+-- [#872] 投稿画面で一時的に選んだ送信先を引く。
+mediaServerByUrl:
+SELECT * FROM media_server WHERE url = ?;
 
 allMediaServers:
 SELECT * FROM media_server ORDER BY sort_order ASC, url ASC;

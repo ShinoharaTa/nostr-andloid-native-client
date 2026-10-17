@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.UploadProtocol
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,17 +35,20 @@ enum class PresetCategory(val label: StringResource) {
     General(Res.string.preset_general),
     Japan(Res.string.preset_japan),
     Paid(Res.string.preset_paid),
-    Image(Res.string.preset_image),
+    // [#872] アップロード先の候補は方式で分ける。
+    MediaNip96(Res.string.media_protocol_nip96),
+    MediaBlossom(Res.string.media_protocol_blossom),
 }
 
 /** 補足バッジの種別（「有料」等）。表示文言は UI 層でリソース解決する。 */
 enum class PresetNote { PAID, SEARCH }
 
-/** プリセット1件。[note] は「有料」等の軽い補足。 */
+/** プリセット1件。[note] は「有料」等の軽い補足。[#872] アップロード先の候補は [protocol] を持つ。 */
 data class Preset(
     val url: String,
     val category: PresetCategory,
     val note: PresetNote? = null,
+    val protocol: UploadProtocol? = null,
 ) {
     /** チップ表示用にスキームを落とした短い名前（例: relay.damus.io）。 */
     val displayName: String
@@ -80,15 +84,26 @@ val RELAY_PRESETS: List<Preset> = listOf(
     Preset("wss://nostrelites.org", PresetCategory.Paid, PresetNote.PAID),
 )
 
-/** NIP-96 メディアサーバー候補（画像アップロード先）。2026-07 に well-known 応答で生存確認済み。 */
+/**
+ * [#872] アップロード先の候補（eHagaki と同じ顔ぶれ・並び＋今までの nostrmedia.com）。2026-10-14 に応答を確認済み
+ * （NIP-96 は nip96.json の api_url、Blossom は `HEAD /upload` が認証を求めること）。
+ * NIP-96 はサーバーのトップの URL で持ち、送るときに nip96.json の api_url を引く（share.yabu.me は yabu.me/api/v2/media）。
+ */
 val MEDIA_PRESETS: List<Preset> = listOf(
-    Preset("https://nostr.build", PresetCategory.Image),
-    Preset("https://nostrcheck.me", PresetCategory.General),
-    Preset("https://nostpic.com", PresetCategory.Image),
-    Preset("https://nostrmedia.com", PresetCategory.Image),
-    Preset("https://files.sovbit.host", PresetCategory.General),
-    // cdn.satellite.earth は 2026-07 時点で NIP-96 応答なし(404)のため除外。
+    nip96Preset("https://share.yabu.me"),
+    blossomPreset("https://cdn.nostrcheck.me"),
+    nip96Preset("https://nostrcheck.me"),
+    blossomPreset("https://blossom.band"),
+    blossomPreset("https://nostr.download"),
+    blossomPreset("https://blossom.primal.net"),
+    nip96Preset("https://nostr.build"),
+    nip96Preset("https://nostpic.com"),
+    nip96Preset("https://files.sovbit.host"),
+    nip96Preset("https://nostrmedia.com"),
 )
+
+private fun nip96Preset(url: String) = Preset(url, PresetCategory.MediaNip96, protocol = UploadProtocol.NIP96)
+private fun blossomPreset(url: String) = Preset(url, PresetCategory.MediaBlossom, protocol = UploadProtocol.BLOSSOM)
 
 /**
  * 「候補（おすすめ）」セクション。カテゴリ別にチップを並べ、タップで [onAdd] を呼ぶ。
@@ -100,7 +115,7 @@ val MEDIA_PRESETS: List<Preset> = listOf(
 internal fun PresetPicker(
     presets: List<Preset>,
     registered: Set<String>,
-    onAdd: (String) -> Unit,
+    onAdd: (Preset) -> Unit,
 ) {
     val remaining = presets.filter { normalizePresetUrl(it.url) !in registered }
     if (remaining.isEmpty()) return
@@ -124,7 +139,7 @@ internal fun PresetPicker(
             horizontalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
-            items.forEach { p -> PresetChip(p, onAdd) }
+            items.forEach { p -> PresetChip(p, onClick = { onAdd(p) }) }
         }
         Spacer(Modifier.size(DeckSpace.Sm))
     }
@@ -152,18 +167,18 @@ internal fun RecommendedRelayChips(
         verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
     ) {
         remaining.forEach { (url, n) ->
-            PresetChip(Preset(url, PresetCategory.General), onAdd, noteOverride = stringResource(Res.string.presets_users_fmt, n))
+            PresetChip(Preset(url, PresetCategory.General), onClick = { onAdd(url) }, noteOverride = stringResource(Res.string.presets_users_fmt, n))
         }
     }
 }
 
 /** 候補チップ（先頭「＋」＋ホスト名＋補足）。タップで追加。 */
 @Composable
-private fun PresetChip(preset: Preset, onAdd: (String) -> Unit, noteOverride: String? = null) {
+private fun PresetChip(preset: Preset, onClick: () -> Unit, noteOverride: String? = null) {
     Row(
         Modifier.clip(RoundedCornerShape(DeckRadius.Full))
             .background(DeckColors.Surface2)
-            .clickable { onAdd(preset.url) }
+            .clickable(onClick = onClick)
             .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
