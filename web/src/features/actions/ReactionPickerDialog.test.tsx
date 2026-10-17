@@ -113,6 +113,37 @@ it("検索すると「カスタム」「絵文字」に絞る。無ければ「�
   expect(screen.getByText("一致する絵文字がありません")).toBeVisible();
 });
 
+describe("入力した絵文字（#870）", () => {
+  const search = () => screen.getByRole("searchbox", { name: "絵文字を検索" });
+
+  it("一覧に無い絵文字（👍🏽）を打つと先頭に「入力した絵文字」を出し、選ぶと onPick(文字, null) して閉じる", async () => {
+    const { onPick, onClose } = open();
+    fireEvent.change(search(), { target: { value: " 👍🏽 " } });
+    expect(sectionTitles()[0]).toBe("入力した絵文字");
+    expect(screen.queryByText("一致する絵文字がありません")).toBeNull();
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "入力した絵文字" })).getByRole("button", { name: "👍🏽" }),
+    );
+    expect(onPick).toHaveBeenCalledWith("👍🏽", null);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("一覧にある絵文字（👍）は「絵文字」に出るので区画を出さない", () => {
+    open();
+    fireEvent.change(search(), { target: { value: "👍" } });
+    expect(screen.queryByRole("region", { name: "入力した絵文字" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "絵文字" })).getByRole("button", { name: "👍" }),
+    ).toBeVisible();
+  });
+
+  it("ふつうの文字（草）では出さない", () => {
+    open();
+    fireEvent.change(search(), { target: { value: "草" } });
+    expect(screen.queryByRole("region", { name: "入力した絵文字" })).toBeNull();
+  });
+});
+
 it("Unicode を選ぶと onPick(文字, null) して閉じる", async () => {
   const user = userEvent.setup();
   const { onPick, onClose } = open();
