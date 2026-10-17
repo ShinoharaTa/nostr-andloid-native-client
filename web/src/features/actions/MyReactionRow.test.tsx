@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { finalizeEvent, generateSecretKey, type NostrEvent } from "nostr-tools/pure";
 import { expect, it } from "vitest";
+import { proxiedEmoji } from "../../lib/imageProxy";
 import { unixNow } from "../../lib/time";
 import { eventStore } from "../../nostr/store";
 import { renderWithRouter } from "../../test/renderWithRouter";
@@ -33,23 +34,33 @@ function reactionTo(
   );
 }
 
-it("+ のリアクションは ❤️・「あなたがリアクション」・「名前: 本文」でスレッドへのリンク", async () => {
+it("[#878] + のリアクションは ♡ のマーク・「あなたがリアクション」→ ❤️ →「名前: 本文」の縦並びでスレッドへのリンク。操作ボタンは無い", async () => {
   const target = storedTarget("alice", "こんにちは\n世界");
   renderWithRouter(<MyReactionRow reaction={reactionTo(target, "+")} />);
 
   const link = await screen.findByRole("link");
-  expect(link).toHaveTextContent("❤️");
-  expect(link).toHaveTextContent("あなたがリアクション");
-  expect(await screen.findByText("alice: こんにちは 世界")).toBeVisible();
+  expect(link.querySelector("svg")).not.toBeNull();
   expect(link.getAttribute("href")).toMatch(/\/e\/nevent1/);
+  const order = [
+    screen.getByText("あなたがリアクション"),
+    screen.getByText("❤️"),
+    await screen.findByText("alice: こんにちは 世界"),
+  ];
+  expect(order[0].compareDocumentPosition(order[1])).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(order[1].compareDocumentPosition(order[2])).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("group")).toBeNull();
 });
 
-it("カスタム絵文字は画像（alt は :code:）", async () => {
+it("カスタム絵文字は画像（alt は :code:、src は proxiedEmoji）", async () => {
   const target = storedTarget("bob", "本文");
   renderWithRouter(
-    <MyReactionRow reaction={reactionTo(target, ":cat:", [["emoji", "cat", "https://e/cat.png"]])} />,
+    <MyReactionRow
+      reaction={reactionTo(target, ":cat:", [["emoji", "cat", "https://emoji.test/cat.png"]])}
+    />,
   );
-  expect(await screen.findByRole("img", { name: ":cat:" })).toBeInTheDocument();
+  const img = await screen.findByRole("img", { name: ":cat:" });
+  expect(img.getAttribute("src")).toBe(proxiedEmoji("https://emoji.test/cat.png", 80));
 });
 
 it("対象がストアに無ければ何も書かない", () => {

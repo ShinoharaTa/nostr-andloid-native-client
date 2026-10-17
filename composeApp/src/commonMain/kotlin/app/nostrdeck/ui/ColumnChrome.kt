@@ -80,6 +80,19 @@ data class ColumnMenuActions(
     /** [#772] ステータスカラムの「表示」の今の種類（null = すべて）。[onSetStatusType] が null なら項目を出さない。 */
     val statusType: UserStatuses.Type? = null,
     val onSetStatusType: ((UserStatuses.Type?) -> Unit)? = null,
+    /** [#421] カラムの種類ごとの追加の操作（ルームの「参加する／参加をやめる」など）。フィルター編集の下に並べる。 */
+    val extraItems: List<HeaderMenuItem> = emptyList(),
+)
+
+/**
+ * [#421] ヘッダの ⋯ に載せる 1 項目。デッキのカラムでは [ColumnMenuActions.extraItems]、
+ * デッキの外（パブリックチャット画面・詳細オーバーレイ）では [ColumnHeader] の overflow で出す。
+ */
+data class HeaderMenuItem(
+    val label: String,
+    val icon: ImageVector,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
 )
 
 /**
@@ -117,6 +130,8 @@ fun ColumnHeader(
     onTitleClick: (() -> Unit)? = null,
     /** [#382] onTitleClick の操作ラベル（TalkBack 等に読ませる「プロフィールを開く」など）。 */
     titleClickLabel: String? = null,
+    /** [#421] デッキの外（[menu] が null）で ⋯ に出す操作。空なら ⋯ を出さない。 */
+    overflow: List<HeaderMenuItem> = emptyList(),
 ) {
     // [#324] シングルカラムではタブが名前を持つのでヘッダは描かない。ただし onBack がある
     // 画面（設定配下など単体で開くもの）は戻る導線が消えると詰むため残す。
@@ -156,6 +171,7 @@ fun ColumnHeader(
             // デッキカラム: ⋯ に集約（移動 ◀▶ / フィルター編集 / 削除）。
             ColumnMenuButton(menu)
         } else {
+            if (overflow.isNotEmpty()) HeaderOverflowButton(overflow)
             // pin/close は callback が渡されたときだけ表示（pane では非表示にできる）。
             if (onPin != null) {
                 HeaderIconButton(Icons.Outlined.PushPin, if (pinned) stringResource(Res.string.col_unpin) else stringResource(Res.string.col_pin),
@@ -200,6 +216,7 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
                     onClick = { open = false; edit() },
                 )
             }
+            menu.extraItems.forEach { item -> HeaderMenuDropdownItem(item) { open = false } }
             // コンテンツフィルター: ミュート中の投稿を一括で表示/非表示（目アイコン）。
             if (menu.mutedRevealed != null && menu.onToggleMuted != null) {
                 val revealed = menu.mutedRevealed
@@ -270,6 +287,28 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
             )
         }
     }
+}
+
+/** [#421] デッキの外のヘッダの ⋯（[HeaderMenuItem] だけを並べる）。 */
+@Composable
+private fun HeaderOverflowButton(items: List<HeaderMenuItem>) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        HeaderIconButton(Icons.Outlined.MoreHoriz, stringResource(Res.string.col_menu), DeckColors.Text3, onClick = { open = true })
+        DeckDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            items.forEach { item -> HeaderMenuDropdownItem(item) { open = false } }
+        }
+    }
+}
+
+@Composable
+private fun HeaderMenuDropdownItem(item: HeaderMenuItem, close: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(item.label) },
+        leadingIcon = { Icon(item.icon, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+        enabled = item.enabled,
+        onClick = { close(); item.onClick() },
+    )
 }
 
 /** [#772] ステータスカラムの「表示」の選択チップ（幅のチップと同じ見た目）。 */

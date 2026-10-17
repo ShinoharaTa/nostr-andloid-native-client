@@ -1,0 +1,34 @@
+/* [#878] 絵文字・1〜2 文字のリアクション = 従来の大きさで 1 行 */
+.emojiText {
+  display: block;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--type-emoji-lg);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* [#878] 文字数のあるリアクション = 本文に近い大きさ（ネイティブ DeckType.Sub）で 3 行まで折り返す */
+.wordy {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: var(--type-sub);
+  line-height: var(--line-desc);
+}
+
+/* [#862] 高さ固定・幅は縦横比どおり。[#878] 行に収まらなければ縮み、左に寄せる */
+.emojiImg {
+  display: block;
+  height: var(--type-emoji-lg);
+  width: auto;
+  max-width: 100%;
+  aspect-ratio: auto 1 / 1;
+  object-fit: contain;
+  object-position: left;
+}

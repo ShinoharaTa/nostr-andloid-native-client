@@ -1,5 +1,11 @@
 package app.nostrdeck.ui
 
+import androidx.compose.material3.Icon
+
+import androidx.compose.material.icons.outlined.Favorite
+
+import androidx.compose.material.icons.Icons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -222,6 +228,8 @@ fun FollowingFeedColumn(
                             entry.notif,
                             onClick = { onNoticeClick(entry.notif) },
                             onActorClick = { onAuthorClick(entry.notif.actor.pubkey) },
+                            onReply = { onReply(it) },   // [#876]
+                            onQuote = { onQuote(it) },   // [#876]
                         )
                         is FeedEntry.MyReaction -> MyReactionRow(
                             entry,
@@ -277,9 +285,9 @@ private fun MyReactionRow(
     onAuthorClick: (String) -> Unit,
 ) {
     // [#337] 他者からのリアクション行(NoticeRow)と同じ骨格にする。左端は通常投稿のアバターと
-    // 同じ AvatarSize 幅のマーク列で、そこにリアクション絵文字を置く。こうすると本体の
-    // 開始位置がタイムラインの本文と揃い、他者のリアクションと自分のリアクションが
-    // 同じリズムで縦に並ぶ（以前は独自レイアウトで左端が揃っていなかった）。
+    // 同じ AvatarSize 幅のマーク列で、本体の開始位置がタイムラインの本文と揃う。
+    // [#875] マーク列は ♡ のアイコンにし、絵文字は本体の 1 行に出す（「あなたがリアクション → 絵文字 → 対象」）。
+    // 横長のカスタム絵文字や文字数のあるリアクションが、アバター幅の列に収まらず見づらかったため。
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onNoteClick).padding(DeckSpace.Md),
         verticalAlignment = Alignment.Top,
@@ -288,19 +296,13 @@ private fun MyReactionRow(
             Modifier.width(DeckDimens.AvatarSize).padding(top = DeckSpace.Xs),
             contentAlignment = Alignment.TopCenter,
         ) {
-            val r = entry.reaction
-            val img = r.imageUrl
-            if (img != null) {
-                // [#308] 文字側(EmojiLg)と同じトークンから引く。文字サイズ設定にも追従する。
-                // [#861] 高さ固定・幅は縦横比どおり。
-                AnimatedEmoji(img, contentDescription = r.display, modifier = Modifier.emojiSize(img, DeckType.EmojiLg.asEmojiSize()))
-            } else {
-                Text(r.display, fontSize = DeckType.EmojiLg)
-            }
+            Icon(Icons.Outlined.Favorite, null, tint = DeckColors.Like, modifier = Modifier.size(17.dp))
         }
         Spacer(Modifier.width(DeckSpace.Sm))
         Column(Modifier.weight(1f)) {
             HintText(stringResource(Res.string.feed_you_reacted))
+            Spacer(Modifier.size(DeckSpace.Xs))
+            ReactionDisplay(entry.reaction.display, entry.reaction.imageUrl)   // [#875]
             Spacer(Modifier.size(DeckSpace.Xs))
             // 対象の1行プレビュー（アバター + 名前 + 本文…）。
             Row(verticalAlignment = Alignment.CenterVertically) {

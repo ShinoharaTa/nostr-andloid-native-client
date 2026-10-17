@@ -261,6 +261,8 @@ data class NotificationUi(
     val zapSats: Long? = null,
     /** [#419] DM 通知の未読件数（1会話=1行にまとめているので件数を持つ）。 */
     val dmUnread: Int = 0,
+    /** [#875] REACTION のとき、リアクションそのもの（kind:7）。行からリアクション・リポストする対象。 */
+    val reactionNote: NoteUi? = null,
 )
 
 /**

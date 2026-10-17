@@ -6,9 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -25,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Videocam
@@ -113,7 +118,6 @@ fun LiveChannelRoom(
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
-    deckMode: Boolean = false,
     /** [#791] 本文の kind:42 へのリンクから開いたときの発言 id。届いたらその位置まで送って短く強調する。 */
     highlightMessageId: String? = null,
 ) {
@@ -121,7 +125,7 @@ fun LiveChannelRoom(
     if (repo == null) {
         ChannelRoomColumn(
             spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
-            deckMode = deckMode, highlightMessageId = highlightMessageId,
+            highlightMessageId = highlightMessageId,
         )
         return
     }
@@ -143,9 +147,11 @@ fun LiveChannelRoom(
     // 本文中の npub メンションを @表示名 に解決するための名前マップ。
     val names by remember { repo.profileNames() }.collectAsState(emptyMap())
     val scope = rememberCoroutineScope()
+    // [#421] デッキのカラムは ⋯（[rememberColumnMenuActions]）に出すので、ここではデッキの外のときだけヘッダに出す。
+    val joinItem = if (menu == null) rememberChannelJoinItem(channelId) else null
     ChannelRoomColumn(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
-        deckMode = deckMode,
+        overflow = listOfNotNull(joinItem),
         names = names,
         highlightMessageId = highlightMessageId,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
@@ -155,11 +161,11 @@ fun LiveChannelRoom(
 }
 
 /**
- * ROOM レンダラー：NIP-28 チャンネルルーム（kind:42）。
- * イディオムの不変則:「入力欄が下＝最新も下 / 入力がボタン・モーダル＝最新は上」。
- *  - 専用画面(deckMode=false): チャット型。最新が下・下部に常設入力欄。reverseLayout で
- *    最初から下端アンカー（読み込み後に最下部へ飛ぶジャンプは構造的に発生しない）。
- *  - デッキ固定カラム(deckMode=true): フィード型。最新が上・入力欄なし・✏️ボタン→モーダル投稿。
+ * ROOM レンダラー：NIP-28 チャンネルルーム（kind:42）と DM の会話。
+ * チャット型（最新が下・下部に常設入力欄）。reverseLayout で最初から下端アンカー
+ * （読み込み後に最下部へ飛ぶジャンプは構造的に発生しない）。
+ * [#858] デッキに固定したカラムも同じ形にする。以前はカラムだけフィード型（最新が上・✏️ボタンからモーダル）で、
+ * 同じルームを固定カラムと通常の画面で行き来すると並びとスクロールの向きが逆になり使いにくかった。
  */
 @Composable
 fun ChannelRoomColumn(
@@ -171,7 +177,6 @@ fun ChannelRoomColumn(
     onClose: (() -> Unit)? = null,
     menu: ColumnMenuActions? = null,
     onBack: (() -> Unit)? = null,
-    deckMode: Boolean = false,
     names: Map<String, String> = emptyMap(),
     onSend: ((String, ChannelMessage?) -> Unit)? = null,
     onReact: ((NostrEvent, String, String?) -> Unit)? = null,
@@ -184,18 +189,18 @@ fun ChannelRoomColumn(
     titleClickLabel: String? = null,
     /** [#791] 一覧に届いたらその位置まで送って短く強調する発言 id（本文の kind:42 へのリンクから開いたとき）。 */
     highlightMessageId: String? = null,
+    /** [#421] デッキの外（[menu] が null）のヘッダの ⋯ に出す操作（ルームの「参加する」など）。 */
+    overflow: List<HeaderMenuItem> = emptyList(),
 ) {
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
     var pickerFor by remember { mutableStateOf<ChannelMessage?>(null) }
-    // [#dm-idiom] デッキ固定カラムの投稿モーダル（フィード型: 常設入力欄は置かない）。
-    var showComposeModal by remember { mutableStateOf(false) }
-    // リストは常に「新しい順」を保持し、描画側で向きを変える（deck=そのまま上から / chat=reverseLayout で下から）。
-    // 連投まとめ（continuation）の「頭」は視覚上の上側に出す: deck=新しい側 / chat=古い側。
-    val ordered = remember(messages, deckMode) {
+    // リストは「新しい順」で持ち、reverseLayout で下から描く（index 0 = 最新 = 下端）。
+    // 連投まとめ（continuation）の「頭」は視覚上の上側（古い側）に出す。
+    val ordered = remember(messages) {
         val rev = messages.asReversed()
         rev.mapIndexed { i, m ->
-            val neighbor = if (deckMode) rev.getOrNull(i - 1) else rev.getOrNull(i + 1)
+            val neighbor = rev.getOrNull(i + 1)
             val cont = neighbor != null && neighbor.event.pubkey == m.event.pubkey &&
                 kotlin.math.abs(neighbor.event.createdAt - m.event.createdAt) < 300
             if (cont == m.continuation) m else m.copy(continuation = cont)
@@ -227,14 +232,28 @@ fun ChannelRoomColumn(
     // （メッセージや返信ボタン等の操作を貫通させない）。
     var inputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    // [#858] デッキの固定カラムの入力欄に入力している間は、デッキのキーボードショートカットを止める。
+    // 入力欄から抜けたら（本文のタップ・Esc）ショートカットの受け口へフォーカスを戻す。
+    val shortcutToken = remember { Any() }
+    val restoreDeckShortcuts = LocalRestoreDeckShortcuts.current
+    DisposableEffect(shortcutToken) { onDispose { DeckTextInputFocus.set(shortcutToken, false) } }
+    val leaveInput = {
+        focusManager.clearFocus()
+        restoreDeckShortcuts()
+    }
+    val listScope = rememberCoroutineScope()
 
     // [#106] edge-to-edge では IME はウィンドウをリサイズせず inset で届くので、下端の
     // Composer をキーボードへ追従させるには imePadding が要る。親（AppScaffold）が navbar と
     // Compact 時の BottomBar 高を consume 済みなので、ここは imePadding だけで正味（IME − それら）
-    // が効き、入力欄がキーボード直上へ来る（デッキ固定カラムは常設入力欄が無いので不要）。
+    // が効き、入力欄がキーボード直上へ来る（[#858] デッキの固定カラムも同じ）。
     Column(
         modifier.background(DeckColors.Surface)
-            .then(if (!deckMode) Modifier.imePadding() else Modifier),
+            .imePadding()
+            .onPreviewKeyEvent { e ->
+                // [#858] Esc で入力欄から抜ける（デッキではショートカットに戻る）。
+                if (inputFocused && e.type == KeyEventType.KeyDown && e.key == Key.Escape) { leaveInput(); true } else false
+            },
     ) {
         ColumnHeader(
             title = spec.title, subtitle = columnSubtitleFor(spec),
@@ -242,12 +261,13 @@ fun ChannelRoomColumn(
             iconTint = DeckColors.Zap, iconBg = DeckColors.Zap.copy(alpha = 0.14f),
             onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
             onTitleClick = onTitleClick, titleClickLabel = titleClickLabel,
+            overflow = overflow,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.weight(1f)) {
             LazyColumn(
                 state = listState, modifier = Modifier.fillMaxSize(),
-                reverseLayout = !deckMode,  // chat型は下端アンカー（最新が下・ジャンプなし）
+                reverseLayout = true,  // 下端アンカー（最新が下・ジャンプなし）
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(DeckSpace.Sm),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -270,7 +290,7 @@ fun ChannelRoomColumn(
                             parent = replyParentId(m)?.let { byId[it] },
                             names = names,
                             mineOnRight = mineOnRight,
-                            onReply = if (onSend != null) ({ replyingTo = m; if (deckMode) showComposeModal = true }) else null,
+                            onReply = if (onSend != null) ({ replyingTo = m }) else null,
                             onReact = if (onReact != null) ({ pickerFor = m }) else null,
                         )
                     }
@@ -281,67 +301,35 @@ fun ChannelRoomColumn(
             if (inputFocused) {
                 Box(
                     Modifier.matchParentSize().pointerInput(Unit) {
-                        detectTapGestures { focusManager.clearFocus() }
+                        detectTapGestures { leaveInput() }
                     },
                 )
             }
+            // [#858] 最新（下端）から離れているとき「N 件の新着」「最新へ戻る」を下端に出す（フィードの #52 と同じ判定）。
+            val newCount = rememberNewItemsCount(ordered.map { it.event.id }, listState)
+            ChatBottomPill(newCount, listState) { listScope.launch { listState.animateScrollToItem(0) } }
         }
-        // フィードと同様、新着（先頭）が届いたら先頭付近にいるときだけ最上部へ寄せる。
-        // 下（過去）を読んでいる間は位置を保ち、指でスクロール中は割り込まない。
+        // 新着（index 0 = 下端）が届いたら、最新の近くにいるときだけ最新へ寄せる。
+        // 上（過去）を読んでいる間は位置を保ち、指でスクロール中は割り込まない。
+        // [#858] 自分の発言が届いたときは、どこを読んでいても最新へ送る（送った発言が見えるように）。
         LaunchedEffect(ordered.firstOrNull()?.event?.id) {
             if (holdPosition) return@LaunchedEffect   // [#791] 強調中の発言の位置を保つ
-            if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) {
+            val mine = ordered.firstOrNull()?.isMine == true
+            if ((mine || listState.firstVisibleItemIndex <= 2) && !listState.isScrollInProgress) {
                 listState.animateScrollToItem(0)
             }
         }
         if (onSend != null) {
-            if (deckMode) {
-                // フィード型: 通常投稿と同じ「ボタン → モーダル」。誤解のもとになる常設入力欄は置かない。
-                Row(
-                    Modifier.fillMaxWidth().padding(DeckSpace.Sm),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    DeckGhostButton(stringResource(Res.string.chat_write_message), onClick = { replyingTo = null; showComposeModal = true })
-                }
-            } else {
-                Composer(
-                    replyingTo = replyingTo,
-                    onCancelReply = { replyingTo = null },
-                    onSend = { text -> onSend(text, replyingTo); replyingTo = null },
-                    onFocusChanged = { inputFocused = it },
-                )
-            }
+            Composer(
+                replyingTo = replyingTo,
+                onCancelReply = { replyingTo = null },
+                onSend = { text -> onSend(text, replyingTo); replyingTo = null },
+                onFocusChanged = {
+                    inputFocused = it
+                    DeckTextInputFocus.set(shortcutToken, it)   // [#858]
+                },
+            )
         } else ComposerDisabled()
-    }
-
-    // [#dm-idiom] デッキ固定カラム用の投稿モーダル。返信もこの経路（replyingTo を引き継ぐ）。
-    if (showComposeModal && onSend != null) {
-        val modalDismissFocus = androidx.compose.ui.platform.LocalFocusManager.current
-        androidx.compose.ui.window.Dialog(onDismissRequest = { showComposeModal = false; replyingTo = null }) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .imePadding()  // [#106] フローティングキーボードでも入力欄が隠れないように
-                    .clip(RoundedCornerShape(DeckRadius.Md))
-                    .background(DeckColors.Surface)
-                    // [#177] カード内の空白タップでキーボードを閉じる（Dialog はルートの背景タップが届かない）。
-                    .pointerInput(Unit) { detectTapGestures { modalDismissFocus.clearFocus() } }
-                    .padding(vertical = DeckSpace.Sm),
-            ) {
-                Text(
-                    spec.title, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = DeckSpace.Md),
-                )
-                val modalFocus = remember { FocusRequester() }
-                AutoFocusOnShown(modalFocus)
-                Composer(
-                    replyingTo = replyingTo,
-                    onCancelReply = { replyingTo = null },
-                    focusRequester = modalFocus,
-                    onSend = { text -> onSend(text, replyingTo); replyingTo = null; showComposeModal = false },
-                )
-            }
-        }
     }
 
     // リアクション（長押し→リアクション）: 既存の絵文字ピッカーを再利用し kind:7 を送る。
@@ -354,6 +342,9 @@ fun ChannelRoomColumn(
         )
     }
 }
+
+/** [#858] これより狭い入力欄（デッキの幅「狭」= 280dp）では、画像・動画のボタンを「＋」にまとめる。 */
+private val COMPACT_COMPOSER_WIDTH = 320.dp
 
 /** [#791] 強調の下地の濃さ（Accent の薄被せ。AccentWeak では一瞬の強調として弱すぎる）と、点けておく時間・消えるまでの時間。 */
 private const val HIGHLIGHT_ALPHA = 0.18f
@@ -620,8 +611,6 @@ private fun Composer(
     onCancelReply: () -> Unit,
     onSend: (String) -> Unit,
     onFocusChanged: (Boolean) -> Unit = {},
-    // [#172] モーダル表示時に自動フォーカスする場合に渡す（常設入力欄では null）。
-    focusRequester: FocusRequester? = null,
 ) {
     val repo = LocalRepository.current
     val scope = rememberCoroutineScope()
@@ -808,6 +797,9 @@ private fun Composer(
             }
         }
     }
+    // [#858] デッキの幅「狭」のカラムでは、画像・動画のボタンを「＋」1 つにまとめて入力欄の幅を確保する。
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val compactAttach = maxWidth < COMPACT_COMPOSER_WIDTH
     Row(
         Modifier.fillMaxWidth().padding(DeckSpace.Md, DeckSpace.Sm),
         // 複数行入力で枠が縦に伸びたとき、絵文字/送信ボタンは下端に沿わせる（チャットの定番）。
@@ -830,7 +822,10 @@ private fun Composer(
             contentAlignment = Alignment.CenterStart,
         ) {
             if (text.isEmpty()) {
-                Text(stringResource(Res.string.chat_input_placeholder), color = DeckColors.Text3, fontSize = DeckType.Body)
+                Text(
+                    stringResource(Res.string.chat_input_placeholder), color = DeckColors.Text3, fontSize = DeckType.Body,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
             // [#795] 入力欄への貼り付けでクリップボードの画像を添付（投稿画面と同じ部品）。送信中は横取りしない。
             PasteImageHost(onImages = addImages, enabled = !sending) { pasteModifier ->
@@ -841,7 +836,6 @@ private fun Composer(
                     cursorBrush = SolidColor(DeckColors.Accent),
                     maxLines = 6,
                     modifier = Modifier.fillMaxWidth()
-                        .let { m -> focusRequester?.let { m.focusRequester(it) } ?: m }
                         .onFocusChanged { onFocusChanged(it.isFocused) }
                         .then(pasteModifier),
                 )
@@ -849,25 +843,54 @@ private fun Composer(
         }
         Spacer(Modifier.width(DeckSpace.Xs))
         // [#304] 画像/動画の添付。押した順に添付され、圧縮は追加時に走る。
-        Box(
-            Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
-                .clickable(enabled = !sending) { picker.launch() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Image, stringResource(Res.string.compose_attach_image),
-                tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm),
-            )
-        }
-        Box(
-            Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
-                .clickable(enabled = !sending) { videoPicker.launch() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Videocam, stringResource(Res.string.compose_attach_video),
-                tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm),
-            )
+        if (compactAttach) {
+            // [#858] 狭いときは「＋」からメニューで選ぶ。
+            var attachMenu by remember { mutableStateOf(false) }
+            Box {
+                Box(
+                    Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
+                        .clickable(enabled = !sending) { attachMenu = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Add, stringResource(Res.string.chat_attach_menu),
+                        tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm),
+                    )
+                }
+                DeckDropdownMenu(expanded = attachMenu, onDismissRequest = { attachMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.compose_attach_image)) },
+                        leadingIcon = { Icon(Icons.Outlined.Image, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+                        onClick = { attachMenu = false; picker.launch() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.compose_attach_video)) },
+                        leadingIcon = { Icon(Icons.Outlined.Videocam, null, modifier = Modifier.size(DeckDimens.IconMd)) },
+                        onClick = { attachMenu = false; videoPicker.launch() },
+                    )
+                }
+            }
+        } else {
+            Box(
+                Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
+                    .clickable(enabled = !sending) { picker.launch() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Image, stringResource(Res.string.compose_attach_image),
+                    tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm),
+                )
+            }
+            Box(
+                Modifier.size(DeckDimens.TouchTargetSm).clip(CircleShape)
+                    .clickable(enabled = !sending) { videoPicker.launch() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Videocam, stringResource(Res.string.compose_attach_video),
+                    tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm),
+                )
+            }
         }
         Spacer(Modifier.width(DeckSpace.Xs))
         Box(
@@ -887,6 +910,7 @@ private fun Composer(
                 )
             }
         }
+    }
     }
     }
 

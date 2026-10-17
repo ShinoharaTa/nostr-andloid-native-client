@@ -101,7 +101,10 @@ fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier
             .focusable()
             .onPreviewKeyEvent { handleDeckKey(state, it, onReload = { kbRepo?.reconnectAll() }) },
     ) {
-        if (isCompact) CompactPager(state) else ExpandedDeck(state)
+        // [#858] ルームのカラムの入力欄から抜けたら、ショートカットの受け口へフォーカスを戻す。
+        CompositionLocalProvider(LocalRestoreDeckShortcuts provides { runCatching { kbFocus.requestFocus() } }) {
+            if (isCompact) CompactPager(state) else ExpandedDeck(state)
+        }
         if (state.showShortcutsHelp) ShortcutsHelpOverlay(onDismiss = { state.showShortcutsHelp = false })
     }
 }
@@ -444,6 +447,8 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
     val isStatus = spec.kind == ColumnKind.STATUS
     val hiddenCategories = if (isFollowing && repoForMenu != null)
         repoForMenu.columnHiddenCategoriesFlow().collectAsState().value[spec.id].orEmpty() else emptySet()
+    // [#421] ルームのカラムだけ「参加する／参加をやめる」を出す。
+    val joinItem = if (spec.kind == ColumnKind.CHANNEL_ROOM) rememberChannelJoinItem(spec.filter.channelId) else null
     val index = state.columns.indexOfFirst { it.id == spec.id }
     // [#346] 並べ替えはモード側の実行係（同一フレームでスクロール補正＋FLIPアニメ）を優先。
     val reorder = LocalColumnReorder.current
@@ -464,6 +469,7 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
         // [#772] ステータスカラムだけ「表示」（すべて / Now Playing / ステータス）を出す。
         statusType = if (isStatus && repoForMenu != null) repoForMenu.columnStatusTypesFlow().collectAsState().value[spec.id] else null,
         onSetStatusType = if (isStatus && repoForMenu != null) ({ t: UserStatuses.Type? -> repoForMenu.setColumnStatusType(spec.id, t) }) else null,
+        extraItems = listOfNotNull(joinItem),
     )
 }
 
@@ -688,9 +694,11 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         }
         ColumnRenderer.CHANNEL_LIST -> {
             val repo = LocalRepository.current
-            LaunchedEffect(repo) { repo?.refreshChannels() }
+            LaunchedEffect(repo) { repo?.refreshChannels(); repo?.ensureJoinedChannels() }
             val channels = if (repo != null) remember { repo.channelsFlow() }.collectAsState(emptyList()).value
             else SampleData.channels
+            // [#421] 参加中のルームは一覧の上に分けて出す。
+            val joinedIds = if (repo != null) remember(repo) { repo.joinedChannelIdsFlow() }.collectAsState().value else emptyList()
             // [#291] 作成/編集: 自分の kind:40 がローカルにあるものだけ編集可。
             val owned = if (repo != null) remember { repo.myChannelIdsFlow() }.collectAsState(emptySet()).value else emptySet()
             val chScope = rememberCoroutineScope()
@@ -714,14 +722,15 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 onEditChannel = if (repo != null) ({ id, name, about, picture ->
                     chScope.launch { repo.updateChannel(id, name, about, picture) }
                 }) else null,
+                joinedChannelIds = joinedIds,
             )
         }
         ColumnRenderer.ROOM -> {
             val channelId = spec.filter.channelId
             if (channelId != null) {
-                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu, deckMode = true)
+                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu)
             } else {
-                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu, deckMode = true)
+                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
             }
         }
     }

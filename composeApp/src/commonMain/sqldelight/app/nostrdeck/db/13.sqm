@@ -1,0 +1,4 @@
+-- v13 -> v14: [#872] アップロード先の方式（NIP-96 / Blossom）を media_server に持たせる。
+-- 既存の行はすべて NIP-96（今までの唯一の方式）として扱うので、既定値 'nip96' で足す。
+-- media_server は 6.sqm で作ったテーブルなので、ここでは ALTER だけでよい。
+ALTER TABLE media_server ADD COLUMN protocol TEXT NOT NULL DEFAULT 'nip96';

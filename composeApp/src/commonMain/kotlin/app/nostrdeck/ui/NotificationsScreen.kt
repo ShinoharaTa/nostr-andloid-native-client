@@ -46,6 +46,7 @@ import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
+import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.DetailRoute
 import app.nostrdeck.state.detailRouteForEvent
@@ -91,6 +92,9 @@ fun NotificationsScreen(state: DeckState) {
             onActorClick = { pk -> state.openProfile(pk) },
             // [#254] 引っ張って更新: REQ を張り直してリレーから取り直す。
             onRefresh = { repo.unsubscribeColumn("notifications"); repo.subscribeNotifications("notifications") },
+            // [#876] 返信・引用リポストは投稿画面を開く。
+            onReply = { note -> state.replyTo = note.event; state.showCompose = true },
+            onQuote = { note -> state.quoting = note.event; state.showCompose = true },
         )
     }
 }
@@ -192,6 +196,9 @@ fun NotificationsColumn(
             onActorClick = { pk -> state.openProfile(pk) },
             // [#254] 引っ張って更新: REQ を張り直してリレーから取り直す。
             onRefresh = { repo.unsubscribeColumn(spec.id); repo.subscribeNotifications(spec.id) },
+            // [#876] 返信・引用リポストは投稿画面を開く。
+            onReply = { note -> state.replyTo = note.event; state.showCompose = true },
+            onQuote = { note -> state.quoting = note.event; state.showCompose = true },
         )
     }
 }
@@ -235,6 +242,8 @@ private fun NotificationsBody(
     onNoticeClick: (NotificationUi) -> Unit,
     onActorClick: (String) -> Unit,
     onRefresh: (() -> Unit)? = null,   // [#254] 引っ張って更新
+    onReply: ((NoteUi) -> Unit)? = null,   // [#876]
+    onQuote: ((NoteUi) -> Unit)? = null,   // [#876]
 ) {
     RefreshableBox(onRefresh) {
         if (items.isEmpty()) {
@@ -249,6 +258,8 @@ private fun NotificationsBody(
                         selected = index == selectedIndex,
                         onClick = { onNoticeClick(n) },
                         onActorClick = { onActorClick(n.actor.pubkey) },
+                        onReply = onReply,
+                        onQuote = onQuote,
                     )
                 }
             }
@@ -272,7 +283,15 @@ private fun NotificationsBody(
  * 同じ投稿に複数人が反応しても束ねない（1件=1行。時系列を崩さない）。
  */
 @Composable
-fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit, onActorClick: () -> Unit) {
+fun NoticeRow(
+    n: NotificationUi,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+    onActorClick: () -> Unit,
+    // [#876] 返信・メンションの本体（NoteItem）と、[#875] 受け取ったリアクションへの操作から投稿画面を開く。
+    onReply: ((NoteUi) -> Unit)? = null,
+    onQuote: ((NoteUi) -> Unit)? = null,
+) {
     // [#222] キーボード選択ハイライト（NoteItem と同じ: 背景 Surface2 + 左 3dp アクセントバー）。
     val selFill = DeckColors.Surface2
     val selBar = DeckColors.Accent
@@ -358,7 +377,12 @@ fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit,
                 val note = n.note
                 if (note != null) {
                     // 投稿と同じフォーマット。返信/リポスト/リアクションもそのまま押せる。
-                    NoteItem(note, onAuthorClick = { onActorClick() })
+                    // [#876] 返信・引用リポストは投稿画面を開く（以前は受け口が無く、押しても何も起きなかった）。
+                    NoteItem(
+                        note, onAuthorClick = { onActorClick() },
+                        onReply = onReply?.let { cb -> { cb(note) } },
+                        onQuote = onQuote?.let { cb -> { cb(note) } },
+                    )
                 } else {
                     // 本体がまだ解決できていない場合の保険（本文だけ出す）。
                     Text(
@@ -376,6 +400,15 @@ fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit,
                     fontSize = DeckType.Caption, fontWeight = DeckWeight.Body, maxLines = 1,
                 )
             } else {
+                // [#875] リアクションは「見出し → 絵文字 → 元の投稿」。絵文字は 1 行を取り（横長・文字数のあるものも見やすく）、
+                // 右にそのリアクションへの操作（リポスト・リアクション）を出す。
+                if (n.kind == NotificationKind.REACTION) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { ReactionDisplay(n.reaction ?: "❤️", n.reactionImageUrl) }
+                        n.reactionNote?.let { rn -> ReactionEventActions(rn, onQuote = onQuote?.let { cb -> { cb(rn) } }) }
+                    }
+                    Spacer(Modifier.size(DeckDensity.NoteGap))
+                }
                 val target = n.targetNote
                 if (target != null) {
                     QuotedNoteCard(target, compact = n.kind != NotificationKind.REPOST)
@@ -391,24 +424,12 @@ fun NoticeRow(n: NotificationUi, selected: Boolean = false, onClick: () -> Unit,
 }
 
 /**
- * 左端の種別マーク。リアクションは「実際の絵文字」（NIP-30 カスタム絵文字は画像）。
- * 返信/メンション/リポスト/Zap はアイコン（リポストはテーマに馴染むグリーン）。
+ * 左端の種別マーク。種類ごとのアイコン（リポストはテーマに馴染むグリーン）。
+ * [#875] リアクションも ♡ のアイコンにし、実際の絵文字は本体の 1 行に出す（横長・文字数のあるものが列に収まらなかったため）。
  */
 @Composable
 private fun KindMark(n: NotificationUi) {
-    when {
-        n.kind == NotificationKind.REACTION && n.reactionImageUrl != null ->
-            // [#277] iOS/Desktop でも GIF/アニメ WebP を動かすため共通コンポーネントへ。
-            // [#308] 画像側も文字と同じ EmojiLg から引く（以前は 17dp 固定で通常絵文字の 77%）。
-            AnimatedEmoji(
-                n.reactionImageUrl, contentDescription = n.reaction,
-                modifier = Modifier.emojiSize(n.reactionImageUrl, DeckType.EmojiLg.asEmojiSize()),   // [#861] 高さ固定・幅は縦横比どおり
-            )
-        n.kind == NotificationKind.REACTION ->
-            Text(n.reaction ?: "❤️", fontSize = DeckType.EmojiLg, maxLines = 1)
-        else ->
-            Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = Modifier.size(17.dp))
-    }
+    Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = Modifier.size(17.dp))
 }
 
 private fun kindIcon(k: NotificationKind): ImageVector = when (k) {

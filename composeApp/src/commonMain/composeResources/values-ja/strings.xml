@@ -240,7 +240,6 @@
     <string name="preset_general">汎用</string>
     <string name="preset_japan">日本</string>
     <string name="preset_paid">ペイド</string>
-    <string name="preset_image">画像特化</string>
     <string name="preset_note_paid">有料</string>
     <string name="preset_note_search">検索対応</string>
     <string name="presets_title">候補（おすすめ）</string>
@@ -285,6 +284,14 @@
     <string name="media_unavailable">メディアサーバー情報を利用できません</string>
     <string name="media_title">画像アップロード先（NIP-96 / 認証は NIP-98）</string>
     <string name="media_desc">投稿に画像を添付すると、選択中のサーバへアップロードします。</string>
+    <!-- [#872] アップロード先（NIP-96 / Blossom）と投稿画面での一時的な切り替え -->
+    <string name="media_servers_title">アップロード先（NIP-96 / Blossom）</string>
+    <string name="media_servers_desc">投稿に画像や動画を添付すると、選択中のサーバーへアップロードします。投稿画面から、その投稿だけ送信先を変えることもできます。</string>
+    <string name="media_protocol_nip96">NIP-96</string>
+    <string name="media_protocol_blossom">Blossom</string>
+    <string name="media_add_protocol">方式</string>
+    <string name="compose_upload_target">送信先</string>
+    <string name="compose_upload_target_hint">この投稿だけ送信先を変えます（設定は変わりません）</string>
     <string name="img_compress_title">画像アップロードの圧縮</string>
     <string name="img_compress_desc">投稿画像は「低/中」選択時に下の長辺(px)へリサイズして再エンコードします（Android=WebP / iOS=JPEG）。「高」は常に原寸のままです。既定値: 低=640px・中=1200px・品質=85%（範囲: 長辺128〜8192 / 品質30〜100）。</string>
     <string name="img_low_dim_label">「低」の長辺（px）</string>
@@ -506,6 +513,7 @@
     <string name="compose_posting">投稿中…</string>
     <string name="compose_attach_image">画像を添付</string>
     <string name="compose_attach_video">動画を添付</string>
+    <string name="chat_attach_menu">添付</string>   <!-- [#858] 狭いカラムのチャット入力欄の「＋」 -->
     <string name="compose_paste_image_failed">クリップボードの画像を読み込めませんでした</string>
     <string name="compose_insert_emoji">絵文字を挿入</string>
     <string name="compose_sensitive_on">センシティブ: ON</string>
@@ -678,6 +686,14 @@
     <string name="chat_input_placeholder">メッセージを入力…</string>
     <string name="send">送信</string>
     <string name="channel_pin">ピン留め</string>
+    <!-- [#421] 参加中のルーム（NIP-51 kind:10005） -->
+    <string name="channel_joined_section">参加中</string>
+    <string name="channel_all_section">すべてのルーム</string>
+    <string name="channel_join">参加する</string>
+    <string name="channel_leave">参加をやめる</string>
+    <string name="channel_joined_toast">ルームに参加しました</string>
+    <string name="channel_left_toast">ルームの参加をやめました</string>
+    <string name="channel_join_failed">参加中のルームを保存できませんでした</string>
     <string name="search_hint_add">単語・#タグを追加して検索してください（複数は OR で並びます）</string>
     <string name="search_placeholder">単語 / #タグ</string>
     <string name="search_syntax_hint">スペース区切りで複数・OR で並ぶ</string>

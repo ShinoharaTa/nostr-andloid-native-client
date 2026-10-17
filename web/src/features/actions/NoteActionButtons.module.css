@@ -1,3 +1,16 @@
+/* [#878] 受け取ったリアクションへの操作（通知のリアクションの絵文字の行の右端）。fieldset の既定の枠・余白は消し、
+   タッチ箱の内側余白ぶん右へ出す（NoteFooter の .actions と同じ。グリフの右端を行の右端に揃える） */
+.reactionActions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--sp-1);
+  min-width: 0;
+  margin: 0 calc((var(--icon-md) - var(--action-size)) / 2) 0 0;
+  padding: 0;
+  border: 0;
+}
+
 /* 自分がリポスト済み（ネイティブの Boost 色） */
 .reposted {
   color: var(--boost);

@@ -1,11 +1,19 @@
-import { memo, type ReactNode, useRef, useState } from "react";
+import { memo, type ReactNode, useRef } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForProfile } from "../../lib/content/labels";
-import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { relativeTime } from "../../lib/time";
 import { displayName, pictureOf, useEventByPointer, useProfile } from "../../nostr/loaders";
-import { AlternateEmailIcon, BoltIcon, MailOutlineIcon, RepeatIcon, ReplyIcon } from "../../ui/icons";
+import {
+  AlternateEmailIcon,
+  BoltIcon,
+  FavoriteBorderIcon,
+  MailOutlineIcon,
+  RepeatIcon,
+  ReplyIcon,
+} from "../../ui/icons";
+import { ReactionEventActions } from "../actions/NoteActionButtons";
+import { ReactionDisplay } from "../actions/ReactionDisplay";
 import { Avatar, NoteItem } from "../timeline/NoteItem";
 import { QuoteCard } from "../timeline/QuoteCard";
 import { useNow } from "../timeline/useNow";
@@ -19,10 +27,11 @@ import {
   notificationSnippet,
 } from "./notificationModel";
 
-/** リアクション以外の種別マーク（ネイティブの kindIcon） */
-const KIND_ICON: Record<Exclude<NotificationKind, "reaction">, typeof ReplyIcon> = {
+/** 種別マーク（ネイティブの kindIcon）。[#878] リアクションも ♡ のアイコン（絵文字は本体の 1 行） */
+const KIND_ICON: Record<NotificationKind, typeof ReplyIcon> = {
   reply: ReplyIcon,
   mention: AlternateEmailIcon,
+  reaction: FavoriteBorderIcon,
   repost: RepeatIcon,
   zap: BoltIcon,
   dm: MailOutlineIcon,
@@ -32,6 +41,7 @@ const KIND_ICON: Record<Exclude<NotificationKind, "reaction">, typeof ReplyIcon>
  * 通知の 1 行（ネイティブの NotificationsScreen.kt NoticeRow）。左に種別マーク、右に見出し行と本体。
  * 返信・メンション = 見出しは対象（自分の投稿）の抜粋、本体は相手の投稿そのもの（返信先の 1 行は出さない）。
  * リアクション・リポスト・Zap = 見出しは相手と時刻（Zap は金額）、本体は対象の引用カード（リポスト以外はメディア無し）。
+ * [#878] リアクションは見出しと引用カードの間に絵文字の行（右端にそのリアクションへの操作）。
  * DM = 見出しは相手と時刻、本体は未読の数の 1 行（本文は出さない）。
  * 行を押すと対象のスレッド（対象が無ければ通知そのもの。DM は相手との会話）を開く。
  */
@@ -89,9 +99,12 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
     body =
       item.kind === "dm" ? (
         <p className={styles.dmText}>{dmReceivedText(t, item.dmUnread ?? 0)}</p>
-      ) : item.target ? (
-        <QuoteCard pointer={item.target} encoded={null} compact={item.kind !== "repost"} />
-      ) : null;
+      ) : (
+        <>
+          {item.kind === "reaction" && <ReactionLine item={item} />}
+          {item.target && <QuoteCard pointer={item.target} encoded={null} compact={item.kind !== "repost"} />}
+        </>
+      );
   }
 
   return (
@@ -112,54 +125,40 @@ function dmReceivedText(t: ReturnType<typeof useT>, unread: number): string {
   return unread > 1 ? t("notif_dm_received_n", unread) : t("notif_dm_received");
 }
 
-/** 左端の種別マーク。リアクションは絵文字そのもの（カスタム絵文字は画像）、他はアイコン */
+/** 左端の種別マーク。[#878] リアクションも ♡ のアイコン（読み上げは「リアクション 絵文字」のまま） */
 function KindMark({ item }: { item: NotificationItem }) {
   const t = useT();
-  if (item.kind !== "reaction") {
-    const Icon = KIND_ICON[item.kind];
-    return (
-      <span className={styles.markInner} role="img" aria-label={notificationKindLabel(item.kind, t)}>
-        <Icon className={styles.markIcon} />
-      </span>
-    );
-  }
-  const display = item.reaction?.display ?? "❤️";
-  const imageUrl = item.reaction?.imageUrl ?? null;
+  const Icon = KIND_ICON[item.kind];
+  const label =
+    item.kind === "reaction"
+      ? t("web_notif_reaction_mark", reactionOf(item).display)
+      : notificationKindLabel(item.kind, t);
   return (
-    <span className={styles.markInner} role="img" aria-label={t("web_notif_reaction_mark", display)}>
-      {imageUrl !== null && /^https:\/\//i.test(imageUrl) ? (
-        <ReactionImage key={imageUrl} url={imageUrl} text={display} />
-      ) : (
-        <span className={styles.emojiText}>{display}</span>
-      )}
+    <span className={styles.markInner} role="img" aria-label={label}>
+      <Icon className={styles.markIcon} />
     </span>
   );
 }
 
-/** カスタム絵文字の画像。プロキシが読めなければ元 URL で 1 度だけ取り直し、それも読めなければ :code: の文字 */
-function ReactionImage({ url, text }: { url: string; text: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
-  if (!src) return <span className={styles.emojiText}>{text}</span>;
+/** リアクションの表示（無ければ ❤️）。カスタム絵文字の画像は https のものだけ */
+function reactionOf(item: NotificationItem): { display: string; imageUrl: string | null } {
+  const display = item.reaction?.display ?? "❤️";
+  const imageUrl = item.reaction?.imageUrl ?? null;
+  return { display, imageUrl: imageUrl !== null && /^https:\/\//i.test(imageUrl) ? imageUrl : null };
+}
 
-  function onError() {
-    const origin = originOf(src);
-    if (origin) {
-      markProxyBlocked(origin);
-      setSrc(/^https:\/\//i.test(origin) ? origin : null);
-    } else {
-      setSrc(null);
-    }
-  }
-
+/**
+ * [#878] リアクションの絵文字の行（ネイティブ NoticeRow の REACTION）。左に絵文字、右端にそのリアクション（kind:7）への
+ * 操作（リポスト・既定リアクション・絵文字）。リアクションのイベントが無ければ操作は出さない。
+ */
+function ReactionLine({ item }: { item: NotificationItem }) {
+  const { display, imageUrl } = reactionOf(item);
   return (
-    <img
-      className={styles.emojiImg}
-      src={src}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={onError}
-    />
+    <div className={styles.reactionLine}>
+      <div className={styles.reactionEmoji}>
+        <ReactionDisplay display={display} imageUrl={imageUrl} />
+      </div>
+      {item.event && <ReactionEventActions event={item.event} />}
+    </div>
   );
 }

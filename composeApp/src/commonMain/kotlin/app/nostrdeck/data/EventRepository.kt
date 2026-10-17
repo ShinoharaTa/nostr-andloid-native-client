@@ -20,6 +20,7 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
@@ -27,7 +28,10 @@ import io.ktor.client.statement.bodyAsText
 import app.nostrdeck.model.EmojiMaker
 import app.nostrdeck.model.MadeEmoji
 import io.ktor.http.Headers
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.content.ByteArrayContent
+import io.ktor.http.isSuccess
 import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
 import io.ktor.utils.io.cancel
@@ -72,6 +76,7 @@ import app.nostrdeck.model.latestByDTag
 import app.nostrdeck.model.Nip51Set
 import app.nostrdeck.model.PinnedCache
 import app.nostrdeck.model.PinnedHashtags
+import app.nostrdeck.model.PublicChatList
 import app.nostrdeck.model.PinnedReconcile
 import app.nostrdeck.model.reconcile
 import app.nostrdeck.model.UsedHashtag
@@ -80,10 +85,13 @@ import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.tokenizeNostrContent
 import app.nostrdeck.model.AuthPolicy
 import app.nostrdeck.model.FeedNoticeCategory
+import app.nostrdeck.model.Blossom
+import app.nostrdeck.model.UploadProtocol
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReactionUi
+import app.nostrdeck.model.Reposts
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.nip65PrefsFromTags
 import app.nostrdeck.model.ReqFilter
@@ -328,7 +336,16 @@ class EventRepository(
         },
         derive = { PinnedHashtags.fromTags(it) },
     )
-    private val ownLists: List<OwnReplaceable<*>> get() = listOf(relayListRep, emojiListRep, pinnedRep)
+    /**
+     * [#421] 参加中のパブリックチャット（NIP-51 kind:10005）。KV に永続し起動時に復元する。
+     * 生タグを保持して、参加・退出のたびに他のクライアントのタグや content を失わない（[PublicChatList]）。
+     */
+    private val publicChatsRep = OwnReplaceable(
+        kind = PublicChatList.KIND, subId = "publicchats",
+        backupKey = PUBLIC_CHATS_KEY, store = ownListStore, json = json,
+        derive = PublicChatList::channelIds,
+    )
+    private val ownLists: List<OwnReplaceable<*>> get() = listOf(relayListRep, emojiListRep, pinnedRep, publicChatsRep)
 
     private var pinnedPublishJob: Job? = null
     /** デバウンス発行が失敗したときに戻す版（未発行の編集が始まった時点の確定版）。発行成功で null。 */
@@ -384,7 +401,7 @@ class EventRepository(
             }
         }
         // [M11] 既定のメディアサーバ(NIP-96)を投入（既にあれば触らない）。
-        DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong()) }
+        DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong(), UploadProtocol.NIP96.id) }
         // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
         scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
@@ -1030,14 +1047,15 @@ class EventRepository(
 
     // ---- [#396] 自分のリストの共通操作（起動 / アカウント切替 / キャッシュ消去はこれを呼ぶだけ）----
 
-    /** 自分の replaceable リスト（10002 / 10030 / 30015）を購読する。 */
+    /** 自分の replaceable リスト（10002 / 10030 / 30015 / 10005）を購読する。 */
     private fun subscribeOwnLists(me: String) {
         ownLists.forEach { subscribeAll(it.subId, it.filter(me)) }
     }
 
-    /** KV バックアップを復元する（絵文字リスト / ピン留め。10002 は relay 表が置き場なので対象外）。 */
+    /** KV バックアップを復元する（絵文字リスト / ピン留め / 参加中のルーム。10002 は relay 表が置き場なので対象外）。 */
     private fun restoreOwnLists() {
         emojiListRep.restore()
+        if (publicChatsRep.restore()) requestJoinedChannels()   // [#421]
         if (pinnedRep.restore()) {
             // [#393] 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
             pinnedRepublishArmed = pinnedRep.at > 0L
@@ -1696,6 +1714,57 @@ class EventRepository(
         true
     }.getOrDefault(false)
 
+    // ---- [#421] 参加中のパブリックチャット（NIP-51 kind:10005）----
+
+    /** 参加中のチャンネル id（kind:10005 の e タグの順）。 */
+    fun joinedChannelIdsFlow(): StateFlow<List<String>> = publicChatsRep.state
+
+    private fun updatePublicChats(e: NostrEvent) {
+        if (!publicChatsRep.accept(e, myPubkey)) return
+        requestJoinedChannels()
+    }
+
+    /**
+     * 参加中なのにチャンネル一覧（channel 表）に無いルームの kind:40 を id で取りに行く。thread.nchan.vip の
+     * 一覧に無いルームもあるため。届けば取り込みが一覧に入れ（[ingestChannelCreate]）、名前と画像が出る。
+     */
+    private fun requestJoinedChannels() {
+        val tags = publicChatsRep.tags
+        PublicChatList.channelIds(tags).forEach { id ->
+            if (q.channelById(id).executeAsOneOrNull() == null) {
+                requestEvent(id, listOfNotNull(PublicChatList.relayHintOf(tags, id)))
+            }
+        }
+    }
+
+    /** [#421] チャット一覧を開いたときに、参加中で名前の分からないルームを取りに行く。 */
+    suspend fun ensureJoinedChannels() = withContext(Dispatchers.Default) { requestJoinedChannels() }
+
+    /** [#421] 参加・退出の結果。UNREACHABLE は App が共通のトーストで知らせる（[OwnListError.UNREACHABLE]）。 */
+    enum class ChannelJoinResult { DONE, UNREACHABLE, FAILED }
+
+    /**
+     * [#421] ルームに参加する（[join] = true）／参加をやめる。
+     * [#478] 最新版を取り直してから 1 件だけ当てて発行する（取れなければ発行しない。他の端末で参加したルームを
+     * 消さないため）。取り直した結果、既に参加中（退出なら未参加）だったら発行せずに DONE。
+     */
+    suspend fun setChannelJoined(channelId: String, join: Boolean): ChannelJoinResult {
+        val r = refreshOwn(PublicChatList.KIND) { publicChatsRep.at } as? OwnRefetch.Result.Reached
+            ?: return ChannelJoinResult.UNREACHABLE
+        val content = r.latest?.content.orEmpty()
+        val next = if (join) {
+            PublicChatList.join(publicChatsRep.tags, content, channelId, channelRelays[channelId]?.firstOrNull())
+        } else {
+            PublicChatList.leave(publicChatsRep.tags, content, channelId)
+        } ?: return ChannelJoinResult.DONE
+        return runCatching {
+            val signed = publishSigned(next)
+            // 自分の最新版として確定（State/at/KV）。購読のエコーで古い版に戻されないようにする。
+            publicChatsRep.commit(next.tags, signed.createdAt)
+            ChannelJoinResult.DONE
+        }.getOrDefault(ChannelJoinResult.FAILED)
+    }
+
     /** [#291] 自分が作成したチャンネル id（編集導線の出し分け用）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun myChannelIdsFlow(): Flow<Set<String>> =
@@ -1867,7 +1936,9 @@ class EventRepository(
                 NotificationUi(row.id, NotificationKind.REACTION, actor, row.created_at,
                     reaction = rx.display, reactionImageUrl = rx.imageUrl,
                     targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
-                    targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote)
+                    targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote,
+                    // [#875] リアクションそのもの（kind:7）。行からリアクション・リポストする対象。押した状態も載せる。
+                    reactionNote = applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta))
             }
             6, 16 -> NotificationUi(row.id, NotificationKind.REPOST, actor, row.created_at,
                 targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
@@ -2377,6 +2448,7 @@ class EventRepository(
         val tags = buildList {
             add(listOf("e", target.id))
             add(listOf("p", target.pubkey))
+            add(listOf("k", target.kind.toString()))   // [#875] NIP-25: 対象の kind（kind:7 へのリアクションもある）
             if (imageUrl != null && emoji.length >= 2 && emoji.startsWith(":") && emoji.endsWith(":")) {
                 add(listOf("emoji", emoji.substring(1, emoji.length - 1), imageUrl))
             }
@@ -2494,10 +2566,11 @@ class EventRepository(
      * [#411] e タグの relay URL は NIP-18 で MUST（"That tag MUST include a relay URL as its third entry"）。
      */
     suspend fun publishRepost(target: NostrEvent) {
+        // [#805][#875] kind:1 以外（リアクション・チャットの発言・コメント等）は kind:16 + k タグ（NIP-18）。
         publishSigned(
             UnsignedEvent(
-                kind = 6, content = "",
-                tags = withRelayHints(listOf(listOf("e", target.id), listOf("p", target.pubkey))),
+                kind = Reposts.kindFor(target.kind), content = "",
+                tags = withRelayHints(listOf(listOf("e", target.id), listOf("p", target.pubkey))) + Reposts.extraTags(target.kind),
             ),
         )
     }
@@ -3523,6 +3596,7 @@ class EventRepository(
             9735 -> ingestZapReceipt(e)   // NIP-57 Zap 受領（#e 集計・受信通知に使う）
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
+            PublicChatList.KIND -> updatePublicChats(e)   // [#421] NIP-51 参加中のパブリックチャット
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
             UserStatuses.KIND -> captureStatus(e)   // [#772] NIP-38 ステータス（メモリだけに持つ）
             30078 -> {
@@ -4684,12 +4758,12 @@ class EventRepository(
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
         q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
 
-    /** [M11] メディアサーバを手動追加（末尾に。enabled 既定 true）。 */
-    fun addMediaServer(url: String) {
+    /** [M11] メディアサーバを手動追加（末尾に。enabled 既定 true）。[#872] 方式（NIP-96 / Blossom）も持つ。 */
+    fun addMediaServer(url: String, protocol: UploadProtocol = UploadProtocol.NIP96) {
         val u = url.trim().trimEnd('/')
         if (u.isBlank()) return
         val next = q.allMediaServers().executeAsList().size.toLong()
-        q.insertMediaServerIfAbsent(u, 1, next)
+        q.insertMediaServerIfAbsent(u, 1, next, protocol.id)
     }
 
     /** [M11] メディアサーバを設定から除去。 */
@@ -5759,19 +5833,25 @@ class EventRepository(
 
     /**
      * [M11] 画像をアップロードして表示用 URL を返す。
-     * 有効なメディアサーバ(NIP-96)を順に試し、最初に成功した URL を返す。全滅なら null。
+     * 有効なメディアサーバを順に試し、最初に成功した URL を返す。全滅なら null。
      * [#685] noTransform = true は NIP-96 の no_transform を送り、サーバ側の再変換を断る
      * （端末でトランスコード済みの動画用。nostrcheck.me は再変換で動画を 640x480 に潰していた）。
+     * [#872] [server] を渡すと、その送信先だけに送る（投稿画面で一時的に選んだ送信先。無効にしてあっても使う）。
      */
     suspend fun uploadImage(
         bytes: ByteArray,
         mime: String,
         filename: String = "image",
         noTransform: Boolean = false,
+        server: String? = null,
     ): String? =
         withContext(Dispatchers.Default) {
-            for (s in q.enabledMediaServers().executeAsList()) {
-                val url = runCatching { uploadToServer(s.url, bytes, mime, filename, noTransform) }.getOrNull()
+            val targets = if (server != null) listOfNotNull(q.mediaServerByUrl(server).executeAsOneOrNull())
+            else q.enabledMediaServers().executeAsList()
+            for (s in targets) {
+                val url = runCatching {
+                    uploadToServer(s.url, UploadProtocol.of(s.protocol), bytes, mime, filename, noTransform)
+                }.getOrNull()
                 if (!url.isNullOrBlank()) return@withContext url
             }
             null
@@ -5785,11 +5865,13 @@ class EventRepository(
      */
     private suspend fun uploadToServer(
         server: String,
+        protocol: UploadProtocol,
         bytes: ByteArray,
         mime: String,
         filename: String,
         noTransform: Boolean,
     ): String? {
+        if (protocol == UploadProtocol.BLOSSOM) return uploadToBlossom(server, bytes, mime, filename)
         val base = server.trim().trimEnd('/')
         val apiUrl = discoverApiUrl(base) ?: "$base/api/v1/media"
         val parts = formData {
@@ -5807,6 +5889,28 @@ class EventRepository(
             setBody(MultiPartFormDataContent(parts))
         }
         return parseUploadResponse(resp.bodyAsText())
+    }
+
+    /**
+     * [#872] Blossom（BUD-02）へ 1 ファイルを送る。本文をそのまま `<server>/upload` へ PUT し、
+     * kind:24242（t=upload・x=sha256・expiration）で認証する（[Blossom]。eHagaki と同じ形）。
+     * 返ってきた記述子の sha256 と size が送ったものと一致するときだけ url を返す。
+     * Blossom はサーバーで作り直さないので、no_transform は無い（送った動画がそのまま配られる）。
+     */
+    private suspend fun uploadToBlossom(server: String, bytes: ByteArray, mime: String, filename: String): String? {
+        val sha = Blossom.sha256Hex(bytes)
+        val signed = SignerProvider.current().sign(Blossom.uploadAuth(sha, filename, currentUnixTime()))
+        val auth = Blossom.authorizationHeader(eventToJson(signed).encodeToByteArray().encodeBase64())
+        val resp = uploadHttp.put(Blossom.uploadUrl(server)) {
+            header(HttpHeaders.Authorization, auth)
+            setBody(ByteArrayContent(bytes, runCatching { ContentType.parse(mime) }.getOrDefault(ContentType.Application.OctetStream)))
+        }
+        if (!resp.status.isSuccess()) {
+            println("Nostrism Blossom upload rejected by $server: ${resp.status.value} ${resp.headers["X-Reason"].orEmpty()}")
+            return null
+        }
+        val descriptor = Blossom.parseDescriptor(resp.bodyAsText()) ?: return null
+        return descriptor.url.takeIf { Blossom.matches(descriptor, sha, bytes.size.toLong()) }
     }
 
     /** [M11] NIP-96 ディスカバリ。api_url（絶対/相対）を返す。失敗時 null。 */
@@ -5988,6 +6092,7 @@ class EventRepository(
 
         const val EMOJI_LIST_TAGS_KEY = "emoji_list_tags"
         const val EMOJI_MAKER_LAST = "emoji_maker_last"   // [#834] 絵文字作成フォームの前回の設定（端末ごと・同期しない）
+        const val PUBLIC_CHATS_KEY = "public_chats_tags"   // [#421] kind:10005 の生タグ + created_at（OwnListBackup）
         const val PINNED_HASHTAGS_KEY = "pinned_hashtags"   // [#393] kind:30015(d=pinned) の t タグ順キャッシュ
         /** [#122][#374] 30078 の d タグ（このアプリのカラム構成を示す識別子）。#122 発行分と互換。 */
         const val DECK_COLUMNS_D = "app.nostrdeck:deck-columns"
