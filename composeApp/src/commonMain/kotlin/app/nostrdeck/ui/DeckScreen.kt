@@ -101,7 +101,10 @@ fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier
             .focusable()
             .onPreviewKeyEvent { handleDeckKey(state, it, onReload = { kbRepo?.reconnectAll() }) },
     ) {
-        if (isCompact) CompactPager(state) else ExpandedDeck(state)
+        // [#858] ルームのカラムの入力欄から抜けたら、ショートカットの受け口へフォーカスを戻す。
+        CompositionLocalProvider(LocalRestoreDeckShortcuts provides { runCatching { kbFocus.requestFocus() } }) {
+            if (isCompact) CompactPager(state) else ExpandedDeck(state)
+        }
         if (state.showShortcutsHelp) ShortcutsHelpOverlay(onDismiss = { state.showShortcutsHelp = false })
     }
 }
@@ -725,9 +728,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         ColumnRenderer.ROOM -> {
             val channelId = spec.filter.channelId
             if (channelId != null) {
-                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu, deckMode = true)
+                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu)
             } else {
-                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu, deckMode = true)
+                ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
             }
         }
     }
