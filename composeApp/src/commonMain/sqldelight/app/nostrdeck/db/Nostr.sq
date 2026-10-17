@@ -243,6 +243,10 @@ SELECT DISTINCT COALESCE(ref_id, event_id) AS local_id FROM publish_queue WHERE 
 publishesByLocalId:
 SELECT * FROM publish_queue WHERE COALESCE(ref_id, event_id) = ?;
 
+-- [#887] auth-required で弾かれた EVENT を AUTH 成立後に送り直すための JSON（受理されて消えていれば無し）。
+publishPayloadById:
+SELECT payload FROM publish_queue WHERE event_id = ?;
+
 -- カラムのフィードを created_at 降順で読む（since 以降の差分取得にも流用）
 feedByAuthors:
 SELECT * FROM event

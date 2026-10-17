@@ -32,4 +32,19 @@ class RelayRoutingTest {
         // 起動直後（空 → 読み込みリレー）は全部に送る。
         assertEquals(emptySet<String>() to read, RelayRouting.retarget(emptySet(), read))
     }
+
+    /** [#885] 一時接続のうち閉じてよいもの: リストに無く、限定 REQ の配信先でもなく、カラムが掴んでもいないもの。 */
+    @Test
+    fun idle_transients_exclude_list_targeted_and_pinned() {
+        val connected = setOf("wss://yabu.me", "wss://purplepag.es", "wss://relay.nostr.band", "wss://chat.example", "wss://hint.example")
+        val idle = RelayRouting.idleTransients(
+            connected = connected,
+            listRelays = setOf("wss://yabu.me"),
+            targeted = setOf("wss://purplepag.es"),
+            pinned = setOf("wss://chat.example"),
+        )
+        assertEquals(listOf("wss://relay.nostr.band", "wss://hint.example"), idle)
+        assertEquals(emptyList(), RelayRouting.idleTransients(emptySet(), emptySet(), emptySet(), emptySet()))
+    }
+
 }
