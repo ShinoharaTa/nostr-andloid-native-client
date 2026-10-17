@@ -1,6 +1,7 @@
 import { type NostrEvent, verifyEvent } from "nostr-tools/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestSigner } from "../../test/fakeSigner";
+import type { MediaServer } from "./mediaServer";
 import { discoverApiUrl, nip98Header, parseUploadResponse, uploadMedia, uploadToServer } from "./nip96";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -29,6 +30,8 @@ function decodeAuth(header: string): NostrEvent {
 function requestUrl(input: Parameters<typeof fetch>[0]): string {
   return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 }
+
+const nip96 = (url: string): MediaServer => ({ url, protocol: "nip96" });
 
 const FILE = { blob: new Blob(["png"], { type: "image/png" }), mime: "image/png", name: "a.png" };
 const UPLOADED = {
@@ -138,7 +141,11 @@ describe("uploadMedia", () => {
       if (url.endsWith("nip96.json")) return json({ api_url: "/upload" });
       return json(UPLOADED);
     });
-    const result = await uploadMedia(FILE, ["https://down.example", "https://up.example"], signer);
+    const result = await uploadMedia(
+      FILE,
+      [nip96("https://down.example"), nip96("https://up.example")],
+      signer,
+    );
     expect(result?.url).toBe("https://media.example/abc.webp");
     expect(fetchMock.mock.calls.map(([input]) => requestUrl(input))).toEqual([
       "https://down.example/.well-known/nostr/nip96.json",
@@ -147,7 +154,20 @@ describe("uploadMedia", () => {
       "https://up.example/upload",
     ]);
 
-    expect(await uploadMedia(FILE, ["https://down.example"], signer)).toBeNull();
+    expect(await uploadMedia(FILE, [nip96("https://down.example")], signer)).toBeNull();
+  });
+
+  it("[#873] Blossom の送信先は <server>/upload へ PUT する（NIP-96 のディスカバリはしない）", async () => {
+    const { signer } = createTestSigner();
+    fetchMock.mockImplementation(async () =>
+      json({ url: "https://cdn.example/x.png", sha256: "0".repeat(64) }),
+    );
+    const result = await uploadMedia(FILE, [{ url: "https://b.example", protocol: "blossom" }], signer);
+    // sha256 が違うので採用しない（記述子の照合は blossom.test.ts）。送り先だけ見る
+    expect(result).toBeNull();
+    expect(fetchMock.mock.calls.map(([input, init]) => [requestUrl(input), init?.method])).toEqual([
+      ["https://b.example/upload", "PUT"],
+    ]);
   });
 
   it("中止されたら次のサーバーへ進まず AbortError", async () => {
@@ -159,7 +179,7 @@ describe("uploadMedia", () => {
       throw new DOMException("aborted", "AbortError");
     });
     await expect(
-      uploadMedia(FILE, ["https://a.example", "https://b.example"], signer, ac.signal),
+      uploadMedia(FILE, [nip96("https://a.example"), nip96("https://b.example")], signer, ac.signal),
     ).rejects.toThrow();
     expect(fetchMock.mock.calls.some(([input]) => requestUrl(input).startsWith("https://b.example"))).toBe(
       false,

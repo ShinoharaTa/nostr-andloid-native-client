@@ -256,7 +256,6 @@
   "web_settings_media_compress_desc": "When “Low / Medium” is selected, posted images are resized to the long-edge limit below (px) and re-encoded (WebP, or JPEG if that fails). “High” doesn’t shrink them, but re-encodes at the same quality to strip EXIF data such as location. Defaults: Low = %1$dpx, Medium = %2$dpx, quality = %3$d%% (range: long edge %4$d–%5$d / quality %6$d–%7$d).",
   "web_settings_media_compress_reset_label": "Reset image upload compression to defaults",
   "web_settings_media_default_order": "While none is selected, they’re tried in this order: %1$s.",
-  "web_settings_media_desc": "When you attach images or videos to a post, they’re uploaded to the selected server.",
   "web_settings_media_url_invalid": "Enter a server URL starting with https://",
   "web_settings_media_url_label": "Upload server URL",
   "web_settings_mute_private_label": "Mute %1$s privately",

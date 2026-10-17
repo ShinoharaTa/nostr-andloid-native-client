@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 import { COMPRESSION_KEY, resetImageCompression, useImageCompression } from "../compose/imageCompression";
-import { MEDIA_SERVER_KEY, setMediaServer, useMediaServer } from "../compose/mediaServer";
+import { MEDIA_SERVER_KEY, parseStoredServer, setMediaServer, useMediaServer } from "../compose/mediaServer";
 import { MediaSection } from "./MediaSection";
 
 afterEach(() => {
@@ -16,24 +16,67 @@ it("未選択は既定の先頭（nostr.build）が選択中。候補を押す�
   render(<MediaSection />);
 
   expect(screen.getByText(/nostr\.build → nostrcheck\.me の順に試します/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "nostr.build" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("button", { name: "files.sovbit.host" })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "nostr.build NIP-96" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "files.sovbit.host NIP-96" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
-  await user.click(screen.getByRole("button", { name: "nostpic.com" }));
-  expect(useMediaServer.getState().server).toBe("https://nostpic.com");
-  expect(localStorage.getItem(MEDIA_SERVER_KEY)).toBe("https://nostpic.com");
-  expect(screen.getByRole("button", { name: "nostpic.com" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("button", { name: "nostr.build" })).toHaveAttribute("aria-pressed", "false");
+  await user.click(screen.getByRole("button", { name: "nostpic.com NIP-96" }));
+  expect(useMediaServer.getState().server).toEqual({ url: "https://nostpic.com", protocol: "nip96" });
+  expect(JSON.parse(localStorage.getItem(MEDIA_SERVER_KEY) ?? "")).toEqual({
+    url: "https://nostpic.com",
+    protocol: "nip96",
+  });
+  expect(screen.getByRole("button", { name: "nostpic.com NIP-96" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "nostr.build NIP-96" })).toHaveAttribute("aria-pressed", "false");
 
   await user.click(screen.getByRole("button", { name: "既定に戻す" }));
   expect(useMediaServer.getState().server).toBeNull();
   expect(screen.queryByRole("button", { name: "既定に戻す" })).toBeNull();
 });
 
-it("URL を入力して選べる（https のみ）。選んだものは候補に並ぶ", async () => {
+it("[#873] 候補は方式の見出しで分け、各行に方式のバッジ。Blossom の候補を選べる", async () => {
+  const user = userEvent.setup();
+  render(<MediaSection />);
+  expect(screen.getByRole("heading", { name: "アップロード先（NIP-96 / Blossom）" })).toBeInTheDocument();
+
+  const nip96 = screen.getByText("NIP-96", { selector: "p" }).parentElement as HTMLElement;
+  const blossom = screen.getByText("Blossom", { selector: "p" }).parentElement as HTMLElement;
+  expect(
+    within(nip96)
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+  ).toEqual([
+    "share.yabu.me NIP-96",
+    "nostrcheck.me NIP-96",
+    "nostr.build NIP-96",
+    "nostpic.com NIP-96",
+    "files.sovbit.host NIP-96",
+    "nostrmedia.com NIP-96",
+  ]);
+  expect(
+    within(blossom)
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+  ).toEqual([
+    "cdn.nostrcheck.me Blossom",
+    "blossom.band Blossom",
+    "nostr.download Blossom",
+    "blossom.primal.net Blossom",
+  ]);
+
+  await user.click(within(blossom).getByRole("button", { name: "blossom.band Blossom" }));
+  expect(useMediaServer.getState().server).toEqual({ url: "https://blossom.band", protocol: "blossom" });
+});
+
+it("URL を入力して選べる（https のみ）。方式を選べ（既定は NIP-96）、選んだものは候補に並ぶ", async () => {
   const user = userEvent.setup();
   render(<MediaSection />);
   const input = screen.getByRole("textbox", { name: "アップロード先サーバーの URL" });
+  const protocols = screen.getByRole("group", { name: "方式" });
+  expect(within(protocols).getByRole("button", { name: "NIP-96" })).toHaveAttribute("aria-pressed", "true");
+  expect(within(protocols).getByRole("button", { name: "Blossom" })).toHaveAttribute("aria-pressed", "false");
 
   await user.type(input, "http://example.com");
   await user.click(screen.getByRole("button", { name: "選択" }));
@@ -43,9 +86,30 @@ it("URL を入力して選べる（https のみ）。選んだものは候補に
   await user.clear(input);
   await user.type(input, "https://media.example.com/");
   await user.click(screen.getByRole("button", { name: "選択" }));
-  expect(useMediaServer.getState().server).toBe("https://media.example.com");
-  expect(screen.getByRole("button", { name: "media.example.com" })).toHaveAttribute("aria-pressed", "true");
+  expect(useMediaServer.getState().server).toEqual({ url: "https://media.example.com", protocol: "nip96" });
+  expect(screen.getByRole("button", { name: "media.example.com NIP-96" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   expect(input).toHaveValue("");
+
+  await user.click(within(protocols).getByRole("button", { name: "Blossom" }));
+  await user.type(input, "https://blob.example.com");
+  await user.click(screen.getByRole("button", { name: "選択" }));
+  expect(useMediaServer.getState().server).toEqual({ url: "https://blob.example.com", protocol: "blossom" });
+  expect(screen.getByRole("button", { name: "blob.example.com Blossom" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+it("[#873] 以前の保存形式（URL の文字列）の送信先は NIP-96 として選択中に出る", () => {
+  setMediaServer(parseStoredServer("https://media.example.com"));
+  render(<MediaSection />);
+  expect(screen.getByRole("button", { name: "media.example.com NIP-96" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 it("画像アップロードの圧縮: 既定値。範囲外は保存時に丸め、既定に戻すと消える", async () => {

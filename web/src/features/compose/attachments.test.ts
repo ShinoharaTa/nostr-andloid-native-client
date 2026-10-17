@@ -119,7 +119,7 @@ describe("uploadAttachments", () => {
     const progress: number[] = [];
 
     const media = await uploadAttachments(list, {
-      servers: ["https://s"],
+      servers: [{ url: "https://s", protocol: "nip96" }],
       signer,
       onProgress: (done) => progress.push(done),
     });
@@ -127,7 +127,7 @@ describe("uploadAttachments", () => {
     expect(media.map((m) => m.url)).toEqual(list.map((a) => `https://m/${a.id}`));
     expect(peak).toBe(UPLOAD_CONCURRENCY);
     expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(vi.mocked(uploadMedia).mock.calls[0][1]).toEqual(["https://s"]);
+    expect(vi.mocked(uploadMedia).mock.calls[0][1]).toEqual([{ url: "https://s", protocol: "nip96" }]);
   });
 
   it("1 件でも失敗したら（残りを終えてから）UploadFailedError", async () => {
@@ -138,7 +138,7 @@ describe("uploadAttachments", () => {
     const progress: number[] = [];
     await expect(
       uploadAttachments([attachment(0), attachment(1), attachment(2)], {
-        servers: ["https://s"],
+        servers: [{ url: "https://s", protocol: "nip96" }],
         signer,
         onProgress: (done) => progress.push(done),
       }),

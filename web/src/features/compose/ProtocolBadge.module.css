@@ -1,0 +1,17 @@
+/* [#873] 方式のバッジ（ネイティブ UploadProtocolBadge: NIP-96 は控えめ、Blossom はアクセント） */
+.badge {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: var(--type-micro);
+  font-weight: var(--w-name);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.badge[data-protocol="blossom"] {
+  background: var(--accent-weak);
+  color: var(--accent);
+}

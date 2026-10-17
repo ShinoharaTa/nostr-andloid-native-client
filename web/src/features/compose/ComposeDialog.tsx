@@ -4,6 +4,7 @@ import {
   type DragEvent,
   type MouseEvent,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -68,8 +69,18 @@ import { type ComposeRequest, closeCompose } from "./composeStore";
 import { type CustomEmoji, useCustomEmojis } from "./customEmojis";
 import { type ImageResolution, maxDimFor, resolutions, useImageCompression } from "./imageCompression";
 import { flippedHorizontally, isEdited, NO_EDIT, rotatedLeft, rotatedRight } from "./imageEdit";
-import { uploadServers, useMediaServer } from "./mediaServer";
+import {
+  type MediaServer,
+  sameServer,
+  serverChoices,
+  serverKey,
+  serverName,
+  UPLOAD_PROTOCOLS,
+  uploadServers,
+  useMediaServer,
+} from "./mediaServer";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { ProtocolBadge, useProtocolLabel } from "./ProtocolBadge";
 import { storeRelayHints } from "./relayHints";
 import { type ProfileHit, searchProfiles } from "./searchProfiles";
 import {
@@ -147,6 +158,8 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const mediaServer = useMediaServer((s) => s.server);
+  /** [#873] この投稿だけの送信先（null = 設定の送信先）。閉じたら捨てる（設定にも composeStore にも保存しない） */
+  const [uploadTarget, setUploadTarget] = useState<MediaServer | null>(null);
   /** まだ revoke していないプレビューの blob: URL（閉じたときにまとめて revoke する） */
   const previews = useRef(new Set<string>());
   // 添付の解像度（新規投稿のみ。ネイティブ ResolutionSelector の既定と同じ「中」）
@@ -478,7 +491,7 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
         const signer = currentSigner();
         if (!signer) throw new Error("no signer");
         media = await uploadAttachments(list, {
-          servers: uploadServers(mediaServer),
+          servers: uploadTarget ? [uploadTarget] : uploadServers(mediaServer),
           signer,
           signal: ac.signal,
           onProgress: (done) => {
@@ -755,6 +768,14 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
                 </div>
               </fieldset>
             )}
+            {attachments.length > 0 && (
+              <UploadTargetSelect
+                settings={mediaServer}
+                target={uploadTarget}
+                disabled={sending}
+                onChange={setUploadTarget}
+              />
+            )}
           </div>
           {request.mode !== "new" && (
             <div className={styles.context}>
@@ -876,6 +897,68 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
         />
       )}
     </>
+  );
+}
+
+/**
+ * [#873] 「送信先」（ネイティブ UploadTargetSelector）。添付があるときに出し、選べる送信先（方式の見出しで分ける）から選ぶ。
+ * 選んだ送信先はその投稿だけに効く（呼び出し側が状態を持ち、設定は変えない）。target が null なら設定の送信先。
+ */
+function UploadTargetSelect({
+  settings,
+  target,
+  disabled,
+  onChange,
+}: {
+  settings: MediaServer | null;
+  target: MediaServer | null;
+  disabled: boolean;
+  onChange(target: MediaServer | null): void;
+}) {
+  const t = useT();
+  const protocolLabel = useProtocolLabel();
+  const selectId = useId();
+  const hintId = useId();
+  // 設定の送信先 = 試す順の先頭（未設定なら既定の一覧の先頭）
+  const settingsCurrent = uploadServers(settings)[0];
+  const current = target ?? settingsCurrent;
+  const choices = serverChoices(settings);
+  return (
+    <div className={styles.uploadTarget}>
+      <div className={styles.uploadTargetRow}>
+        <label htmlFor={selectId} className={styles.uploadTargetLabel}>
+          {t("compose_upload_target")}
+        </label>
+        <select
+          id={selectId}
+          className={styles.uploadTargetSelect}
+          value={serverKey(current)}
+          disabled={disabled}
+          aria-describedby={hintId}
+          onChange={(e) => {
+            const next = choices.find((s) => serverKey(s) === e.currentTarget.value);
+            // 設定の送信先を選び直したら設定どおり（未設定なら既定の一覧を順に試す）に戻す
+            if (next) onChange(sameServer(next, settingsCurrent) ? null : next);
+          }}
+        >
+          {UPLOAD_PROTOCOLS.map((p) => (
+            <optgroup key={p} label={protocolLabel(p)}>
+              {choices
+                .filter((s) => s.protocol === p)
+                .map((s) => (
+                  <option key={serverKey(s)} value={serverKey(s)}>
+                    {serverName(s.url)}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </select>
+        <ProtocolBadge protocol={current.protocol} />
+      </div>
+      <p id={hintId} className={styles.uploadTargetHint}>
+        {t("compose_upload_target_hint")}
+      </p>
+    </div>
   );
 }
 

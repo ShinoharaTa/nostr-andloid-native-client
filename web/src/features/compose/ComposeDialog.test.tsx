@@ -13,6 +13,7 @@ import { renderWithRouter } from "../../test/renderWithRouter";
 import { useToast } from "../../ui/toast";
 import { openHashtagManager } from "../hashtags/hashtagManagerStore";
 import { togglePinnedHashtag } from "../hashtags/pinnedHashtags";
+import { sha256Hex } from "./blossom";
 import { ComposeDialog } from "./ComposeDialog";
 import { type ComposeRequest, openCompose, useCompose } from "./composeStore";
 import { setMediaServer } from "./mediaServer";
@@ -818,7 +819,7 @@ describe("添付（画像・動画）", () => {
 
   it("設定で選んだサーバーへ送る", async () => {
     const user = userEvent.setup();
-    setMediaServer("https://nostr.build");
+    setMediaServer({ url: "https://nostr.build", protocol: "nip96" });
     renderWithRouter(<Harness />);
     open({ mode: "new" });
     await user.upload(fileInput(), png());
@@ -827,6 +828,80 @@ describe("添付（画像・動画）", () => {
     await waitFor(() => expect(publishEvent).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0][0]).toBe("https://nostr.build/.well-known/nostr/nip96.json");
     expect(lastDraft().content).toBe(UPLOADED_URL);
+  });
+
+  describe("[#873] 送信先（この投稿だけ）", () => {
+    function targetSelect(): HTMLSelectElement {
+      return screen.getByRole("combobox", { name: "送信先" }) as HTMLSelectElement;
+    }
+
+    it("画像・動画を添付したときだけ出る。既定は設定の送信先で、ヒントと方式のバッジが付く", async () => {
+      const user = userEvent.setup();
+      setMediaServer({ url: "https://nostpic.com", protocol: "nip96" });
+      renderWithRouter(<Harness />);
+      open({ mode: "new" });
+      expect(screen.queryByRole("combobox", { name: "送信先" })).toBeNull();
+
+      await user.upload(fileInput(), png());
+      expect(targetSelect()).toHaveValue("nip96 https://nostpic.com");
+      expect(targetSelect()).toHaveAccessibleDescription(
+        "この投稿だけ送信先を変えます（設定は変わりません）",
+      );
+      // 方式の見出しで分ける
+      const groups = within(targetSelect()).getAllByRole("group");
+      expect(groups.map((g) => g.getAttribute("label"))).toEqual(["NIP-96", "Blossom"]);
+      expect(within(groups[1]).getByRole("option", { name: "blossom.band" })).toBeInTheDocument();
+      expect(targetSelect().parentElement).toHaveTextContent("NIP-96");
+
+      await user.click(
+        within(screen.getByRole("list", { name: "添付" })).getByRole("button", { name: "削除" }),
+      );
+      expect(screen.queryByRole("combobox", { name: "送信先" })).toBeNull();
+    });
+
+    it("Blossom を選ぶと <server>/upload へ PUT して投稿する（設定は変わらない）", async () => {
+      const user = userEvent.setup();
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url === "https://blossom.band/upload" && init?.method === "PUT") {
+          const body = init.body as Blob;
+          return new Response(
+            JSON.stringify({ url: UPLOADED_URL, sha256: await sha256Hex(body), size: body.size }),
+          );
+        }
+        throw new TypeError("unexpected request");
+      });
+      renderWithRouter(<Harness />);
+      open({ mode: "new" });
+      await user.upload(fileInput(), png());
+      await user.selectOptions(targetSelect(), "blossom https://blossom.band");
+      expect(targetSelect().parentElement).toHaveTextContent("Blossom");
+      await user.click(screen.getByRole("button", { name: "送信" }));
+
+      await waitFor(() => expect(publishEvent).toHaveBeenCalledTimes(1));
+      expect(fetchMock.mock.calls.map(([input, init]) => [input, init?.method])).toEqual([
+        ["https://blossom.band/upload", "PUT"],
+      ]);
+      const auth = new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization") ?? "";
+      expect(auth).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+      expect(lastDraft().content).toBe(UPLOADED_URL);
+      expect(localStorage.getItem("nostrism.media.server")).toBeNull();
+    });
+
+    it("閉じて開き直すと設定の送信先に戻る", async () => {
+      const user = userEvent.setup();
+      setMediaServer({ url: "https://nostpic.com", protocol: "nip96" });
+      renderWithRouter(<Harness />);
+      open({ mode: "new" });
+      await user.upload(fileInput(), png());
+      await user.selectOptions(targetSelect(), "blossom https://blossom.band");
+      expect(targetSelect()).toHaveValue("blossom https://blossom.band");
+
+      act(() => useCompose.setState({ request: null }));
+      open({ mode: "new" });
+      await user.upload(fileInput(), png());
+      expect(targetSelect()).toHaveValue("nip96 https://nostpic.com");
+    });
   });
 
   it("アップロード中は「画像 n/m アップロード中…」。失敗したら投稿せず文言を出し、添付を残す", async () => {

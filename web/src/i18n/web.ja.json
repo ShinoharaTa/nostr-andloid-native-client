@@ -256,7 +256,6 @@
   "web_settings_media_compress_desc": "投稿画像は「低 / 中」選択時に下の長辺（px）へリサイズして再エンコードします（WebP。書けなければ JPEG）。「高」は縮小しませんが、位置情報などの EXIF を取り除くため同じ品質で再エンコードします。 既定値: 低 = %1$dpx・中 = %2$dpx・品質 = %3$d%%（範囲: 長辺 %4$d〜%5$d / 品質 %6$d〜%7$d）。",
   "web_settings_media_compress_reset_label": "画像アップロードの圧縮を既定に戻す",
   "web_settings_media_default_order": "未選択の間は %1$s の順に試します。",
-  "web_settings_media_desc": "投稿に画像・動画を添付すると、選択中のサーバへアップロードします。",
   "web_settings_media_url_invalid": "https:// で始まるサーバーの URL を入力してください",
   "web_settings_media_url_label": "アップロード先サーバーの URL",
   "web_settings_mute_private_label": "%1$s を非公開でミュート",
