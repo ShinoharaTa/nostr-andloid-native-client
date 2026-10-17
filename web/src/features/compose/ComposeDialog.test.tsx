@@ -871,6 +871,10 @@ describe("添付（画像・動画）", () => {
             JSON.stringify({ url: UPLOADED_URL, sha256: await sha256Hex(body), size: body.size }),
           );
         }
+        // [#895] 成功後の確認（HEAD）は配られている扱い
+        if (url === UPLOADED_URL && init?.method === "HEAD") {
+          return new Response(null, { headers: { "Content-Type": "image/webp" } });
+        }
         throw new TypeError("unexpected request");
       });
       renderWithRouter(<Harness />);
@@ -883,6 +887,7 @@ describe("添付（画像・動画）", () => {
       await waitFor(() => expect(publishEvent).toHaveBeenCalledTimes(1));
       expect(fetchMock.mock.calls.map(([input, init]) => [input, init?.method])).toEqual([
         ["https://blossom.band/upload", "PUT"],
+        [UPLOADED_URL, "HEAD"],
       ]);
       const auth = new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization") ?? "";
       expect(auth).toMatch(/^Nostr [A-Za-z0-9_-]+$/);

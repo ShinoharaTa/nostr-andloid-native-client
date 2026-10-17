@@ -406,6 +406,25 @@ describe("[#895] waitUntilAvailable", () => {
     expect(heads()).toBeGreaterThanOrEqual(15);
   });
 
+  it("X-Reason が File not active の間も待つ", async () => {
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(head("image/webp", { reason: "File not active" }))
+      .mockResolvedValueOnce(head("image/webp"));
+    const promise = waitUntilAvailable(FINAL, "image/png");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await promise).toBe(FINAL);
+    expect(heads()).toBe(2);
+  });
+
+  it("HEAD が 401 / 403 / 405 / 501 なら判断できないので待たずに返す", async () => {
+    for (const status of [401, 403, 405, 501]) {
+      fetchMock.mockResolvedValueOnce(head("text/html", { status }));
+      expect(await waitUntilAvailable(FINAL, "image/png")).toBe(FINAL);
+    }
+    expect(heads()).toBe(4);
+  });
+
   it("HEAD が TypeError（通信 / CORS）なら待たずに返す。Content-Type が読めないときは成立とみなす", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     expect(await waitUntilAvailable(FINAL, "image/png")).toBe(FINAL);

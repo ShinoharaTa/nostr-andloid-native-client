@@ -208,8 +208,11 @@ async function awaitProcessing(
   }
 }
 
-/** 配っていないときにサーバーが X-Reason に書く言葉（nostrcheck: "File not found"） */
-const UNAVAILABLE_REASON = /not found|processing/i;
+/** 配っていないときにサーバーが X-Reason に書く言葉（nostrcheck: "File not found" / "File not active"） */
+const UNAVAILABLE_REASON = /not found|processing|not active/i;
+
+/** HEAD を受けない（405 / 501）・権限で見られない（401 / 403）。判断できないので待たない（ネイティブ availability） */
+const INCONCLUSIVE_STATUS = new Set([401, 403, 405, 501]);
 
 function mainType(mime: string): string {
   return mime.split(";")[0].split("/")[0].trim().toLowerCase();
@@ -226,7 +229,8 @@ function isServed(res: Response, mime: string): boolean {
 /**
  * [#895] 最終 URL が実際に配られているか HEAD で確かめ、まだなら POLL_INTERVAL_MS おきに最大 AVAILABILITY_MAX_MS
  * 待つ（ネイティブ awaitAvailable）。nostrcheck は処理中も 200 + image/webp で「FILE NOT FOUND」のバナーを返すので、
- * X-Reason と Content-Type を見る。時間切れ・HEAD が通らない（CORS など）ときは待たずにその URL を返す。
+ * X-Reason と Content-Type を見る。時間切れ・HEAD が通らない（CORS など）・判断できないステータス
+ * （INCONCLUSIVE_STATUS）のときは待たずにその URL を返す。Blossom（uploadToBlossom）も成功後にここを通す。
  */
 export async function waitUntilAvailable(url: string, mime: string, signal?: AbortSignal): Promise<string> {
   const deadline = Date.now() + AVAILABILITY_MAX_MS;
@@ -239,6 +243,9 @@ export async function waitUntilAvailable(url: string, mime: string, signal?: Abo
       return url;
     }
     if (isServed(res, mime)) return url;
+    if (INCONCLUSIVE_STATUS.has(res.status) && !UNAVAILABLE_REASON.test(res.headers.get("X-Reason") ?? "")) {
+      return url;
+    }
     if (Date.now() >= deadline) return url;
     await sleep(POLL_INTERVAL_MS, signal);
   }

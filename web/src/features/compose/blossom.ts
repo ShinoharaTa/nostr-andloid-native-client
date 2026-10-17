@@ -1,6 +1,13 @@
 import { unixNow } from "../../lib/time";
 import type { Signer } from "../../nostr/signer";
-import { base64Utf8, eventJson, type UploadFile, type UploadResult, withTimeout } from "./nip96";
+import {
+  base64Utf8,
+  eventJson,
+  type UploadFile,
+  type UploadResult,
+  waitUntilAvailable,
+  withTimeout,
+} from "./nip96";
 
 // ---- [#873] Blossom（BUD-01 / BUD-02）でのアップロード（ネイティブ UploadProtocol.kt の Blossom・uploadToBlossom） ----
 
@@ -64,6 +71,7 @@ export function parseDescriptor(body: string): BlobDescriptor | null {
  * 本文をそのまま `<server>/upload` へ PUT し（Content-Type は元の MIME）、kind:24242 で認証する。
  * 返ってきた記述子の sha256（大小無視）と size（あれば）が送ったものと一致するときだけ url を返す。
  * 失敗はエラーを投げる（サーバーが X-Reason を返したらその理由を入れる）。
+ * [#895] 成功後は url が実際に配られるまで待つ（waitUntilAvailable。nostrcheck の CDN も同じバナーを返す）。
  */
 export async function uploadToBlossom(
   server: string,
@@ -90,5 +98,5 @@ export async function uploadToBlossom(
   if (descriptor.size !== null && descriptor.size !== file.blob.size) {
     throw new Error("Blossom upload returned a different size");
   }
-  return { url: descriptor.url, tags: [] };
+  return { url: await waitUntilAvailable(descriptor.url, file.mime, signal), tags: [] };
 }
