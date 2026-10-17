@@ -616,8 +616,10 @@ describe("添付（画像・動画）", () => {
     vi.mocked(currentSigner).mockReturnValue(createTestSigner().signer);
     fetchMock.mockReset();
     // 実サーバーへは送らない（ディスカバリ → アップロードの 2 回）
-    fetchMock.mockImplementation(async (input) => {
+    fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      // [#895] 最終 URL の確認（HEAD）は配られている扱い
+      if (init?.method === "HEAD") return new Response(null, { headers: { "Content-Type": "image/webp" } });
       if (url.endsWith("/.well-known/nostr/nip96.json")) {
         return new Response(JSON.stringify({ api_url: "https://api.example/upload" }));
       }
@@ -869,6 +871,10 @@ describe("添付（画像・動画）", () => {
             JSON.stringify({ url: UPLOADED_URL, sha256: await sha256Hex(body), size: body.size }),
           );
         }
+        // [#895] 成功後の確認（HEAD）は配られている扱い
+        if (url === UPLOADED_URL && init?.method === "HEAD") {
+          return new Response(null, { headers: { "Content-Type": "image/webp" } });
+        }
         throw new TypeError("unexpected request");
       });
       renderWithRouter(<Harness />);
@@ -881,6 +887,7 @@ describe("添付（画像・動画）", () => {
       await waitFor(() => expect(publishEvent).toHaveBeenCalledTimes(1));
       expect(fetchMock.mock.calls.map(([input, init]) => [input, init?.method])).toEqual([
         ["https://blossom.band/upload", "PUT"],
+        [UPLOADED_URL, "HEAD"],
       ]);
       const auth = new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization") ?? "";
       expect(auth).toMatch(/^Nostr [A-Za-z0-9_-]+$/);

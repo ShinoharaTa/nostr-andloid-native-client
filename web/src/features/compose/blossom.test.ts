@@ -78,9 +78,16 @@ describe("部品", () => {
 describe("uploadToBlossom", () => {
   it("本文をそのまま <server>/upload へ PUT し、sha256（大小無視）と size が合えば url を使う", async () => {
     const { signer } = createTestSigner();
-    fetchMock.mockResolvedValueOnce(
-      json({ url: "https://cdn.example/abc.png", sha256: ABC_SHA.toUpperCase(), size: 3, type: "image/png" }),
-    );
+    fetchMock
+      .mockResolvedValueOnce(
+        json({
+          url: "https://cdn.example/abc.png",
+          sha256: ABC_SHA.toUpperCase(),
+          size: 3,
+          type: "image/png",
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { headers: { "Content-Type": "image/png" } }));
 
     const result = await uploadToBlossom("https://blossom.example/", FILE, signer);
 
@@ -94,6 +101,33 @@ describe("uploadToBlossom", () => {
     const auth = decodeAuth(headers.get("Authorization") ?? "");
     expect(auth.kind).toBe(24242);
     expect(auth.tags).toContainEqual(["x", ABC_SHA]);
+  });
+
+  it("[#895] 成功後も url が配られるまで HEAD で待つ（X-Reason: File not found の間は返さない）", async () => {
+    vi.useFakeTimers();
+    const { signer } = createTestSigner();
+    const notFound = () =>
+      new Response(null, { headers: { "Content-Type": "image/webp", "X-Reason": "File not found" } });
+    fetchMock
+      .mockResolvedValueOnce(json({ url: "https://cdn.example/abc.png", sha256: ABC_SHA, size: 3 }))
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(new Response(null, { headers: { "Content-Type": "image/png" } }));
+    let done = false;
+    const promise = uploadToBlossom("https://blossom.example", FILE, signer).then((r) => {
+      done = true;
+      return r;
+    });
+    // PUT と 1 回目の HEAD まで（sha256 の計算は実時間で進む）
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(await promise).toEqual({ url: "https://cdn.example/abc.png", tags: [] });
+    expect(fetchMock.mock.calls.slice(1).map(([input, init]) => [requestUrl(input), init?.method])).toEqual([
+      ["https://cdn.example/abc.png", "HEAD"],
+      ["https://cdn.example/abc.png", "HEAD"],
+      ["https://cdn.example/abc.png", "HEAD"],
+    ]);
   });
 
   it("sha256 が違えばエラー（url を使わない）", async () => {

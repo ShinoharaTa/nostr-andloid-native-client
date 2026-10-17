@@ -248,8 +248,10 @@ describe("編集", () => {
     const user = userEvent.setup();
     vi.mocked(requestOnce).mockReturnValue(EMPTY);
     let respond: (res: Response) => void = () => {};
-    fetchMock.mockImplementation(async (input) => {
+    fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      // [#895] 最終 URL の確認（HEAD）は配られている扱い
+      if (init?.method === "HEAD") return new Response(null, { headers: { "Content-Type": "image/webp" } });
       if (url.endsWith("/.well-known/nostr/nip96.json")) {
         return new Response(JSON.stringify({ api_url: "https://api.example/upload" }));
       }
