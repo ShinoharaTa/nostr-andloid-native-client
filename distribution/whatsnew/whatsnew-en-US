@@ -1,8 +1,8 @@
-- Blossom servers can be added as upload destinations; the list shows NIP-96 vs Blossom, and you can pick a destination per post
-- The reaction picker now has every standard emoji; emoji typed into the search box can be picked too
-- Wide custom emoji keep their aspect ratio, with no gaps when stacked
-- Reaction notifications show name, emoji, then the post; you can repost or react to a reaction you received
-- Fixed reply and quote not working from notifications
-- Emoji maker previews are drawn on your device and update as you type
-- Join public chat rooms; joined rooms appear at the top of the list
-- Pinned room columns show newest at the bottom with a composer
+- Blossom upload servers; list shows NIP-96 vs Blossom; pick a destination per post
+- Reaction picker has every standard emoji; typed emoji work too
+- Wide custom emoji keep their ratio; no gaps when stacked
+- Reaction notifications: name, emoji, post; repost or react to received reactions
+- Fixed reply and quote from notifications
+- Emoji maker preview drawn on-device as you type
+- Join public chat rooms; joined rooms show at the top
+- Pinned room columns: newest at bottom, with a composer
