@@ -388,6 +388,55 @@
   font-weight: var(--w-strong);
 }
 
+/* ---- [#873] 送信先（ネイティブ UploadTargetSelector）。この投稿だけ変える ---- */
+
+.uploadTarget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0 0;
+}
+
+/* ラベル・select・バッジは 1 行に収め、長い名前は select の中で切る */
+.uploadTargetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.uploadTargetLabel {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.uploadTargetSelect {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--touch-xs);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  /* 16px 未満だと iOS Safari がフォーカス時に拡大する */
+  font-size: 16px;
+}
+
+.uploadTargetSelect:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.uploadTargetHint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-micro);
+}
+
 /* ---- 添付（ネイティブ ImageCarousel: 横スクロール・間隔 8・サムネ 84dp） ---- */
 
 .attachments {

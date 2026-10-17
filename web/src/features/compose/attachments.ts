@@ -1,6 +1,7 @@
 import type { Signer } from "../../nostr/signer";
 import type { PostMedia } from "./buildPost";
 import { type ImageEdit, NO_EDIT } from "./imageEdit";
+import type { MediaServer } from "./mediaServer";
 import { type UploadResult, uploadMedia } from "./nip96";
 import {
   keepOriginal,
@@ -113,7 +114,7 @@ export class UploadFailedError extends Error {
 export async function uploadAttachments(
   list: readonly Attachment[],
   opts: {
-    servers: readonly string[];
+    servers: readonly MediaServer[];
     signer: Signer;
     signal?: AbortSignal;
     onProgress?: (done: number) => void;

@@ -14,33 +14,34 @@ import {
 } from "../compose/imageCompression";
 import {
   DEFAULT_MEDIA_SERVERS,
-  MEDIA_PRESETS,
   parseServerInput,
+  sameServer,
+  serverChoices,
+  serverKey,
+  serverName,
   setMediaServer,
+  UPLOAD_PROTOCOLS,
+  type UploadProtocol,
   uploadServers,
   useMediaServer,
 } from "../compose/mediaServer";
+import { ProtocolBadge, useProtocolLabel } from "../compose/ProtocolBadge";
 import styles from "./SettingsSections.module.css";
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
 
 /**
  * メディアサーバー（ネイティブ MediaSettings の「アップロード先サーバー」+ 「アップロード時の圧縮」）。
  * 候補から選ぶか URL を入力して 1 つ選ぶ。選ばない間は既定の一覧を順に試す（ネイティブの初期状態と同じ）。
+ * [#873] 方式（NIP-96 / Blossom）をバッジで出し、候補は方式の見出しで分ける。URL を入れるときは方式を選ぶ。
  */
 export function MediaSection() {
   const t = useT();
+  const protocolLabel = useProtocolLabel();
   const server = useMediaServer((s) => s.server);
   const current = uploadServers(server)[0];
-  const choices = [...new Set([...DEFAULT_MEDIA_SERVERS, ...MEDIA_PRESETS, ...(server ? [server] : [])])];
+  const choices = serverChoices(server);
   const inputId = useId();
   const [value, setValue] = useState("");
+  const [protocol, setProtocol] = useState<UploadProtocol>("nip96");
   const [error, setError] = useState<string | null>(null);
 
   function submit(e: FormEvent) {
@@ -50,7 +51,7 @@ export function MediaSection() {
       setError(t("web_settings_media_url_invalid"));
       return;
     }
-    setMediaServer(url);
+    setMediaServer({ url, protocol });
     setValue("");
     setError(null);
   }
@@ -58,26 +59,50 @@ export function MediaSection() {
   return (
     <>
       <div className={styles.block}>
-        <h3 className={styles.caption}>{t("media_title")}</h3>
+        <h3 className={styles.caption}>{t("media_servers_title")}</h3>
         <p className={styles.desc}>
-          {t("web_settings_media_desc")}
+          {t("media_servers_desc")}
           {server === null &&
-            t("web_settings_media_default_order", DEFAULT_MEDIA_SERVERS.map(hostOf).join(" → "))}
+            t(
+              "web_settings_media_default_order",
+              DEFAULT_MEDIA_SERVERS.map((s) => serverName(s.url)).join(" → "),
+            )}
         </p>
-        <div className={styles.choices}>
-          {choices.map((url) => (
-            <button
-              key={url}
-              type="button"
-              className={styles.choice}
-              aria-pressed={url === current}
-              onClick={() => setMediaServer(url)}
-            >
-              {hostOf(url)}
-            </button>
-          ))}
-        </div>
+        {UPLOAD_PROTOCOLS.map((p) => (
+          <div key={p} className={styles.presetGroup}>
+            <p className={styles.presetCategory}>{protocolLabel(p)}</p>
+            <div className={styles.choices}>
+              {choices
+                .filter((s) => s.protocol === p)
+                .map((s) => (
+                  <button
+                    key={serverKey(s)}
+                    type="button"
+                    className={styles.choice}
+                    aria-pressed={sameServer(s, current)}
+                    onClick={() => setMediaServer(s)}
+                  >
+                    {serverName(s.url)} <ProtocolBadge protocol={s.protocol} />
+                  </button>
+                ))}
+            </div>
+          </div>
+        ))}
         <form className={styles.row} onSubmit={submit}>
+          <fieldset className={styles.protocolRow}>
+            <legend className={styles.protocolLabel}>{t("media_add_protocol")}</legend>
+            {UPLOAD_PROTOCOLS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={styles.choice}
+                aria-pressed={protocol === p}
+                onClick={() => setProtocol(p)}
+              >
+                {protocolLabel(p)}
+              </button>
+            ))}
+          </fieldset>
           <label htmlFor={inputId} className="srOnly">
             {t("web_settings_media_url_label")}
           </label>

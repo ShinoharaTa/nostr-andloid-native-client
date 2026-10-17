@@ -495,3 +495,24 @@
 .saveBar .caption {
   flex: 1;
 }
+
+/* [#873] URL を手で入れるときの方式（ラベル + NIP-96 / Blossom）。入力欄の上に 1 行で置く */
+.protocolRow {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* float で legend を枠線上の特別な配置から外し、ボタンと同じ行に並べる */
+.protocolLabel {
+  float: left;
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--type-caption);
+}

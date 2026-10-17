@@ -1,6 +1,8 @@
 import type { NostrEvent } from "nostr-tools/pure";
 import { unixNow } from "../../lib/time";
 import type { Signer } from "../../nostr/signer";
+import { uploadToBlossom } from "./blossom";
+import type { MediaServer } from "./mediaServer";
 
 /** 1 リクエストの上限（ネイティブ uploadHttp の requestTimeoutMillis） */
 export const UPLOAD_TIMEOUT_MS = 60_000;
@@ -12,21 +14,21 @@ export type UploadFile = { blob: Blob; mime: string; name: string };
 export type UploadResult = { url: string; tags: string[][] };
 
 /** 呼び出し側の中止と UPLOAD_TIMEOUT_MS のどちらでも止まる signal */
-function withTimeout(signal?: AbortSignal): AbortSignal {
+export function withTimeout(signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(UPLOAD_TIMEOUT_MS);
   if (!signal) return timeout;
   // AbortSignal.any の無いブラウザ（Safari 17.3 以前）は中止だけ効かせる
   return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal;
 }
 
-function base64Utf8(text: string): string {
+export function base64Utf8(text: string): string {
   let binary = "";
   for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
 
 /** 署名済みイベントを NIP-01 の単体イベント JSON にする（ネイティブ eventToJson） */
-function eventJson(e: NostrEvent): string {
+export function eventJson(e: NostrEvent): string {
   return JSON.stringify({
     id: e.id,
     pubkey: e.pubkey,
@@ -122,22 +124,26 @@ export async function uploadToServer(
 
 /**
  * サーバーを順に試し、最初に成功した結果を返す。全滅なら null（ネイティブ uploadImage）。
+ * [#873] サーバーの方式で送り方を分ける（NIP-96 は uploadToServer、Blossom は uploadToBlossom）。
  * signal で中止されたら AbortError を投げる（次のサーバーへは進まない）。
  */
 export async function uploadMedia(
   file: UploadFile,
-  servers: readonly string[],
+  servers: readonly MediaServer[],
   signer: Signer,
   signal?: AbortSignal,
 ): Promise<UploadResult | null> {
   for (const server of servers) {
     signal?.throwIfAborted();
     try {
-      const result = await uploadToServer(server, file, signer, signal);
+      const result =
+        server.protocol === "blossom"
+          ? await uploadToBlossom(server.url, file, signer, signal)
+          : await uploadToServer(server.url, file, signer, signal);
       if (result) return result;
     } catch (e) {
       if (signal?.aborted) throw e;
-      console.warn(`[upload] ${server} failed`, e);
+      console.warn(`[upload] ${server.url} failed`, e);
     }
   }
   signal?.throwIfAborted();
