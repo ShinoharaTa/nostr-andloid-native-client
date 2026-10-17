@@ -143,9 +143,12 @@ fun LiveChannelRoom(
     // 本文中の npub メンションを @表示名 に解決するための名前マップ。
     val names by remember { repo.profileNames() }.collectAsState(emptyMap())
     val scope = rememberCoroutineScope()
+    // [#421] デッキのカラムは ⋯（[rememberColumnMenuActions]）に出すので、ここではデッキの外のときだけヘッダに出す。
+    val joinItem = if (menu == null) rememberChannelJoinItem(channelId) else null
     ChannelRoomColumn(
         spec, messages, modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         deckMode = deckMode,
+        overflow = listOfNotNull(joinItem),
         names = names,
         highlightMessageId = highlightMessageId,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
@@ -184,6 +187,8 @@ fun ChannelRoomColumn(
     titleClickLabel: String? = null,
     /** [#791] 一覧に届いたらその位置まで送って短く強調する発言 id（本文の kind:42 へのリンクから開いたとき）。 */
     highlightMessageId: String? = null,
+    /** [#421] デッキの外（[menu] が null）のヘッダの ⋯ に出す操作（ルームの「参加する」など）。 */
+    overflow: List<HeaderMenuItem> = emptyList(),
 ) {
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
@@ -242,6 +247,7 @@ fun ChannelRoomColumn(
             iconTint = DeckColors.Zap, iconBg = DeckColors.Zap.copy(alpha = 0.14f),
             onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
             onTitleClick = onTitleClick, titleClickLabel = titleClickLabel,
+            overflow = overflow,
         )
         HorizontalDivider(color = DeckColors.Border)
         Box(Modifier.weight(1f)) {
