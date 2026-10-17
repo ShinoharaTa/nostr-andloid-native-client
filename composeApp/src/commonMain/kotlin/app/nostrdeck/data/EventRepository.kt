@@ -92,6 +92,7 @@ import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.Profile
 import app.nostrdeck.model.ReactionUi
+import app.nostrdeck.model.Reposts
 import app.nostrdeck.model.RelayPref
 import app.nostrdeck.model.nip65PrefsFromTags
 import app.nostrdeck.model.ReqFilter
@@ -1936,7 +1937,9 @@ class EventRepository(
                 NotificationUi(row.id, NotificationKind.REACTION, actor, row.created_at,
                     reaction = rx.display, reactionImageUrl = rx.imageUrl,
                     targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
-                    targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote)
+                    targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote,
+                    // [#875] リアクションそのもの（kind:7）。行からリアクション・リポストする対象。押した状態も載せる。
+                    reactionNote = applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta))
             }
             6, 16 -> NotificationUi(row.id, NotificationKind.REPOST, actor, row.created_at,
                 targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
@@ -2446,6 +2449,7 @@ class EventRepository(
         val tags = buildList {
             add(listOf("e", target.id))
             add(listOf("p", target.pubkey))
+            add(listOf("k", target.kind.toString()))   // [#875] NIP-25: 対象の kind（kind:7 へのリアクションもある）
             if (imageUrl != null && emoji.length >= 2 && emoji.startsWith(":") && emoji.endsWith(":")) {
                 add(listOf("emoji", emoji.substring(1, emoji.length - 1), imageUrl))
             }
@@ -2563,10 +2567,11 @@ class EventRepository(
      * [#411] e タグの relay URL は NIP-18 で MUST（"That tag MUST include a relay URL as its third entry"）。
      */
     suspend fun publishRepost(target: NostrEvent) {
+        // [#805][#875] kind:1 以外（リアクション・チャットの発言・コメント等）は kind:16 + k タグ（NIP-18）。
         publishSigned(
             UnsignedEvent(
-                kind = 6, content = "",
-                tags = withRelayHints(listOf(listOf("e", target.id), listOf("p", target.pubkey))),
+                kind = Reposts.kindFor(target.kind), content = "",
+                tags = withRelayHints(listOf(listOf("e", target.id), listOf("p", target.pubkey))) + Reposts.extraTags(target.kind),
             ),
         )
     }
