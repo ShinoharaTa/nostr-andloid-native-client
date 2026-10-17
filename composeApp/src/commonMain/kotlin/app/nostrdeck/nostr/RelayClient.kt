@@ -177,6 +177,8 @@ data class RelayTraffic(
     val connectFailureCount: Int = 0,
     /** [#849] 直近の(再)接続にかかった時間 ms（切断・再開・復帰のうち最後のものから繋がるまで）。未計測は -1。 */
     val lastReconnectMs: Long = -1,
+    /** [#887] NIP-42 の状態（EventRepository の RelayAuthTracker.describe）。チャレンジを受けていなければ null。 */
+    val auth: String? = null,
 )
 
 /** UI 表示用のリレー1件の接続状態スナップショット。 */
@@ -448,6 +450,13 @@ class RelayClient(
     /** イベント送信（publish）。 */
     fun publish(eventJson: String) {
         outgoing.trySend(eventJson)
+    }
+
+    /** [#887] 1 つの購読を since 無しで張り直す（AUTH 成立後に auth-required で閉じられた REQ 用）。 */
+    fun resubscribe(subId: String) {
+        val filters = activeReqs[subId] ?: return
+        lastEventAtBySub.remove(subId)
+        outgoing.trySend(RelayProtocol.req(subId, *filters.toTypedArray()))
     }
 
     /** [NIP-42] AUTH 成立後などに、現在アクティブな購読(REQ)を張り直して制限イベントを取り直す。 */

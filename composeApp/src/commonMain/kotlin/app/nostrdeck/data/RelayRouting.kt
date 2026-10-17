@@ -13,4 +13,11 @@ internal object RelayRouting {
 
     /** 読み込みリレーが [old] → [new] に変わったとき、CLOSE するリレー（first）と REQ を送るリレー（second）。 */
     fun retarget(old: Set<String>, new: Set<String>): Pair<Set<String>, Set<String>> = (old - new) to (new - old)
+
+    /**
+     * [#885] 閉じてよい一時接続。設定リスト（読み込み）に無く、限定 REQ の配信先（[targeted]）でもなく、
+     * 開いているカラムが掴んでも（[pinned]。チャンネルの content.relays）いない接続。
+     */
+    fun idleTransients(connected: Set<String>, listRelays: Set<String>, targeted: Set<String>, pinned: Set<String>): List<String> =
+        connected.filter { it !in listRelays && it !in targeted && it !in pinned }
 }

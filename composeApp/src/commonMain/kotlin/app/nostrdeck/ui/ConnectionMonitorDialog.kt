@@ -117,6 +117,10 @@ fun ConnectionMonitorDialog(onDismiss: () -> Unit) {
                         if (reconnect != null || connectFail != null) {
                             MonitorLine("  " + listOfNotNull(reconnect, connectFail).joinToString(" · "), color = DeckColors.Text2)
                         }
+                        // [#887] NIP-42 の状態（チャレンジを受けたか・応答したか・成立したか・失敗の理由）。
+                        r.auth?.let {
+                            MonitorLine("  " + stringResource(Res.string.conn_monitor_auth_fmt, it), color = DeckColors.Text2)
+                        }
                         r.subs.forEach { sub ->
                             MonitorLine(
                                 "    ${sub.subId}: ${formatBytes(sub.bytes)} · ${sub.events}ev",
