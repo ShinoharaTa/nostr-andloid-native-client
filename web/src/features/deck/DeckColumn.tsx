@@ -30,6 +30,7 @@ import { MyReactionRow } from "../actions/MyReactionRow";
 import { ChannelList } from "../chat/ChannelList";
 import { ChannelRoom } from "../chat/ChannelRoom";
 import { pinRoom, usePinnedRoomIds } from "../chat/pin";
+import { useChannelJoin } from "../chat/useChannelJoin";
 import { ConversationList } from "../dm/ConversationList";
 import { startDecrypting } from "../dm/dmService";
 import { KbRow, useKbList } from "../keyboard/KbList";
@@ -386,6 +387,26 @@ function FavItem({ reaction }: { reaction: NostrEvent }) {
   return <MyReactionRow reaction={reaction} />;
 }
 
+/** [#856] ルームのカラムの ⋯ の「参加する／参加をやめる」（ネイティブ ColumnMenuActions.extraItems。フィルター編集の下） */
+function ChannelJoinMenuItem({ channelId, onSelected }: { channelId: string; onSelected(): void }) {
+  const action = useChannelJoin(channelId);
+  if (!action) return null;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className={styles.menuItem}
+      onClick={() => {
+        onSelected();
+        action.onSelect();
+      }}
+    >
+      <Icon name={action.joined ? "close" : "add"} size="md" />
+      {action.label}
+    </button>
+  );
+}
+
 /**
  * カラムの ⋯ メニュー（ネイティブの ColumnMenuButton）。移動 ◀ ▶ / フィルターを編集 / ミュートを表示・隠す /
  * 固定する / タイムラインに混ぜる表示 / カラム幅 / カラムを削除。外側のクリック・Escape・戻る（#540）で閉じる。
@@ -483,6 +504,9 @@ export function ColumnMenu({ spec }: { spec: ColumnSpec }) {
               <Icon name="tune" size="md" />
               {t("col_edit_filter")}
             </button>
+          )}
+          {spec.kind === "CHANNEL_ROOM" && spec.filter.channelId && (
+            <ChannelJoinMenuItem channelId={spec.filter.channelId} onSelected={() => setOpen(false)} />
           )}
           {!UNSUPPORTED_KINDS.has(spec.kind) &&
             (spec.renderer === "FEED" || spec.renderer === "THREAD" || spec.renderer === "ROOM") && (

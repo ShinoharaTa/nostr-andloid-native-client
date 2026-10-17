@@ -31,6 +31,11 @@
   cursor: pointer;
 }
 
+/* [#856] ヘッダの ⋯（ネイティブ HeaderOverflowButton は Text3） */
+.more {
+  color: var(--text-3);
+}
+
 .backIcon {
   width: var(--icon-lg);
   height: var(--icon-lg);

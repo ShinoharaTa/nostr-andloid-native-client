@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { unregisterLegacyServiceWorker } from "./app/legacyServiceWorker";
 import { startPersistence } from "./db";
+import { startJoinedRooms } from "./features/chat/joinedRooms";
 import { startDm } from "./features/dm/dmService";
 import { startOwnLists } from "./features/lists/ownLists";
 import { startMuteList } from "./features/mute/muteSync";
@@ -43,6 +44,8 @@ startOwnRelayList();
 startMuteList();
 // ログイン中は自分の kind:10003（ブックマーク）・kind:10001（固定投稿）を購読する
 startOwnLists();
+// [#856] ログイン中は自分の kind:10005（参加中のパブリックチャット）を購読する
+startJoinedRooms();
 // リレーの AUTH（NIP-42）に設定のポリシーで応答する
 startRelayAuth();
 // タブの非表示が 5 分続いたらリレーを一時停止し、表示に戻ったら張り直す

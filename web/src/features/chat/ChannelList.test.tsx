@@ -11,6 +11,7 @@ import { installDialogPolyfill } from "../../test/dialog";
 import { ChannelList } from "./ChannelList";
 import { resetMyChannelsForTest } from "./channelEdit";
 import { resetChannelsForTest, useChannels } from "./channels";
+import { useJoinedRooms } from "./joinedRooms";
 
 // リレーへは張らない（自分の kind:40 の購読・#478 の取り直しの呼ばれ方だけ見る）
 vi.mock("../../nostr/pool", async (importOriginal) => {
@@ -77,6 +78,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useJoinedRooms.setState({ joined: null });
   resetChannelsForTest();
   resetMyChannelsForTest();
   vi.unstubAllGlobals();
@@ -133,5 +135,62 @@ describe("ログイン中", () => {
     await user.click(screen.getByRole("button", { name: "スレッドを編集" }));
     expect(screen.getByRole("dialog", { name: "スレッドを編集" })).toBeInTheDocument();
     expect(vi.mocked(requestOnce)).toHaveBeenCalled();
+  });
+});
+
+/** [#856] 参加中のルーム（kind:10005） */
+describe("参加中のルーム", () => {
+  /** 区画の見出しと、その後ろのリストの行の名前 */
+  function section(name: string): string[] {
+    const heading = screen.getByRole("heading", { name });
+    const list = heading.nextElementSibling;
+    if (!(list instanceof HTMLElement) || list.tagName !== "UL") throw new Error(`no list after ${name}`);
+    return within(list)
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector("[class*=name]")?.textContent ?? "");
+  }
+
+  it("参加中を「参加中」として上に分け、残りを「すべてのルーム」に並べる。参加中は下に重ねて出さない", () => {
+    const third = { ...CHANNELS[1], id: "c".repeat(64), name: "三つ目のスレッド", lastAt: 1 };
+    useChannels.setState({ channels: [...CHANNELS, third] });
+    // kind:10005 の順は third → 他人（一覧と同じ最終活動の順で出す）
+    useJoinedRooms.setState({ joined: { ids: [third.id, "b".repeat(64)], hints: {} } });
+    render(<ChannelList selectedId={null} pinnedIds={new Set()} onSelect={vi.fn()} onPin={vi.fn()} />);
+
+    const headings = screen.getAllByRole("heading").map((h) => h.textContent);
+    expect(headings).toEqual(["参加中", "すべてのルーム"]);
+    expect(section("参加中")).toEqual(["他人のスレッド", "三つ目のスレッド"]);
+    expect(section("すべてのルーム")).toEqual(["自分のスレッド"]);
+    expect(screen.getAllByText("他人のスレッド")).toHaveLength(1);
+  });
+
+  it("参加中が 0 件なら見出しを出さず今までどおり", () => {
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [], hints: {} } });
+    render(<ChannelList selectedId={null} pinnedIds={new Set()} onSelect={vi.fn()} onPin={vi.fn()} />);
+
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("一覧に無い参加中のルームは kind:40 が届くまで「パブリックチャット」で出し、届けば名前に変わる。押すと開ける", async () => {
+    const user = userEvent.setup();
+    const unlisted = finalizeEvent(
+      { kind: 40, created_at: 2, tags: [], content: JSON.stringify({ name: "一覧に無いスレッド" }) },
+      generateSecretKey(),
+    );
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [unlisted.id], hints: {} } });
+    const onSelect = vi.fn();
+    render(<ChannelList selectedId={null} pinnedIds={new Set()} onSelect={onSelect} onPin={vi.fn()} />);
+
+    expect(section("参加中")).toEqual(["パブリックチャット"]);
+    expect(section("すべてのルーム")).toEqual(["自分のスレッド", "他人のスレッド"]);
+
+    await user.click(screen.getByRole("button", { name: "パブリックチャット" }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: unlisted.id }));
+
+    addVerified(unlisted);
+    await waitFor(() => expect(section("参加中")).toEqual(["一覧に無いスレッド"]));
   });
 });

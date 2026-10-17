@@ -59,6 +59,7 @@ import { ChannelIcon } from "./ChannelList";
 import styles from "./ChannelRoom.module.css";
 import { ChatComposer } from "./ChatComposer";
 import { replyParentIdOf } from "./chatMessage";
+import { useChannelJoin } from "./useChannelJoin";
 import { useChannelRoom } from "./useChannelRoom";
 
 /** 同じ送り手でこの秒数未満の連投は名前・アバターを省く（ネイティブ continuation） */
@@ -229,14 +230,17 @@ export function ChannelRoom({
 /**
  * メッセージ画面のルームのヘッダ（チャンネルの画像・名前・説明）。onBack があれば（Compact）「←」、
  * onClose があれば（Expanded）ヘッダ右端に「✕」を出す（ネイティブ ColumnChrome の onClose。#600）。
+ * [#856] ログイン中は ⋯ に「参加する／参加をやめる」（ネイティブ HeaderOverflowButton。デッキのカラムは ColumnMenu 側）。
  */
 export function RoomHeader({
+  channelId,
   title,
   subtitle,
   picture,
   onBack,
   onClose,
 }: {
+  channelId: string;
   title: string;
   subtitle: string;
   picture: string | null;
@@ -244,6 +248,7 @@ export function RoomHeader({
   onClose?: () => void;
 }) {
   const t = useT();
+  const joinAction = useChannelJoin(channelId);
   return (
     <header className={styles.header}>
       {onBack && (
@@ -256,6 +261,15 @@ export function RoomHeader({
         <h2 className={styles.headerTitle}>{title}</h2>
         {subtitle !== "" && <span className={styles.headerSubtitle}>{subtitle}</span>}
       </span>
+      {joinAction && (
+        <MenuButton
+          label={t("col_menu")}
+          triggerClassName={`${styles.back} ${styles.more}`}
+          entries={[{ type: "item", label: joinAction.label, onSelect: joinAction.onSelect }]}
+        >
+          <MoreHorizIcon className={styles.backIcon} />
+        </MenuButton>
+      )}
       {onClose && (
         <button type="button" className={styles.back} aria-label={t("web_chat_deselect")} onClick={onClose}>
           <CloseIcon className={styles.backIcon} />
