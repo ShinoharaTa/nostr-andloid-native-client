@@ -1,8 +1,8 @@
-- Profiles show Now Playing and status
-- Spotify links show as cards with title and artwork
-- Chat messages in notifications open the room at that message; channel quotes show as channel cards
-- Emoji maker remembers your last color, outline and font
-- Faster relay reconnection on return; iOS pauses relays after 5 min away
-- ws:// relays (e.g. local ones) work for relays and Bunker
-- Open source licenses in Settings > About this app
-- Saving your emoji list keeps details from other apps
+- Blossom servers can be added as upload destinations; the list shows NIP-96 vs Blossom, and you can pick a destination per post
+- The reaction picker now has every standard emoji; emoji typed into the search box can be picked too
+- Wide custom emoji keep their aspect ratio, with no gaps when stacked
+- Reaction notifications show name, emoji, then the post; you can repost or react to a reaction you received
+- Fixed reply and quote not working from notifications
+- Emoji maker previews are drawn on your device and update as you type
+- Join public chat rooms; joined rooms appear at the top of the list
+- Pinned room columns show newest at the bottom with a composer
