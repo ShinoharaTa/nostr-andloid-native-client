@@ -1,7 +1,7 @@
 /**
  * GET /api/emoji.png?text=…[&color=…][&stroke=…][&font=…]（Pages Functions）。仕様: docs/emoji-maker.md §4〜§6。
- * テキストから 128×128 の透明 PNG を作る（NIP-30 のカスタム絵文字用）。同じ指定は同じ画像なので
- * 正規化したクエリをキーに Cache API へ置き、2 回目以降は生成しない。
+ * テキストから高さ 128 px（幅は文字に合わせて 128 px 以上）の透明 PNG を作る（NIP-30 のカスタム絵文字用）。
+ * 同じ指定は同じ画像なので、正規化したクエリをキーに Cache API へ置き、2 回目以降は生成しない。
  * 他の Nostr クライアント・wsrv.nl・ネイティブアプリから読まれるため、同一オリジン制限は掛けない（§6.3）。
  */
 import { type FontData, findUnsupportedChar, parseFontData } from "../../server/emoji/fontData";

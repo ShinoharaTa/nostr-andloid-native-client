@@ -73,6 +73,7 @@ import app.nostrdeck.model.latestByDTag
 import app.nostrdeck.model.Nip51Set
 import app.nostrdeck.model.PinnedCache
 import app.nostrdeck.model.PinnedHashtags
+import app.nostrdeck.model.PublicChatList
 import app.nostrdeck.model.PinnedReconcile
 import app.nostrdeck.model.reconcile
 import app.nostrdeck.model.UsedHashtag
@@ -329,7 +330,16 @@ class EventRepository(
         },
         derive = { PinnedHashtags.fromTags(it) },
     )
-    private val ownLists: List<OwnReplaceable<*>> get() = listOf(relayListRep, emojiListRep, pinnedRep)
+    /**
+     * [#421] 参加中のパブリックチャット（NIP-51 kind:10005）。KV に永続し起動時に復元する。
+     * 生タグを保持して、参加・退出のたびに他のクライアントのタグや content を失わない（[PublicChatList]）。
+     */
+    private val publicChatsRep = OwnReplaceable(
+        kind = PublicChatList.KIND, subId = "publicchats",
+        backupKey = PUBLIC_CHATS_KEY, store = ownListStore, json = json,
+        derive = PublicChatList::channelIds,
+    )
+    private val ownLists: List<OwnReplaceable<*>> get() = listOf(relayListRep, emojiListRep, pinnedRep, publicChatsRep)
 
     private var pinnedPublishJob: Job? = null
     /** デバウンス発行が失敗したときに戻す版（未発行の編集が始まった時点の確定版）。発行成功で null。 */
@@ -1031,14 +1041,15 @@ class EventRepository(
 
     // ---- [#396] 自分のリストの共通操作（起動 / アカウント切替 / キャッシュ消去はこれを呼ぶだけ）----
 
-    /** 自分の replaceable リスト（10002 / 10030 / 30015）を購読する。 */
+    /** 自分の replaceable リスト（10002 / 10030 / 30015 / 10005）を購読する。 */
     private fun subscribeOwnLists(me: String) {
         ownLists.forEach { subscribeAll(it.subId, it.filter(me)) }
     }
 
-    /** KV バックアップを復元する（絵文字リスト / ピン留め。10002 は relay 表が置き場なので対象外）。 */
+    /** KV バックアップを復元する（絵文字リスト / ピン留め / 参加中のルーム。10002 は relay 表が置き場なので対象外）。 */
     private fun restoreOwnLists() {
         emojiListRep.restore()
+        if (publicChatsRep.restore()) requestJoinedChannels()   // [#421]
         if (pinnedRep.restore()) {
             // [#393] 未発行のまま終了していた場合に備え、初回受信でローカルが新しければ1回だけ再発行する。
             pinnedRepublishArmed = pinnedRep.at > 0L
@@ -1696,6 +1707,57 @@ class EventRepository(
         )
         true
     }.getOrDefault(false)
+
+    // ---- [#421] 参加中のパブリックチャット（NIP-51 kind:10005）----
+
+    /** 参加中のチャンネル id（kind:10005 の e タグの順）。 */
+    fun joinedChannelIdsFlow(): StateFlow<List<String>> = publicChatsRep.state
+
+    private fun updatePublicChats(e: NostrEvent) {
+        if (!publicChatsRep.accept(e, myPubkey)) return
+        requestJoinedChannels()
+    }
+
+    /**
+     * 参加中なのにチャンネル一覧（channel 表）に無いルームの kind:40 を id で取りに行く。thread.nchan.vip の
+     * 一覧に無いルームもあるため。届けば取り込みが一覧に入れ（[ingestChannelCreate]）、名前と画像が出る。
+     */
+    private fun requestJoinedChannels() {
+        val tags = publicChatsRep.tags
+        PublicChatList.channelIds(tags).forEach { id ->
+            if (q.channelById(id).executeAsOneOrNull() == null) {
+                requestEvent(id, listOfNotNull(PublicChatList.relayHintOf(tags, id)))
+            }
+        }
+    }
+
+    /** [#421] チャット一覧を開いたときに、参加中で名前の分からないルームを取りに行く。 */
+    suspend fun ensureJoinedChannels() = withContext(Dispatchers.Default) { requestJoinedChannels() }
+
+    /** [#421] 参加・退出の結果。UNREACHABLE は App が共通のトーストで知らせる（[OwnListError.UNREACHABLE]）。 */
+    enum class ChannelJoinResult { DONE, UNREACHABLE, FAILED }
+
+    /**
+     * [#421] ルームに参加する（[join] = true）／参加をやめる。
+     * [#478] 最新版を取り直してから 1 件だけ当てて発行する（取れなければ発行しない。他の端末で参加したルームを
+     * 消さないため）。取り直した結果、既に参加中（退出なら未参加）だったら発行せずに DONE。
+     */
+    suspend fun setChannelJoined(channelId: String, join: Boolean): ChannelJoinResult {
+        val r = refreshOwn(PublicChatList.KIND) { publicChatsRep.at } as? OwnRefetch.Result.Reached
+            ?: return ChannelJoinResult.UNREACHABLE
+        val content = r.latest?.content.orEmpty()
+        val next = if (join) {
+            PublicChatList.join(publicChatsRep.tags, content, channelId, channelRelays[channelId]?.firstOrNull())
+        } else {
+            PublicChatList.leave(publicChatsRep.tags, content, channelId)
+        } ?: return ChannelJoinResult.DONE
+        return runCatching {
+            val signed = publishSigned(next)
+            // 自分の最新版として確定（State/at/KV）。購読のエコーで古い版に戻されないようにする。
+            publicChatsRep.commit(next.tags, signed.createdAt)
+            ChannelJoinResult.DONE
+        }.getOrDefault(ChannelJoinResult.FAILED)
+    }
 
     /** [#291] 自分が作成したチャンネル id（編集導線の出し分け用）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -3524,6 +3586,7 @@ class EventRepository(
             9735 -> ingestZapReceipt(e)   // NIP-57 Zap 受領（#e 集計・受信通知に使う）
             10050 -> updateDmRelayList(e) // NIP-17 DM リレーリスト
             10030 -> updateEmojiList(e)   // NIP-51 自分の絵文字リスト
+            PublicChatList.KIND -> updatePublicChats(e)   // [#421] NIP-51 参加中のパブリックチャット
             30030 -> updateEmojiSet(e)    // NIP-51 絵文字セット（10030 の a タグ参照先）
             UserStatuses.KIND -> captureStatus(e)   // [#772] NIP-38 ステータス（メモリだけに持つ）
             30078 -> {
@@ -6013,6 +6076,7 @@ class EventRepository(
 
         const val EMOJI_LIST_TAGS_KEY = "emoji_list_tags"
         const val EMOJI_MAKER_LAST = "emoji_maker_last"   // [#834] 絵文字作成フォームの前回の設定（端末ごと・同期しない）
+        const val PUBLIC_CHATS_KEY = "public_chats_tags"   // [#421] kind:10005 の生タグ + created_at（OwnListBackup）
         const val PINNED_HASHTAGS_KEY = "pinned_hashtags"   // [#393] kind:30015(d=pinned) の t タグ順キャッシュ
         /** [#122][#374] 30078 の d タグ（このアプリのカラム構成を示す識別子）。#122 発行分と互換。 */
         const val DECK_COLUMNS_D = "app.nostrdeck:deck-columns"

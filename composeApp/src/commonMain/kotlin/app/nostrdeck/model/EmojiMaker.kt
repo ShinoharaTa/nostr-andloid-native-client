@@ -230,3 +230,6 @@ data class MadeEmoji(val shortcode: String, val url: String, val autoName: Boole
 
 /** Unicode の NFC 正規化（端末の実装を使う）。 */
 expect fun nfc(s: String): String
+
+/** [#868] Unicode の NFKC 正規化（端末の実装を使う）。絵文字の検索語を Web（`String.normalize("NFKC")`）とそろえる。 */
+expect fun nfkc(s: String): String

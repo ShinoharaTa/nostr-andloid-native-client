@@ -52,6 +52,7 @@ import app.nostrdeck.theme.DeckWeight
 /**
  * CHANNEL_LIST レンダラー：NIP-28 チャンネル一覧（スレッド一覧）。
  * 行タップでルームを開き、📌でレールにピン留め。
+ * [#421] 参加中のルーム（[joinedChannelIds]）があれば「参加中」として上に分け、残りを「すべてのルーム」に並べる。
  */
 @Composable
 fun ChannelListColumn(
@@ -69,8 +70,21 @@ fun ChannelListColumn(
     onCreateChannel: ((name: String, about: String, picture: String?) -> Unit)? = null,
     ownedChannelIds: Set<String> = emptySet(),
     onEditChannel: ((channelId: String, name: String, about: String, picture: String?) -> Unit)? = null,
+    /** [#421] 参加中のルーム id（kind:10005 の順）。 */
+    joinedChannelIds: List<String> = emptyList(),
 ) {
     var showCreate by remember { mutableStateOf(false) }
+    // [#421] 参加中は一覧と同じ最終活動の順。一覧（channel 表）にまだ無いルームは名前なしで末尾に出す
+    // （kind:40 を取りに行っている。届けば名前と画像が出る）。参加中のルームは下の「すべてのルーム」には重ねて出さない。
+    val joined = remember(channels, joinedChannelIds) {
+        val ids = joinedChannelIds.toSet()
+        val known = channels.filter { it.id in ids }
+        val knownIds = known.mapTo(HashSet()) { it.id }
+        known + joinedChannelIds.filter { it !in knownIds }.map { Channel(it, name = "", about = "") }
+    }
+    val others = remember(channels, joinedChannelIds) {
+        if (joinedChannelIds.isEmpty()) channels else joinedChannelIds.toSet().let { ids -> channels.filter { it.id !in ids } }
+    }
     var editing by remember { mutableStateOf<Channel?>(null) }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
@@ -86,7 +100,18 @@ fun ChannelListColumn(
                     HorizontalDivider(color = DeckColors.Border)
                 }
             }
-            items(channels, key = { it.id }) { ch ->
+            if (joined.isNotEmpty()) {
+                item(key = "joined_header") { ChannelSectionLabel(stringResource(Res.string.channel_joined_section)) }
+                items(joined, key = { "joined_${it.id}" }) { ch ->
+                    ChannelRow(
+                        ch, ch.id in pinnedChannelIds,
+                        onClick = { onChannelClick(ch) }, onPin = { onPinChannel(ch) },
+                        onEdit = if (onEditChannel != null && ch.id in ownedChannelIds) ({ editing = ch }) else null,
+                    )
+                }
+                item(key = "all_header") { ChannelSectionLabel(stringResource(Res.string.channel_all_section)) }
+            }
+            items(others, key = { it.id }) { ch ->
                 ChannelRow(
                     ch, ch.id in pinnedChannelIds,
                     onClick = { onChannelClick(ch) }, onPin = { onPinChannel(ch) },
@@ -109,6 +134,15 @@ fun ChannelListColumn(
             onDismiss = { editing = null },
         )
     }
+}
+
+/** [#421] 一覧の区切りの見出し（「参加中」「すべてのルーム」）。 */
+@Composable
+private fun ChannelSectionLabel(text: String) {
+    Text(
+        text, color = DeckColors.Text3, fontSize = DeckType.Label, fontWeight = DeckWeight.Strong,
+        modifier = Modifier.fillMaxWidth().padding(start = DeckSpace.Md, end = DeckSpace.Md, top = DeckSpace.Md, bottom = DeckSpace.Xs),
+    )
 }
 
 /** [#291] 一覧先頭の「＋ 新しいスレッドを作成」行。 */
@@ -144,11 +178,13 @@ private fun ChannelRow(
             .clickable(onClick = onClick).padding(horizontal = DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChannelIcon(ch.name, ch.pictureUrl)
+        // [#421] 参加中で kind:40 がまだ届いていないルームは名前が空なので、ルームの既定名で出す。
+        val name = ch.name.ifBlank { stringResource(Res.string.chat_room_unnamed) }
+        ChannelIcon(name, ch.pictureUrl)
         Spacer(Modifier.width(DeckSpace.Md))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ChannelNameText(ch.name, Modifier.weight(1f, false))
+                ChannelNameText(name, Modifier.weight(1f, false))
                 // メンバー数はエンドポイントに無いので、判っている場合のみ表示。
                 if (ch.members > 0) {
                     Spacer(Modifier.width(DeckSpace.Xs))

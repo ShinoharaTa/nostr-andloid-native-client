@@ -4,13 +4,16 @@
  */
 import { compose, parseHexColor } from "./compose";
 import { type FontData, glyphContourCount, glyphContourStart } from "./fontData";
-import { CANVAS, layoutLines } from "./layout";
+import { layoutLines } from "./layout";
 import { strokeCoverage } from "./outline";
 import { encodePng } from "./png";
 import { accumulate, createAccumulator, drawLine } from "./raster";
 
-/** 描画アルゴリズム・フォントの .bin を変えたら上げる（キャッシュキーの v）。 */
-export const RENDER_VERSION = 1;
+/**
+ * 描画アルゴリズム・フォントの .bin を変えたら上げる（キャッシュキーの v）。
+ * 2: [#863] 高さ固定・長い文字は横長の画像に（URL は変えず、Cache API に残った正方形の画像を返さない）。
+ */
+export const RENDER_VERSION = 2;
 
 export interface RenderInput {
   /** 正規化済みの行（params.normalizeText の出力。全文字がフォントにあること） */
@@ -26,8 +29,8 @@ export async function render(font: FontData, input: RenderInput): Promise<Render
   const layout = layoutLines(font, input.lines, input.stroke !== null);
   if (layout === null) return { ok: false, error: "empty_text" };
 
-  const acc = createAccumulator(CANVAS, CANVAS);
-  const { scale, tx, ty, placements } = layout;
+  const { scale, tx, ty, placements, width, height } = layout;
+  const acc = createAccumulator(width, height);
   const { contours, points } = font;
   for (const { glyph, x, baseline } of placements) {
     const ox = tx + scale * x;
@@ -50,12 +53,12 @@ export async function render(font: FontData, input: RenderInput): Promise<Render
     }
   }
   const fill = accumulate(acc);
-  const stroke = input.stroke === null ? null : strokeCoverage(fill, CANVAS, CANVAS, layout.strokeRadius);
+  const stroke = input.stroke === null ? null : strokeCoverage(fill, width, height, layout.strokeRadius);
   const rgba = compose(
     fill,
     parseHexColor(input.color),
     stroke,
     input.stroke === null ? null : parseHexColor(input.stroke),
   );
-  return { ok: true, png: await encodePng(rgba, CANVAS, CANVAS) };
+  return { ok: true, png: await encodePng(rgba, width, height) };
 }

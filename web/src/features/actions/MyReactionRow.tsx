@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForEvent, oneLine } from "../../lib/content/labels";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { useReactionTarget } from "../deck/useReactionTarget";
 import { Avatar } from "../timeline/NoteItem";
@@ -50,7 +50,7 @@ function ResolvedRow({ reaction, target }: { reaction: NostrEvent; target: Nostr
 
 /** カスタム絵文字の画像。プロキシが読めなければ元 URL で 1 度だけ取り直し、それも読めなければ :code: の文字 */
 function MarkImage({ url, text }: { url: string; text: string }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(url, 64, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(url, 80));
   if (!src) return text;
 
   function onError() {

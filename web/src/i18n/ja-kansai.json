@@ -203,7 +203,7 @@
   "emoji_saved": "絵文字リスト、公開しといたで。",
   "web_emoji_copied": "URL、コピーしといたで",
   "web_emoji_copy_failed": "コピーでけへんかった。URL を選んどいたから、手でコピーしてな",
-  "web_emoji_desc": "文字から 128×128 の絵文字画像をこしらえるで。URL をそのままカスタム絵文字に登録できるで",
+  "web_emoji_desc": "文字から高さ 128px の絵文字画像をこしらえるで（長い文字は横長になるで）。URL をそのままカスタム絵文字に登録できるで",
   "web_emoji_error_empty_text": "描ける文字があらへんで",
   "web_emoji_error_font_unavailable": "フォントが読み込めへんかった。ちょっと待ってからもう一回やってみてな",
   "web_emoji_error_network": "画像が取れへんかった。接続を見てみてな",

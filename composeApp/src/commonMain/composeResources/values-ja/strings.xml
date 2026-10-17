@@ -678,6 +678,14 @@
     <string name="chat_input_placeholder">メッセージを入力…</string>
     <string name="send">送信</string>
     <string name="channel_pin">ピン留め</string>
+    <!-- [#421] 参加中のルーム（NIP-51 kind:10005） -->
+    <string name="channel_joined_section">参加中</string>
+    <string name="channel_all_section">すべてのルーム</string>
+    <string name="channel_join">参加する</string>
+    <string name="channel_leave">参加をやめる</string>
+    <string name="channel_joined_toast">ルームに参加しました</string>
+    <string name="channel_left_toast">ルームの参加をやめました</string>
+    <string name="channel_join_failed">参加中のルームを保存できませんでした</string>
     <string name="search_hint_add">単語・#タグを追加して検索してください（複数は OR で並びます）</string>
     <string name="search_placeholder">単語 / #タグ</string>
     <string name="search_syntax_hint">スペース区切りで複数・OR で並ぶ</string>
@@ -704,6 +712,17 @@
     <string name="emoji_cat_nature">動物・自然</string>
     <string name="emoji_cat_food">食べ物・飲み物</string>
     <string name="emoji_cat_activity">アクティビティ・記号</string>
+    <!-- [#868] 標準の絵文字すべて（emojibase）のカテゴリ名。Web の web_picker_group_* と同じ言い方 -->
+    <string name="emoji_group_smileys_emotion">表情・感情</string>
+    <string name="emoji_group_people_body">人・体</string>
+    <string name="emoji_group_animals_nature">動物・自然</string>
+    <string name="emoji_group_food_drink">食べ物・飲み物</string>
+    <string name="emoji_group_travel_places">旅行・場所</string>
+    <string name="emoji_group_activities">アクティビティ</string>
+    <string name="emoji_group_objects">物</string>
+    <string name="emoji_group_symbols">記号</string>
+    <string name="emoji_group_flags">旗</string>
+    <string name="picker_typed_emoji">入力した絵文字</string>   <!-- [#869] 検索欄に打った絵文字 -->
     <string name="profile_save_failed">プロフィールを保存できませんでした。ログイン/署名の状態を確認して、もう一度お試しください。</string>
     <string name="section_emoji">カスタム絵文字</string>
     <string name="emoji_note">自分のカスタム絵文字リスト（NIP-51）。リアクションピッカーに並び、本文でも :shortcode: で使えます。購読中の絵文字セット由来のものは別管理のためここには出ません。</string>

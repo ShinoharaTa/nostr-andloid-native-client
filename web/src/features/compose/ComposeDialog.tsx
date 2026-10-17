@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useT } from "../../i18n";
 import { oneLine } from "../../lib/content/labels";
-import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { PublishError, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
@@ -1173,7 +1173,7 @@ function TagMenu({
 
 /** 絵文字候補のチップ（画像 + :code:）。プロキシが読めなければ元 URL で 1 度だけ取り直す */
 function EmojiChip({ emoji, onClick }: { emoji: CustomEmoji; onClick(): void }) {
-  const [src, setSrc] = useState<string | null>(() => proxied(emoji.url, 64, 80, true));
+  const [src, setSrc] = useState<string | null>(() => proxiedEmoji(emoji.url, 80));
 
   function onError() {
     const origin = originOf(src);

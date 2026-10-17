@@ -243,7 +243,7 @@ function PreviewBox({ src, dark }: { src: string | null; dark: boolean }) {
   return (
     <figure className={styles.preview}>
       <div className={`${styles.previewBox} ${dark ? styles.previewDark : styles.previewLight}`}>
-        {src !== null && <img src={src} alt={label} width={128} height={128} />}
+        {src !== null && <img src={src} alt={label} height={128} />}
       </div>
       <figcaption className={styles.hint}>{label}</figcaption>
     </figure>

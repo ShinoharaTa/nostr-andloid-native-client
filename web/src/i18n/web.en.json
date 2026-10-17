@@ -68,7 +68,7 @@
   "web_emoji_color_palette_label": "Text color palette",
   "web_emoji_copied": "URL copied",
   "web_emoji_copy_failed": "Couldn’t copy. The URL is selected, so copy it manually",
-  "web_emoji_desc": "Make a 128×128 emoji image from text. You can register the URL as a custom emoji as is",
+  "web_emoji_desc": "Make a 128px-tall emoji image from text (long text makes a wide image). You can register the URL as a custom emoji as is",
   "web_emoji_error_empty_text": "There’s nothing to draw",
   "web_emoji_error_font_unavailable": "Couldn’t load the font. Please try again later",
   "web_emoji_error_invalid_color": "Enter the text color in hex (e.g. ff0000)",
