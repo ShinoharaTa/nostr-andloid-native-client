@@ -1,8 +1,4 @@
-- Blossom upload servers; list shows NIP-96 vs Blossom; pick a destination per post
-- Reaction picker has every standard emoji; typed emoji work too
-- Wide custom emoji keep their ratio; no gaps when stacked
-- Reaction notifications: name, emoji, post; repost or react to received reactions
-- Fixed reply and quote from notifications
-- Emoji maker preview drawn on-device as you type
-- Join public chat rooms; joined rooms show at the top
-- Pinned room columns: newest at bottom, with a composer
+- Image uploads wait until the server has finished processing and is serving the file, so posts no longer show "FILE NOT FOUND"
+- Fixed relay AUTH (NIP-42): responds even after a failed signature or a later login/setting change, resubscribes once authenticated, and resends what was rejected
+- Temporary connections to indexer/hint relays are closed when done; no lingering connections to relays you removed
+- Connection monitor shows per-relay AUTH status
