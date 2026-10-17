@@ -20,16 +20,13 @@
   justify-content: center;
   width: 38px;
   padding-top: var(--sp-1);
-  font-size: var(--type-emoji-lg);
-  line-height: 1;
 }
 
-/* [#862] 高さ固定・幅は縦横比どおり */
-.emoji {
-  height: var(--type-emoji-lg);
-  width: auto;
-  aspect-ratio: auto 1 / 1;
-  object-fit: contain;
+/* [#878] ♡ のアイコン（ネイティブ DeckColors.Like。大きさは通知の種別マークと同じ） */
+.markIcon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--react-heart);
 }
 
 .body {
@@ -43,6 +40,12 @@
   margin-bottom: var(--sp-1);
   color: var(--text-3);
   font-size: var(--type-label);
+}
+
+/* [#878] 絵文字の行（「あなたがリアクション」と対象の 1 行の間） */
+.reaction {
+  min-width: 0;
+  margin-bottom: var(--sp-1);
 }
 
 .line {
