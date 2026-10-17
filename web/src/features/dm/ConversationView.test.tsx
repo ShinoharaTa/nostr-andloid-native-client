@@ -303,8 +303,10 @@ describe("添付（画像・動画。#535）", () => {
     URL.revokeObjectURL = vi.fn();
     vi.mocked(currentSigner).mockReturnValue(createTestSigner().signer);
     fetchMock.mockReset();
-    fetchMock.mockImplementation(async (input) => {
+    fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      // [#895] 最終 URL の確認（HEAD）は配られている扱い
+      if (init?.method === "HEAD") return new Response(null, { headers: { "Content-Type": "image/webp" } });
       if (url.endsWith("/.well-known/nostr/nip96.json")) {
         return new Response(JSON.stringify({ api_url: "https://api.example/upload" }));
       }

@@ -105,8 +105,10 @@ it("画像のアップロード中は保存できない。終わると URL が�
   addVerified(current);
   // 実サーバーへは送らない（ディスカバリ → アップロード。アップロードの応答はテストで返す）
   let respond: (res: Response) => void = () => {};
-  fetchMock.mockImplementation(async (input) => {
+  fetchMock.mockImplementation(async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    // [#895] 最終 URL の確認（HEAD）は配られている扱い
+    if (init?.method === "HEAD") return new Response(null, { headers: { "Content-Type": "image/webp" } });
     if (url.endsWith("/.well-known/nostr/nip96.json")) {
       return new Response(JSON.stringify({ api_url: "https://api.example/upload" }));
     }

@@ -110,6 +110,7 @@ export class UploadFailedError extends Error {
  * 添付を順序を保って最大 UPLOAD_CONCURRENCY 件ずつアップロードする（ネイティブ ComposeSheet の doSend）。
  * 1 件終わるたび（失敗も含む）に onProgress(完了数)。全部終わってから 1 件でも失敗していれば UploadFailedError
  * （メディアの欠けた投稿を出さない）。signal で中止されたら AbortError。
+ * [#895] onPercentage は NIP-96 の遅延処理の進み具合（uploadMedia の onProgress をそのまま渡す）。
  */
 export async function uploadAttachments(
   list: readonly Attachment[],
@@ -118,6 +119,7 @@ export async function uploadAttachments(
     signer: Signer;
     signal?: AbortSignal;
     onProgress?: (done: number) => void;
+    onPercentage?: (percentage: number) => void;
   },
 ): Promise<PostMedia[]> {
   const results: (PostMedia | null)[] = list.map(() => null);
@@ -130,7 +132,7 @@ export async function uploadAttachments(
       const attachment = list[i];
       const local = await attachment.processed;
       opts.signal?.throwIfAborted();
-      const result = await uploadMedia(local, opts.servers, opts.signer, opts.signal);
+      const result = await uploadMedia(local, opts.servers, opts.signer, opts.signal, opts.onPercentage);
       if (result) results[i] = toPostMedia(attachment.kind, result, local);
       done += 1;
       opts.onProgress?.(done);

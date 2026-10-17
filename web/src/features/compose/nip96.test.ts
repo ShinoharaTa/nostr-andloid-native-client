@@ -2,7 +2,14 @@ import { type NostrEvent, verifyEvent } from "nostr-tools/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestSigner } from "../../test/fakeSigner";
 import type { MediaServer } from "./mediaServer";
-import { discoverApiUrl, nip98Header, parseUploadResponse, uploadMedia, uploadToServer } from "./nip96";
+import {
+  discoverApiUrl,
+  nip98Header,
+  parseUploadResponse,
+  uploadMedia,
+  uploadToServer,
+  waitUntilAvailable,
+} from "./nip96";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -12,6 +19,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -32,6 +41,13 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
 }
 
 const nip96 = (url: string): MediaServer => ({ url, protocol: "nip96" });
+
+/** 最終 URL への HEAD の応答（既定は配られている: 200 + image/webp） */
+function head(contentType = "image/webp", init: { status?: number; reason?: string } = {}): Response {
+  const headers: Record<string, string> = { "Content-Type": contentType };
+  if (init.reason) headers["X-Reason"] = init.reason;
+  return new Response(null, { status: init.status ?? 200, headers });
+}
 
 const FILE = { blob: new Blob(["png"], { type: "image/png" }), mime: "image/png", name: "a.png" };
 const UPLOADED = {
@@ -107,7 +123,8 @@ describe("uploadToServer", () => {
     const { signer } = createTestSigner();
     fetchMock
       .mockResolvedValueOnce(json({ api_url: "https://api.example/upload" }))
-      .mockResolvedValueOnce(json(UPLOADED));
+      .mockResolvedValueOnce(json(UPLOADED))
+      .mockResolvedValueOnce(head());
 
     const result = await uploadToServer("https://s.example/", FILE, signer);
 
@@ -126,7 +143,10 @@ describe("uploadToServer", () => {
 
   it("ディスカバリに失敗したら <server>/api/v1/media へ送る", async () => {
     const { signer } = createTestSigner();
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(json(UPLOADED));
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json(UPLOADED))
+      .mockResolvedValueOnce(head());
     await uploadToServer("https://s.example", FILE, signer);
     expect(requestUrl(fetchMock.mock.calls[1][0])).toBe("https://s.example/api/v1/media");
   });
@@ -135,10 +155,11 @@ describe("uploadToServer", () => {
 describe("uploadMedia", () => {
   it("失敗したサーバーは飛ばして次を試す。全滅なら null", async () => {
     const { signer } = createTestSigner();
-    fetchMock.mockImplementation(async (input) => {
+    fetchMock.mockImplementation(async (input, init) => {
       const url = requestUrl(input);
       if (url.startsWith("https://down.example")) throw new TypeError("Failed to fetch");
       if (url.endsWith("nip96.json")) return json({ api_url: "/upload" });
+      if (init?.method === "HEAD") return head();
       return json(UPLOADED);
     });
     const result = await uploadMedia(
@@ -152,6 +173,7 @@ describe("uploadMedia", () => {
       "https://down.example/api/v1/media",
       "https://up.example/.well-known/nostr/nip96.json",
       "https://up.example/upload",
+      "https://media.example/abc.webp",
     ]);
 
     expect(await uploadMedia(FILE, [nip96("https://down.example")], signer)).toBeNull();
@@ -184,5 +206,213 @@ describe("uploadMedia", () => {
     expect(fetchMock.mock.calls.some(([input]) => requestUrl(input).startsWith("https://b.example"))).toBe(
       false,
     );
+  });
+});
+
+describe("[#895] NIP-96 の遅延処理（202 / processing_url）", () => {
+  const API = "https://s.example/upload";
+  const PROCESSING = "https://s.example/upload/abc";
+  const FINAL = "https://cdn.example/final.webp";
+  const DONE = { status: "success", nip94_event: { tags: [["url", FINAL]] } };
+
+  /** ディスカバリ → POST → processing_url（polls を順に返し、尽きたら最後を繰り返す）→ HEAD（200 + image/webp） */
+  function serve(post: () => Response, polls: (() => Response)[]) {
+    let i = 0;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.endsWith("nip96.json")) return json({ api_url: API });
+      if (init?.method === "POST") return post();
+      if (init?.method === "HEAD") return head();
+      const respond = polls[Math.min(i, polls.length - 1)];
+      i += 1;
+      return respond();
+    });
+  }
+
+  /** processing_url への GET */
+  const pollCalls = (url = PROCESSING) =>
+    fetchMock.mock.calls.filter(([input, init]) => requestUrl(input) === url && init?.method === undefined);
+
+  it("202 → processing → processing → 201 の順で待ち、201 の URL を返す（進み具合も渡す）", async () => {
+    vi.useFakeTimers();
+    const { signer } = createTestSigner();
+    serve(
+      () =>
+        json(
+          {
+            status: "processing",
+            processing_url: PROCESSING,
+            nip94_event: { tags: [["url", "https://s.example/tmp.png"]] },
+          },
+          202,
+        ),
+      [
+        () => json({ status: "processing", percentage: 10 }, 202),
+        () => json({ status: "processing", percentage: 60 }),
+        () => json(DONE, 201),
+      ],
+    );
+    const onProgress = vi.fn();
+    const promise = uploadToServer("https://s.example", FILE, signer, undefined, onProgress);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const result = await promise;
+
+    expect(result?.url).toBe(FINAL);
+    expect(pollCalls()).toHaveLength(3);
+    expect(onProgress.mock.calls).toEqual([[10], [60]]);
+    // 最終 URL を HEAD で確かめる
+    const last = fetchMock.mock.calls.at(-1);
+    expect(last && requestUrl(last[0])).toBe(FINAL);
+    expect(last?.[1]?.method).toBe("HEAD");
+  });
+
+  it("200 でも本文に processing_url があればポーリングに入る", async () => {
+    vi.useFakeTimers();
+    const { signer } = createTestSigner();
+    serve(
+      () => json({ status: "success", processing_url: PROCESSING, url: "https://s.example/tmp.png" }),
+      [() => json({ status: "processing" }), () => json(DONE, 201)],
+    );
+    const promise = uploadToServer("https://s.example", FILE, signer);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect((await promise)?.url).toBe(FINAL);
+    expect(pollCalls()).toHaveLength(2);
+  });
+
+  it("同じオリジンの processing_url には NIP-98（GET・その URL）を付け、別オリジンには付けない", async () => {
+    const { signer } = createTestSigner();
+    serve(() => json({ processing_url: PROCESSING }, 202), [() => json(DONE, 201)]);
+    await uploadToServer("https://s.example", FILE, signer);
+    const auth = new Headers(pollCalls()[0][1]?.headers).get("Authorization");
+    expect(decodeAuth(auth ?? "").tags).toEqual([
+      ["u", PROCESSING],
+      ["method", "GET"],
+    ]);
+
+    fetchMock.mockReset();
+    const other = "https://queue.example/abc";
+    serve(() => json({ processing_url: other }, 202), [() => json(DONE, 201)]);
+    await uploadToServer("https://s.example", FILE, signer);
+    expect(pollCalls(other)).toHaveLength(1);
+    expect(new Headers(pollCalls(other)[0][1]?.headers).has("Authorization")).toBe(false);
+  });
+
+  /** a.example は processing_url を返し、その GET は poll()。b.example は通常の応答 */
+  function serveTwo(poll: () => Response) {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.endsWith("nip96.json")) return json({ api_url: "/upload" });
+      if (init?.method === "HEAD") return head();
+      if (url.startsWith("https://a.example")) {
+        if (init?.method === "POST") return json({ processing_url: "https://a.example/upload/1" }, 202);
+        return poll();
+      }
+      return json(UPLOADED);
+    });
+  }
+  const touchedB = () =>
+    fetchMock.mock.calls.some(([input]) => requestUrl(input).startsWith("https://b.example"));
+
+  it("status: error なら失敗にして次のサーバーへ進む", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { signer } = createTestSigner();
+    serveTwo(() => json({ status: "error", message: "transcode failed" }));
+    const promise = uploadMedia(FILE, [nip96("https://a.example"), nip96("https://b.example")], signer);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect((await promise)?.url).toBe("https://media.example/abc.webp");
+    expect(pollCalls("https://a.example/upload/1")).toHaveLength(1);
+  });
+
+  it("15 秒たっても終わらなければ失敗にして次のサーバーへ進む", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { signer } = createTestSigner();
+    serveTwo(() => json({ status: "processing", percentage: 1 }));
+    const promise = uploadMedia(FILE, [nip96("https://a.example"), nip96("https://b.example")], signer);
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(touchedB()).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await promise)?.url).toBe("https://media.example/abc.webp");
+    expect(pollCalls("https://a.example/upload/1").length).toBeGreaterThanOrEqual(15);
+  });
+
+  it("中止されたらポーリングを止めて AbortError（次のサーバーへ進まない）", async () => {
+    vi.useFakeTimers();
+    const { signer } = createTestSigner();
+    serve(() => json({ processing_url: PROCESSING }, 202), [() => json({ status: "processing" })]);
+    const ac = new AbortController();
+    const settled = uploadMedia(
+      FILE,
+      [nip96("https://s.example"), nip96("https://b.example")],
+      signer,
+      ac.signal,
+    ).then(
+      () => "resolved",
+      (e: unknown) => (e instanceof Error ? e.name : String(e)),
+    );
+    await vi.advanceTimersByTimeAsync(2_500);
+    const polled = pollCalls().length;
+    expect(polled).toBeGreaterThan(0);
+    ac.abort();
+    expect(await settled).toBe("AbortError");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(pollCalls()).toHaveLength(polled);
+    expect(touchedB()).toBe(false);
+  });
+});
+
+describe("[#895] waitUntilAvailable", () => {
+  const FINAL = "https://cdn.example/a.webp";
+  const heads = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "HEAD").length;
+
+  it("X-Reason が File not found の間は待ち、配られたら返す", async () => {
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(head("image/webp", { reason: "File not found" }))
+      .mockResolvedValueOnce(head("image/webp", { reason: "FILE NOT FOUND" }))
+      .mockResolvedValueOnce(head("image/webp"));
+    const promise = waitUntilAvailable(FINAL, "image/png");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await promise).toBe(FINAL);
+    expect(heads()).toBe(3);
+    expect(requestUrl(fetchMock.mock.calls[0][0])).toBe(FINAL);
+  });
+
+  it("200 でも Content-Type が text/html の間は待つ", async () => {
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(head("text/html; charset=utf-8"))
+      .mockResolvedValueOnce(head("text/html"))
+      .mockResolvedValueOnce(head("image/webp"));
+    const promise = waitUntilAvailable(FINAL, "image/png");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await promise).toBe(FINAL);
+    expect(heads()).toBe(3);
+  });
+
+  it("15 秒たっても配られなければ、その URL をそのまま返す", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => head("image/webp", { reason: "processing" }));
+    let done = false;
+    const promise = waitUntilAvailable(FINAL, "image/png").then((url) => {
+      done = true;
+      return url;
+    });
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await promise).toBe(FINAL);
+    expect(heads()).toBeGreaterThanOrEqual(15);
+  });
+
+  it("HEAD が TypeError（通信 / CORS）なら待たずに返す。Content-Type が読めないときは成立とみなす", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    expect(await waitUntilAvailable(FINAL, "image/png")).toBe(FINAL);
+    expect(heads()).toBe(1);
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    expect(await waitUntilAvailable(FINAL, "video/mp4")).toBe(FINAL);
+    expect(heads()).toBe(2);
   });
 });

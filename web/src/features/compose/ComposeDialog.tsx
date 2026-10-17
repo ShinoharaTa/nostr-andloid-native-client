@@ -152,6 +152,8 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
   const [processedSizes, setProcessedSizes] = useState<ReadonlyMap<string, number>>(() => new Map());
   /** アップロードの完了数（失敗も数える） */
   const [uploadDone, setUploadDone] = useState(0);
+  /** [#895] NIP-96 の遅延処理の進み具合（processing_url の percentage。届いていなければ null） */
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   /** 向きを編集できる画像添付の id（GIF・アニメーション WebP・読めない画像は入らない） */
   const [editableIds, setEditableIds] = useState<ReadonlySet<string>>(() => new Set());
   /** ライトボックスで開いている添付の id */
@@ -483,6 +485,7 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
     setSending(true);
     setSendError(null);
     setUploadDone(0);
+    setUploadPercent(null);
     let media: PostMedia[] = [];
     let sentCount = 0;
     try {
@@ -495,7 +498,12 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
           signer,
           signal: ac.signal,
           onProgress: (done) => {
-            if (!ac.signal.aborted) setUploadDone(done);
+            if (ac.signal.aborted) return;
+            setUploadDone(done);
+            setUploadPercent(null);
+          },
+          onPercentage: (percentage) => {
+            if (!ac.signal.aborted) setUploadPercent(Math.round(percentage));
           },
         });
       }
@@ -809,7 +817,8 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
                 <span className={styles.spinner} aria-hidden="true" />
                 <span className={styles.sendingText}>
                   {attachments.length > 0
-                    ? t("compose_uploading_fmt", uploadDone, attachments.length)
+                    ? t("compose_uploading_fmt", uploadDone, attachments.length) +
+                      (uploadPercent !== null ? ` ${uploadPercent}%` : "")
                     : t("compose_posting")}
                 </span>
                 <span className={styles.spacer} />
