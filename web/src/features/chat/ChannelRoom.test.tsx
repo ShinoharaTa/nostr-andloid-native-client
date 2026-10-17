@@ -13,12 +13,15 @@ import { useSession } from "../../signer/session";
 import { useDeck } from "../../store/deck";
 import { installDialogPolyfill } from "../../test/dialog";
 import { clearViewport, mockViewport } from "../../test/viewport";
+import { useToast } from "../../ui/toast";
 import { DeckColumn } from "../deck/DeckColumn";
 import { useDmSeen } from "../dm/dmSeen";
 import { useDm } from "../dm/dmStore";
 import { MessagesScreen } from "../dm/MessagesScreen";
+import { OwnListError } from "../lists/ownLists";
 import { setMuteList } from "../mute/muteList";
 import { resetChannelsForTest, useChannels } from "./channels";
+import { join, leave, useJoinedRooms } from "./joinedRooms";
 
 // リレーへは張らない（呼ばれ方だけ見る）
 vi.mock("../../nostr/pool", async (importOriginal) => {
@@ -31,6 +34,12 @@ vi.mock("../../nostr/pool", async (importOriginal) => {
 });
 // DM の購読・復号はしない
 vi.mock("../dm/dmService", () => ({ startDecrypting: vi.fn(), resumeDecrypting: vi.fn() }));
+// [#856] 参加・退出は発行しない（呼ばれ方だけ見る）
+vi.mock("./joinedRooms", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./joinedRooms")>()),
+  join: vi.fn(async () => "done" as const),
+  leave: vi.fn(async () => "done" as const),
+}));
 // [#538] Zap の invoice は取りに行かない（呼ばれ方だけ見る）
 vi.mock("../../lib/lnurl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/lnurl")>();
@@ -142,6 +151,8 @@ afterEach(() => {
   useSession.setState({ status: "loading", method: null, pubkey: null });
   useDm.getState().reset(null);
   useDmSeen.setState({ me: null, first: 0, peers: {} });
+  useJoinedRooms.setState({ joined: null });
+  useToast.setState({ queue: [] });
 });
 
 afterAll(() => {
@@ -522,5 +533,110 @@ describe("未送信", () => {
     act(() => unsent$.next(new Set([mine.id])));
     expect(screen.getByRole("button", { name: "未送信・タップで再送" })).toBeInTheDocument();
     act(() => unsent$.next(new Set()));
+  });
+});
+
+/** [#856] ルームの ⋯ の「参加する／参加をやめる」（NIP-51 kind:10005） */
+describe("参加する / 参加をやめる", () => {
+  beforeEach(() => {
+    vi.mocked(join).mockClear();
+    vi.mocked(leave).mockClear();
+  });
+
+  function renderScreen() {
+    mockViewport(400);
+    const router = createMemoryRouter([{ path: "/channels/:id?", element: <MessagesScreen kind="chat" /> }], {
+      initialEntries: [`/channels/${CH}`],
+    });
+    render(<RouterProvider router={router} />);
+  }
+
+  it("メッセージ画面: ⋯ に「参加する」。押すと join（ヒント = チャンネルのリレーの先頭）し、トーストで知らせる", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [], hints: {} } });
+    renderScreen();
+
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    expect(screen.queryByRole("menuitem", { name: "参加をやめる" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "参加する" }));
+
+    expect(vi.mocked(join)).toHaveBeenCalledWith(ME, CH, ROOM_RELAY);
+    expect(vi.mocked(leave)).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ルームに参加しました"]));
+  });
+
+  it("メッセージ画面: 参加中なら ⋯ に「参加をやめる」。押すと leave", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [CH], hints: {} } });
+    renderScreen();
+
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "参加をやめる" }));
+
+    expect(vi.mocked(leave)).toHaveBeenCalledWith(ME, CH);
+    expect(vi.mocked(join)).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ルームの参加をやめました"]));
+  });
+
+  it("最新版を取れなければ自分のリストの共通のトースト、それ以外の失敗は「参加中のルームを保存できませんでした」", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [], hints: {} } });
+    vi.mocked(join)
+      .mockRejectedValueOnce(new OwnListError("unreachable", 10005))
+      .mockRejectedValueOnce(new OwnListError("sign-failed", 10005));
+    renderScreen();
+
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "参加する" }));
+    await waitFor(() => expect(useToast.getState().queue).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "参加する" }));
+    await waitFor(() => expect(useToast.getState().queue).toHaveLength(2));
+
+    expect(useToast.getState().queue).toEqual([
+      "最新の状態を取得できなかったため、変更しませんでした。接続を確認してもう一度お試しください",
+      "参加中のルームを保存できませんでした",
+    ]);
+  });
+
+  it("自分のリストが未取得の間は ⋯ を出さない。ルームを開いただけでは参加しない", () => {
+    useChannels.setState({ channels: CHANNELS });
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "カラムメニュー" })).not.toBeInTheDocument();
+    expect(vi.mocked(join)).not.toHaveBeenCalled();
+  });
+
+  it("デッキのルームカラム: カラムの ⋯ に「参加する」。押すと join", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [], hints: {} } });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    useDeck.setState({ columns: [spec] });
+    const router = createMemoryRouter([{ path: "*", element: <DeckColumn spec={spec} showHeader /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "参加する" }));
+
+    expect(vi.mocked(join)).toHaveBeenCalledWith(ME, CH, ROOM_RELAY);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("デッキのルームカラム: 参加中なら「参加をやめる」。押すと leave", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    useJoinedRooms.setState({ joined: { ids: [CH], hints: {} } });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    useDeck.setState({ columns: [spec] });
+    const router = createMemoryRouter([{ path: "*", element: <DeckColumn spec={spec} showHeader /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "参加をやめる" }));
+
+    expect(vi.mocked(leave)).toHaveBeenCalledWith(ME, CH);
   });
 });

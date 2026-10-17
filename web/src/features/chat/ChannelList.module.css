@@ -7,6 +7,17 @@
   font-size: var(--type-sub);
 }
 
+/* [#856] 区切りの見出し「参加中」「すべてのルーム」（ネイティブ ChannelSectionLabel: Text3・Label・Strong） */
+.section {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: var(--type-label);
+  font-weight: var(--w-strong);
+}
+
 .rows {
   margin: 0;
   padding: 0;

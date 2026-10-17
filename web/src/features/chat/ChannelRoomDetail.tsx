@@ -36,6 +36,7 @@ export function ChannelRoomDetail({
       highlightMessageId={messageId}
       header={
         <RoomHeader
+          channelId={channelId}
           title={title}
           subtitle={about.trim() === "" ? "NIP-28 · kind:42" : about}
           picture={channel?.picture ?? null}

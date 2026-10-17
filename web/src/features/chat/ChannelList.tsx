@@ -1,13 +1,19 @@
-import { useEffect, useState } from "react";
+import type { EventPointer } from "nostr-tools/nip19";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useT } from "../../i18n";
 import { avatarInitial, avatarShade } from "../../lib/avatar";
 import { isDataSaver, markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
+import { useEventByPointer } from "../../nostr/loaders";
 import { useSession } from "../../signer/session";
 import { EditIcon, Icon } from "../../ui/icons";
 import { ChannelEditDialog } from "./ChannelEditDialog";
 import styles from "./ChannelList.module.css";
 import { ensureMyChannelsSubscribed, useMyChannelIds } from "./channelEdit";
 import { type Channel, refreshChannels, useChannels } from "./channels";
+import { channelFromCreateEvent } from "./eventLink";
+import { useJoinedRooms } from "./joinedRooms";
+
+const NO_IDS: string[] = [];
 
 /**
  * チャンネル一覧（ネイティブ ChannelListColumn。メッセージ画面のチャット側と CHANNEL_LIST カラムで使う）。
@@ -15,6 +21,9 @@ import { type Channel, refreshChannels, useChannels } from "./channels";
  * 行を押すと onSelect、ピンを押すと onPin（デッキにピン留め済みのものは色を変える）。
  * [#538] ログイン中は先頭に「新しいスレッドを作成」。自分が作った kind:40 の行には ✏️ で編集。
  * 作成したらローカルの一覧へ即反映してそのまま onSelect（ネイティブと同じく API の一覧を待たない）。
+ * [#856] 参加中のルーム（kind:10005）があれば「参加中」として上に分け（一覧と同じ最終活動の順）、残りを「すべてのルーム」に
+ * 並べる（参加中は下に重ねて出さない）。一覧に無い参加中のルームは参加中の末尾に出し、kind:40 を id で取りに行く
+ * （届くまで「パブリックチャット」）。参加中が 0 件なら見出しを出さず今までどおり。
  */
 export function ChannelList({
   selectedId,
@@ -34,6 +43,34 @@ export function ChannelList({
   const myChannelIds = useMyChannelIds(me);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Channel | null>(null);
+  const joined = useJoinedRooms((s) => s.joined);
+  // 一覧を取っている間は分けない（一覧に有るかが分からず、全部を kind:40 で取りに行ってしまう）
+  const joinedIds = channels !== null || failed ? (joined?.ids ?? NO_IDS) : NO_IDS;
+  const sections = useMemo(() => {
+    const ids = new Set(joinedIds);
+    const listed = channels ?? [];
+    const known = listed.filter((c) => ids.has(c.id.toLowerCase()));
+    const knownIds = new Set(known.map((c) => c.id.toLowerCase()));
+    return {
+      known,
+      unlisted: joinedIds.filter((id) => !knownIds.has(id)),
+      others: ids.size === 0 ? channels : listed.filter((c) => !ids.has(c.id.toLowerCase())),
+    };
+  }, [channels, joinedIds]);
+
+  function row(channel: Channel, key = channel.id) {
+    return (
+      <ChannelRow
+        key={key}
+        channel={channel}
+        selected={channel.id === selectedId}
+        pinned={pinnedIds.has(channel.id)}
+        onSelect={onSelect}
+        onPin={onPin}
+        onEdit={me && myChannelIds.has(channel.id) ? () => setEditing(channel) : undefined}
+      />
+    );
+  }
 
   useEffect(() => {
     void refreshChannels();
@@ -50,7 +87,19 @@ export function ChannelList({
           {t("channel_create_row")}
         </button>
       )}
-      {channels === null || channels.length === 0 ? (
+      {joinedIds.length > 0 && (
+        <>
+          <h3 className={styles.section}>{t("channel_joined_section")}</h3>
+          <ul className={styles.rows}>
+            {sections.known.map((channel) => row(channel))}
+            {sections.unlisted.map((id) => (
+              <UnlistedJoinedRow key={id} id={id} hint={joined?.hints[id]} render={row} />
+            ))}
+          </ul>
+          <h3 className={styles.section}>{t("channel_all_section")}</h3>
+        </>
+      )}
+      {sections.others === null || sections.others.length === 0 ? (
         <p className={styles.empty}>
           {channels === null && !failed
             ? t("loading")
@@ -59,19 +108,7 @@ export function ChannelList({
               : t("web_chat_channels_empty")}
         </p>
       ) : (
-        <ul className={styles.rows}>
-          {channels.map((channel) => (
-            <ChannelRow
-              key={channel.id}
-              channel={channel}
-              selected={channel.id === selectedId}
-              pinned={pinnedIds.has(channel.id)}
-              onSelect={onSelect}
-              onPin={onPin}
-              onEdit={me && myChannelIds.has(channel.id) ? () => setEditing(channel) : undefined}
-            />
-          ))}
-        </ul>
+        <ul className={styles.rows}>{sections.others.map((channel) => row(channel))}</ul>
       )}
       {showCreate && me && (
         <ChannelEditDialog
@@ -94,6 +131,31 @@ export function ChannelList({
       )}
     </>
   );
+}
+
+/**
+ * [#856] 一覧（thread.nchan.vip）に無い参加中のルーム。kind:40 を id（とリレーのヒント）で取りに行き、
+ * 届くまで・名前が空なら「パブリックチャット」で出す（ネイティブ requestJoinedChannels / chat_room_unnamed）。開ける。
+ */
+function UnlistedJoinedRow({
+  id,
+  hint,
+  render,
+}: {
+  id: string;
+  hint: string | undefined;
+  render(channel: Channel, key: string): ReactNode;
+}) {
+  const t = useT();
+  const pointer = useMemo<EventPointer>(() => (hint ? { id, relays: [hint] } : { id }), [id, hint]);
+  const created = useEventByPointer(pointer);
+  const fetched = created ? channelFromCreateEvent(created) : null;
+  const channel: Channel = {
+    ...(fetched ?? { id, about: "", picture: null, relays: [], createdAt: 0, lastAt: 0 }),
+    id,
+    name: fetched?.name.trim() ? fetched.name : t("chat_room_unnamed"),
+  };
+  return render(channel, id);
 }
 
 function ChannelRow({

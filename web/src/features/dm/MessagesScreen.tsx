@@ -243,6 +243,7 @@ function RoomPane({
       title={title}
       header={
         <RoomHeader
+          channelId={channelId}
           title={title}
           subtitle={about.trim() === "" ? "NIP-28 · kind:42" : about}
           picture={channel?.picture ?? null}
