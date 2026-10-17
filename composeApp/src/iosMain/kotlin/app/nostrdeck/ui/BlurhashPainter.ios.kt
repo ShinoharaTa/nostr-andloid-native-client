@@ -18,6 +18,6 @@ actual fun imageBitmapFromArgb(pixels: IntArray, width: Int, height: Int): Image
         bytes[i * 4 + 2] = ((p shr 16) and 0xFF).toByte() // R
         bytes[i * 4 + 3] = ((p shr 24) and 0xFF).toByte() // A
     }
-    val info = ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.PREMUL)
+    val info = ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.UNPREMUL)
     return Image.makeRaster(info, bytes, width * 4).toComposeImageBitmap()
 }

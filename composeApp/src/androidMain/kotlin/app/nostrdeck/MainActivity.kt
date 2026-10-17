@@ -124,6 +124,8 @@ class MainActivity : ComponentActivity() {
 
         // [#359] 回線種別（Wi-Fi/モバイル）監視に Application context を渡す（Repository 生成前）。
         app.nostrdeck.data.NetworkPolicy.appContext = applicationContext
+        // [#879] 文字から作る絵文字のフォント（取り直せるのでキャッシュに置く）。
+        app.nostrdeck.data.EmojiFontFiles.dir = java.io.File(cacheDir, "emoji_fonts")
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。

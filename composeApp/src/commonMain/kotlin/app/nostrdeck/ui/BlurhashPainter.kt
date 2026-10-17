@@ -8,7 +8,10 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import app.nostrdeck.model.Blurhash
 
-/** [#140] ARGB ピクセル配列 → ImageBitmap。プラットフォーム依存（Android=Bitmap / それ以外=Skia）。 */
+/**
+ * [#140] ARGB ピクセル配列 → ImageBitmap。プラットフォーム依存（Android=Bitmap / それ以外=Skia）。
+ * [#879] [pixels] は乗算済みでない ARGB（Android の Bitmap.createBitmap(int[]) と同じ扱い。透明を含む絵文字のプレビューで使う）。
+ */
 expect fun imageBitmapFromArgb(pixels: IntArray, width: Int, height: Int): ImageBitmap
 
 /**

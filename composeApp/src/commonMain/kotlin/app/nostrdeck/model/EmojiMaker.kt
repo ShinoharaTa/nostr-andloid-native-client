@@ -14,7 +14,8 @@ import org.kotlincrypto.hash.sha2.SHA256
  * [#775] 文字から作る絵文字（Web #750 の `/api/emoji.png`）の URL 規約。
  *
  * Web の `web/server/emoji/params.ts`（サーバーと作成ページが共有する正規化）と `autoShortcode.ts` をそのまま移したもの。
- * 同じ入力なら Web と同じ URL・同じ自動の名前になる（画像はサーバーが作る。端末はフォントを持たない）。
+ * 同じ入力なら Web と同じ URL・同じ自動の名前になる（絵文字の画像はサーバーが作る。[#879] 作成フォームのプレビューだけは
+ * 端末で描く: [EmojiRenderer]）。
  * 仕様: `web/docs/emoji-maker.md` §4。Web 側を変えたらここも揃えること（テストは Web と同じ例で固定してある）。
  */
 object EmojiMaker {
@@ -82,7 +83,7 @@ object EmojiMaker {
     private val HEX = Regex("^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
     private val SHORTCODE = Regex("^[A-Za-z0-9_-]+$")
 
-    /** text の正規化と検査（§4.3 の 1〜7。フォントに無い文字の検査はサーバーが行う）。 */
+    /** text の正規化と検査（§4.3 の 1〜7。フォントに無い文字の検査はフォントが要るので別: [EmojiFontData.findUnsupportedChar]）。 */
     fun normalizeText(text: String): TextResult {
         val unified = nfc(text).replace("\r\n", "\n").replace('\r', '\n').replace(ESCAPED_NEWLINE, "\n")
         // 異体字セレクタは末尾の空白を落とす前に除く（"a" + 空白 + U+FE0F の空白を残さないため）。
