@@ -371,6 +371,7 @@
   "picker_recent": "最近",
   "picker_search_placeholder": "絵文字を検索（例: わらい / fire / 🔥）",
   "picker_title": "リアクション",
+  "picker_typed_emoji": "入力した絵文字",
   "pill_back_latest": "最新へ戻る",
   "pill_new_fmt": "%1$d 件の新着",
   "pinned_post": "固定された投稿",

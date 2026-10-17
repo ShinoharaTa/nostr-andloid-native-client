@@ -17,6 +17,7 @@ import { EMOJI_CATEGORIES, type EmojiCategory, loadEmojiCatalog, searchEmojis } 
 import type { MadeEmoji } from "./pickedReaction";
 import styles from "./ReactionPickerDialog.module.css";
 import { loadRecentEmojis } from "./reactionPrefs";
+import { parseTypedEmoji } from "./typedEmoji";
 
 /**
  * リアクションピッカー（ネイティブ ReactionPicker.kt + AppModalSheet）。画面上端寄せのカードをモーダルで開く。
@@ -28,6 +29,8 @@ import { loadRecentEmojis } from "./reactionPrefs";
  * [#768] target がある（= リアクションを送る）ときだけ「絵文字を作る」を出す。押すと一覧の代わりに作成フォーム
  * （MakeEmojiPane）になり、「この絵文字でリアクション」で onPick(:code:, 画像 URL, MadeEmoji) する。
  * 投稿画面の絵文字ボタン・設定の既定リアクションでは出さない（送るのはリアクションではないため）。
+ * [#870] 検索欄に打った文字が絵文字だけで、一覧に同じものが無ければ、結果の先頭に「入力した絵文字」として出して
+ * そのまま選べるようにする（肌の色を変えた 👍🏽 や一覧の版より新しい絵文字。ネイティブ #869 と同じ判定）。
  */
 export function ReactionPickerDialog({
   target,
@@ -72,6 +75,10 @@ export function ReactionPickerDialog({
   }, [customs, q]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: categories は catalog 差し替えのキー（loadEmojiCatalog 完了で全絵文字に切り替わったら再検索するため）
   const matchedUnicode = useMemo(() => searchEmojis(q), [q, categories]);
+  const typed = useMemo(() => {
+    const emoji = parseTypedEmoji(q);
+    return emoji !== null && !matchedUnicode.some((e) => e.char === emoji) ? emoji : null;
+  }, [q, matchedUnicode]);
   const activeCategory = categories[activeTab] ?? categories[0];
 
   return (
@@ -155,10 +162,15 @@ export function ReactionPickerDialog({
                   </>
                 )}
               </>
-            ) : matchedCustom.length === 0 && matchedUnicode.length === 0 ? (
+            ) : typed === null && matchedCustom.length === 0 && matchedUnicode.length === 0 ? (
               <p className={styles.empty}>{t("picker_no_match")}</p>
             ) : (
               <>
+                {typed !== null && (
+                  <Section title={t("picker_typed_emoji")}>
+                    <TextCell char={typed} onClick={() => pick(typed, null)} />
+                  </Section>
+                )}
                 {matchedCustom.length > 0 && (
                   <Section title={t("picker_custom")}>
                     {matchedCustom.map((c) => (
