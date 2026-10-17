@@ -18,6 +18,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
+import io.ktor.client.request.head
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -67,6 +68,7 @@ import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.MuteEntry
 import app.nostrdeck.model.MuteList
 import app.nostrdeck.model.NetworkTier
+import app.nostrdeck.model.Nip96Upload
 import app.nostrdeck.model.OgpData
 import app.nostrdeck.ui.ImageProxy
 import app.nostrdeck.model.FeedEntry
@@ -5969,6 +5971,9 @@ class EventRepository(
      *  1. `<server>/.well-known/nostr/nip96.json` を引いて api_url を解決（失敗時は既定パス）。
      *  2. api_url へ multipart/form-data（part 名 `file`）を POST。Authorization は NIP-98。
      *  3. レスポンス JSON から URL を抽出（nip94_event.tags の "url" / トップレベル "url"）。
+     *  4. [#894] 202 / processing_url なら処理が終わるまで待ち、最終 URL が実際に配られているか確かめる（[Nip96Upload]）。
+     *     以前はステータスも processing_url も見ずに URL を返していたため、nostrcheck.me の変換が終わる前に投稿が流れ、
+     *     受け取った側で「FILE NOT FOUND」のバナーになっていた。
      */
     private suspend fun uploadToServer(
         server: String,
@@ -5995,7 +6000,78 @@ class EventRepository(
             header(HttpHeaders.Authorization, nip98Header(apiUrl, "POST"))
             setBody(MultiPartFormDataContent(parts))
         }
-        return parseUploadResponse(resp.bodyAsText())
+        val url = when (val first = Nip96Upload.parseUpload(resp.status.value, resp.bodyAsText())) {
+            is Nip96Upload.Outcome.Done -> first.url
+            is Nip96Upload.Outcome.Processing -> awaitProcessing(first.processingUrl, apiUrl) ?: return null
+            is Nip96Upload.Outcome.Failed -> {
+                println("Nostrism NIP-96 upload rejected by $server: ${resp.status.value} ${first.message}")
+                return null
+            }
+            Nip96Upload.Outcome.Pending -> return null
+        }
+        awaitAvailable(url, mime)
+        return url
+    }
+
+    /**
+     * [#894] NIP-96 の遅延処理。processing_url を 1 秒おきに最大 15 秒ポーリングし、処理が終わった応答の URL を返す
+     * （最初の応答の URL と変わることがある）。失敗・時間切れは null（次のサーバーへ）。
+     * 同じオリジンのときだけ NIP-98 を付ける（別のサーバーに署名を渡さない。eHagaki と同じ）。
+     */
+    private suspend fun awaitProcessing(processingUrl: String, apiUrl: String): String? {
+        var waited = 0L
+        while (true) {
+            val outcome = try {
+                val r = uploadHttp.get(processingUrl) {
+                    if (Nip96Upload.sameOrigin(processingUrl, apiUrl)) header(HttpHeaders.Authorization, nip98Header(processingUrl, "GET"))
+                }
+                Nip96Upload.parsePoll(r.status.value, r.bodyAsText())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                Nip96Upload.Outcome.Pending   // 一時的な通信エラーは待つ側に倒す
+            }
+            when (outcome) {
+                is Nip96Upload.Outcome.Done -> return outcome.url
+                is Nip96Upload.Outcome.Failed -> {
+                    println("Nostrism NIP-96 processing failed at $processingUrl: ${outcome.message}")
+                    return null
+                }
+                else -> Unit
+            }
+            if (waited >= Nip96Upload.PROCESSING_MAX_MS) {
+                println("Nostrism NIP-96 processing still not done after ${waited}ms: $processingUrl")
+                return null
+            }
+            delay(Nip96Upload.POLL_INTERVAL_MS)
+            waited += Nip96Upload.POLL_INTERVAL_MS
+        }
+    }
+
+    /**
+     * [#894] 最終 URL が実際に配られているか HEAD で確かめ、まだなら 1 秒おきに最大 15 秒待つ。
+     * nostrcheck は処理中も 200 + image/webp で「FILE NOT FOUND」のバナーを返すので、X-Reason と Content-Type を見る。
+     * 判断できないサーバー（HEAD を受けない等）と時間切れはそのまま通す（サーバーは成功と言っている）。
+     */
+    private suspend fun awaitAvailable(url: String, mime: String) {
+        var waited = 0L
+        while (true) {
+            val a = try {
+                val r = uploadHttp.head(url)
+                Nip96Upload.availability(r.status.value, r.headers[HttpHeaders.ContentType], r.headers["X-Reason"], mime)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                Nip96Upload.Availability.INCONCLUSIVE
+            }
+            if (a != Nip96Upload.Availability.UNAVAILABLE) return
+            if (waited >= Nip96Upload.AVAILABILITY_MAX_MS) {
+                println("Nostrism NIP-96: $url is still not served after ${waited}ms; using it anyway")
+                return
+            }
+            delay(Nip96Upload.POLL_INTERVAL_MS)
+            waited += Nip96Upload.POLL_INTERVAL_MS
+        }
     }
 
     /**
@@ -6017,7 +6093,9 @@ class EventRepository(
             return null
         }
         val descriptor = Blossom.parseDescriptor(resp.bodyAsText()) ?: return null
-        return descriptor.url.takeIf { Blossom.matches(descriptor, sha, bytes.size.toLong()) }
+        if (!Blossom.matches(descriptor, sha, bytes.size.toLong())) return null
+        awaitAvailable(descriptor.url, mime)   // [#894] 配られるまで待つ（nostrcheck の CDN も同じバナーを返す）
+        return descriptor.url
     }
 
     /** [M11] NIP-96 ディスカバリ。api_url（絶対/相対）を返す。失敗時 null。 */
@@ -6029,18 +6107,6 @@ class EventRepository(
             api.startsWith("http") -> api
             else -> base + (if (api.startsWith("/")) api else "/$api")
         }
-    }.getOrNull()
-
-    /** [M11] アップロード成功レスポンスから表示用 URL を取り出す（NIP-96 / 簡易形の両対応）。 */
-    private fun parseUploadResponse(body: String): String? = runCatching {
-        val o = json.parseToJsonElement(body).jsonObject
-        val fromNip94 = o["nip94_event"]?.jsonObject?.get("tags")?.let { tags ->
-            (tags as? JsonArray)?.firstOrNull {
-                val a = it.jsonArray
-                a.size >= 2 && a[0].jsonPrimitive.contentOrNull == "url"
-            }?.jsonArray?.get(1)?.jsonPrimitive?.contentOrNull
-        }
-        fromNip94 ?: o["url"]?.jsonPrimitive?.contentOrNull
     }.getOrNull()
 
     /**
