@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LOADING_TIMEOUT_MS } from "../../lib/columnRequest";
 import { type ColumnSpec, DEFAULT_COLUMNS, decodeDeckColumns } from "../../lib/columns";
 import { requestZapInvoice } from "../../lib/lnurl";
 import { readRelays, subscribeTo } from "../../nostr/pool";
@@ -159,6 +160,27 @@ function muteBob() {
   });
 }
 
+/** 発言の一覧（スクロールする要素 = 発言の親） */
+function scrollerOf(): HTMLElement {
+  const scroller = screen.getByText("こんにちは").closest("article")?.parentElement;
+  if (!scroller) throw new Error("no scroller");
+  return scroller;
+}
+
+/** 入力欄の幅（内側）を ResizeObserver が返す値として決める（jsdom には ResizeObserver もレイアウトも無い） */
+function stubComposerWidth(width: number) {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      disconnect() {}
+    },
+  );
+}
+
 /** 発言の本文（DOM の順） */
 function texts(): string[] {
   return screen
@@ -172,7 +194,7 @@ describe("デッキのルームカラム", () => {
     render(<RouterProvider router={router} />);
   }
 
-  it("NIP-78 で同期した CHANNEL_ROOM はルームとして描かれる（最新が上・入力欄の代わりに「✏️ メッセージを書く」）", () => {
+  it("NIP-78 で同期した CHANNEL_ROOM はルームとして描かれる（[#859] 画面と同じく最新が下・下に常設の入力欄）", () => {
     useChannels.setState({ channels: CHANNELS });
     const [spec] = decodeDeckColumns(SYNCED) ?? [];
     renderColumn(spec);
@@ -180,9 +202,13 @@ describe("デッキのルームカラム", () => {
     expect(screen.getByRole("heading", { name: "さびれたスナック" })).toBeInTheDocument();
     expect(screen.getByText("酔っ払いが問わず語り")).toBeInTheDocument();
     expect(screen.queryByText(/まだ使えません/)).not.toBeInTheDocument();
+    // DOM は新しい順（column-reverse で最新が下）
     expect(texts()).toEqual(["返信です", "わたしの発言", "ミュートされる発言", "こんにちは"]);
-    expect(screen.getByRole("button", { name: "✏️ メッセージを書く" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "メッセージ" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "メッセージ" })).toHaveAttribute(
+      "placeholder",
+      "メッセージを入力…",
+    );
+    expect(screen.queryByRole("button", { name: /メッセージを書く/ })).not.toBeInTheDocument();
     // 返信は返信元を 1 行で引用する
     expect(screen.getByText(/: こんにちは$/)).toBeInTheDocument();
     // 集約リアクション
@@ -218,25 +244,103 @@ describe("デッキのルームカラム", () => {
     expect(texts()).toEqual(["返信です", "わたしの発言", "ミュートされる発言", "こんにちは"]);
   });
 
-  it("「✏️ メッセージを書く」・リプライはモーダルの入力欄を開く", async () => {
+  it("[#859] リプライは常設の入力欄の上に返信先を出す（モーダルは開かない）。Esc で入力欄から抜ける", async () => {
     const user = userEvent.setup();
     useChannels.setState({ channels: CHANNELS });
     const [spec] = decodeDeckColumns(SYNCED) ?? [];
     renderColumn(spec);
 
-    await user.click(screen.getByRole("button", { name: "✏️ メッセージを書く" }));
-    const dialog = screen.getByRole("dialog", { name: "さびれたスナック" });
-    expect(within(dialog).getByRole("textbox", { name: "メッセージ" })).toHaveAttribute(
-      "placeholder",
-      "メッセージを入力…",
-    );
-    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
     const firstRow = screen.getByText("こんにちは").closest("article");
     if (!firstRow) throw new Error("no row");
     await user.click(within(firstRow).getByRole("button", { name: "リプライ" }));
-    expect(within(screen.getByRole("dialog")).getByText(/ に返信: こんにちは$/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText(/ に返信: こんにちは$/)).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: "メッセージ" });
+    expect(input).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(input).not.toHaveFocus();
+    // 返信先はそのまま（抜けるだけ）
+    expect(screen.getByText(/ に返信: こんにちは$/)).toBeInTheDocument();
+  });
+
+  it("[#859] 入力欄の幅が 320px 未満なら、添付を「＋」（添付）のメニュー（画像を添付 / 動画を添付）にまとめる", async () => {
+    const user = userEvent.setup();
+    stubComposerWidth(296);
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    renderColumn(spec);
+
+    expect(screen.queryByRole("button", { name: "画像・動画を添付" })).not.toBeInTheDocument();
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) throw new Error("no file input");
+    const picked = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+
+    await user.click(screen.getByRole("button", { name: "添付" }));
+    expect(screen.getByRole("menuitem", { name: "画像を添付" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "動画を添付" }));
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(fileInput.accept).toBe("video/*");
+
+    await user.click(screen.getByRole("button", { name: "添付" }));
+    await user.click(screen.getByRole("menuitem", { name: "画像を添付" }));
+    expect(fileInput.accept).toBe("image/*");
+  });
+
+  it("[#859] 320px 以上なら添付はボタン 1 つのまま（画像・動画を選べる）", () => {
+    stubComposerWidth(376);
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    renderColumn(spec);
+
+    expect(screen.getByRole("button", { name: "画像・動画を添付" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添付" })).not.toBeInTheDocument();
+  });
+
+  it("[#859] 最新から離れると下端に「↓ 最新へ戻る」、離れている間の新着は「↓ N 件の新着」。自分の発言が届いたら最新へ送る", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    renderColumn(spec);
+    // 読み込み（最初の EOSE か 8 秒）を終える。読み込み中に届く自分の過去の発言では最新へ送らない
+    act(() => vi.advanceTimersByTime(LOADING_TIMEOUT_MS));
+    vi.useRealTimers();
+    const scroller = scrollerOf();
+    expect(screen.queryByRole("button", { name: /最新へ戻る|件の新着/ })).not.toBeInTheDocument();
+
+    // 上（過去）へ読む: column-reverse の scrollTop は負
+    scroller.scrollTop = -500;
+    fireEvent.scroll(scroller);
+    expect(screen.getByRole("button", { name: "↓ 最新へ戻る" })).toBeInTheDocument();
+
+    const later = message(aliceKey, "あとから届いた発言", 1_700_002_000);
+    act(() => addVerified(later));
+    expect(screen.getByRole("button", { name: "↓ 1 件の新着" })).toBeInTheDocument();
+    // 位置は保つ（最新へは寄せない）
+    expect(scroller.scrollTop).not.toBe(0);
+
+    const sent = message(meKey, "送った発言", 1_700_002_100);
+    act(() => addVerified(sent));
+    expect(scroller.scrollTop).toBe(0);
+    expect(screen.queryByRole("button", { name: /件の新着/ })).not.toBeInTheDocument();
+
+    eventStore.remove(later.id);
+    eventStore.remove(sent.id);
+  });
+
+  it("[#859] ピルを押すと最新（下端）へ戻る", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    renderColumn(spec);
+    const scroller = scrollerOf();
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+    scroller.scrollTop = -500;
+    fireEvent.scroll(scroller);
+
+    await user.click(screen.getByRole("button", { name: "↓ 最新へ戻る" }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 
   it("[#538] ⚡ は発言者の kind:0 に lud16 があるときだけ。押すと ZapDialog（e=発言の id・k=42）", async () => {
@@ -322,6 +426,15 @@ describe("メッセージ画面のチャット", () => {
 
     await user.click(screen.getByRole("button", { name: "戻る" }));
     expect(router.state.location.pathname).toBe("/channels");
+  });
+
+  it("[#859] 画面でも最新から離れると下端に「↓ 最新へ戻る」", () => {
+    useChannels.setState({ channels: CHANNELS });
+    renderAt(`/channels/${CH}`, 400);
+    const scroller = scrollerOf();
+    scroller.scrollTop = -500;
+    fireEvent.scroll(scroller);
+    expect(screen.getByRole("button", { name: "↓ 最新へ戻る" })).toBeInTheDocument();
   });
 
   it("ミュートした人の発言は出ない（画面では常に隠す）", () => {

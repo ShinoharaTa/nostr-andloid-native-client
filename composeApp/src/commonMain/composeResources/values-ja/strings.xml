@@ -678,7 +678,6 @@
     <string name="chat_select_channel">チャンネルを選択</string>
     <string name="chat_room_unnamed">パブリックチャット</string>
     <string name="chat_loading_channel">チャンネルを読み込み中…</string>
-    <string name="chat_write_message">✏️ メッセージを書く</string>
     <string name="chat_reply">リプライ</string>
     <string name="chat_zap">Zap</string>
     <string name="chat_reply_to_fmt">%1$s に返信: %2$s</string>

@@ -12,25 +12,6 @@
   overflow-x: hidden;
 }
 
-/* ネイティブの FeedTopPill と同じ見た目（本文色の地に背景色の文字、上部中央） */
-.pill {
-  position: absolute;
-  top: var(--sp-2);
-  left: 50%;
-  z-index: 1;
-  transform: translateX(-50%);
-  padding: var(--sp-2) var(--sp-3);
-  border: none;
-  border-radius: var(--r-full);
-  background: var(--text);
-  color: var(--bg);
-  font: inherit;
-  font-size: var(--type-caption);
-  font-weight: var(--w-strong);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
 .empty {
   margin: 0;
   padding: var(--sp-5) var(--sp-4);

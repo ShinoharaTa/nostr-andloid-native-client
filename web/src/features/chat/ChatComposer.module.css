@@ -235,6 +235,13 @@
   color: var(--text-3);
 }
 
+/* [#859] 案内文は 1 行に収める（狭いカラムで折り返して入力欄が 2 行に伸びないように） */
+.input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tool {
   flex: none;
   display: grid;

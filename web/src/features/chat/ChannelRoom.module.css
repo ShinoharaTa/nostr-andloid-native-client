@@ -64,24 +64,26 @@
   line-height: var(--line-desc);
 }
 
-/* screen: 最新が下。column-reverse で下端に揃える（DOM は新しい順） */
-.chatScroller,
-.feedScroller {
+/* 一覧と新着のピル（ピルは下端中央に重ねる） */
+.body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+}
+
+/* 最新が下。column-reverse で下端に揃える（DOM は新しい順）。
+   上を読んでいる間の位置はコードで保つので、ブラウザのスクロールアンカーは切る（二重にずらさない） */
+.scroller {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column-reverse;
   gap: 2px;
   padding: var(--sp-2);
   overflow-y: auto;
-}
-
-.chatScroller {
-  flex-direction: column-reverse;
-}
-
-/* column: 最新が上 */
-.feedScroller {
-  flex-direction: column;
+  overflow-anchor: none;
 }
 
 .empty {
@@ -286,105 +288,4 @@
   font-size: var(--type-label);
   font-weight: var(--w-name);
   cursor: pointer;
-}
-
-/* デッキのカラム: 下端の「✏️ メッセージを書く」（ネイティブ DeckGhostButton） */
-.writeBar {
-  flex: none;
-  display: flex;
-  justify-content: center;
-  padding: var(--sp-2);
-  border-top: 1px solid var(--border);
-}
-
-.write {
-  min-height: var(--touch-xs);
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--type-caption);
-  font-weight: var(--w-name);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .write:hover {
-    background: var(--surface-2);
-  }
-}
-
-/* 投稿モーダル（ComposeDialog と同じく画面上端寄せのカード） */
-.modal {
-  box-sizing: border-box;
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--sp-3)) var(--sp-4)
-    calc(env(safe-area-inset-bottom, 0px) + var(--sp-3));
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font);
-  overflow: hidden;
-}
-
-.modal::backdrop {
-  background: rgba(0, 0, 0, 0.55);
-}
-
-/* 高さはソフトキーボードを除いた見えている高さ（--compose-vvh）に収める。ComposeDialog の .card と同じ（#594） */
-.modalCard {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 460px;
-  max-height: calc(var(--compose-vvh, 100dvh) - env(safe-area-inset-top, 0px) - var(--sp-3) * 2);
-  margin: 0 auto;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.modalHead {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-2) 0 var(--sp-4);
-}
-
-.modalTitle {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--type-sub);
-  font-weight: var(--w-name);
-}
-
-.modalClose {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: var(--touch-sm);
-  height: var(--touch-sm);
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-}
-
-.modalCloseIcon {
-  width: var(--icon-md);
-  height: var(--icon-md);
 }

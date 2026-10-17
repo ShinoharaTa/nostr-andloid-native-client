@@ -8,7 +8,7 @@ import { saveDraft } from "../features/compose/storage";
 import { useDmSeen } from "../features/dm/dmSeen";
 import { useDm } from "../features/dm/dmStore";
 import type { ColumnSpec } from "../lib/columns";
-import { DEFAULT_COLUMNS } from "../lib/columns";
+import { DEFAULT_COLUMNS, roomColumnFor } from "../lib/columns";
 import { useSession } from "../signer/session";
 import { useDeck } from "../store/deck";
 import { installDialogPolyfill } from "../test/dialog";
@@ -483,5 +483,20 @@ describe("投稿ボタン", () => {
     renderAt([`/e/${NOTE}`]);
     expect(screen.getByRole("region", { name: "スレッド" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "投稿" })).toBeNull();
+  });
+
+  it("[#859] 1 カラム表示でルームのカラムを見ている間は出さない（常設の入力欄の送信ボタンを覆うため）。デッキの横並びでは出す", () => {
+    const room = roomColumnFor({ id: "a".repeat(64), name: "ルーム", about: "" });
+    useDeck.setState({ columns: [room, ...structuredClone([...DEFAULT_COLUMNS])], visibleColumnId: room.id });
+    renderAt(["/"]);
+    expect(screen.queryByRole("button", { name: "投稿" })).toBeNull();
+
+    act(() => useDeck.getState().setVisibleColumn("c_notif"));
+    expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
+
+    cleanup();
+    useDeck.setState({ visibleColumnId: room.id });
+    renderAt(["/"], 1400);
+    expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
   });
 });
