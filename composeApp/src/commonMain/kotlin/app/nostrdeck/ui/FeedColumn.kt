@@ -38,9 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import app.nostrdeck.model.ColumnSpec
@@ -294,12 +291,9 @@ private fun MyReactionRow(
             val r = entry.reaction
             val img = r.imageUrl
             if (img != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalPlatformContext.current)
-                        .data(ImageProxy.proxied(img, width = 64, quality = 80, animated = true)).build(),
-                    // [#308] 文字側(EmojiLg)と同じトークンから引く。文字サイズ設定にも追従する。
-                    contentDescription = r.display, modifier = Modifier.size(DeckType.EmojiLg.asEmojiSize()),
-                )
+                // [#308] 文字側(EmojiLg)と同じトークンから引く。文字サイズ設定にも追従する。
+                // [#861] 高さ固定・幅は縦横比どおり。
+                AnimatedEmoji(img, contentDescription = r.display, modifier = Modifier.emojiSize(img, DeckType.EmojiLg.asEmojiSize()))
             } else {
                 Text(r.display, fontSize = DeckType.EmojiLg)
             }

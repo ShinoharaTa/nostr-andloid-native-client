@@ -32,22 +32,25 @@ object ImageProxy {
 
     /**
      * [width] px 幅・webp・品質 [quality] に圧縮した URL を返す。
+     * [height] を渡すと幅ではなく高さで縮める（カスタム絵文字。横長の絵文字を幅で縮めると高さが数 px に潰れるため）。
      * [animated]=true なら `n=-1` で全フレームを保持する（GIF/アニメ WebP を動かす）。
      * wsrv.nl は既定で先頭1フレームのみ返すため、アニメを残すには n=-1 が必須。
      * 既にプロキシ拒否と分かっているホストは、プロキシを介さず元 URL を返す。
      */
-    fun proxied(url: String, width: Int = 600, quality: Int = 75, animated: Boolean = false): String {
+    fun proxied(url: String, width: Int = 600, quality: Int = 75, animated: Boolean = false, height: Int? = null): String {
         // kind:0 の picture/banner URL には前後空白が混ざることがある（例: yabu.me のアイコン）。
         // そのままだと wsrv が空白込み URL を取得できず画像が出ないため、必ず trim する。
         val clean = url.trim()
         if (clean.isBlank()) return clean
         if (hostOf(clean) in blockedHosts) return clean
         val enc = clean.encodeURLParameter()
-        val w = if (dataSaver) width * 2 / 3 else width
         val q = if (dataSaver) minOf(quality, 60) else quality
+        // 縮める基準（幅 w= か高さ h=）。縦横比は保たれる。
+        val size = if (height != null) "h=${if (dataSaver) height * 2 / 3 else height}"
+        else "w=${if (dataSaver) width * 2 / 3 else width}"
         // we = 拡大しない（元が小さければそのまま）
         val frames = if (animated) "&n=-1" else ""
-        return "$HOST?url=$enc&w=$w&output=webp&q=$q&we$frames"
+        return "$HOST?url=$enc&$size&output=webp&q=$q&we$frames"
     }
 
     /**

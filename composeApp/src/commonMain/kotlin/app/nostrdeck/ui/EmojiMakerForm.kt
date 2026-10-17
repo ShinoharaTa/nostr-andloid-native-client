@@ -109,6 +109,8 @@ fun rememberEmojiMakerState(): EmojiMakerState {
 }
 
 /** プレビューの背景（明るい地と暗い地。両方のテーマでの見え方。Web と同じ色）。 */
+/** [#861] プレビューの高さ（幅は画像の縦横比で決める）。 */
+private val PREVIEW_HEIGHT = 96.dp
 private val PreviewLight = Color(0xFFFFFFFF)
 private val PreviewDark = Color(0xFF0C0C10)
 
@@ -132,9 +134,10 @@ fun EmojiMakerForm(state: EmojiMakerState, modifier: Modifier = Modifier) {
     val input = state.input
 
     Column(modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Md)) {
-            PreviewTile(state, PreviewLight, stringResource(Res.string.emoji_maker_preview_light))
-            PreviewTile(state, PreviewDark, stringResource(Res.string.emoji_maker_preview_dark))
+        // [#861] 横長の画像でも 2 枚が並ぶ幅に収まるよう、それぞれ半分までに抑える。
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(DeckSpace.Md)) {
+            PreviewTile(state, PreviewLight, stringResource(Res.string.emoji_maker_preview_light), Modifier.weight(1f, fill = false))
+            PreviewTile(state, PreviewDark, stringResource(Res.string.emoji_maker_preview_dark), Modifier.weight(1f, fill = false))
         }
         errorMessage(state)?.let {
             Spacer(Modifier.height(DeckSpace.Xs))
@@ -221,12 +224,17 @@ private fun errorMessage(state: EmojiMakerState): String? {
     }
 }
 
-/** プレビュー 1 枚（96dp・地の色つき）。今の入力の画像が届くまでは読み込み中、入力が空・不正なら空の枠。 */
+/**
+ * プレビュー 1 枚（高さ 96dp・地の色つき）。今の入力の画像が届くまでは読み込み中、入力が空・不正なら空の枠。
+ * [#861] 幅は画像の縦横比どおり（最小で正方形）。サーバーが横長の画像を返しても縮めて正方形に押し込まない。
+ */
 @Composable
-private fun PreviewTile(state: EmojiMakerState, background: Color, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun PreviewTile(state: EmojiMakerState, background: Color, label: String, modifier: Modifier = Modifier) {
+    var ratio by remember(state.url) { mutableStateOf(1f) }
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(96.dp).clip(RoundedCornerShape(DeckRadius.Md)).background(background)
+            Modifier.height(PREVIEW_HEIGHT).width(PREVIEW_HEIGHT * ratio.coerceAtLeast(1f))
+                .clip(RoundedCornerShape(DeckRadius.Md)).background(background)
                 .border(1.dp, DeckColors.Border, RoundedCornerShape(DeckRadius.Md)),
             contentAlignment = Alignment.Center,
         ) {
@@ -235,6 +243,7 @@ private fun PreviewTile(state: EmojiMakerState, background: Color, label: String
             when {
                 shown is EventRepository.EmojiImage.Ok -> AsyncImage(
                     model = shown.bytes, contentDescription = null, modifier = Modifier.fillMaxSize().padding(DeckSpace.Sm),
+                    onSuccess = { s -> ratio = s.result.image.width.toFloat() / s.result.image.height.coerceAtLeast(1) },
                 )
                 url != null && shown == null -> CircularProgressIndicator(
                     modifier = Modifier.size(20.dp), strokeWidth = 2.dp,

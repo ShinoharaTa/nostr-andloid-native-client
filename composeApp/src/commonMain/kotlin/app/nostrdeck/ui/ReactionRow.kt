@@ -50,7 +50,7 @@ private fun ReactionChip(reaction: ReactionUi) {
                 // [#308] 隣の SectionCaption（Caption=12sp）と同じ大きさに揃える。
                 AnimatedEmoji(
                     reaction.imageUrl, contentDescription = reaction.display,
-                    modifier = Modifier.size(DeckType.Caption.asEmojiSize()),
+                    modifier = Modifier.emojiSize(reaction.imageUrl, DeckType.Caption.asEmojiSize()),   // [#861] 高さ固定・幅は縦横比どおり
                 )
             } else {
                 SectionCaption(reaction.display)
