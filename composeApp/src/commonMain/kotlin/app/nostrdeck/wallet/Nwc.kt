@@ -136,6 +136,15 @@ class NwcClient(
 
     fun stop() = relay.stop()
 
+    /** [#886] バックグラウンドの一時停止。購読は保持し、再開で張り直す。 */
+    fun pause() = relay.pause()
+
+    /** [#886] 復帰。停止中なら再接続し、バックオフ待ちなら即つなぎ直す。 */
+    fun resume() {
+        relay.start()
+        relay.wake()
+    }
+
     /** 接続検証: ウォレットの info イベントを待つ。届かなければ null（リレー/ウォレット設定ミスの疑い）。 */
     suspend fun awaitInfo(timeoutMs: Long = 10_000): String? =
         withTimeoutOrNull(timeoutMs) { infoArrived.await() }
@@ -256,6 +265,10 @@ object NwcManager {
     }
 
     /** 起動時復元。保存済み接続があれば張り直して true（info 検証はしない＝オフライン起動を妨げない）。 */
+    /** [#886] バックグラウンド 5 分でウォレットのリレーを止める / 復帰で再開する（EventRepository が呼ぶ）。 */
+    fun onBackground() { client?.pause() }
+    fun onForeground() { client?.resume() }
+
     fun restore(): Boolean {
         val sc = scope ?: return false
         val uri = store?.load() ?: return false

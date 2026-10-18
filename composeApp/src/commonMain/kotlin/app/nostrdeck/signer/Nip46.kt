@@ -134,6 +134,15 @@ class Nip46Client(
 
     fun stop() = relay.stop()
 
+    /** [#886] バックグラウンドの一時停止（EventRepository.onBackground と同じタイミング）。購読は保持し、再開で張り直す。 */
+    fun pause() = relay.pause()
+
+    /** [#886] 復帰。停止中なら再接続し、バックオフ待ちなら即つなぎ直す（署名が要るのはフォアグラウンドだけ）。 */
+    fun resume() {
+        relay.start()
+        relay.wake()
+    }
+
     /** [NIP-42] リレーの AUTH チャレンジにクライアント鍵(kind:22242)で応答し、購読を張り直す。 */
     private fun handleAuth(challenge: String) {
         val authEvent = signClientEvent(22242, "", listOf(listOf("relay", relayUrl), listOf("challenge", challenge)))
@@ -279,6 +288,12 @@ object Nip46Manager {
             false
         }
     }
+
+    /** [#886] バックグラウンド 5 分で中継リレーを止める（EventRepository.onBackground が呼ぶ）。以前は裏でも再接続を続けていた。 */
+    fun onBackground() { client?.pause() }
+
+    /** [#886] 復帰で中継リレーを再開する（EventRepository.onForeground が呼ぶ）。 */
+    fun onForeground() { client?.resume() }
 
     /** NIP-46 を解除（永続状態も消す）。呼び出し側でローカル鍵へ戻すこと。 */
     fun disconnect() {

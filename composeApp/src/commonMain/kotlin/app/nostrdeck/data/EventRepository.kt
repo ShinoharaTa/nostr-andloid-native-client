@@ -109,7 +109,9 @@ import app.nostrdeck.nostr.RelayConnState
 import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.nostr.RelayTraffic
+import app.nostrdeck.signer.Nip46Manager
 import app.nostrdeck.signer.SignerProvider
+import app.nostrdeck.wallet.NwcManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -567,6 +569,9 @@ class EventRepository(
                 it.wake()    // バックオフ待機中・[#849] ぶら下がった接続試行中なら即リトライ（後退も 1 秒へ戻る）
             }
         }
+        // [#886] 署名（NIP-46）とウォレット（NWC）の中継リレーも同じく再開する（以前は対象外で、裏でも繋ぎ続けていた）。
+        Nip46Manager.onForeground()
+        NwcManager.onForeground()
         retryUnsent()   // [#423] 未送信を送り直す
     }
 
@@ -586,6 +591,8 @@ class EventRepository(
                 bgPausedCount++
                 lastBgPausedAtSec = currentUnixTime()
             }
+            Nip46Manager.onBackground()   // [#886]
+            NwcManager.onBackground()
         }
     }
 

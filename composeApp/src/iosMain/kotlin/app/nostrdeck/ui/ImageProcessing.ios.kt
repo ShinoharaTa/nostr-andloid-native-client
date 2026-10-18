@@ -34,9 +34,9 @@ import platform.UIKit.UIImageOrientation
  * HIGH でも編集があれば原寸のまま再エンコードする（品質 [EDITED_HIGH_QUALITY]%）。
  */
 @OptIn(ExperimentalForeignApi::class)
-actual suspend fun processImage(img: PickedImage, maxDim: Int?, quality: Int, edit: ImageTransform): PickedImage =
+actual suspend fun platformProcessImage(img: PickedImage, maxDim: Int?, quality: Int, edit: ImageTransform): PickedImage =
     withContext(Dispatchers.Default) {
-        // HIGH = 原寸。編集が無ければ無加工。
+        // HIGH = 原寸。編集が無ければ無加工（[#742] メタデータは共通側の processImage が向きだけ残して取り除く）。
         if (maxDim == null && edit.isIdentity) return@withContext img
         runCatching {
             val decoded = UIImage(data = img.bytes.toNSData()) ?: return@withContext img
