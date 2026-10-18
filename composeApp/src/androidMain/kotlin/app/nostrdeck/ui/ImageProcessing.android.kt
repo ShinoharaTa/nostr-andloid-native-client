@@ -26,9 +26,9 @@ import java.io.ByteArrayOutputStream
  * [#739] 投稿前の向きの編集 [edit] は、EXIF の向きの後に重ねて同じ 1 回の描画で焼き込む。
  * HIGH でも編集があれば原寸のまま再エンコードする（品質 [EDITED_HIGH_QUALITY]%）。
  */
-actual suspend fun processImage(img: PickedImage, maxDim: Int?, quality: Int, edit: ImageTransform): PickedImage =
+actual suspend fun platformProcessImage(img: PickedImage, maxDim: Int?, quality: Int, edit: ImageTransform): PickedImage =
     withContext(Dispatchers.Default) {
-        // HIGH = 原寸。編集が無ければ無加工（EXIF ごと元バイトを渡すので向きは保たれる）。
+        // HIGH = 原寸。編集が無ければ無加工（[#742] メタデータは共通側の processImage が向きだけ残して取り除く）。
         if (maxDim == null && edit.isIdentity) return@withContext img
         runCatching {
             // 1) 寸法だけ取得して縮小率(inSampleSize)を概算。

@@ -123,6 +123,14 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
+        val desktopTest by getting {
+            dependencies {
+                // [#855] テスト内で最小のリレー（WebSocket サーバー）を立て、外部リレーに依存しない
+                implementation(libs.ktor.server.core)
+                implementation(libs.ktor.server.cio)
+                implementation(libs.ktor.server.websockets)
+            }
+        }
     }
 }
 

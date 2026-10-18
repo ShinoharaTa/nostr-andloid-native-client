@@ -30,10 +30,10 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * [#7] NWC の E2E: 公開リレー上に**フェイクウォレット**（使い捨て鍵）を立て、
- * info(13194) → pay_invoice(23194) → 応答(23195) の往復を実リレー経由で検証する。
+ * [#7] NWC の E2E: リレー上に**フェイクウォレット**（使い捨て鍵）を立て、
+ * info(13194) → pay_invoice(23194) → 応答(23195) の往復をリレー経由で検証する。
  * NIP-04 の双方向暗号・e タグ待ち合わせ・エラー応答まで通しで確認できる。
- * ネットワーク依存（wss://nos.lol）。失敗する場合はリレー疎通を確認すること。
+ * [#855] リレーはテスト内で立てる最小のもの（[LocalRelay]）。以前は wss://nos.lol に依存していて、繋がらないと落ちていた。
  */
 class NwcClientTest {
     private val secp = Secp256k1.get()
@@ -52,7 +52,8 @@ class NwcClientTest {
 
     @Test
     fun payInvoiceRoundtripOverRelay() = runBlocking {
-        val relayUrl = "wss://nos.lol"
+        val localRelay = LocalRelay().also { it.start() }
+        val relayUrl = localRelay.url
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val walletSecret = secureRandomBytes(32)
@@ -115,6 +116,7 @@ class NwcClientTest {
             wallet.stop()
         } finally {
             scope.cancel()
+            localRelay.stop()
         }
     }
 

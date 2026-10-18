@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 import app.nostrdeck.model.ImageCompressionPrefs
+import app.nostrdeck.model.ImageMetadata
 import app.nostrdeck.model.ImageTransform
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -33,13 +34,39 @@ fun ImageCompressionPrefs.maxDimFor(resolution: ImageResolution): Int? = when (r
  *
  * [#739] [edit] は投稿前に付けた向きの編集（回転・左右反転）。EXIF の向きを直した後に重ねて画素へ焼き込む。
  * HIGH でも編集があれば原寸のまま品質 [EDITED_HIGH_QUALITY]% で再エンコードする（編集が無ければ従来どおり無加工）。
+ *
+ * 呼び出し側は [processImage] を使うこと（無加工で返った画像のメタデータを取り除く）。
  */
-expect suspend fun processImage(
+expect suspend fun platformProcessImage(
     img: PickedImage,
     maxDim: Int?,
     quality: Int,
     edit: ImageTransform = ImageTransform.IDENTITY,
 ): PickedImage
+
+/**
+ * [platformProcessImage] に、[#742] メタデータの除去を重ねたもの。アップロードする画像は必ずここを通す。
+ *
+ * 再エンコードした画像にはメタデータが残らない。無加工で返った画像（HIGH・Desktop・デコードできなかったとき）は、
+ * 元のバイト列に撮影場所（GPS）などの EXIF が入ったままなので、画素に触らずにメタデータの区画だけ取り除く
+ * （[ImageMetadata]。JPEG / PNG。向きは残す）。取り除けない形式（HEIC / WebP など）は、原寸のまま品質
+ * [EDITED_HIGH_QUALITY]% で再エンコードして消す（Desktop は加工できないのでそのまま）。GIF は動きが消えるので触らない。
+ */
+suspend fun processImage(
+    img: PickedImage,
+    maxDim: Int?,
+    quality: Int,
+    edit: ImageTransform = ImageTransform.IDENTITY,
+): PickedImage {
+    val out = platformProcessImage(img, maxDim, quality, edit)
+    if (out !== img) return out
+    ImageMetadata.strip(img.bytes)?.let { stripped ->
+        return if (stripped === img.bytes) img else PickedImage(stripped, img.mime, img.name)
+    }
+    if (img.mime == "image/gif" || !canEditImageOrientation) return img
+    // 長辺の上限を実質無しにして「縮めずに再エンコードだけ」させる（HIGH の編集と同じ品質）。
+    return platformProcessImage(img, Int.MAX_VALUE, EDITED_HIGH_QUALITY, edit)
+}
 
 /** [#739] HIGH（原寸）で向きを編集したときの再エンコード品質。原寸を選んだ意図に合わせて高めにする。 */
 const val EDITED_HIGH_QUALITY = 95
