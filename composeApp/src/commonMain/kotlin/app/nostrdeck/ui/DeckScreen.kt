@@ -641,9 +641,12 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         }
         ColumnRenderer.THREAD -> {
             val repo = LocalRepository.current
-            val focusId = spec.filter.eventId
+            val openedId = spec.filter.eventId
+            // [#901] kind:7 / 16 で開かれたら元の投稿に付け替え、そのリアクションを統計行で光らせる。
+            val anchor = if (repo != null && openedId != null) rememberThreadAnchor(repo, openedId) else null
+            val focusId = anchor?.focusId
             if (repo != null && focusId != null) {
-                DisposableEffect(spec.id) {
+                DisposableEffect(spec.id, focusId) {
                     repo.subscribeThread(spec.id, focusId)
                     // [#270] 起点ノートへの反応（kind:7/6/16）も購読して集計を出す。
                     repo.subscribeNoteEngagement("${spec.id}_engage", focusId)
@@ -652,18 +655,18 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                         repo.unsubscribeColumn("${spec.id}_engage")
                     }
                 }
-                val allEntries = remember(spec.id) { repo.threadFeed(focusId) }
+                val allEntries = remember(spec.id, focusId) { repo.threadFeed(focusId) }
                     .collectAsState(emptyList()).value
                 // スレッドは起点ノートは残し、ミュート著者の返信のみ隠す。
                 val entries = if (revealed) allEntries
                 else allEntries.filterNot { it.note.event.id != focusId && matcher.muted(it.note) }
                 // 起点ノートへの Zap を購読して「リプライ風」に列挙する。
                 SubscribeZaps(repo, spec.id, listOf(focusId))
-                val zaps = remember(spec.id) { repo.zapsForNote(focusId) }.collectAsState(emptyList()).value
+                val zaps = remember(spec.id, focusId) { repo.zapsForNote(focusId) }.collectAsState(emptyList()).value
                 // [#270] 起点ノートのリアクション内訳とリプライ/リポスト数。
-                val focusReactions = remember(spec.id) { repo.noteReactionsFlow(focusId) }
+                val focusReactions = remember(spec.id, focusId) { repo.noteReactionsFlow(focusId) }
                     .collectAsState(emptyList()).value
-                val focusEngagement = remember(spec.id) { repo.noteEngagementFlow(focusId) }
+                val focusEngagement = remember(spec.id, focusId) { repo.noteEngagementFlow(focusId) }
                     .collectAsState(null).value
                 // [#222] スレッドカラムも j/k 選択と r/t/f/b/Enter を使えるようにする。
                 val selIdx = kbColumnSelection(
@@ -675,7 +678,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                 )
                 // [#380] 起点が NIP-22 コメント(kind:1111)なら、ルート（記事/外部URL等）の根カードを
                 // スレッド先頭に出す。eventByIdFlow は完全なタグを持つので大文字タグを読める。
-                val focusEvent = remember(spec.id) { repo.eventByIdFlow(focusId) }
+                val focusEvent = remember(spec.id, focusId) { repo.eventByIdFlow(focusId) }
                     .collectAsState(null).value
                 val rootCard: (@Composable () -> Unit)? =
                     if (focusEvent != null && focusEvent.kind == 1111) ({ CommentRootCard(focusEvent) }) else null
@@ -687,6 +690,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     onQuote = { note -> state.quoting = note.event; state.showCompose = true },
                     onAuthorClick = { pk -> state.openProfile(pk) },
                     rootCard = rootCard,
+                    highlight = anchor.highlight,
                 )
             } else {
                 ThreadColumn(spec, SampleData.thread(), modifier, listState, menu = menu)

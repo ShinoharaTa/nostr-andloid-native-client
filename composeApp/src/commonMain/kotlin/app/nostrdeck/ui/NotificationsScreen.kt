@@ -124,7 +124,14 @@ internal fun openNotificationTarget(
         state.navDest = app.nostrdeck.state.NavDest.DM
         return
     }
-    notificationRoute(n)?.let { state.openDetail(it); return }
+    val route = notificationRoute(n)
+    // [#901] リアクションの通知は、相手のリアクション（kind:7）そのものを開く。スレッド画面が元の投稿に付け替え、
+    // そのリアクションの行を光らせる（対象がチャンネルの発言などスレッド以外に開くものはそのまま）。
+    if (n.kind == NotificationKind.REACTION && route is DetailRoute.ThreadView) {
+        if (openEvent != null) openEvent(n.id) else state.openThreadDetail(n.id)
+        return
+    }
+    route?.let { state.openDetail(it); return }
     val targetId = n.targetNoteId ?: n.id
     if (openEvent != null) openEvent(targetId) else state.openThreadDetail(targetId)
 }
@@ -406,6 +413,17 @@ fun NoticeRow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { ReactionDisplay(n.reaction ?: "❤️", n.reactionImageUrl) }
                         n.reactionNote?.let { rn -> ReactionEventActions(rn, onQuote = onQuote?.let { cb -> { cb(rn) } }) }
+                    }
+                    Spacer(Modifier.size(DeckDensity.NoteGap))
+                }
+                // [#901] 対象が自分のリアクションなら「あなたのリアクション 👍」の 1 行を添え、カードは元の投稿。
+                n.targetReaction?.let { tr ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HintText(stringResource(Res.string.notif_your_reaction))
+                        Spacer(Modifier.width(DeckSpace.Xs))
+                        val img = tr.imageUrl
+                        if (img != null) AnimatedEmoji(img, contentDescription = tr.display, modifier = Modifier.emojiSize(img, DeckType.Sub.asEmojiSize()))
+                        else Text(tr.display, color = DeckColors.Text, fontSize = DeckType.Sub)
                     }
                     Spacer(Modifier.size(DeckDensity.NoteGap))
                 }

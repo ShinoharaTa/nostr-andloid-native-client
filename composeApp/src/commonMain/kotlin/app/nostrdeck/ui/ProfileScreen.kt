@@ -1199,8 +1199,11 @@ private fun UserListRow(pubkey: String, profile: app.nostrdeck.db.Profile?, onCl
 /* ---------- スレッド詳細（プロフィール内のノートタップで開く全幅スレッド） ---------- */
 
 @Composable
-fun ThreadDetail(state: DeckState, eventId: String) {
+fun ThreadDetail(state: DeckState, openedId: String) {
     val repo = LocalRepository.current
+    // [#901] kind:7 / 16 で開かれたら元の投稿に付け替え、そのリアクションを統計行で光らせる。
+    val anchor = rememberThreadAnchor(repo, openedId)
+    val eventId = anchor.focusId
     val subId = "overlay_thread_$eventId"
     androidx.compose.runtime.DisposableEffect(eventId) {
         repo?.subscribeThread(subId, eventId)
@@ -1252,5 +1255,6 @@ fun ThreadDetail(state: DeckState, eventId: String) {
         onQuote = { state.quoting = it.event; state.showCompose = true },
         onAuthorClick = { state.openProfile(it) },
         rootCard = rootCard,
+        highlight = anchor.highlight,
     )
 }
