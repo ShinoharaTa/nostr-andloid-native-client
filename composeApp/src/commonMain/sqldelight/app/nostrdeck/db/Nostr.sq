@@ -473,6 +473,16 @@ WHERE e.kind = 7 AND et.value = :id
   AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e')
 ORDER BY e.created_at DESC;
 
+-- [#903] リアクションの木: 対象（最後の e タグ）が :ids のどれかである kind:7 / 16 を、名前解決込みで古い順に。
+reactionNodesForTargets:
+SELECT e.id, e.pubkey, e.kind, e.content, e.tags_json, e.created_at, et.value AS target, p.name AS pname, p.picture_url AS ppicture
+FROM event e
+JOIN event_tag et ON et.event_id = e.id AND et.tag = 'e'
+LEFT JOIN profile p ON p.pubkey = e.pubkey
+WHERE e.kind IN (7, 16) AND et.value IN :ids
+  AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e')
+ORDER BY e.created_at ASC;
+
 -- [#254] 投稿詳細: リポストした人（同一人物の重複リポストは1件に）。新しい順。
 repostersForNote:
 SELECT e.pubkey, p.name AS pname, p.picture_url AS ppicture, MAX(e.created_at) AS at
