@@ -263,6 +263,11 @@ data class NotificationUi(
     val dmUnread: Int = 0,
     /** [#875] REACTION のとき、リアクションそのもの（kind:7）。行からリアクション・リポストする対象。 */
     val reactionNote: NoteUi? = null,
+    /**
+     * [#901] 対象が自分のリアクション（kind:7）だったとき、その絵文字。本体の [targetNote] はそのリアクションが付いた
+     * 元の投稿になる（「あなたのリアクション 👍」の 1 行を添えて出す）。対象が投稿なら null。
+     */
+    val targetReaction: ReactionUi? = null,
 )
 
 /**

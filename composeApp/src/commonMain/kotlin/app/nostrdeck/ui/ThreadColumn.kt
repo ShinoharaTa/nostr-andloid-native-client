@@ -26,7 +26,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +83,8 @@ fun ThreadColumn(
     onAuthorClick: ((String) -> Unit)? = null,
     // [#380] NIP-22 コメントスレッドの「根のカード」（ルートが記事/外部URL等の非ノートのとき）。
     rootCard: (@Composable () -> Unit)? = null,
+    // [#901] 統計行で光らせるリアクション（kind:7 の id で開かれたとき。[rememberThreadAnchor]）。
+    highlight: ReactionHighlight? = null,
 ) {
     // [#254] 「リプライ風」に並べるコメント付き Zap。件数を [#401] の再適用判定にも使うので、
     // LazyColumn の中ではなくここで絞り込む。
@@ -93,6 +103,14 @@ fun ThreadColumn(
             onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
         )
         HorizontalDivider(color = DeckColors.Border)
+        // [#901] 光らせるリアクションがあれば、起点の行（統計行はその中）へ一度だけ寄せる（#791 と同じく保存する）。
+        val focusedIndex = entries.indexOfFirst { it.isFocused }
+        var highlightJumped by rememberSaveable(highlight?.eventId) { mutableStateOf(false) }
+        LaunchedEffect(highlight?.eventId, focusedIndex >= 0) {
+            if (highlight == null || focusedIndex < 0 || highlightJumped) return@LaunchedEffect
+            highlightJumped = true
+            listState.scrollToItem(focusedIndex + (if (rootCard != null) 1 else 0))
+        }
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             rootCard?.let { card -> item("comment-root-card") { card() } }
             itemsIndexed(entries, key = { _, it -> it.note.event.id }) { index, entry ->
@@ -103,6 +121,7 @@ fun ThreadColumn(
                     zaps = if (entry.isFocused) zaps else emptyList(),
                     selected = index == selectedIndex,   // [#222]
                     onReply = { onReply(entry.note) }, onQuote = { onQuote(entry.note) }, onAuthorClick = onAuthorClick,
+                    highlight = if (entry.isFocused) highlight else null,
                 )
             }
             // [#254] Zap の合計＋誰が、は FocusNoteStats（⚡行）に統合。ここには
@@ -130,6 +149,7 @@ private fun ThreadRow(
     onReply: () -> Unit,
     onQuote: () -> Unit = {},
     onAuthorClick: ((String) -> Unit)? = null,
+    highlight: ReactionHighlight? = null,   // [#901]
 ) {
     val bg = when {
         entry.isFocused -> DeckColors.AccentWeak
@@ -145,7 +165,7 @@ private fun ThreadRow(
         NoteItem(entry.note, onReply = onReply, onQuote = onQuote, onAuthorClick = onAuthorClick, selected = selected)
         if (entry.isFocused) {
             FocusNoteMeta(entry.note)
-            FocusNoteStats(entry.note.event.id, reactions, engagement, zaps, onAuthorClick)
+            FocusNoteStats(entry.note.event.id, reactions, engagement, zaps, onAuthorClick, highlight)
         }
     }
 }
@@ -184,10 +204,24 @@ private fun FocusNoteStats(
     engagement: NoteEngagement?,
     zaps: List<ZapUi> = emptyList(),
     onAuthorClick: ((String) -> Unit)? = null,
+    highlight: ReactionHighlight? = null,   // [#901]
 ) {
     val repo = LocalRepository.current
     val groups = repo?.let { remember(noteId) { it.noteReactionPeopleFlow(noteId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#901] 開いたリアクションの行: その人を先頭に移し、下地を点けてから薄く消す（#791 のチャンネルの発言と同じ手順）。
+    fun isHighlighted(g: app.nostrdeck.model.ReactionGroupUi): Boolean =
+        highlight != null && g.display == highlight.display && g.people.any { it.pubkey == highlight.pubkey }
+    val highlightArrived = groups.any { isHighlighted(it) }
+    val glow = remember(highlight?.eventId) { Animatable(0f) }
+    var glowed by rememberSaveable(highlight?.eventId) { mutableStateOf(false) }
+    LaunchedEffect(highlight?.eventId, highlightArrived) {
+        if (highlight == null || !highlightArrived || glowed) return@LaunchedEffect
+        glowed = true
+        glow.snapTo(1f)
+        delay(HIGHLIGHT_HOLD_MS)
+        glow.animateTo(0f, tween(HIGHLIGHT_FADE_MS))
+    }
     val reposters = repo?.let { remember(noteId) { it.noteRepostersFlow(noteId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
     val replies = engagement?.replies ?: 0
@@ -229,18 +263,25 @@ private fun FocusNoteStats(
         }
         // 絵文字ごとのリアクションした人。
         groups.forEach { g ->
-            ReactorRow(
-                leading = {
-                    val img = g.imageUrl
-                    if (img != null) {
-                        // [#308] 文字側(Sub)と同じトークンから引く。[#861] 高さ固定・幅は縦横比どおり。
-                        AnimatedEmoji(img, contentDescription = g.display, modifier = Modifier.emojiSize(img, DeckType.Sub.asEmojiSize()))
-                    } else {
-                        Text(g.display, fontSize = DeckType.Sub)
-                    }
-                },
-                label = "${g.people.size}", people = g.people, onAuthorClick = onAuthorClick,
-            )
+            val hl = isHighlighted(g)
+            val people = if (hl) g.people.sortedByDescending { it.pubkey == highlight?.pubkey } else g.people
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Sm))
+                    .background(if (hl) DeckColors.Accent.copy(alpha = 0.28f * glow.value) else DeckColors.Accent.copy(alpha = 0f)),
+            ) {
+                ReactorRow(
+                    leading = {
+                        val img = g.imageUrl
+                        if (img != null) {
+                            // [#308] 文字側(Sub)と同じトークンから引く。[#861] 高さ固定・幅は縦横比どおり。
+                            AnimatedEmoji(img, contentDescription = g.display, modifier = Modifier.emojiSize(img, DeckType.Sub.asEmojiSize()))
+                        } else {
+                            Text(g.display, fontSize = DeckType.Sub)
+                        }
+                    },
+                    label = "${g.people.size}", people = people, onAuthorClick = onAuthorClick,
+                )
+            }
         }
     }
 }
@@ -295,3 +336,7 @@ private fun ReplyBox(enabled: Boolean, onClick: () -> Unit) {
             modifier = Modifier.padding(DeckSpace.Xs))
     }
 }
+
+/** [#901] 光らせる長さ（#791 のチャンネルの発言ジャンプと同じ値）。 */
+private const val HIGHLIGHT_HOLD_MS = 1_200L
+private const val HIGHLIGHT_FADE_MS = 900
