@@ -1,4 +1,2 @@
-- Image uploads wait until the server has finished processing and is serving the file, so posts no longer show "FILE NOT FOUND"
-- Fixed relay AUTH (NIP-42): responds even after a failed signature or a later login/setting change, resubscribes once authenticated, and resends what was rejected
-- Temporary connections to indexer/hint relays are closed when done; no lingering connections to relays you removed
-- Connection monitor shows per-relay AUTH status
+- Images posted at "High (original)" now have metadata such as location removed, with no loss in quality and orientation preserved
+- Relays used for remote signing (nostrconnect) and wallets (NWC) now pause after 5 minutes in the background and reconnect when you return
