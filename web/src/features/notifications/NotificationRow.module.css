@@ -124,6 +124,28 @@
   min-width: 0;
 }
 
+/* [#904] 対象が自分のリアクションのときの「あなたのリアクション 👍」（ネイティブ HintText + Sub の絵文字） */
+.yourReaction {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  margin: 0;
+}
+
+.yourReactionLabel {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.yourReactionEmoji {
+  flex: 0 1 auto;
+  display: flex;
+  min-width: 0;
+  color: var(--text);
+}
+
 /* DM の本体 = 未読の数の 1 行（本文は出さない） */
 .dmText {
   margin: 0;

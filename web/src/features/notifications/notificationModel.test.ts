@@ -187,6 +187,17 @@ describe("notificationSnippet / notificationHref", () => {
     expect(idOf(notificationHref(reply))).toBe(A);
     expect(idOf(notificationHref(mention))).toBe(mention.id);
   });
+
+  it("[#904] リアクションは通知そのもの（相手の kind:7）を開く。対象がチャンネルの発言ならルームのまま", () => {
+    const reaction = toNotification(ev({ kind: 7, content: "+", tags: [["e", A]] }));
+    if (!reaction) throw new Error("not a notification");
+    const decoded = (href: string) => decode(href.replace(/^\/e\//, ""));
+    const opened = decoded(notificationHref(reaction));
+    expect(opened.type === "nevent" ? opened.data.id : null).toBe(reaction.id);
+    const message = ev({ id: A, kind: 42 });
+    const room = decoded(notificationHref(reaction, message));
+    expect(room.type === "nevent" ? [room.data.id, room.data.kind] : null).toEqual([A, 42]);
+  });
 });
 
 describe("[#817] notificationHref（対象がパブリックチャット）", () => {

@@ -57,9 +57,13 @@ describe("辞書の整合（ja / en / ja-kansai）", () => {
     expect(mismatched).toEqual([]);
   });
 
-  it("どの辞書にも空の値は無い", () => {
+  it("どの辞書にも空の値は無い（ネイティブで言語の語順のために空にしているキーを除く）", () => {
+    // [#904] thread_reaction_to_suffix は ja「へ」/ en「」（「on 〇〇’s 👍」で終わる）。描く側は空なら出さない
+    const intentionallyEmpty = new Set(["thread_reaction_to_suffix"]);
     for (const dict of [nativeJa, nativeEn, webJa, webEn, jaKansai] as Dict[]) {
-      const empty = Object.keys(dict).filter((k) => (dict[k] ?? "").trim() === "");
+      const empty = Object.keys(dict).filter(
+        (k) => !intentionallyEmpty.has(k) && (dict[k] ?? "").trim() === "",
+      );
       expect(empty).toEqual([]);
     }
   });

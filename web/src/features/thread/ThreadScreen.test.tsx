@@ -1,11 +1,12 @@
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { npubEncode } from "nostr-tools/nip19";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import type { ReactElement } from "react";
 import { useLocation } from "react-router";
 import { VirtuosoMockContext } from "react-virtuoso";
 import type { Subject } from "rxjs";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatAbsoluteTime } from "../../lib/time";
 import { useEventByAddress } from "../../nostr/loaders";
 import { subscribeTo } from "../../nostr/pool";
@@ -396,4 +397,117 @@ it("コメント付き Zap だけを返信の後に新しい順で行にする�
   // 返信の後
   const replyArticle = screen.getByText(reply.content).closest("article") as HTMLElement;
   expect(replyArticle.compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+describe("[#904] リアクション（kind:7 / 16）で開いたとき", () => {
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  /** 名前（kind:0）を持つ鍵 */
+  function named(name: string): Uint8Array {
+    const key = generateSecretKey();
+    stored(0, [], { key, content: JSON.stringify({ name }) });
+    return key;
+  }
+
+  const avatarHrefs = (row: HTMLElement) =>
+    within(row)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+  const rowWith = (container: HTMLElement, text: string) =>
+    reactorRows(container).find((row) => within(row).queryByText(text)) as HTMLElement;
+
+  it("元の投稿のスレッドに付け替え、統計行のその絵文字の行でその人を先頭にして寄せてから光らせる", () => {
+    const { focus } = conversation();
+    const alice = generateSecretKey();
+    const opened = stored(7, [["e", focus.id]], { key: alice, content: "👍", createdAt: 1_100 });
+    // 新しい人（本来は先頭）
+    stored(7, [["e", focus.id]], { content: "👍", createdAt: 1_200 });
+    stored(7, [["e", focus.id]], { content: "❤️", createdAt: 1_300 });
+
+    const { container } = render(<ThreadScreen onBack={() => {}} pointer={{ id: opened.id }} />);
+
+    expect(screen.getByText("起点の投稿").closest("[data-focused]")).toHaveAttribute("data-focused", "true");
+    expect(screen.queryByText(/Web 版ではまだ表示できません/)).toBeNull();
+    const thumbs = rowWith(container, "👍");
+    expect(thumbs).toHaveAttribute("data-rx-highlight");
+    expect(thumbs).toHaveAttribute("data-flash");
+    expect(avatarHrefs(thumbs)[0]).toBe(`/p/${npubEncode(getPublicKey(alice))}`);
+    expect(rowWith(container, "❤️")).not.toHaveAttribute("data-rx-highlight");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+  });
+
+  it("リアクションへのリアクションは木の中の行が光り、見出しは「↳ 名前 の 👍 へ」。L2 の REQ を張る", () => {
+    const { focus } = conversation();
+    const mine = stored(7, [["e", focus.id]], { key: named("しの"), content: "👍", createdAt: 1_100 });
+    const midori = generateSecretKey();
+    const theirs = stored(7, [["e", mine.id]], { key: midori, content: "❤️", createdAt: 1_200 });
+
+    const { container } = render(<ThreadScreen onBack={() => {}} pointer={{ id: theirs.id }} />);
+
+    const heading = screen.getByText("↳ しの の").closest("p") as HTMLElement;
+    expect(heading).toHaveTextContent("↳ しの の👍へ");
+    expect(rowWith(container, "👍")).not.toHaveAttribute("data-rx-highlight");
+    const deep = rowWith(container, "❤️");
+    expect(deep).toHaveAttribute("data-rx-highlight");
+    expect(avatarHrefs(deep)).toEqual([`/p/${npubEncode(getPublicKey(midori))}`]);
+    const branchReq = vi
+      .mocked(subscribeTo)
+      .mock.calls.flatMap(([, filters]) => filters)
+      .find((f) => f.kinds?.includes(16) && f["#e"]?.includes(mine.id));
+    expect(branchReq).toMatchObject({ kinds: [7, 16], "#e": [mine.id] });
+  });
+
+  it("途中の投稿が手元に無ければ読み込み中で待ち、届いたら付け替える", () => {
+    const post = signed(1, [], { content: "後から届く投稿", createdAt: 1_000 });
+    const opened = stored(7, [["e", post.id]], { content: "+", createdAt: 1_100 });
+
+    render(<ThreadScreen onBack={() => {}} pointer={{ id: opened.id }} />);
+
+    expect(screen.getByText("読み込み中…")).toBeInTheDocument();
+    expect(screen.queryByText(/Web 版ではまだ表示できません/)).toBeNull();
+    act(() => {
+      eventStore.add(post);
+    });
+    expect(screen.getByText("後から届く投稿")).toBeInTheDocument();
+  });
+
+  it("4 秒待っても届かなければ従来どおり（kind 7 は表示できません）", () => {
+    vi.useFakeTimers();
+    try {
+      const opened = stored(7, [["e", "f".repeat(64)]], { content: "+" });
+      render(<ThreadScreen onBack={() => {}} pointer={{ id: opened.id }} />);
+      expect(screen.getByText("読み込み中…")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(4_000);
+      });
+      expect(screen.getByText("kind 7 の投稿は Web 版ではまだ表示できません")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("e タグの無いリアクションは辿らず従来どおり", () => {
+    const opened = stored(7, [], { content: "+" });
+    render(<ThreadScreen onBack={() => {}} pointer={{ id: opened.id }} />);
+    expect(screen.getByText("kind 7 の投稿は Web 版ではまだ表示できません")).toBeInTheDocument();
+  });
+
+  it("枝は 3 つまで出し、残りは「ほか n 件」で開く（行の人の順）", async () => {
+    const { focus } = conversation();
+    for (let i = 0; i < 5; i++) {
+      const rx = stored(7, [["e", focus.id]], { key: named(`p${i}`), content: "👍", createdAt: 1_100 + i });
+      stored(7, [["e", rx.id]], { content: "🎉", createdAt: 1_200 + i });
+    }
+
+    render(<ThreadScreen onBack={() => {}} pointer={{ id: focus.id }} />);
+
+    // 行の人の順（新しい順）: p4 → p3 → p2
+    expect(screen.getAllByText(/^↳ /).map((el) => el.textContent)).toEqual(["↳ p4 の", "↳ p3 の", "↳ p2 の"]);
+    await userEvent.click(screen.getByRole("button", { name: "ほか 2 件" }));
+    expect(screen.getAllByText(/^↳ /)).toHaveLength(5);
+  });
 });

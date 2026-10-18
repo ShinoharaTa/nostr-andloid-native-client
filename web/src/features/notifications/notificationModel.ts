@@ -137,6 +137,9 @@ export function notificationSnippet(target: NostrEvent): string {
  * 行を押したときに開くスレッド（対象があれば対象、無ければ通知そのもの）。DM は相手との会話。
  * [#817] 対象（取れていれば target）が kind:42 / kind:40 なら、nevent に kind を載せて本文リンクと同じ /e/ にする
  * （#798 の経路でルームを詳細に重ねて開き、kind:42 はその発言の位置へ送る。戻ると通知に戻る）
+ * [#904] リアクションの通知は、相手のリアクション（kind:7）そのもの（item.id）を開く。スレッド画面が元の投稿に付け替え、
+ * そのリアクションの行を光らせる（ネイティブ #901 の NotificationsScreen.kt openNotificationTarget。
+ * 対象がチャンネルの発言などスレッド以外に開くものはそのまま）
  */
 export function notificationHref(item: NotificationItem, target?: NostrEvent): string {
   if (item.kind === "dm") return `/messages/${npubEncode(item.actor)}`;
@@ -144,6 +147,7 @@ export function notificationHref(item: NotificationItem, target?: NostrEvent): s
   const kind = target && target.id === item.target.id ? target.kind : undefined;
   // 40 / 42 は eventLink.ts の KIND_CHANNEL_CREATE / KIND_CHANNEL_MESSAGE（あちらはローダーを読み込むので import しない）
   if (kind === 40 || kind === 42) return hrefForEvent({ ...item.target, kind });
+  if (item.kind === "reaction") return hrefForEvent({ id: item.id });
   return hrefForEvent(item.target);
 }
 

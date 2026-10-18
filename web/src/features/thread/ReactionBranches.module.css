@@ -1,0 +1,56 @@
+/* [#904] 枝の字下げ（リプライの深さ 1 段と同じ。ThreadRow.module.css の 18px × --ui-scale） */
+.branches {
+  padding-left: calc(18px * var(--ui-scale));
+}
+
+/* 「↳ 〇〇 の 👍 へ」: 名前は残りの幅で省略、絵文字と「へ」は縮めない（絵文字は ReactorEmoji が収める） */
+.heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  margin: 0;
+  padding-top: var(--sp-1);
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.headingName {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headingEmoji {
+  flex: 0 1 auto;
+  display: flex;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.headingSuffix {
+  flex: none;
+  white-space: nowrap;
+}
+
+.repost {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--repost);
+}
+
+/* 「ほか n 件」（ネイティブ: Accent の Label） */
+.more {
+  display: block;
+  padding: var(--sp-1) 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--type-label);
+  cursor: pointer;
+}

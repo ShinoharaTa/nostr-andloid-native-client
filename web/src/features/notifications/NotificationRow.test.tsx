@@ -139,11 +139,54 @@ describe("リアクション", () => {
     }
     const name = await screen.findByRole("link", { name: "alice" });
     expect(name.getAttribute("href")).toMatch(/^\/p\/npub1/);
+    // [#904] リアクションの行は通知そのもの（相手の kind:7）を開く（スレッド画面が元の投稿に付け替えて光らせる）
     const time = container.querySelector("time")?.closest("a");
-    expect(threadIdOf(time?.getAttribute("href"))).toBe(target.id);
+    expect(threadIdOf(time?.getAttribute("href"))).toBe(reaction.id);
     const card = screen.getByRole("link", CARD);
     expect(card).toHaveTextContent("自分の投稿");
     expect(card.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("[#904] 対象が自分のリアクション（kind:7）なら「あなたのリアクション 👍」の 1 行 + 元の投稿の引用カード", () => {
+    const post = finalizeEvent(
+      { kind: 1, created_at: unixNow() - 7200, tags: [], content: "相手の投稿" },
+      generateSecretKey(),
+    );
+    eventStore.add(post);
+    const mine = finalizeEvent(
+      {
+        kind: 7,
+        created_at: unixNow() - 3600,
+        tags: [
+          ["e", post.id],
+          ["p", post.pubkey],
+        ],
+        content: "👍",
+      },
+      meKey,
+    );
+    eventStore.add(mine);
+    const reaction = signed(
+      7,
+      withProfile("midori"),
+      [
+        ["e", mine.id],
+        ["p", me],
+      ],
+      "🎉",
+    );
+
+    const { container } = renderRow(itemOf(reaction));
+
+    const line = screen.getByText("あなたのリアクション");
+    expect(line.parentElement).toHaveTextContent("あなたのリアクション👍");
+    const card = screen.getByRole("link", CARD);
+    expect(card).toHaveTextContent("相手の投稿");
+    expect(line.compareDocumentPosition(card)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // kind:7 を投稿として描かない（引用カードは 1 枚だけで、中身は元の投稿）
+    expect(screen.getAllByRole("link", CARD)).toHaveLength(1);
+    const time = container.querySelector("time")?.closest("a");
+    expect(threadIdOf(time?.getAttribute("href"))).toBe(reaction.id);
   });
 
   it("カスタム絵文字は絵文字の行の画像（proxiedEmoji: wsrv の高さ 96・全フレーム）。2 回読めなければ :code: の文字", () => {

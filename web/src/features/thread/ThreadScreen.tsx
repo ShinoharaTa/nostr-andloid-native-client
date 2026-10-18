@@ -1,8 +1,8 @@
 import type { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { isAddressPointer } from "applesauce-core/helpers/pointers";
 import type { NostrEvent } from "nostr-tools/pure";
-import { useMemo } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useT } from "../../i18n";
 import { useEventByAddress } from "../../nostr/loaders";
 import { ScreenHeader } from "../../ui/ScreenHeader";
@@ -14,6 +14,7 @@ import { FocusNoteStats } from "./FocusNoteStats";
 import { ReplyBox } from "./ReplyBox";
 import { ThreadRow } from "./ThreadRow";
 import styles from "./ThreadScreen.module.css";
+import { useReactionAnchor } from "./useReactionAnchor";
 import { useThread } from "./useThread";
 import { ZapRow } from "./ZapRow";
 
@@ -56,6 +57,10 @@ const COMPONENTS = { Header: ListHeader, Footer: ListFooter };
  * 起点（解決後含む）が kind:30023 なら、このスレッド表示の代わりに記事リーダー（ArticleReader）を描く
  * （ネイティブ ProfileScreen.kt のスレッド→記事リーダーの切り替えと同じ）。ヘッダはここが持つ
  * （ネイティブ ArticleReader の見出し / ThreadOverlay の「スレッド」見出しの両方を兼ねる）。
+ * [#904] 起点が kind:7 / 16（通知のリアクション・リアクションの nevent）なら、最後の e を辿って元の投稿（P）の
+ * スレッドに付け替え（useReactionAnchor。途中を取りに行っている間は読み込み中）、辿った経路の最初の kind:7 を
+ * 統計行でハイライトする（ネイティブ #901 の DeckScreen.kt / ProfileScreen.kt ThreadDetail の rememberThreadAnchor）。
+ * そのときだけ起点の行へ一度寄せる（ネイティブ ThreadColumn.kt の highlightJumped。普段は自動スクロールしない）。
  */
 export function ThreadScreen({
   pointer,
@@ -69,13 +74,16 @@ export function ThreadScreen({
   const t = useT();
   const isAddress = isAddressPointer(pointer);
   const { event: addrEvent, failed: addrFailed } = useEventByAddress(isAddress ? pointer : null);
+  // [#904] kind:7 / 16 で開かれたら元の投稿に付け替える（naddr はリアクションではないので通さない）
+  const anchor = useReactionAnchor(isAddress ? null : pointer);
+  const highlight = anchor.highlight;
   const effectivePointer: EventPointer | null = isAddress
     ? addrEvent
       ? { id: addrEvent.id, relays: pointer.relays }
       : null
-    : pointer;
+    : anchor.pointer;
 
-  const { focus, entries, engagementEvents, loading } = useThread(effectivePointer);
+  const { focus, entries, engagementEvents, reactionTree, loading } = useThread(effectivePointer);
   // 起点への Zap 受領（kind:9735）
   useZapReceipts(effectivePointer ? [effectivePointer.id] : NO_IDS);
   const zaps = useNoteZaps(effectivePointer?.id ?? "");
@@ -84,13 +92,37 @@ export function ThreadScreen({
     [zaps],
   );
   const context = useMemo<ListContext>(() => ({ focus, zaps: commented }), [focus, commented]);
-  const replyTarget = entries.find((e) => e.isFocused)?.event ?? entries[0]?.event;
+  const focusIndex = entries.findIndex((e) => e.isFocused);
+  const replyTarget = entries[focusIndex]?.event ?? entries[0]?.event;
+
+  // [#904] 光らせるリアクションがあれば、起点の行（統計行はその中）へ一度だけ寄せる
+  const virtuoso = useRef<VirtuosoHandle>(null);
+  const jumpedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlight || focusIndex < 0 || jumpedFor.current === highlight.eventId) return;
+    jumpedFor.current = highlight.eventId;
+    virtuoso.current?.scrollToIndex({ index: focusIndex, align: "start" });
+  }, [highlight, focusIndex]);
+  // 光らせ終えたハイライト（統計行が描き直されても二度目は光らせない）
+  const [flashedId, setFlashedId] = useState<string | null>(null);
+  const flash = highlight !== null && flashedId !== highlight.eventId;
+  const highlightId = highlight?.eventId ?? null;
+  const onFlashed = useCallback(() => setFlashedId(highlightId), [highlightId]);
 
   if (!effectivePointer) {
     return (
       <>
         <ScreenHeader title={t("article_title")} subtitle="NIP-23 · kind:30023" onBack={onBack} />
         <p className={styles.empty}>{addrFailed ? t("web_article_failed") : t("loading")}</p>
+      </>
+    );
+  }
+
+  if (anchor.pending) {
+    return (
+      <>
+        <ScreenHeader title={t("thread_title")} subtitle="NIP-10" onBack={onBack} />
+        <p className={styles.empty}>{t("loading")}</p>
       </>
     );
   }
@@ -111,6 +143,7 @@ export function ThreadScreen({
             </>
           ) : (
             <Virtuoso
+              ref={virtuoso}
               style={{ height: "100%" }}
               data={entries}
               context={context}
@@ -121,7 +154,15 @@ export function ThreadScreen({
                   entry={entry}
                   stats={
                     entry.isFocused ? (
-                      <FocusNoteStats noteId={effectivePointer.id} events={engagementEvents} zaps={zaps} />
+                      <FocusNoteStats
+                        noteId={effectivePointer.id}
+                        events={engagementEvents}
+                        zaps={zaps}
+                        tree={reactionTree}
+                        highlight={highlight}
+                        flash={flash}
+                        onFlashed={onFlashed}
+                      />
                     ) : undefined
                   }
                 />

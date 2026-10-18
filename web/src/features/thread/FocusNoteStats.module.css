@@ -19,16 +19,3 @@
   height: var(--icon-sm);
   color: var(--zap);
 }
-
-/* 絵文字の大きさはネイティブ DeckType.Sub.asEmojiSize()（13dp）。[#862] 高さ固定・幅は縦横比どおり */
-.emoji {
-  height: 1em;
-  width: auto;
-  aspect-ratio: auto 1 / 1;
-  font-size: var(--type-sub);
-  object-fit: contain;
-}
-
-.emojiText {
-  font-size: var(--type-sub);
-}
