@@ -19,11 +19,12 @@ import {
   startNostrConnect,
   useNip46Auth,
 } from "./nip46";
+import { setNostrConnectRelay } from "./nip46RelayPref";
 import { getNip46Store, NIP46_ROW_ID } from "./nip46Store";
 
 const RELAY = "wss://relay.example/";
 const SECRET = "s3cret-token";
-const NOS_LOL = "wss://nos.lol/";
+const NSEC_APP = "wss://relay.nsec.app/";
 
 /** 届いた応答の処理（復号・JSON）を終わらせる */
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -554,7 +555,7 @@ describe("StrictNostrConnectSigner", () => {
 });
 
 describe("startNostrConnect", () => {
-  it("URI は nostrconnect://<client>?secret=…&name=Nostrism&url=…&perms=…&relay=wss%3A%2F%2Fnos.lol", () => {
+  it("URI は nostrconnect://<client>?secret=…&name=Nostrism&url=…&perms=…&relay=wss%3A%2F%2Frelay.nsec.app（既定）", () => {
     const { uri, done, cancel } = startNostrConnect();
     void done.catch(() => {});
 
@@ -565,9 +566,29 @@ describe("startNostrConnect", () => {
       ["name", "Nostrism"],
       ["url", `${location.origin}/`],
       ["perms", NIP46_PERMISSIONS.join(",")],
-      ["relay", "wss://nos.lol"],
+      ["relay", "wss://relay.nsec.app"],
     ]);
-    expect(query).toMatch(/&relay=wss%3A%2F%2Fnos\.lol$/);
+    expect(query).toMatch(/&relay=wss%3A%2F%2Frelay\.nsec\.app$/);
+    cancel();
+  });
+
+  it("[#899] 引数が無ければ設定値の中継リレーで URI を作り、そのリレーで待つ", async () => {
+    setNostrConnectRelay("wss://nos.lol");
+    const { uri, done, cancel } = startNostrConnect();
+    void done.catch(() => {});
+
+    expect(new URLSearchParams(uri.split("?")[1]).getAll("relay")).toEqual(["wss://nos.lol"]);
+    await vi.waitFor(() => expect(bunker.relay("wss://nos.lol/").challenge$.observed).toBe(true));
+    expect(bunker.relays.has(NSEC_APP)).toBe(false);
+    cancel();
+  });
+
+  it("[#899] 引数のリレーが設定値より優先", () => {
+    setNostrConnectRelay("wss://nos.lol");
+    const { uri, done, cancel } = startNostrConnect("wss://relay.example");
+    void done.catch(() => {});
+
+    expect(new URLSearchParams(uri.split("?")[1]).getAll("relay")).toEqual(["wss://relay.example"]);
     cancel();
   });
 
@@ -587,7 +608,7 @@ describe("startNostrConnect", () => {
       id: "nip46",
       pubkey: bunker.user,
       remote: bunker.remote,
-      relays: ["wss://nos.lol"],
+      relays: ["wss://relay.nsec.app"],
     });
     expect(JSON.stringify(row)).not.toContain(secret);
     const saved = await getNip46Store().load();
@@ -602,7 +623,7 @@ describe("startNostrConnect", () => {
     const { uri, done, cancel } = startNostrConnect();
     const result = done.catch((e: unknown) => e);
     await vi.waitFor(() => expect(bunker.openSubscriptions).toBe(1));
-    expect(bunker.relay(NOS_LOL).challenge$.observed).toBe(true);
+    expect(bunker.relay(NSEC_APP).challenge$.observed).toBe(true);
 
     bunker.acceptNostrConnect(uri, { result: "ack" });
     await tick();
@@ -613,7 +634,7 @@ describe("startNostrConnect", () => {
     expect(error).toMatchObject({ reason: "cancelled" });
     expect(bunker.requests).toHaveLength(0);
     expect(bunker.openSubscriptions).toBe(0);
-    expect(bunker.relay(NOS_LOL).challenge$.observed).toBe(false);
+    expect(bunker.relay(NSEC_APP).challenge$.observed).toBe(false);
     expect(nip46Signer()).toBeNull();
   });
 

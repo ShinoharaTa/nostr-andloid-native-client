@@ -5,6 +5,7 @@ import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setNip46PoolForTest } from "../signer/nip46";
+import { NOSTRCONNECT_RELAY_KEY } from "../signer/nip46RelayPref";
 import { LoginError, SESSION_FLAG_KEY, SESSION_KEY, useSession } from "../signer/session";
 import { getKeyVault } from "../signer/webKeyVault";
 import { installDialogPolyfill } from "../test/dialog";
@@ -450,6 +451,82 @@ describe("リモート署名（NIP-46）", () => {
       expect(screen.getByText("コピーしました")).toHaveAttribute("role", "status");
     });
 
+    describe("[#899] 中継リレー", () => {
+      const relayOf = (link: HTMLElement) =>
+        new URLSearchParams((link.getAttribute("href") ?? "").split("?")[1]).getAll("relay");
+
+      it("既定は relay.nsec.app。候補を切り替えると設定値に保存し、URI をそのリレーで作り直す", async () => {
+        useSession.setState({ status: "out" });
+        renderAt("/login");
+        const link = await showQr();
+        const group = screen.getByRole("group", { name: "中継リレー" });
+        expect(
+          within(group).getByText("署名アプリとの通信に使うリレーです。既定は relay.nsec.app"),
+        ).toBeVisible();
+        expect(within(group).getByRole("radio", { name: "relay.nsec.app" })).toBeChecked();
+        expect(relayOf(link)).toEqual(["wss://relay.nsec.app"]);
+        const before = link.getAttribute("href");
+        await vi.waitFor(() => expect(bunker.openSubscriptions).toBe(1));
+
+        await userEvent.click(within(group).getByRole("radio", { name: "nos.lol" }));
+
+        expect(localStorage.getItem(NOSTRCONNECT_RELAY_KEY)).toBe("wss://nos.lol");
+        await vi.waitFor(() =>
+          expect(relayOf(screen.getByRole("link", { name: "署名アプリで開く" }))).toEqual(["wss://nos.lol"]),
+        );
+        expect(screen.getByRole("link", { name: "署名アプリで開く" }).getAttribute("href")).not.toBe(before);
+        expect(within(group).getByRole("radio", { name: "nos.lol" })).toBeChecked();
+        // 前の待ちは閉じ、新しい待ちだけが残る。エラーは出さない
+        await vi.waitFor(() => expect(bunker.openSubscriptions).toBe(1));
+        expect(screen.getByText("承認待ち…")).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "拡張機能でログイン（NIP-07）" })).toBeDisabled();
+      });
+
+      it("手入力の wss:// を選び、候補の後ろに出す。wss:// でなければ保存しない", async () => {
+        useSession.setState({ status: "out" });
+        renderAt("/login");
+        await showQr();
+        const group = screen.getByRole("group", { name: "中継リレー" });
+        const input = within(group).getByLabelText("追加するリレーの URL");
+
+        await userEvent.type(input, "ws://relay.example");
+        await userEvent.click(within(group).getByRole("button", { name: "追加" }));
+        expect(within(group).getByRole("alert")).toHaveTextContent("ws:// のリレーは Web 版では使えません");
+        expect(localStorage.getItem(NOSTRCONNECT_RELAY_KEY)).toBeNull();
+
+        await userEvent.clear(input);
+        await userEvent.type(input, "wss://Relay.Example/");
+        await userEvent.click(within(group).getByRole("button", { name: "追加" }));
+
+        expect(localStorage.getItem(NOSTRCONNECT_RELAY_KEY)).toBe("wss://relay.example");
+        expect(input).toHaveValue("");
+        expect(
+          within(group)
+            .getAllByRole("radio")
+            .map((r) => r.getAttribute("value")),
+        ).toEqual(["wss://relay.nsec.app", "wss://nos.lol", "wss://relay.example"]);
+        expect(within(group).getByRole("radio", { name: "relay.example" })).toBeChecked();
+        await vi.waitFor(() =>
+          expect(relayOf(screen.getByRole("link", { name: "署名アプリで開く" }))).toEqual([
+            "wss://relay.example",
+          ]),
+        );
+      });
+
+      it("QR を出す前に選んだリレーで URI を作る", async () => {
+        useSession.setState({ status: "out" });
+        renderAt("/login");
+        await userEvent.click(summary());
+
+        await userEvent.click(screen.getByRole("radio", { name: "nos.lol" }));
+        expect(localStorage.getItem(NOSTRCONNECT_RELAY_KEY)).toBe("wss://nos.lol");
+        await userEvent.click(screen.getByRole("button", { name: "接続用の QR を表示（Amber など）" }));
+
+        expect(relayOf(screen.getByRole("link", { name: "署名アプリで開く" }))).toEqual(["wss://nos.lol"]);
+      });
+    });
+
     it("署名アプリが承認すると next へ戻り、nip46 でログインする", async () => {
       await installTestVault();
       useSession.setState({ status: "out" });
@@ -488,7 +565,7 @@ describe("リモート署名（NIP-46）", () => {
       useSession.setState({
         status: "out",
         startNostrConnectLogin: () => ({
-          uri: "nostrconnect://abc?secret=x&relay=wss%3A%2F%2Fnos.lol",
+          uri: "nostrconnect://abc?secret=x&relay=wss%3A%2F%2Frelay.nsec.app",
           done: new Promise<void>((_, reject) => {
             fail = reject;
           }),

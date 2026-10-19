@@ -7,10 +7,13 @@ import { afterEach, beforeAll, expect, it } from "vitest";
 import { RequireSession } from "../../app/RequireSession";
 import { unixNow } from "../../lib/time";
 import { eventStore } from "../../nostr/store";
+import { restoreNip46, setNip46PoolForTest } from "../../signer/nip46";
+import { getNip46Store } from "../../signer/nip46Store";
 import { createPasskeyVault, getPasskeyVault, setPasskeyVaultForTest } from "../../signer/passkeyVault";
 import { useSession } from "../../signer/session";
 import { createKeyVault } from "../../signer/webKeyVault";
 import { installDialogPolyfill } from "../../test/dialog";
+import { FakeBunker } from "../../test/fakeBunker";
 import { installTestVault, resetSession } from "../../test/fakeNostr";
 import { AccountSection } from "./AccountSection";
 
@@ -147,6 +150,31 @@ it("[#588] ① 現在のログインカードに名前・npub・ログイン方�
   expect(screen.getByText(`${npub.slice(0, 16)}…${npub.slice(-6)}`)).toBeInTheDocument();
   expect(screen.getByText("リモート署名（NIP-46）")).toBeInTheDocument();
   expect(screen.getByText("● 有効")).toBeInTheDocument();
+});
+
+it("[#899] リモート署名なら接続中の中継リレーを出す（それ以外の方式では出さない）", async () => {
+  await installTestVault();
+  const bunker = new FakeBunker();
+  setNip46PoolForTest(bunker);
+  await getNip46Store().save({
+    pubkey: bunker.user,
+    remote: bunker.remote,
+    relays: ["wss://relay.nsec.app"],
+    clientKey: generateSecretKey(),
+  });
+  expect(await restoreNip46(bunker.user)).toBe(true);
+  useSession.setState({ status: "in", method: "nip46", pubkey: bunker.user });
+
+  const { unmount } = render(<AccountSection />);
+
+  expect(await screen.findByText("wss://relay.nsec.app")).toBeInTheDocument();
+  expect(screen.getByText("中継リレー")).toBeInTheDocument();
+  unmount();
+
+  useSession.setState({ status: "in", method: "nip07", pubkey: bunker.user });
+  render(<AccountSection />);
+  expect(await screen.findByText("● 有効")).toBeInTheDocument();
+  expect(screen.queryByText("中継リレー")).not.toBeInTheDocument();
 });
 
 it("[#588] ③ 別のアカウントでログインし直す: 警告を確認するとログアウトして /login へ", async () => {

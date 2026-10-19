@@ -4,6 +4,7 @@ import { LogoutButton } from "../../app/LogoutButton";
 import { t, useT } from "../../i18n";
 import { shortNpub } from "../../lib/npub";
 import { displayName, useProfile } from "../../nostr/loaders";
+import { nip46Relays } from "../../signer/nip46";
 import { getPasskeyVault, isPasskeySupported } from "../../signer/passkeyVault";
 import { type SessionMethod, useSession } from "../../signer/session";
 import { AccountAvatar } from "../../ui/AccountAvatar";
@@ -45,6 +46,8 @@ function AccountCard({ me, method }: { me: string; method: SessionMethod | null 
   const t = useT();
   const profile = useProfile(me);
   const npub = useMemo(() => npubEncode(me), [me]);
+  // [#899] リモート署名なら接続中の中継リレーを小さく出す（選び直しはログアウトして入り直す）
+  const relays = method === "nip46" ? (nip46Relays() ?? []) : [];
   return (
     <div className={styles.card}>
       <div className={styles.cardHead}>
@@ -62,6 +65,12 @@ function AccountCard({ me, method }: { me: string; method: SessionMethod | null 
         <span className={styles.cardMethodValue}>{method ? METHOD_LABEL[method]() : t("signer_none")}</span>
         <span className={styles.active}>{t("account_active")}</span>
       </div>
+      {relays.length > 0 && (
+        <div className={styles.cardRelay}>
+          <span className={styles.cardMethodLabel}>{t("web_login_nip46_relay_title")}</span>
+          <span>{relays.map((url) => url.replace(/\/$/, "")).join(" ")}</span>
+        </div>
+      )}
     </div>
   );
 }

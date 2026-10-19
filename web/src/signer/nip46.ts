@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { t } from "../i18n";
 import type { Signer, SignerCap } from "../nostr/signer";
 import { showToast } from "../ui/toast";
+import { useNostrConnectRelay } from "./nip46RelayPref";
 import { getNip46Store } from "./nip46Store";
 
 /** 1 回の要求を待つ上限（ネイティブと同じ） */
@@ -31,9 +32,6 @@ export const NIP46_PERMISSIONS = [
   "nip04_encrypt",
   "nip04_decrypt",
 ];
-
-/** nostrconnect:// で署名アプリからの接続を待つリレー（ネイティブの DEFAULT_RELAY） */
-export const NOSTRCONNECT_RELAYS = ["wss://nos.lol"];
 
 /**
  * invalid-uri = bunker:// として読めない、timeout = 署名側が応答しない、rejected = 署名側が拒否・エラー、
@@ -321,14 +319,19 @@ export class StrictNostrConnectSigner extends NostrConnectSigner {
 /**
  * nostrconnect:// の URI を作り、署名アプリからの接続を待つ（ネイティブの Nip46Manager.connectNostrConnect）。
  * 承認されたらユーザーの公開鍵を得て接続情報を保管する。クライアント鍵・secret は使い捨て。
- * done の失敗は Nip46Error（timeout / cancelled / unavailable / rejected）。cancel で待ちをやめる（done は cancelled）
+ * done の失敗は Nip46Error（timeout / cancelled / unavailable / rejected）。cancel で待ちをやめる（done は cancelled）。
+ * relay は接続を待つ中継リレー。無ければ設定値（nip46RelayPref.ts。既定 wss://relay.nsec.app）
  */
-export function startNostrConnect(): { uri: string; done: Promise<{ pubkey: string }>; cancel(): void } {
+export function startNostrConnect(relay?: string): {
+  uri: string;
+  done: Promise<{ pubkey: string }>;
+  cancel(): void;
+} {
   const clientKey = generateSecretKey();
   const clientSigner = new PrivateKeySigner(clientKey);
   // ネイティブと同じ 16 byte の乱数の hex
   const connectSecret = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
-  const relays = [...NOSTRCONNECT_RELAYS];
+  const relays = [relay ?? useNostrConnectRelay.getState().relay];
   const inner = new StrictNostrConnectSigner({
     relays,
     signer: clientSigner,
@@ -461,6 +464,11 @@ export function resumeNip46(): void {
   current.inner.isConnected = true;
   current.stopAuth();
   current.stopAuth = watchAuth(current.relays, current.clientSigner);
+}
+
+/** いまの接続の中継リレー（設定の表示用）。接続が無ければ null */
+export function nip46Relays(): readonly string[] | null {
+  return active?.relays ?? null;
 }
 
 /** いまの NIP-46 の署名者。接続が無ければ null */

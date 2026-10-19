@@ -136,6 +136,16 @@
   font-size: var(--type-label);
 }
 
+/* [#899] リモート署名の中継リレー（ログイン方法の下に小さく） */
+.cardRelay {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--type-label);
+  overflow-wrap: anywhere;
+}
+
 .mono {
   margin: 0;
   color: var(--text-2);

@@ -166,6 +166,8 @@
   "web_login_nip46_open": "Open in signer app",
   "web_login_nip46_qr_hint": "Scan the QR code with a signer app (such as Amber), or open the link below if this device has one, then approve the connection.",
   "web_login_nip46_qr_label": "QR code for connecting a signer app",
+  "web_login_nip46_relay_desc": "Relay used to talk to your signer app. Default: relay.nsec.app",
+  "web_login_nip46_relay_title": "Relay",
   "web_login_nip46_show_qr": "Show a connection QR code (Amber, etc.)",
   "web_login_no_account": "Don’t have an account?",
   "web_login_nsec_label": "Private key (nsec)",

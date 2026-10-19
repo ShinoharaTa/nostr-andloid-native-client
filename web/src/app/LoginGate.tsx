@@ -1,7 +1,13 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import { t, useT } from "../i18n";
 import { waitForNostr } from "../signer/nip07";
+import {
+  nostrConnectRelayChoices,
+  parseNostrConnectRelay,
+  setNostrConnectRelay,
+  useNostrConnectRelay,
+} from "../signer/nip46RelayPref";
 import { nsecHead } from "../signer/nsec";
 import { LoginError, type NewKey, type NostrConnectLogin, useSession } from "../signer/session";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -208,6 +214,8 @@ function Nip46LoginForm({ busy, onBusy }: { busy: boolean; onBusy(busy: boolean)
       login = startNostrConnectLogin();
     } catch (err) {
       setConnectError(nostrConnectErrorMessage(err));
+      setConnectUri(null);
+      onBusy(false);
       return;
     }
     pending.current = login;
@@ -216,12 +224,30 @@ function Nip46LoginForm({ busy, onBusy }: { busy: boolean; onBusy(busy: boolean)
     try {
       await login.done;
     } catch (err) {
-      setConnectError(nostrConnectErrorMessage(err));
+      if (pending.current === login) setConnectError(nostrConnectErrorMessage(err));
     } finally {
-      if (pending.current === login) pending.current = null;
-      setConnectUri(null);
-      onBusy(false);
+      // 中継リレーを変えて作り直した後は、新しい待ちの表示を残す
+      if (pending.current === login) {
+        pending.current = null;
+        setConnectUri(null);
+        onBusy(false);
+      }
     }
+  }
+
+  /** 中継リレーを変える。承認待ちならやめて、そのリレーで URI を作り直す。wss:// でなければ false */
+  function onRelay(input: string): boolean {
+    const relay = parseNostrConnectRelay(input);
+    if (relay === null) return false;
+    if (relay === useNostrConnectRelay.getState().relay) return true;
+    setNostrConnectRelay(relay);
+    const old = pending.current;
+    if (old) {
+      pending.current = null;
+      old.cancel();
+      void onShowQr();
+    }
+    return true;
   }
 
   async function onCopy() {
@@ -312,6 +338,7 @@ function Nip46LoginForm({ busy, onBusy }: { busy: boolean; onBusy(busy: boolean)
           {connectError}
         </p>
       )}
+      <NostrConnectRelayPicker disabled={busy && connectUri === null} onRelay={onRelay} />
       <form className={styles.moreBody} onSubmit={onSubmit}>
         <label htmlFor="bunker-input">{t("web_login_nip46_bunker")}</label>
         <div className={styles.field}>
@@ -352,6 +379,89 @@ function Nip46LoginForm({ busy, onBusy }: { busy: boolean; onBusy(busy: boolean)
       </form>
     </>
   );
+}
+
+/**
+ * nostrconnect:// の中継リレー（#899）。候補のラジオと手入力（設定のリレー追加と同じ見た目）。
+ * 選ぶと設定値に保存する（onRelay が保存と URI の作り直しをする）
+ */
+function NostrConnectRelayPicker({
+  disabled,
+  onRelay,
+}: {
+  disabled: boolean;
+  onRelay(input: string): boolean;
+}) {
+  const t = useT();
+  const relay = useNostrConnectRelay((s) => s.relay);
+  const inputId = useId();
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!onRelay(value)) {
+      setError(
+        isWsInput(value) ? t("web_settings_relay_ws_unsupported") : t("web_settings_relay_url_invalid"),
+      );
+      return;
+    }
+    setValue("");
+    setError(null);
+  }
+
+  return (
+    <fieldset className={styles.relay} disabled={disabled}>
+      <legend className={styles.relayTitle}>{t("web_login_nip46_relay_title")}</legend>
+      <p className={styles.note}>{t("web_login_nip46_relay_desc")}</p>
+      {nostrConnectRelayChoices(relay).map((url) => (
+        <label key={url} className={styles.check}>
+          <input
+            type="radio"
+            name="nostrconnect-relay"
+            value={url}
+            checked={url === relay}
+            onChange={() => onRelay(url)}
+          />
+          {url.replace(/^wss:\/\//, "")}
+        </label>
+      ))}
+      <form className={styles.relayAdd} onSubmit={submit}>
+        <label htmlFor={inputId} className="srOnly">
+          {t("web_settings_relays_url_label")}
+        </label>
+        <input
+          id={inputId}
+          className={styles.relayInput}
+          type="text"
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="wss://…"
+          value={value}
+          aria-invalid={error !== null}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+        />
+        <button type="submit" className={styles.ghost} disabled={value.trim() === ""}>
+          {t("common_add")}
+        </button>
+        {error && (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        )}
+      </form>
+    </fieldset>
+  );
+}
+
+// ws:// のリレーは Web では使えないので専用の文言を出す（設定のリレー追加と同じ）
+function isWsInput(input: string): boolean {
+  return input.trim().toLowerCase().startsWith("ws://");
 }
 
 /**

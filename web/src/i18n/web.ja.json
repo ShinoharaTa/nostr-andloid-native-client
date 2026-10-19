@@ -166,6 +166,8 @@
   "web_login_nip46_open": "署名アプリで開く",
   "web_login_nip46_qr_hint": "署名アプリ（Amber など）で QR を読み取るか、この端末に署名アプリがあれば下のリンクを開いて、接続を承認してください。",
   "web_login_nip46_qr_label": "署名アプリで読み取る接続用の QR コード",
+  "web_login_nip46_relay_desc": "署名アプリとの通信に使うリレーです。既定は relay.nsec.app",
+  "web_login_nip46_relay_title": "中継リレー",
   "web_login_nip46_show_qr": "接続用の QR を表示（Amber など）",
   "web_login_no_account": "アカウントをお持ちでない場合",
   "web_login_nsec_label": "秘密鍵（nsec）",
