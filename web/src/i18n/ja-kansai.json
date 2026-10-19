@@ -17,6 +17,7 @@
   "web_login_nip46_connecting": "接続してるとこ…（署名アプリで承認してな）",
   "web_login_nip46_desc": "署名アプリ（Amber など）や nsec.app とつなぐで。秘密鍵は署名アプリ側に残って、このブラウザには置かへん。",
   "web_login_nip46_qr_hint": "署名アプリ（Amber など）で QR を読み取るか、この端末に署名アプリがあるなら下のリンクを開いて、接続を承認してな。",
+  "web_login_nip46_relay_desc": "署名アプリとのやりとりに使うリレーやで。既定は relay.nsec.app",
   "web_login_no_account": "アカウントがまだの人は",
   "web_login_nsec_warn1": "秘密鍵（nsec）を知ってる人は、あなたのアカウントを好きに操作できてまうで。できるだけ拡張機能（NIP-07）でログインしてな。",
   "web_login_nsec_warn2": "取り込んだ秘密鍵は暗号化して、このブラウザにだけ保存するで。Web 版では表示も書き出しもでけへん。",

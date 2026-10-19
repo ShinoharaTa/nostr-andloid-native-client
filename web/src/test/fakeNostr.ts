@@ -1,6 +1,7 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { vi } from "vitest";
 import { resetNip46ForTest } from "../signer/nip46";
+import { resetNostrConnectRelayForTest } from "../signer/nip46RelayPref";
 import { createNip46Store, setNip46StoreForTest } from "../signer/nip46Store";
 import { createPasskeyVault, setPasskeyVaultForTest } from "../signer/passkeyVault";
 import { useSession } from "../signer/session";
@@ -53,6 +54,7 @@ export function resetSession() {
   useSession.setState({ status: "loading", method: null, pubkey: null });
   setKeyVaultForTest(createKeyVault({ database: async () => null }));
   resetNip46ForTest();
+  resetNostrConnectRelayForTest();
   setNip46StoreForTest(createNip46Store({ database: async () => null }));
   setPasskeyVaultForTest(createPasskeyVault({ database: async () => null }));
 }
