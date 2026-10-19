@@ -40,6 +40,8 @@ export class FakeBunkerRelay implements Nip46Relay {
     await signer.signEvent(makeAuthEvent(this.url, challenge));
     return { ok: true, from: this.url };
   });
+  /** applesauce-relay の既定と同じ 30 秒 */
+  keepAlive = 30_000;
 
   constructor(readonly url: string) {}
 }
@@ -110,6 +112,11 @@ export class FakeBunker implements Nip46Pool {
     queueMicrotask(() => this.respond(req, reply));
     return [{ ok: true, from: "wss://relay.example/" }];
   };
+
+  /** relay() で作ったリレー（RelayPool.relays と同じ） */
+  get relays(): ReadonlyMap<string, FakeBunkerRelay> {
+    return this.relayMap;
+  }
 
   relay(url: string): FakeBunkerRelay {
     const key = normalizeURL(url);

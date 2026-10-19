@@ -1,13 +1,21 @@
 import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
 import type { Subscription } from "rxjs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { pauseNip46, resumeNip46 } from "../signer/nip46";
 import { ScriptedWebSocket } from "../test/scriptedWebSocket";
 import { BG_PAUSE_DELAY_MS, startBackgroundPause } from "./backgroundPause";
 import { SINCE_MARGIN_SEC, subscribeTo } from "./pool";
 import { retryUnsent } from "./publish";
 
+/** NIP-46 の一時停止・再開と再送の呼ばれた順 */
+const calls = vi.hoisted(() => [] as string[]);
+
 // 送信キューは呼ばれたかだけを見る
-vi.mock("./publish", () => ({ retryUnsent: vi.fn() }));
+vi.mock("./publish", () => ({ retryUnsent: vi.fn(() => calls.push("retryUnsent")) }));
+vi.mock("../signer/nip46", () => ({
+  pauseNip46: vi.fn(() => calls.push("pauseNip46")),
+  resumeNip46: vi.fn(() => calls.push("resumeNip46")),
+}));
 
 const NOW = 1_700_000_000;
 let visibility: DocumentVisibilityState = "visible";
@@ -26,6 +34,9 @@ beforeEach(() => {
   visibility = "visible";
   vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
   vi.mocked(retryUnsent).mockClear();
+  vi.mocked(pauseNip46).mockClear();
+  vi.mocked(resumeNip46).mockClear();
+  calls.length = 0;
 });
 
 afterEach(() => {
@@ -94,4 +105,31 @@ it("5 分より前に表示に戻れば何もしない（閉じない・再送�
   expect(socket.reqs()).toHaveLength(1);
   expect(retryUnsent).not.toHaveBeenCalled();
   expect(ScriptedWebSocket.latest(url)).toBe(socket);
+});
+
+it("5 分で NIP-46 も一時停止し、表示に戻ると再送の前に NIP-46 を再開する", async () => {
+  subscribeAndReceive("wss://nip46-order.example/", NOW - 30);
+  stop = startBackgroundPause();
+
+  setVisibility("hidden");
+  await vi.advanceTimersByTimeAsync(BG_PAUSE_DELAY_MS - 1_000);
+  expect(pauseNip46).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(calls).toEqual(["pauseNip46"]);
+
+  setVisibility("visible");
+  // 再送の署名が NIP-46 のことがあるので、再開してから再送する
+  expect(calls).toEqual(["pauseNip46", "resumeNip46", "retryUnsent"]);
+});
+
+it("監視をやめると NIP-46 も再開する", async () => {
+  stop = startBackgroundPause();
+  setVisibility("hidden");
+  await vi.advanceTimersByTimeAsync(BG_PAUSE_DELAY_MS);
+  expect(pauseNip46).toHaveBeenCalledTimes(1);
+
+  stop();
+  stop = undefined;
+
+  expect(resumeNip46).toHaveBeenCalledTimes(1);
 });
