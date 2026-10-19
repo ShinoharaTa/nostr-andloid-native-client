@@ -1932,7 +1932,14 @@ class EventRepository(
         else row.pubkey
         val actor = profileFor(actorPubkey, byPubkey)
         // 対象イベント本体（抜粋＋種別判定に使う）。
-        val targetEvent = target?.let { q.eventById(it).executeAsOneOrNull() }
+        // [#901] 対象が自分のリアクション（kind:7）なら、その e タグを辿った元の投稿（P）を本体にし、
+        // リアクションの絵文字は [NotificationUi.targetReaction] に分けて持つ（kind:7 を投稿として描かない）。
+        val rawTarget = target?.let { q.eventById(it).executeAsOneOrNull() }
+        val targetReaction = rawTarget?.takeIf { it.kind.toInt() == 7 }?.let { normalizeReaction(it.content, parseTags(it.tags_json)) }
+        val targetEvent = if (rawTarget != null && rawTarget.kind.toInt() == 7) {
+            val postId = parseTags(rawTarget.tags_json).lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+            postId?.let { pid -> q.eventById(pid).executeAsOneOrNull() ?: run { requestEvent(pid); null } }
+        } else rawTarget
         // [#380] 対象が記事(30023)ならタイトルを抜粋に（Markdown 全文の先頭より文脈になる）。
         val snippet = targetEvent?.let { t ->
             if (t.kind.toInt() == 30023) {
@@ -1974,6 +1981,7 @@ class EventRepository(
                     reaction = rx.display, reactionImageUrl = rx.imageUrl,
                     targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
                     targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote,
+                    targetReaction = targetReaction,
                     // [#875] リアクションそのもの（kind:7）。行からリアクション・リポストする対象。押した状態も載せる。
                     reactionNote = applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta))
             }
@@ -2024,6 +2032,14 @@ class EventRepository(
         }
         subscribeAll(columnId, *filters.toTypedArray())
     }
+
+    /** [#901] 単一イベントを DB から同期で読む（スレッドの起点の付け替え。手元に無ければ null）。 */
+    fun eventByIdNow(id: String): NostrEvent? = q.eventById(id).executeAsOneOrNull()?.let {
+        NostrEvent(it.id, it.pubkey, it.kind.toInt(), it.created_at, it.content, parseTags(it.tags_json), it.sig)
+    }
+
+    /** [#901] kind:7 の見た目（"+"/空→❤️、:shortcode: は emoji タグから画像）。 */
+    fun reactionOf(e: NostrEvent): ReactionUi = normalizeReaction(e.content, e.tags)
 
     /** [#124] 単一イベントの DB 監視（記事ビューワー等、id 参照の表示用）。未取得なら null を流す。 */
     fun eventByIdFlow(id: String): Flow<NostrEvent?> =
