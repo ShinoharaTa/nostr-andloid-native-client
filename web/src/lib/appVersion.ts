@@ -5,18 +5,19 @@
  */
 export const APP_VERSION: string | null = __APP_VERSION__;
 
-/** `X.Y.Z` の各桁（数値）。`-` / `+` 以降（pre-release・build）は無視し、数字でない桁は 0 */
+/**
+ * バージョンの各桁（ネイティブ ThemeEntry.isOlderThan の parts と同じ）。`.` / `-` / `+` で区切り、
+ * 各片の先頭の数字を桁にする（`0.7.0-1` → [0,7,0,1]）。先頭が数字でない片（`rc1` など）は捨てる
+ */
 function versionParts(v: string): number[] {
-  return v
-    .trim()
-    .replace(/^v/, "")
-    .split(/[-+]/, 1)[0]
-    .split(".")
-    .map((s) => Number.parseInt(s, 10) || 0);
+  return v.split(/[.\-+]/).flatMap((s) => {
+    const digits = /^\d+/.exec(s)?.[0];
+    return digits === undefined ? [] : [Number(digits)];
+  });
 }
 
 /**
- * semver の大小（a < b なら負、同じなら 0、a > b なら正）。桁ごとに数値で比べる（`0.10.0` > `0.6.26`）。
+ * バージョンの大小（a < b なら負、同じなら 0、a > b なら正）。桁ごとに数値で比べる（`0.10.0` > `0.6.26`）。
  * 欠けた桁は 0。ネイティブ ThemeEntry.isOlderThan(current, required) は compareVersion(current, required) < 0。
  */
 export function compareVersion(a: string, b: string): number {

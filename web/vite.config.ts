@@ -3,32 +3,36 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-/** 直近の git tag `vX.Y.Z` の `X.Y.Z`（scripts/version.sh --name と同じ規則。#252）。取れなければ null */
-function gitTagVersion(): string | null {
+/** git の標準出力（失敗・空なら null） */
+function gitOutput(args: string[]): string | null {
   try {
-    const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return tag ? tag.replace(/^v/, "") : null;
+    const out = execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return out || null;
   } catch {
     return null;
   }
 }
 
 /**
- * Web のアプリバージョン（#642 S17。lib/appVersion.ts の APP_VERSION）。タグの無い浅いクローンでは
- * タグを 1 回だけ取りに行き、それでも取れなければ null（テーマストアの ⚠ を出さない）。docs/version.md
+ * Web のアプリバージョン（#642 S17。lib/appVersion.ts の APP_VERSION）。docs/version.md
+ * 1. 直近の git tag `vX.Y.Z` の `X.Y.Z`（scripts/version.sh --name と同じ規則。#252）
+ * 2. describe が失敗したら（タグの無い浅いクローン。Cloudflare Pages）タグを 1 回だけ取ってきて、
+ *    `v[0-9]*` のうちバージョン順で一番大きいもの。浅いままだと describe はタグに届かない。
+ *    --unshallow は Pages のビルド時間が延びるので使わない
+ * 3. それも無ければ null（テーマストアの ⚠ を出さない）
+ * vitest では git を呼ばない（値は vitest.config.ts の define。fetch で待たないため）
  */
 function resolveAppVersion(): string | null {
-  const version = gitTagVersion();
-  if (version) return version;
+  if (process.env.VITEST) return null;
+  const described = gitOutput(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"]);
+  if (described) return described.replace(/^v/, "");
   try {
     execFileSync("git", ["fetch", "--tags", "--depth=1"], { stdio: "ignore", timeout: 60_000 });
   } catch {
     return null;
   }
-  return gitTagVersion();
+  const latest = gitOutput(["tag", "-l", "v[0-9]*", "--sort=-v:refname"])?.split("\n")[0];
+  return latest ? latest.replace(/^v/, "") : null;
 }
 
 /**
