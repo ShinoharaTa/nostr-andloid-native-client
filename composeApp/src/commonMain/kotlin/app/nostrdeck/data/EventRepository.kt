@@ -5624,6 +5624,51 @@ class EventRepository(
             }
             .flowOn(Dispatchers.Default)
 
+    /** [#903] 対象（最後の e）が [targetIds] のどれかである kind:7 / 16（名前解決込み）。名前未取得の人は kind:0 を要求する。 */
+    private fun reactionNodesFlow(targetIds: List<String>): Flow<List<ReactionTree.Node>> =
+        if (targetIds.isEmpty()) flowOf(emptyList())
+        else q.reactionNodesForTargets(targetIds).asFlow().mapToList(Dispatchers.Default)
+            .map { rows ->
+                rows.filter { it.pname.isNullOrBlank() }.map { it.pubkey }.distinct().forEach { requestProfile(it) }
+                rows.map { row ->
+                    val rx = if (row.kind.toInt() == 7) normalizeReaction(row.content, parseTags(row.tags_json)) else null
+                    ReactionTree.Node(
+                        id = row.id, pubkey = row.pubkey, kind = row.kind.toInt(),
+                        display = rx?.display ?: "", imageUrl = rx?.imageUrl, createdAt = row.created_at, targetId = row.target,
+                        author = Profile(
+                            pubkey = row.pubkey,
+                            name = row.pname?.takeIf { it.isNotBlank() } ?: shortNpub(row.pubkey),
+                            handle = "", pictureUrl = row.ppicture,
+                        ),
+                    )
+                }
+            }
+
+    /**
+     * [#903] 起点ノートのリアクションの木。L1（起点に付いた kind:7）→ L2 → L3 と段ごとに DB を読み、
+     * 段の対象 id が変わったときだけ次の段を読み直す（[ReactionTree.build] が組み立てる）。
+     * リレーからの取得は UI 側が [subscribeReactionBranches] で段ごとに張る（この Flow は DB を見るだけ）。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun noteReactionTreeFlow(focusId: String): Flow<ReactionTree.Tree> =
+        reactionNodesFlow(listOf(focusId)).flatMapLatest { l1 ->
+            val l1Ids = l1.filter { it.kind == 7 }.map { it.id }.distinct()
+            reactionNodesFlow(l1Ids).flatMapLatest { l2 ->
+                val l2Ids = l2.filter { it.kind == 7 }.map { it.id }.distinct()
+                reactionNodesFlow(l2Ids).map { l3 -> ReactionTree.build(l1, l2 + l3) }
+            }
+        }.flowOn(Dispatchers.Default)
+
+    /**
+     * [#903] リアクションの木の 1 段分をリレーから取る（kind:7 / 16 のうち対象が [targetIds]）。
+     * 同じ [subId] で呼び直すと REQ が置き換わる（対象が増えたとき）。#e は 300 件まで（[subscribeZaps] と同じ上限）。
+     */
+    fun subscribeReactionBranches(subId: String, targetIds: List<String>) {
+        if (targetIds.isEmpty()) return
+        openColumns.add(subId)
+        subscribeAll(subId, Filter(kinds = listOf(7, 16), eTags = targetIds.take(300), limit = 500))
+    }
+
     /** [#254] 対象ノートをリポストした人（新しい順・重複なし）。 */
     fun noteRepostersFlow(noteId: String): Flow<List<Profile>> =
         q.repostersForNote(noteId).asFlow().mapToList(Dispatchers.Default)

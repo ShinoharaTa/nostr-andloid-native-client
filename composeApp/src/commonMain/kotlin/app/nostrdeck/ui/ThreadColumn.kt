@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.nostrdeck.data.ReactionTree
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteEngagement
 import app.nostrdeck.model.NoteUi
@@ -209,10 +211,19 @@ private fun FocusNoteStats(
     val repo = LocalRepository.current
     val groups = repo?.let { remember(noteId) { it.noteReactionPeopleFlow(noteId) } }
         ?.collectAsState(emptyList())?.value ?: emptyList()
+    // [#903] リアクションの木（L2・L3）。DB を見る Flow と、段ごとのリレー購読（対象の id が増えたら張り直す）。
+    val tree = repo?.let { remember(noteId) { it.noteReactionTreeFlow(noteId) } }
+        ?.collectAsState(ReactionTree.Tree.EMPTY)?.value ?: ReactionTree.Tree.EMPTY
+    LaunchedEffect(noteId, tree.l1Ids) { repo?.subscribeReactionBranches("rxtree_${noteId}_2", tree.l1Ids) }
+    LaunchedEffect(noteId, tree.l2Ids) { repo?.subscribeReactionBranches("rxtree_${noteId}_3", tree.l2Ids) }
+    DisposableEffect(noteId) {
+        onDispose { repo?.unsubscribeColumn("rxtree_${noteId}_2"); repo?.unsubscribeColumn("rxtree_${noteId}_3") }
+    }
     // [#901] 開いたリアクションの行: その人を先頭に移し、下地を点けてから薄く消す（#791 のチャンネルの発言と同じ手順）。
+    // L1（起点に直接付いたもの）は経路が 1 つのときだけ。深いものは木の中の行が光る（[ReactionBranches]）。
     fun isHighlighted(g: app.nostrdeck.model.ReactionGroupUi): Boolean =
-        highlight != null && g.display == highlight.display && g.people.any { it.pubkey == highlight.pubkey }
-    val highlightArrived = groups.any { isHighlighted(it) }
+        highlight != null && highlight.path.size == 1 && g.display == highlight.display && g.people.any { it.pubkey == highlight.pubkey }
+    val highlightArrived = groups.any { isHighlighted(it) } || (highlight != null && highlight.eventId in tree.nodeIds)
     val glow = remember(highlight?.eventId) { Animatable(0f) }
     var glowed by rememberSaveable(highlight?.eventId) { mutableStateOf(false) }
     LaunchedEffect(highlight?.eventId, highlightArrived) {
@@ -275,6 +286,79 @@ private fun FocusNoteStats(
                     label = "${g.people.size}", people = people, onAuthorClick = onAuthorClick,
                 )
             }
+            // [#903] この絵文字の行の人のリアクションに付いた反応を、リプライと同じ字下げで出す。
+            val blocks = tree.branchesFor(g)
+            if (blocks.isNotEmpty()) ReactionBranches(blocks, highlight, glow.value, onAuthorClick)
+        }
+    }
+}
+
+/** [#903] 枝の字下げ（リプライの深さ 1 段と同じ）。 */
+private val BRANCH_INDENT = 18.dp
+
+/**
+ * [#903] 反応が付いたリアクションの枝。「↳ 〇〇 の 👍 へ」の見出しの下に、その kind:7 に付いた反応を
+ * 絵文字ごとの行（[ReactorRow]）とリポストした人の行で出し、さらに反応が付いていれば孫の枝を重ねる。
+ * 最初から出すのは [ReactionTree.MAX_BLOCKS] 件まで。残りは「ほか n 件」で開く（ハイライトの経路上の枝は常に出す）。
+ */
+@Composable
+private fun ReactionBranches(
+    blocks: List<ReactionTree.Branch>,
+    highlight: ReactionHighlight?,
+    glow: Float,
+    onAuthorClick: ((String) -> Unit)?,
+) {
+    val parentId = blocks.first().target.targetId
+    var expanded by remember(parentId) { mutableStateOf(false) }
+    val forced = highlight?.path?.toSet().orEmpty()
+    val (shown, hidden) = ReactionTree.visible(blocks, expanded, forced)
+    Column(Modifier.fillMaxWidth().padding(start = BRANCH_INDENT)) {
+        shown.forEach { b ->
+            Row(Modifier.padding(top = DeckSpace.Xs), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "↳ " + stringResource(Res.string.thread_reaction_to_prefix_fmt, b.target.author.name),
+                    color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(DeckSpace.Xs))
+                ReactorEmoji(b.target.display, b.target.imageUrl)
+                val suffix = stringResource(Res.string.thread_reaction_to_suffix)
+                if (suffix.isNotEmpty()) {
+                    Spacer(Modifier.width(DeckSpace.Xs))
+                    Text(suffix, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1)
+                }
+            }
+            b.groups.forEach { cg ->
+                val hl = highlight != null && b.target.id in highlight.path &&
+                    cg.display == highlight.display && cg.people.any { it.pubkey == highlight.pubkey }
+                val people = if (hl) cg.people.sortedByDescending { it.pubkey == highlight?.pubkey } else cg.people
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Sm))
+                        .background(DeckColors.Accent.copy(alpha = if (hl) 0.28f * glow else 0f)),
+                ) {
+                    ReactorRow(
+                        leading = { ReactorEmoji(cg.display, cg.imageUrl) },
+                        label = "${cg.people.size}", people = people, onAuthorClick = onAuthorClick,
+                    )
+                }
+                val sub = ReactionTree.childBranches(b, cg)
+                if (sub.isNotEmpty()) ReactionBranches(sub, highlight, glow, onAuthorClick)
+            }
+            if (b.reposters.isNotEmpty()) {
+                ReactorRow(
+                    leading = {
+                        Icon(Icons.Outlined.Repeat, contentDescription = null, tint = DeckColors.Repost, modifier = Modifier.width(16.dp))
+                    },
+                    label = "${b.reposters.size}", people = b.reposters, onAuthorClick = onAuthorClick,
+                )
+            }
+        }
+        if (hidden > 0) {
+            Text(
+                stringResource(Res.string.thread_more_branches_fmt, hidden),
+                color = DeckColors.Accent, fontSize = DeckType.Label,
+                modifier = Modifier.clickable { expanded = true }.padding(top = DeckSpace.Xs, bottom = DeckSpace.Xs),
+            )
         }
     }
 }

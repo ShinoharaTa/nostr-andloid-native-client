@@ -124,6 +124,9 @@
     <string name="thread_stat_replies_fmt">%1$s replies</string>
     <string name="thread_stat_reposts_fmt">%1$s reposts</string>
     <string name="thread_stat_reactions_fmt">%1$s reactions</string>
+    <string name="thread_reaction_to_prefix_fmt">on %1$s’s</string>
+    <string name="thread_reaction_to_suffix"></string>
+    <string name="thread_more_branches_fmt">%1$d more</string>
     <string name="theme_code_label">Share code</string>
     <string name="theme_code_import">Import</string>
     <string name="theme_code_paste">Paste</string>

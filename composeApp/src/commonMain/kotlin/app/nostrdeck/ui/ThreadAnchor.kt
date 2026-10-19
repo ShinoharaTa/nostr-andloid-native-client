@@ -15,8 +15,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** [#901] スレッドの起点。[focusId] は実際に購読・表示する投稿、[highlight] は統計行で光らせるリアクション。 */
 data class ThreadAnchor(val focusId: String, val highlight: ReactionHighlight? = null)
 
-/** [#901] 統計行で光らせるリアクション（開いた kind:7。kind:16 を開いたならその中身）。 */
-data class ReactionHighlight(val eventId: String, val pubkey: String, val display: String, val imageUrl: String?)
+/**
+ * [#901] 統計行で光らせるリアクション（開いた kind:7。kind:16 を開いたならその中身）。
+ * [path] は辿った kind:7 / 16 の id（開いた順。最後が起点の投稿に付いたもの）。[#903] 木の中の位置と、常に開いておく枝の判定に使う。
+ */
+data class ReactionHighlight(val eventId: String, val pubkey: String, val display: String, val imageUrl: String?, val path: List<String> = listOf(eventId))
 
 /** 途中の kind:7 を取りに行って待つ上限（1 段ごと）。 */
 private const val ANCHOR_FETCH_MS = 4_000L
@@ -33,7 +36,9 @@ fun rememberThreadAnchor(repo: EventRepository?, eventId: String): ThreadAnchor 
     fun anchorOf(r: ReactionAnchor.Result): ThreadAnchor? = when (r) {
         is ReactionAnchor.Result.Found -> ThreadAnchor(
             r.postId,
-            ReactionAnchor.highlightOf(r.path)?.let { hl -> repo?.reactionOf(hl)?.let { ReactionHighlight(hl.id, hl.pubkey, it.display, it.imageUrl) } },
+            ReactionAnchor.highlightOf(r.path)?.let { hl ->
+                repo?.reactionOf(hl)?.let { ReactionHighlight(hl.id, hl.pubkey, it.display, it.imageUrl, r.path.map { p -> p.id }) }
+            },
         )
         else -> null
     }
