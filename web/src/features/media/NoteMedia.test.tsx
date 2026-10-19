@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { NoteMedia as Media, MediaItem } from "../../lib/media";
 import { DEFAULT_EMBED_PREFS, setEmbedPref, useEmbedPrefs } from "../linkcard/embedPrefs";
+import type { LinkCardState } from "../linkcard/useLinkCards";
 import gridStyles from "./ImageGrid.module.css";
 import { NoteMedia } from "./NoteMedia";
 
@@ -90,4 +91,50 @@ it("画像を押すとライトボックスが開き、「閉じる」で消え�
   await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
 
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+function card(url: string, title: string | null): LinkCardState {
+  return { url, kind: "ogp", ogp: title === null ? null : { url, title } };
+}
+
+it("動画・YouTube・リンクカードは本文の出現順に混ぜ、画像はまとめて先に出す（ネイティブ LinkEmbeds.kt）", () => {
+  const content =
+    "https://youtu.be/video000000 https://m.test/i0 https://o.test/a https://m.test/v0 https://m.test/i1";
+  const { container } = render(
+    <NoteMedia
+      media={media({ images: items(2, "i"), videos: items(1, "v"), youtube: youtube(1) })}
+      cards={[card("https://o.test/a", "記事 A")]}
+      content={content}
+    />,
+  );
+
+  const blocks = [...(container.firstElementChild?.children ?? [])];
+  expect(blocks).toHaveLength(4);
+  expect(blocks[0]).toHaveClass(gridStyles.grid);
+  expect(blocks[1]).toBe(screen.getByRole("button", { name: "YouTube を再生" }));
+  expect(blocks[2]).toBe(screen.getByRole("link", { name: /記事 A/ }));
+  expect(blocks[3]).toBe(screen.getByRole("button", { name: "動画を再生" }));
+});
+
+it("同じ URL が何度も出るときは最初の位置で並べる", () => {
+  const content = "https://o.test/a https://m.test/v0 https://o.test/a";
+  const { container } = render(
+    <NoteMedia
+      media={media({ videos: items(1, "v") })}
+      cards={[card("https://o.test/a", "記事 A")]}
+      content={content}
+    />,
+  );
+
+  const blocks = [...(container.firstElementChild?.children ?? [])];
+  expect(blocks[0]).toBe(screen.getByRole("link", { name: /記事 A/ }));
+  expect(blocks[1]).toBe(screen.getByRole("button", { name: "動画を再生" }));
+});
+
+it("取れなかった（null）リンクカードは出さず、ほかに何も無ければ何も描かない", () => {
+  const { container } = render(
+    <NoteMedia media={media({})} cards={[card("https://o.test/a", null)]} content="https://o.test/a" />,
+  );
+
+  expect(container).toBeEmptyDOMElement();
 });

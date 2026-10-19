@@ -76,6 +76,19 @@ export type MediaItem = {
 };
 export type NoteMedia = { images: MediaItem[]; videos: MediaItem[]; youtube: { url: string; id: string }[] };
 
+/**
+ * 本文中の URL（末尾の句読点を落としたもの）→ 最初に出た位置（文字オフセット）。
+ * 埋め込み（動画・YouTube・リンクカード）を本文の出現順に並べるのに使う（ネイティブ LinkEmbeds.kt は出現順）。
+ */
+export function urlPositions(content: string): ReadonlyMap<string, number> {
+  const positions = new Map<string, number>();
+  for (const match of content.matchAll(Tokens.link)) {
+    const url = trimUrlTail(match[0]);
+    if (!positions.has(url)) positions.set(url, match.index);
+  }
+  return positions;
+}
+
 /** imeta の dim（"WxH"）。正の整数 2 つに読めなければ undefined */
 function parseDimensions(value: string | undefined): { w: number; h: number } | undefined {
   const match = value ? /^(\d+)x(\d+)$/.exec(value.trim()) : null;

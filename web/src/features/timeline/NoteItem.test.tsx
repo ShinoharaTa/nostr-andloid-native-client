@@ -488,6 +488,46 @@ it("OGP が取れなければカードを出さず、本文のリンクを残す
   }
 });
 
+/** 埋め込みの並び（引用カード・画像・リンクカード・動画）を文書の順で返す */
+async function embedOrder(content: string): Promise<string[]> {
+  const fetchMock = vi.fn<typeof fetch>(
+    async () => new Response('<head><meta property="og:title" content="リンクの記事"></head>'),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    renderWithRouter(<NoteItem event={post(content)} />);
+    const blocks: [string, HTMLElement][] = [
+      ["引用", screen.getByRole("link", CARD)],
+      ["画像", screen.getByRole("button", { name: /^画像.*を拡大$/ })],
+      ["リンク", await screen.findByRole("link", { name: /リンクの記事/ })],
+      ["動画", screen.getByRole("button", { name: "動画を再生" })],
+    ];
+    return blocks
+      .sort(([, a], [, b]) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map(([label]) => label);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}
+
+it("引用 → 画像 → リンク → 動画 の順で書いた本文は、その順で埋め込みを出す（#642 N6）", async () => {
+  const quoted = stored("引用元");
+  const order = await embedOrder(
+    `nostr:${neventEncode({ id: quoted.id })} https://i.test/1.jpg https://ogp-order.test/a https://v.test/1.mp4`,
+  );
+
+  expect(order).toEqual(["引用", "画像", "リンク", "動画"]);
+});
+
+it("動画とリンクは本文の出現順に混ぜる。引用は先頭・画像はまとめてその次（ネイティブ NoteItem.kt / LinkEmbeds.kt、#642 N6）", async () => {
+  const quoted = stored("引用元");
+  const order = await embedOrder(
+    `https://v.test/2.mp4 https://i.test/2.jpg https://ogp-order.test/b nostr:${neventEncode({ id: quoted.id })}`,
+  );
+
+  expect(order).toEqual(["引用", "画像", "動画", "リンク"]);
+});
+
 it("embedded（通知の本体）は返信先の 1 行と下線を出さない。既定では出す（#460）", async () => {
   const parent = stored("親の投稿", { key: withProfile({ name: "heidi" }) });
   const reply = post("通知の返信", { tags: [["e", parent.id, "", "reply"]] });

@@ -74,7 +74,7 @@ function LinkCardPlaceholder({ url }: { url: string }) {
 }
 
 /**
- * 投稿のリンクカードの列（NoteItem のメディアの下）。取得中は枠だけ、取れなかった（null）ものは出さない
+ * リンクカードの列（ステータスのカード。投稿の本体は NoteMedia が動画・YouTube と混ぜて出現順に並べる）。取得中は枠だけ、取れなかった（null）ものは出さない
  * （本文のリンクがそのまま残る）。出すものが無ければ何も描かない。
  * X の投稿 URL で本文が取れたものは、リンクカードではなく X の投稿カード（#744）。本文が無い・削除済みは従来のカード。
  */
@@ -84,15 +84,29 @@ export function LinkCards({ cards }: { cards: LinkCardState[] }) {
   if (visible.length === 0) return null;
   return (
     <div className={styles.cards}>
-      {visible.map(({ url, kind, ogp }) => {
-        if (!ogp) return <LinkCardPlaceholder key={url} url={url} />;
-        const post = kind === "ogp" ? xPostFrom(url, ogp) : null;
-        return post ? (
-          <XPostEmbed key={url} post={post} ogpImages={ogpImages} />
-        ) : (
-          <LinkCard key={url} url={url} ogp={ogp} kind={kind} ogpImages={ogpImages} />
-        );
-      })}
+      {visible.map((card) => (
+        <LinkCardItem key={card.url} card={card} ogpImages={ogpImages} />
+      ))}
     </div>
+  );
+}
+
+/**
+ * リンクカード 1 枚分（LinkCards と、投稿の埋め込みの列 NoteMedia で使う）。取得中は枠、取れなかった（null）ものは描かない。
+ */
+export function LinkCardItem({
+  card: { url, kind, ogp },
+  ogpImages,
+}: {
+  card: LinkCardState;
+  ogpImages: boolean;
+}) {
+  if (ogp === null) return null;
+  if (!ogp) return <LinkCardPlaceholder url={url} />;
+  const post = kind === "ogp" ? xPostFrom(url, ogp) : null;
+  return post ? (
+    <XPostEmbed post={post} ogpImages={ogpImages} />
+  ) : (
+    <LinkCard url={url} ogp={ogp} kind={kind} ogpImages={ogpImages} />
   );
 }

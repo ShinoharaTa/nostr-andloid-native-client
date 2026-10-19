@@ -327,7 +327,7 @@ function MessageRow({
         <div className={styles.bubbleRow}>
           <div className={mine ? `${styles.bubble} ${styles.mine}` : styles.bubble}>
             <NoteContent event={message} />
-            {hasMedia && <NoteMedia media={media} />}
+            {hasMedia && <NoteMedia media={media} content={message.content} />}
           </div>
           <MessageActions message={message} mine={mine} onReply={onReply} />
         </div>

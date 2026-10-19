@@ -1,6 +1,6 @@
 import { finalizeEvent, generateSecretKey, type NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
-import { extractMedia, mediaKindOf, trimUrlTail, urlExtension, youtubeId } from "./media";
+import { extractMedia, mediaKindOf, trimUrlTail, urlExtension, urlPositions, youtubeId } from "./media";
 
 function note(content: string, tags: string[][] = []): NostrEvent {
   return finalizeEvent({ kind: 1, created_at: 1_800_000_000, tags, content }, generateSecretKey());
@@ -94,5 +94,16 @@ describe("extractMedia", () => {
   it("imeta にしか無い URL は対象にしない", () => {
     const media = extractMedia(note("本文だけ", [["imeta", "url https://i.test/only.jpg"]]));
     expect(media).toEqual({ images: [], videos: [], youtube: [] });
+  });
+});
+
+describe("urlPositions", () => {
+  it("末尾の句読点を落とした URL ごとに、最初に出た位置を返す", () => {
+    const content = "a https://o.test/x。 b https://v.test/1.mp4 https://o.test/x";
+
+    expect([...urlPositions(content)]).toEqual([
+      ["https://o.test/x", 2],
+      ["https://v.test/1.mp4", content.indexOf("https://v.test/1.mp4")],
+    ]);
   });
 });
