@@ -776,6 +776,10 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
                 </div>
               </fieldset>
             )}
+            {/* 動画は再エンコードしない（#603 案 A）。解像度チップは画像だけに効くので、その下に添える */}
+            {attachments.some((a) => a.kind === "video") && (
+              <p className={styles.uploadTargetHint}>{t("web_compose_video_as_is")}</p>
+            )}
             {attachments.length > 0 && (
               <UploadTargetSelect
                 settings={mediaServer}

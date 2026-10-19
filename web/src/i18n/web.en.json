@@ -30,6 +30,7 @@
   "web_compose_cw_reason_label": "Content warning reason",
   "web_compose_pin_failed": "Couldn’t change the pin",
   "web_compose_thread_partial": "Sent up to post %1$d. The rest were kept in drafts as a new thread",
+  "web_compose_video_as_is": "Videos are sent as-is (resolution can't be changed on the web)",
   "web_connection_pill_label": "Connecting to relays",
   "web_copy_failed": "Couldn’t copy",
   "web_data_handler_failed": "Couldn’t register",

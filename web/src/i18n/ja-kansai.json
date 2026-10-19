@@ -117,6 +117,7 @@
   "compose_thread_remove": "この段落、取り消す",
   "web_compose_pin_failed": "ピン留めの変更に失敗してもうた",
   "web_compose_thread_partial": "%1$d件目までは送信済みやで。残りは新しい連投として下書きに残しといたわ",
+  "web_compose_video_as_is": "動画は元のまま送るで（Web では解像度を変えられへん）",
   "unsent_moved_to_draft": "下書きに戻しといたで",
   "unsent_tap_retry": "未送信・タップで再送してな",
   "publish_unconfirmed": "送信を確認でけへんかった。接続が戻ったら自動でもう一回送るで",

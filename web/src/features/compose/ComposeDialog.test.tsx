@@ -911,6 +911,41 @@ describe("添付（画像・動画）", () => {
     });
   });
 
+  describe("[#603] 動画は元のまま送る案内", () => {
+    const HINT = "動画は元のまま送ります（Web では解像度を変えられません）";
+    const mp4 = () => new File(["v"], "v.mp4", { type: "video/mp4" });
+
+    it("動画を添付すると案内が出る（画像と混ざっていれば解像度チップの下に）。外すと消える", async () => {
+      const user = userEvent.setup();
+      renderWithRouter(<Harness />);
+      open({ mode: "new" });
+      expect(screen.queryByText(HINT)).toBeNull();
+
+      await user.upload(fileInput(), mp4());
+      expect(screen.getByText(HINT)).toBeInTheDocument();
+      // 動画だけなら解像度チップは出さない
+      expect(screen.queryByRole("group", { name: "解像度" })).toBeNull();
+
+      await user.upload(fileInput(), png());
+      const chips = screen.getByRole("group", { name: "解像度" });
+      expect(chips.compareDocumentPosition(screen.getByText(HINT))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+      await user.click(
+        within(screen.getByRole("list", { name: "添付" })).getAllByRole("button", { name: "削除" })[1],
+      );
+      expect(screen.queryByText(HINT)).toBeNull();
+    });
+
+    it("画像だけでは出ない", async () => {
+      const user = userEvent.setup();
+      renderWithRouter(<Harness />);
+      open({ mode: "new" });
+      await user.upload(fileInput(), [png("a.png"), png("b.png")]);
+      expect(screen.getByRole("group", { name: "解像度" })).toBeInTheDocument();
+      expect(screen.queryByText(HINT)).toBeNull();
+    });
+  });
+
   it("アップロード中は「画像 n/m アップロード中…」。失敗したら投稿せず文言を出し、添付を残す", async () => {
     const user = userEvent.setup();
     let fail: (e: Error) => void = () => {};
