@@ -30,6 +30,7 @@
   "web_compose_cw_reason_label": "センシティブの理由",
   "web_compose_pin_failed": "ピン留めの変更に失敗しました",
   "web_compose_thread_partial": "%1$d件目までは送信済み。残りは新しい連投として下書きに残しました",
+  "web_compose_video_as_is": "動画は元のまま送ります（Web では解像度を変えられません）",
   "web_connection_pill_label": "リレーに接続中",
   "web_copy_failed": "コピーできませんでした",
   "web_data_handler_failed": "登録できませんでした",
