@@ -574,7 +574,7 @@ function Bubble({
           {mine && <ReplyButton onClick={onReply} />}
           <div className={styles.bubble}>
             <NoteContent event={event} />
-            {hasMedia && <NoteMedia media={media} />}
+            {hasMedia && <NoteMedia media={media} content={event.content} />}
           </div>
           {!mine && <ReplyButton onClick={onReply} />}
         </div>

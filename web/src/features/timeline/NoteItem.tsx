@@ -19,7 +19,6 @@ import { ArticleCards } from "../article/ArticleCard";
 import { ChatChannelLine } from "../chat/ChatChannelLine";
 import { roomHrefOf } from "../chat/chatMessage";
 import { NoteFooter } from "../compose/NoteFooter";
-import { LinkCards } from "../linkcard/LinkCard";
 import { useLinkCards } from "../linkcard/useLinkCards";
 import { NoteMedia } from "../media/NoteMedia";
 import { type NoteAccentKind, noteAccentKindOf } from "../theme/noteAccent";
@@ -206,7 +205,6 @@ function NoteBody({
     [event, hideMention, linkCards.carded],
   );
   const media = extractMedia(event);
-  const hasMedia = media.images.length + media.videos.length + media.youtube.length > 0;
   // [#796] パブリックチャットの発言は、返信もそのチャンネルのルームで（ここから返すと kind:1 の返信になってしまう）
   const navigate = useNavigate();
   const roomHref = event.kind === 42 ? roomHrefOf(event) : null;
@@ -247,8 +245,8 @@ function NoteBody({
               )}
               <TranslationBlock eventId={event.id} />
               {quote && <QuoteCard pointer={quote.pointer} encoded={quote.encoded} />}
-              {hasMedia && <NoteMedia media={media} />}
-              <LinkCards cards={linkCards.cards} />
+              {/* 画像はまとめて先に、動画・YouTube・リンクカードは本文の出現順（ネイティブ NoteItem.kt / LinkEmbeds.kt） */}
+              <NoteMedia media={media} cards={linkCards.cards} content={event.content} />
               <ArticleCards content={event.content} />
             </>
           )}
