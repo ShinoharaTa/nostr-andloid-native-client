@@ -9,6 +9,7 @@ import { subscribeTo, useReadRelays } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { isNoteMuted, useMuteMatcher } from "../mute/muteList";
+import type { ReactionTreeData } from "./reactionTree";
 import {
   anchorsKey,
   buildThread,
@@ -19,6 +20,7 @@ import {
   threadRequestFilters,
   threadViewFilters,
 } from "./threadTree";
+import { useReactionTree } from "./useReactionTree";
 
 /** URL のリレーヒントから足すのは先頭この件数まで */
 const MAX_HINT_RELAYS = 3;
@@ -38,6 +40,8 @@ export type Thread = {
   entries: ThreadEntry[];
   /** 起点を e タグで指す投稿・リポスト・リアクション（集計は engagement.ts） */
   engagementEvents: NostrEvent[];
+  /** [#904] 起点のリアクションの木（L1 → L2 → L3。useReactionTree） */
+  reactionTree: ReactionTreeData;
   /** 最初の EOSE（または 8 秒経過）まで true。張り直しでは戻さない */
   loading: boolean;
 };
@@ -122,5 +126,8 @@ export function useThread(pointer: EventPointer | null): Thread {
       [pointerId],
     ) ?? NO_EVENTS;
 
-  return { focus, anchors, entries, engagementEvents, loading };
+  // [#904] リアクションへのリアクション（L2・L3）の購読と組み立て
+  const reactionTree = useReactionTree(pointerId, engagementEvents, relays);
+
+  return { focus, anchors, entries, engagementEvents, reactionTree, loading };
 }

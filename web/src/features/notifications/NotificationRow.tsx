@@ -14,6 +14,8 @@ import {
 } from "../../ui/icons";
 import { ReactionEventActions } from "../actions/NoteActionButtons";
 import { ReactionDisplay } from "../actions/ReactionDisplay";
+import { normalizeReaction } from "../thread/engagement";
+import { ReactorEmoji } from "../thread/ReactorRow";
 import { Avatar, NoteItem } from "../timeline/NoteItem";
 import { QuoteCard } from "../timeline/QuoteCard";
 import { useNow } from "../timeline/useNow";
@@ -25,6 +27,7 @@ import {
   notificationHref,
   notificationKindLabel,
   notificationSnippet,
+  targetPointerOf,
 } from "./notificationModel";
 
 /** 種別マーク（ネイティブの kindIcon）。[#878] リアクションも ♡ のアイコン（絵文字は本体の 1 行） */
@@ -44,6 +47,9 @@ const KIND_ICON: Record<NotificationKind, typeof ReplyIcon> = {
  * [#878] リアクションは見出しと引用カードの間に絵文字の行（右端にそのリアクションへの操作）。
  * DM = 見出しは相手と時刻、本体は未読の数の 1 行（本文は出さない）。
  * 行を押すと対象のスレッド（対象が無ければ通知そのもの。DM は相手との会話）を開く。
+ * [#904] リアクションの行は通知そのもの（相手の kind:7）を開く（スレッド画面が元の投稿に付け替えて光らせる）。
+ * 対象が自分のリアクション（kind:7）なら、kind:7 を投稿として描かず「あなたのリアクション 👍」の 1 行 +
+ * そのリアクションが付いた元の投稿（P）の引用カードにする（ネイティブ #901 の NoticeRow の targetReaction）。
  */
 export const NotificationRow = memo(function NotificationRow({ item }: { item: NotificationItem }) {
   const t = useT();
@@ -57,6 +63,12 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
   const ref = useRef<HTMLElement>(null);
   useOpenOnClick(ref, href);
   const target = isReply ? targetEvent : undefined;
+  // [#904] 対象が自分のリアクション（kind:7）なら、その絵文字と、それが付いた元の投稿（最後の e）
+  const targetReaction =
+    !isReply && targetEvent?.kind === 7 && targetEvent.id === item.target?.id
+      ? normalizeReaction(targetEvent.content, targetEvent.tags)
+      : null;
+  const quotePointer = targetReaction && targetEvent ? targetPointerOf(targetEvent) : item.target;
 
   let head: ReactNode;
   let body: ReactNode;
@@ -102,7 +114,17 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
       ) : (
         <>
           {item.kind === "reaction" && <ReactionLine item={item} />}
-          {item.target && <QuoteCard pointer={item.target} encoded={null} compact={item.kind !== "repost"} />}
+          {targetReaction && (
+            <YourReactionLine display={targetReaction.display} imageUrl={targetReaction.imageUrl} />
+          )}
+          {quotePointer && (
+            <QuoteCard
+              key={quotePointer.id}
+              pointer={quotePointer}
+              encoded={null}
+              compact={item.kind !== "repost"}
+            />
+          )}
         </>
       );
   }
@@ -160,5 +182,18 @@ function ReactionLine({ item }: { item: NotificationItem }) {
       </div>
       {item.event && <ReactionEventActions event={item.event} />}
     </div>
+  );
+}
+
+/** [#904] 対象が自分のリアクションのときの 1 行「あなたのリアクション 👍」（ネイティブ notif_your_reaction） */
+function YourReactionLine({ display, imageUrl }: { display: string; imageUrl: string | null }) {
+  const t = useT();
+  return (
+    <p className={styles.yourReaction}>
+      <span className={styles.yourReactionLabel}>{t("notif_your_reaction")}</span>
+      <span className={styles.yourReactionEmoji}>
+        <ReactorEmoji display={display} imageUrl={imageUrl} />
+      </span>
+    </p>
   );
 }
