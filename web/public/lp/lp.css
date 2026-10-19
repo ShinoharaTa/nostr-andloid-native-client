@@ -568,6 +568,12 @@
 #lp footer a:hover {
   color: var(--text);
 }
+/* アプリバージョン（#642 S17。/about で AboutRoute が足す） */
+#lp footer .version {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+}
 #lp footer .copy {
   font-family: var(--mono);
   font-size: 11px;

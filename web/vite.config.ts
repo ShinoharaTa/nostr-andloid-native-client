@@ -1,6 +1,35 @@
+import { execFileSync } from "node:child_process";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+
+/** 直近の git tag `vX.Y.Z` の `X.Y.Z`（scripts/version.sh --name と同じ規則。#252）。取れなければ null */
+function gitTagVersion(): string | null {
+  try {
+    const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return tag ? tag.replace(/^v/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Web のアプリバージョン（#642 S17。lib/appVersion.ts の APP_VERSION）。タグの無い浅いクローンでは
+ * タグを 1 回だけ取りに行き、それでも取れなければ null（テーマストアの ⚠ を出さない）。docs/version.md
+ */
+function resolveAppVersion(): string | null {
+  const version = gitTagVersion();
+  if (version) return version;
+  try {
+    execFileSync("git", ["fetch", "--tags", "--depth=1"], { stdio: "ignore", timeout: 60_000 });
+  } catch {
+    return null;
+  }
+  return gitTagVersion();
+}
 
 /**
  * dist/ に置く静的ページ（docs/*.html と、assemble-dist.mjs が生成する licenses.html）の拡張子なしの URL（#688）。
@@ -20,6 +49,7 @@ export const NAVIGATE_FALLBACK_DENYLIST: RegExp[] = [
 // dist/ の残り（LP 以外の docs・メタファイル）は scripts/assemble-dist.mjs が組み立てる。
 export default defineConfig({
   base: "/",
+  define: { __APP_VERSION__: JSON.stringify(resolveAppVersion()) },
   plugins: [
     react(),
     // injectRegister: null = 登録用の inline script を注入しない（CSP の script-src 'self'）。登録は UpdateToast の useRegisterSW
