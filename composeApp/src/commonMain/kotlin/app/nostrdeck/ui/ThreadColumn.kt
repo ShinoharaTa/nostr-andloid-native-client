@@ -230,15 +230,8 @@ private fun FocusNoteStats(
         // 絵文字ごとのリアクションした人。
         groups.forEach { g ->
             ReactorRow(
-                leading = {
-                    val img = g.imageUrl
-                    if (img != null) {
-                        // [#308] 文字側(Sub)と同じトークンから引く。[#861] 高さ固定・幅は縦横比どおり。
-                        AnimatedEmoji(img, contentDescription = g.display, modifier = Modifier.emojiSize(img, DeckType.Sub.asEmojiSize()))
-                    } else {
-                        Text(g.display, fontSize = DeckType.Sub)
-                    }
-                },
+                // [#902] 行幅の半分まで伸び、横長の絵文字は縮め、文字数のあるものは 2 行で省略する。
+                leading = { ReactorEmoji(g.display, g.imageUrl) },
                 label = "${g.people.size}", people = g.people, onAuthorClick = onAuthorClick,
             )
         }
