@@ -1,6 +1,7 @@
 import { use$ } from "applesauce-react/hooks/use-$";
 import { useMemo, useState } from "react";
 import { t, useT } from "../../i18n";
+import { APP_VERSION, compareVersion } from "../../lib/appVersion";
 import { displayName, useProfile } from "../../nostr/loaders";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
@@ -225,7 +226,9 @@ export function ThemeStoreSection({
 
 /**
  * ストア一覧の1行。ミニカード（ThemeSwatch）+ 名前・作者。[#587] タップは下書きへの取り込み（プレビュー）。
- * 適用中・プレビュー中を右端に表示する（ネイティブ ThemeStoreRow と同じ）。自分のテーマは削除できる
+ * 適用中・プレビュー中を右端に表示する（ネイティブ ThemeStoreRow と同じ）。自分のテーマは削除できる。
+ * [#642 S17] アプリより新しい版向けのテーマは名前の横に `⚠ vX.Y.Z+`（ネイティブと同じ。適用は許す）。
+ * APP_VERSION が取れないビルド（null）では出さない（全部の行に付くのを避ける）
  */
 function ThemeStoreRow({
   entry,
@@ -243,12 +246,16 @@ function ThemeStoreRow({
   const t = useT();
   const profile = useProfile(entry.author);
   const author = displayName(profile, entry.author, "npub");
+  const tooNew = APP_VERSION !== null && compareVersion(entry.minAppVersion, APP_VERSION) > 0;
   return (
     <li className={styles.row}>
       <button type="button" className={styles.rowButton} onClick={onSelect}>
         <ThemeSwatch colors={entry.colors} />
         <span className={styles.info}>
-          <span className={styles.name}>{entry.name}</span>
+          <span className={styles.nameLine}>
+            <span className={styles.name}>{entry.name}</span>
+            {tooNew && <span className={styles.tooNew}>{`⚠ v${entry.minAppVersion}+`}</span>}
+          </span>
           <span className={settingsStyles.relayMeta}>{author}</span>
         </span>
         {applied ? (

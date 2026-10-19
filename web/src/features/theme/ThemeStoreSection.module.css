@@ -52,6 +52,21 @@
   min-width: 0;
 }
 
+/* 名前 + minAppVersion の印（#642 S17。ネイティブ ThemeStoreRow の Row と同じ並び） */
+.nameLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.tooNew {
+  flex: none;
+  color: var(--warn);
+  font-size: var(--type-micro);
+  white-space: nowrap;
+}
+
 .name {
   overflow: hidden;
   color: var(--text);

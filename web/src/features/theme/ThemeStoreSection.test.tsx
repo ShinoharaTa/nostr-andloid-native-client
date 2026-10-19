@@ -22,6 +22,15 @@ const sampleEntry: ThemeEntry = {
 };
 
 // リレーへは繋がず、一覧はこのテスト用の1件で固定する（読み込み中も終えておく）
+// アプリバージョン（ビルド時の値）はテストごとに差し替える（#642 S17）。既定はテーマの minAppVersion と同じ
+const appVersion = vi.hoisted(() => ({ value: "0.3.0" as string | null }));
+vi.mock("../../lib/appVersion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/appVersion")>()),
+  get APP_VERSION() {
+    return appVersion.value;
+  },
+}));
+
 vi.mock("./themeStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./themeStore")>()),
   useThemeStoreEntries: () => ({ loading: false, entries: [sampleEntry] }),
@@ -32,6 +41,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  appVersion.value = "0.3.0";
   useThemePrefs.setState(DEFAULT_THEME_PREFS);
   useThemeUndo.setState(null);
   useSession.setState({ status: "out", method: null, pubkey: null });
@@ -120,4 +130,28 @@ it("共有コードの取り込みは下書きへ反映するだけ（本体は�
   await user.click(screen.getByRole("button", { name: "取り込む" }));
   expect(onSelect).toHaveBeenCalledWith({ bg: "#000000", text: "#FFFFFF", accent: "#FF0000" }, "Mono");
   expect(useThemePrefs.getState().custom).toEqual(DEFAULT_CUSTOM_COLORS);
+});
+
+it("テーマの minAppVersion がアプリより新しければ名前の横に ⚠ vX.Y.Z+ を出す（ネイティブと同じ）", () => {
+  appVersion.value = "0.2.9";
+  render(<Wrapper />);
+  const row = screen.getByRole("button", { name: /Sakura/ });
+  expect(within(row).getByText("⚠ v0.3.0+")).toBeInTheDocument();
+});
+
+it("minAppVersion がアプリと同じか古ければ ⚠ を出さない（桁は数値で比べる）", () => {
+  appVersion.value = "0.3.0";
+  const { unmount } = render(<Wrapper />);
+  expect(screen.queryByText(/⚠/)).toBeNull();
+  unmount();
+
+  appVersion.value = "0.10.0";
+  render(<Wrapper />);
+  expect(screen.queryByText(/⚠/)).toBeNull();
+});
+
+it("アプリバージョンが取れないビルド（null）では ⚠ を出さない", () => {
+  appVersion.value = null;
+  render(<Wrapper />);
+  expect(screen.queryByText(/⚠/)).toBeNull();
 });

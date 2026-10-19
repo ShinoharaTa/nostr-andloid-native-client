@@ -1,4 +1,5 @@
 {
+  "web_about_version": "バージョン %1$s",
   "web_account_nosskey_confirm_text": "秘密鍵をパスキー(生体認証)の PRF で暗号化して保護します（WebAuthn PRF）。 nsec を控えてから保護してください。",
   "web_article_failed": "記事を取得できませんでした",
   "web_bookmark_added": "ブックマークしました",
