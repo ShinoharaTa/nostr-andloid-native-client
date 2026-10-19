@@ -11,7 +11,9 @@ import {
   Nip46Error,
   nip46Signer,
   parseBunkerInput,
+  pauseNip46,
   restoreNip46,
+  resumeNip46,
   StrictNostrConnectSigner,
   setNip46PoolForTest,
   startNostrConnect,
@@ -265,6 +267,128 @@ describe("auth_url", () => {
 
     await expect(connectBunker(bunker.uri())).rejects.toMatchObject({ reason: "rejected" });
     expect(useNip46Auth.getState().url).toBeNull();
+  });
+});
+
+describe("一時停止（pauseNip46 / resumeNip46）", () => {
+  /** 保管した接続から張り直す（restoreNip46） */
+  async function restore() {
+    await installTestVault();
+    await getNip46Store().save({
+      pubkey: bunker.user,
+      remote: bunker.remote,
+      relays: [RELAY],
+      clientKey: generateSecretKey(),
+    });
+    expect(await restoreNip46(bunker.user)).toBe(true);
+  }
+
+  it("接続が無ければ何もしない（後の接続も止めたままにしない）", async () => {
+    const relay = bunker.relay(RELAY);
+
+    pauseNip46();
+    resumeNip46();
+
+    expect(relay.keepAlive).toBe(30_000);
+    expect(nip46Signer()).toBeNull();
+
+    // 接続が無いときの pause は一時停止中にしない（後の resume が張り直さない）
+    pauseNip46();
+    await restore();
+    resumeNip46();
+    await tick();
+    expect(bunker.openSubscriptions).toBe(1);
+    expect(relay.keepAlive).toBe(30_000);
+  });
+
+  it("restoreNip46 の後の pause で購読と AUTH の監視を止め、使っていない接続をすぐ閉じる。署名者は残す", async () => {
+    await restore();
+    const relay = bunker.relay(RELAY);
+    expect(bunker.openSubscriptions).toBe(1);
+    expect(relay.challenge$.observed).toBe(true);
+
+    pauseNip46();
+
+    expect(bunker.openSubscriptions).toBe(0);
+    expect(relay.challenge$.observed).toBe(false);
+    // 購読をやめた接続は keepAlive を待たずに閉じる
+    expect(relay.keepAlive).toBe(0);
+    expect(nip46Signer()).not.toBeNull();
+    expect(bunker.requests).toHaveLength(0);
+  });
+
+  it("resume で購読と AUTH の監視を張り直し、すぐ後の signEvent は connect を送らずに sign_event だけ届く", async () => {
+    await restore();
+    const relay = bunker.relay(RELAY);
+    pauseNip46();
+
+    // open() の購読が張られるのを遅らせる（open() はクライアント鍵の公開鍵を待ってから購読する）
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = PrivateKeySigner.prototype.getPublicKey;
+    const getPublicKeySpy = vi
+      .spyOn(PrivateKeySigner.prototype, "getPublicKey")
+      .mockImplementation(async function (this: PrivateKeySigner) {
+        await gate;
+        return original.call(this);
+      });
+
+    resumeNip46();
+    // open() を待たずに要求する
+    const pending = nip46Signer()?.signEvent({ kind: 1, content: "hello", tags: [], created_at: 1 });
+    await tick();
+    // open() はもう呼んだので戻す（失敗しても後のテストへ持ち越さない）
+    getPublicKeySpy.mockRestore();
+    // 購読が張られるまで送らない（先に送ると応答を取り逃がす）
+    expect(bunker.requests).toHaveLength(0);
+    release();
+    const signed = await pending;
+
+    expect(bunker.methods()).toEqual(["sign_event"]);
+    expect(signed && verifyEvent(signed)).toBe(true);
+    expect(signed?.pubkey).toBe(bunker.user);
+    expect(bunker.openSubscriptions).toBe(1);
+    expect(relay.keepAlive).toBe(30_000);
+    relay.challenge$.next("challenge-1");
+    await vi.waitFor(() => expect(relay.authenticate).toHaveBeenCalledTimes(1));
+  });
+
+  it("二重の pause / resume は 1 回と同じ", async () => {
+    await restore();
+    const relay = bunker.relay(RELAY);
+
+    pauseNip46();
+    pauseNip46();
+    expect(bunker.openSubscriptions).toBe(0);
+    expect(relay.keepAlive).toBe(0);
+
+    resumeNip46();
+    resumeNip46();
+    await tick();
+    expect(bunker.openSubscriptions).toBe(1);
+    expect(relay.keepAlive).toBe(30_000);
+    // AUTH の監視も 1 本だけ
+    relay.challenge$.next("challenge-1");
+    await vi.waitFor(() => expect(relay.authenticate).toHaveBeenCalled());
+    await tick();
+    expect(relay.authenticate).toHaveBeenCalledTimes(1);
+
+    await nip46Signer()?.signEvent({ kind: 1, content: "x", tags: [], created_at: 1 });
+    expect(bunker.methods()).toEqual(["sign_event"]);
+  });
+
+  it("承認待ちの nostrconnect:// は止めない", async () => {
+    await restore();
+    const { uri, done } = startNostrConnect();
+    await vi.waitFor(() => expect(bunker.openSubscriptions).toBe(2));
+
+    pauseNip46();
+
+    expect(bunker.openSubscriptions).toBe(1);
+    bunker.acceptNostrConnect(uri);
+    await expect(done).resolves.toEqual({ pubkey: bunker.user });
   });
 });
 
