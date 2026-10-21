@@ -1,2 +1,3 @@
-- Images posted at "High (original)" now have metadata such as location removed, with no loss in quality and orientation preserved
-- Relays used for remote signing (nostrconnect) and wallets (NWC) now pause after 5 minutes in the background and reconnect when you return
+- Tapping a reaction notification opens the original post's thread and highlights that person's reaction; reactions to your reactions open the original post too
+- The reaction list in a thread is now a tree: reactions and reposts of a reaction appear indented under its emoji row
+- The reaction list now fits the column width (long text reactions, wide emoji, many people)
