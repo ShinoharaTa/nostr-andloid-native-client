@@ -284,6 +284,15 @@ private fun CompactPager(state: DeckState) {
     LaunchedEffect(pager.currentPage, state.columns.size) {
         state.visibleColumnId = state.columns.getOrNull(pager.currentPage)?.id
     }
+    // [#917] ホームのタップで表示中のカラムを先頭へ。指で触って止められたときも要求は消す（次のタップを受けられるように）。
+    LaunchedEffect(state.scrollTopTarget) {
+        val target = state.scrollTopTarget ?: return@LaunchedEffect
+        try {
+            state.listStateFor(target).scrollToTopQuickly()
+        } finally {
+            state.consumeScrollTop()
+        }
+    }
 
     // [#346] 並べ替えの実行係。変異と同フレームで Pager に追従を要求し、
     // 「新しい並びの同 index（＝隣カラム）」が1フレーム映る点滅をなくす。
@@ -378,6 +387,17 @@ private fun CompactPager(state: DeckState) {
     }
     }
 }
+
+/**
+ * [#917] 先頭へ戻す。遠くまで読み進めているときは近く（[TOP_JUMP_ITEMS] 件目）まで一気に飛んでから滑らせる。
+ * 数百件ぶんをアニメーションでたどると長く、途中の画像の読み込みも走るため。
+ */
+internal suspend fun LazyListState.scrollToTopQuickly() {
+    if (firstVisibleItemIndex > TOP_JUMP_ITEMS) scrollToItem(TOP_JUMP_ITEMS)
+    animateScrollToItem(0)
+}
+
+private const val TOP_JUMP_ITEMS = 8
 
 /** [#324] 選択タブを可視域へ寄せるときに前のタブを少し覗かせる量（px）。 */
 private const val TAB_PEEK_PX = 48

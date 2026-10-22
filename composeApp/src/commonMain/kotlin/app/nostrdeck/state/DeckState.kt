@@ -133,6 +133,30 @@ class DeckState(
     }
 
     /**
+     * [#917] スマホ表示で先頭へ戻すよう求められたカラム id。CompactPager がスクロールし終えたら null に戻す。
+     */
+    var scrollTopTarget by mutableStateOf<String?>(null)
+        private set
+    fun consumeScrollTop() { scrollTopTarget = null }
+
+    /**
+     * [#917] スマホ表示（シングルカラム）の「ホーム」のタップ。
+     * ホームでカラムを見ているときは、そのカラムを先頭（チャットのルームは最新＝下端）へ戻す。
+     * すでに先頭にいるときは従来どおりフォロー中へ（[openHome]。#422 の「フォロー中へ一発で戻る」を 2 回目のタップに残す）。
+     * ほかの画面・詳細を重ねているとき・通知カラムを見ているとき（ナビは「通知」が選択表示）も [openHome]。
+     * デッキ表示ではカラムが全部見えていて「表示中のカラム」が決まらないので使わない。
+     */
+    fun tapHomeCompact() {
+        val id = visibleColumnId
+        if (navDest != NavDest.HOME || hasDetail || notificationsActive || id == null || columns.none { it.id == id }) {
+            openHome()
+            return
+        }
+        val list = listStateFor(id)
+        if (list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0) openHome() else scrollTopTarget = id
+    }
+
+    /**
      * [#794] 「パブリックチャット」ナビのタップ。常にチャンネル一覧へ。
      * #422 の「メッセージ」（DM とチャットを切り替えでまとめた画面）はやめ、DM は自分のアイコンのメニューから開く。
      */

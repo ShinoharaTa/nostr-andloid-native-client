@@ -127,7 +127,7 @@ fun AppScaffold(state: DeckState) {
             // [#332] 左レール + シングルカラム。BottomBar が無いので、Expanded と同じく
             // ここで下端インセットを確保する（インジケータ帯に潜らないように）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
-                DeckRail(state)
+                DeckRail(state, compact = true)
                 CompositionLocalProvider(LocalHasNavRail provides true) {
                     ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder)
                 }
@@ -351,7 +351,7 @@ private fun BottomBar(state: DeckState) {
         NavItem(
             state, NavDest.HOME, Icons.Outlined.Home, stringResource(Res.string.nav_home),
             selected = state.navDest == NavDest.HOME && !state.notificationsActive,
-            onClick = { state.openHome() },   // [#422] 必ずフォロー中へ
+            onClick = { state.tapHomeCompact() },   // [#917] 表示中のカラムを先頭へ。先頭ならフォロー中へ（#422）
         )
         NavItem(state, NavDest.SEARCH, Icons.Outlined.Search, stringResource(Res.string.nav_search))
         NavItem(
