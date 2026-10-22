@@ -63,7 +63,11 @@ import app.nostrdeck.theme.DeckType
  * グリフは [DeckDimens.RailIcon] に統一。ブロック境界は 1px の [RailDivider] で分ける。
  */
 @Composable
-fun DeckRail(state: DeckState) {
+fun DeckRail(
+    state: DeckState,
+    /** [#917] スマホ表示（シングルカラム）の横に出すレールか。ホームのタップで表示中のカラムを先頭へ戻す。 */
+    compact: Boolean = false,
+) {
     val repo = LocalRepository.current
     // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
     // （ここで DM 画面に居るだけで既読にすると、読んでいない会話まで消えていた）。
@@ -91,7 +95,10 @@ fun DeckRail(state: DeckState) {
             }
             // [#409] 現在のカラムは下の目次側で点灯させる（選択箇所は常に1つ）。
             // [#422] ホームは必ずフォロー中へ（最後に見ていたカラムではなく）。
-            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) { state.openHome() }
+            // [#917] スマホ表示では、まず表示中のカラムを先頭へ戻す（先頭にいればフォロー中へ）。
+            NavIcon(Icons.Outlined.Home, stringResource(Res.string.nav_home), state.railHomeActive) {
+                if (compact) state.tapHomeCompact() else state.openHome()
+            }
         }
 
         RailDivider()
