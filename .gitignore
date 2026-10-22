@@ -33,3 +33,9 @@ iosApp/Configuration/ExportOptions.generated.plist
 
 # ローカル検証で吸い出す SQLite ダンプ（コミットしない）
 *.db
+
+# ストア資材の生成物（distribution/store/README.md の手順でいつでも作り直せる）
+distribution/store/raw/
+distribution/store/out/
+distribution/store/.build-tmp/
+distribution/store/demo-media/svg/
