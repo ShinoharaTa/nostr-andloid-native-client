@@ -42,7 +42,10 @@ object ImageProxy {
         // そのままだと wsrv が空白込み URL を取得できず画像が出ないため、必ず trim する。
         val clean = url.trim()
         if (clean.isBlank()) return clean
-        if (hostOf(clean) in blockedHosts) return clean
+        val host = hostOf(clean)
+        if (host in blockedHosts) return clean
+        // 手元のサーバー（開発中のメディアサーバー・ストア用スクリーンショットのデモ画像）は公開プロキシから取れないので通さない。
+        if (host == "localhost" || host == "127.0.0.1" || host == "[::1]") return clean
         val enc = clean.encodeURLParameter()
         val q = if (dataSaver) minOf(quality, 60) else quality
         // 縮める基準（幅 w= か高さ h=）。縦横比は保たれる。

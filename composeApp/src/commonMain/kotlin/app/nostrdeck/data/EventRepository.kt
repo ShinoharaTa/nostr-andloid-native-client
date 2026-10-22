@@ -185,6 +185,11 @@ class EventRepository(
     private val db: NostrDb,
     private val scope: CoroutineScope,
     relayUrls: List<String>,
+    /**
+     * [store] リレーへ一切つながない（ストア用スクリーンショットのデモ描画）。購読・発行の要求は受け付けるが、
+     * 接続を作らないので外のイベントが混ざらない。データは [ingestLocal] で入れる。通常は false。
+     */
+    private val offline: Boolean = false,
 ) {
     private val q = db.nostrQueries
     private val bootstrapUrls = relayUrls
@@ -520,6 +525,7 @@ class EventRepository(
      * relays/activeSubs の読み書きは relayDispatcher（単一スレッド相当）に直列化する。
      */
     private fun ensureRelay(url: String) {
+        if (offline) return   // [store]
         val key = normalizeRelayUrl(url)
         scope.launch(relayDispatcher) {
             if (relays.containsKey(key)) return@launch
@@ -622,6 +628,11 @@ class EventRepository(
 
     /** relays の現在状態をスナップショットして集約フローへ流す（relayDispatcher 上で呼ぶ）。 */
     private fun refreshRelayConns() {
+        // [store] オフライン（デモ描画）では、設定リストのリレーを接続中として出す（接続を作らないので 0/0 になるため）。
+        if (offline) {
+            _relayConns.value = listRelays.sorted().map { RelayConn(it, RelayConnState.CONNECTED) }
+            return
+        }
         // [#50] N/M と一覧は設定リスト(read 有効)のリレーだけを対象にする。
         // インデクサ/ヒント等の一時接続は「リストに無いリレー」なので除外（数えない・出さない）。
         _relayConns.value = relays.entries.filter { it.key in listRelays }.sortedBy { it.key }
@@ -2952,6 +2963,7 @@ class EventRepository(
 
     /** 未接続の write 専用リレーへ一時接続で1イベントを配信する（購読なし・送信後に閉じる）。 */
     private suspend fun publishTransient(url: String, payload: String) {
+        if (offline) return   // [store]
         val c = RelayClient(url, scope)
         // [#423] 一時接続でも OK を拾う。以前は受信を誰も読んでおらず、書き込み専用リレーや
         // 相手の DM リレー（ほぼ常に一時接続）の受理が見えなかった。DM は毎回「未送信」になっていた。
@@ -3655,6 +3667,15 @@ class EventRepository(
                 confirmByEcho(origins.filter { it.first.id in ok })
             }
         }
+    }
+
+    /**
+     * [store] リレーを介さずにイベントを取り込む（ストア用スクリーンショットのデモデータ）。署名を確かめ、
+     * リレーから届いたときと同じ [ingest] を通す（通知・リアクションの集計・プロフィールなどが同じ規則で作られる）。
+     */
+    internal fun ingestLocal(events: List<NostrEvent>) {
+        val valid = events.filter { EventCrypto.verify(it) }
+        q.transaction { valid.forEach { runCatching { ingest(it) } } }
     }
 
     /** 1イベントの取り込み（署名検証は [ingestLoop] で済ませ、ここは DB 書き込み＋副作用のみ）。 */
