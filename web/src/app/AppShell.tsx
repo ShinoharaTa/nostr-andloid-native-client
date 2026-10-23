@@ -92,7 +92,7 @@ export function AppShell() {
   const t = useT();
   useTransientHistory();
   const closeOverlay = useCloseOverlay();
-  const { open, openColumn } = useNavActions();
+  const { open, openColumn } = useNavActions({ mode, dest, hasOverlay: overlay !== null });
 
   const jumpTarget = useDeck((s) => s.jumpTarget);
   const visibleColumnId = useDeck((s) => s.visibleColumnId);
