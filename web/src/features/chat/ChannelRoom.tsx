@@ -2,6 +2,7 @@ import type { NostrEvent } from "nostr-tools/pure";
 import {
   type FocusEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -44,6 +45,8 @@ import {
   reportNote,
   useIsReacted,
 } from "../actions/reactions";
+import { registerColumnScroll } from "../deck/columnScroll";
+import { useKbColumnId } from "../keyboard/KbList";
 import { NoteMedia } from "../media/NoteMedia";
 import { useMuteMatcher } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
@@ -68,6 +71,8 @@ const CONTINUATION_SEC = 300;
 const AT_LATEST_THRESHOLD = 40;
 /** 下端に見えている発言がこの位置以降なら、新着が無くても「最新へ戻る」を出す（Timeline と同じ 3） */
 const SCROLLED_AWAY_INDEX = 3;
+/** [#919] 最新へ戻すとき、新しい方からこの件数目が見える範囲より下なら、まずそこまで一気に飛んでから滑らせる（Timeline と同じ 8） */
+const JUMP_NEAR_INDEX = 8;
 
 /** 発言の位置 = それより新しい（下にある）件数（見つからなければ 0） */
 function positionOf(messages: readonly NostrEvent[], id: string | undefined): number {
@@ -161,6 +166,31 @@ export function ChannelRoom({
 
   const newCount = atLatest ? 0 : positionOf(messages, seenNewestId);
 
+  // 最新（column-reverse の scrollTop 0）へ戻す（「最新へ戻る」ピルと 1 カラム表示の「ホーム」#919）。
+  // 遠くまで読み進めていたら、新しい方から JUMP_NEAR_INDEX 件目が下端に来る位置まで一気に飛んでから滑らせる（ネイティブ #917）
+  const scrollToLatest = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const row = el.children[JUMP_NEAR_INDEX - 1];
+    const bottom = el.getBoundingClientRect().bottom;
+    if (row instanceof HTMLElement && row.getBoundingClientRect().top >= bottom) {
+      el.scrollTop += row.getBoundingClientRect().bottom - bottom;
+      requestAnimationFrame(() => scroller.current?.scrollTo?.({ top: 0, behavior: "smooth" }));
+    } else {
+      el.scrollTo?.({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  // [#919] デッキのカラムなら、1 カラム表示の「ホーム」から最新にいるかを聞かれ、最新へ戻せるようにする
+  const columnId = useKbColumnId();
+  useEffect(() => {
+    if (columnId === null) return;
+    return registerColumnScroll(columnId, {
+      atTop: () => follow.current.atLatest,
+      scrollToTop: scrollToLatest,
+    });
+  }, [columnId, scrollToLatest]);
+
   // [#798] 強調する発言。届いたらその位置へ送り、そこで強調を点ける（CSS のアニメーションで消える）。
   // 最初の EOSE までは後から届く発言で位置がずれるので、読み込みが終わったところでもう 1 度だけ送る
   const hasTarget = highlightMessageId !== null && byId.has(highlightMessageId);
@@ -209,12 +239,7 @@ export function ChannelRoom({
             rows
           )}
         </div>
-        <NewItemsPill
-          count={newCount}
-          scrolledAway={scrolledAway}
-          atBottom
-          onClick={() => scroller.current?.scrollTo?.({ top: 0, behavior: "smooth" })}
-        />
+        <NewItemsPill count={newCount} scrolledAway={scrolledAway} atBottom onClick={scrollToLatest} />
       </div>
       <ChatComposer
         channelId={channelId}

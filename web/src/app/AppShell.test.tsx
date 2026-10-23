@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCompose } from "../features/compose/composeStore";
 import { saveDraft } from "../features/compose/storage";
+import { registerColumnScroll } from "../features/deck/columnScroll";
 import { useDmSeen } from "../features/dm/dmSeen";
 import { useDm } from "../features/dm/dmStore";
 import type { ColumnSpec } from "../lib/columns";
@@ -327,6 +328,65 @@ describe("ナビ", () => {
     expect(router.state.location.pathname).toBe("/");
     expect(useDeck.getState().jumpTarget).toBeNull();
     expect(useDeck.getState().visibleColumnId).toBe("c_following");
+  });
+
+  describe("[#919] 1 カラム表示のホーム", () => {
+    /** 表示中のカラムを #nostr にして、スクロールの窓口を差し替える。jump した先を集める */
+    function setup(atTop: boolean) {
+      useDeck.setState({ visibleColumnId: "c_hashtag" });
+      const scrollToTop = vi.fn();
+      const unregister = registerColumnScroll("c_hashtag", { atTop: () => atTop, scrollToTop });
+      const targets: string[] = [];
+      const unsubscribe = useDeck.subscribe((s, prev) => {
+        if (s.jumpTarget !== null && s.jumpTarget !== prev.jumpTarget) targets.push(s.jumpTarget);
+      });
+      return {
+        scrollToTop,
+        targets,
+        dispose() {
+          unsubscribe();
+          unregister();
+        },
+      };
+    }
+
+    it("途中まで読んだカラムでホームを押すと、そのカラムを先頭へ戻し、フォロー中へは移らない", async () => {
+      const t = setup(false);
+      const router = renderAt(["/"]);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledTimes(1);
+      expect(t.targets).toEqual([]);
+      expect(useDeck.getState().visibleColumnId).toBe("c_hashtag");
+      expect(router.state.location.pathname).toBe("/");
+    });
+
+    it("レール（1 カラム）でも同じ", async () => {
+      const t = setup(false);
+      renderAt(["/"], 700);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledTimes(1);
+      expect(t.targets).toEqual([]);
+    });
+
+    it("先頭にいればホームは従来どおりフォロー中へ jump する", async () => {
+      const t = setup(true);
+      renderAt(["/"]);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
+      t.dispose();
+      expect(t.scrollToTop).not.toHaveBeenCalled();
+      expect(t.targets).toEqual(["c_following"]);
+    });
+
+    it("デッキ表示（expanded）では途中まで読んでいても従来どおりフォロー中へ", async () => {
+      const t = setup(false);
+      renderAt(["/"], 1400);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
+      t.dispose();
+      expect(t.scrollToTop).not.toHaveBeenCalled();
+      expect(t.targets).toEqual(["c_following"]);
+    });
   });
 
   it("expanded: レールの目次はデッキへ戻ってそのカラムへ jump する", async () => {

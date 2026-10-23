@@ -12,6 +12,11 @@ export function KbColumn({ id, children }: { id: string; children: ReactNode }) 
   return <KbColumnContext.Provider value={id}>{children}</KbColumnContext.Provider>;
 }
 
+/** デッキのカラムの中ならそのカラム id（外では null）。[#919] カラムのスクロール窓口の登録にも使う */
+export function useKbColumnId(): string | null {
+  return useContext(KbColumnContext);
+}
+
 /**
  * カラムの一覧（仮想リスト）をキー操作に登録する。選んだ行は list の scrollIntoView で見える位置へ寄せる。
  * postAt は r / t / f の対象。渡した一覧は投稿の行だけを j / k で選べる（混在の通知・リアクション・DM の行は飛ばす）。
