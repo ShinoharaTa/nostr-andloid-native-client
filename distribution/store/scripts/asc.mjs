@@ -72,8 +72,17 @@ async function status() {
   for (const l of locs.data) {
     const a = l.attributes;
     console.log(`versionLocalization ${a.locale}: description=${(a.description ?? "").length}字 keywords=${a.keywords ?? ""} promo=${(a.promotionalText ?? "").length}字 support=${a.supportUrl ?? ""}`);
-    const sets = await api("GET", `/v1/appStoreVersionLocalizations/${l.id}/appScreenshotSets?include=appScreenshots`);
-    for (const s of sets.data) console.log(`  screenshots ${s.attributes.screenshotDisplayType}: ${s.relationships?.appScreenshots?.data?.length ?? 0}枚`);
+    const sets = await api("GET", `/v1/appStoreVersionLocalizations/${l.id}/appScreenshotSets?include=appScreenshots&fields[appScreenshots]=fileName,assetDeliveryState&limit[appScreenshots]=10`);
+    for (const s of sets.data) {
+      const ids = new Set((s.relationships?.appScreenshots?.data ?? []).map((d) => d.id));
+      const shots = (sets.included ?? []).filter((x) => ids.has(x.id));
+      const states = shots.map((x) => x.attributes.assetDeliveryState?.state ?? "?");
+      const count = Object.entries(states.reduce((m, st) => ({ ...m, [st]: (m[st] ?? 0) + 1 }), {})).map(([k, v]) => `${k}=${v}`).join(" ");
+      console.log(`  screenshots ${s.attributes.screenshotDisplayType}: ${ids.size}枚 ${count}`);
+      for (const x of shots.filter((x) => x.attributes.assetDeliveryState?.state === "FAILED")) {
+        console.log(`    失敗: ${x.attributes.fileName} ${JSON.stringify(x.attributes.assetDeliveryState.errors ?? [])}`);
+      }
+    }
   }
 }
 
