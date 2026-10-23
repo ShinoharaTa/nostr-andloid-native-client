@@ -117,7 +117,8 @@ gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録して�
 gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review=false   # 審査に送らずに置いておく
 ```
 
-`send_for_review=false` は管理対象の公開がオンのときだけ使える。オフのアプリでは確定せずに止まる。
+`send_for_review=false` は、審査で却下されたあとなど、Play が変更を自動で審査に送れない状態のときだけ使える。それ以外では確定せずに止まる。
+管理対象の公開のオン・オフは API から読めないので、Play Console の公開の概要で確かめる。
 
 画像を作り直したら、`out/play/` の中身（foldable を除く）を `store-assets` ブランチの `play/` へ入れてコミットする。
 サービスアカウントに Play Console の「ストアでの表示の管理」の権限が要る。

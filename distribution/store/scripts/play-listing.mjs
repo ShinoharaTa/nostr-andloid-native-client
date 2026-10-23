@@ -7,8 +7,9 @@
 //   （build-store-images.mjs の out/play と同じ並び）
 // 既定は確定と同時に審査へ送る。「管理対象の公開（Managed publishing）」がオンなので、承認後に Play Console で
 // 「変更を公開」を押すまで掲載には反映されない。
-// SEND_FOR_REVIEW=false は審査に送らずに置いておく（changesNotSentForReview）。管理対象の公開がオフのアプリは
-// この指定を受け付けないので、そのときは確定せずに止める。
+// SEND_FOR_REVIEW=false は審査に送らずに置いておく（changesNotSentForReview）。Play がこの指定を受け付けるのは、
+// 審査で却下されたあとなど、変更を自動で審査に送れない状態のときだけ（管理対象の公開のオン・オフとは関係しない）。
+// 受け付けられないときは確定せずに止める。
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,9 +20,8 @@ const BASE = `https://androidpublisher.googleapis.com/androidpublisher/v3/applic
 const UPLOAD = `https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/${PKG}`;
 const DRY = process.env.DRY_RUN === "true";
 const SEND = process.env.SEND_FOR_REVIEW !== "false";
-const CHECK = process.env.CHECK_MANAGED === "true";
 const imagesDir = process.argv[2];
-if (!imagesDir && !CHECK) throw new Error("画像のフォルダを指定する");
+if (!imagesDir) throw new Error("画像のフォルダを指定する");
 const token = process.env.PLAY_ACCESS_TOKEN || (() => { throw new Error("PLAY_ACCESS_TOKEN が未設定"); })();
 
 // listing.md の節 → Play の言語コードと画像のフォルダ
@@ -73,22 +73,6 @@ async function replaceImages(edit, language, imageType, paths) {
   console.log(`${language} ${imageType}: ${paths.length}枚`);
 }
 
-// 「管理対象の公開」がオンかを確かめる（読み出す API が無いので、中身の無い編集を「審査に送らない」で確定してみる。
-// オンなら確定でき、何も変わらない。オフなら Play がこの指定を拒む）
-if (CHECK) {
-  const probe = (await call("POST", `${BASE}/edits`, {})).id;
-  try {
-    await call("POST", `${BASE}/edits/${probe}:commit?changesNotSentForReview=true`);
-    console.log("管理対象の公開: オン（中身の無い編集を確定した。掲載・リリースには何も変えていない）");
-  } catch (e) {
-    await call("DELETE", `${BASE}/edits/${probe}`).catch(() => {});
-    if (!String(e.message).includes("sent for review automatically")) throw e;
-    console.log("管理対象の公開: オフ（変更が自動で審査に送られる設定）");
-    process.exitCode = 1;
-  }
-  process.exit();
-}
-
 const edit = (await call("POST", `${BASE}/edits`, {})).id;
 try {
   const current = await call("GET", `${BASE}/edits/${edit}/listings`);
@@ -114,8 +98,8 @@ try {
         console.log("確定した（審査には送っていない。Play Console の「公開の概要」から送る）");
       } catch (e) {
         if (String(e.message).includes("sent for review automatically")) {
-          throw new Error("このアプリは変更が自動で審査に送られる設定（管理対象の公開がオフ）なので、審査に送らずに確定できない。" +
-            "Play Console で「管理対象の公開」をオンにしてから動かすか、send_for_review=true で動かす（編集は破棄した）");
+          throw new Error("Play が変更を自動で審査に送れる状態なので、審査に送らない指定は受け付けられない" +
+            "（この指定は審査で却下されたあとなどに使う）。send_for_review=true で動かす（編集は破棄した）");
         }
         throw e;
       }
