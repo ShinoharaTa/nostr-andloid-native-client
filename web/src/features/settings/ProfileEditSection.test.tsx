@@ -76,6 +76,7 @@ it("開いた直後の取り直しが終わるまで入力欄と保存は無効�
   expect(screen.getByRole("status")).toHaveTextContent("読み込み中…");
   for (const name of [
     "表示名",
+    "ユーザー名（name）",
     "自己紹介",
     "アイコン画像",
     "バナー画像",
@@ -93,6 +94,7 @@ it("開いた直後の取り直しが終わるまで入力欄と保存は無効�
   await waitFor(() => expect(textbox("表示名")).toBeEnabled());
   expect(screen.queryByText("読み込み中…")).not.toBeInTheDocument();
   expect(textbox("表示名")).toHaveValue("Alice");
+  expect(textbox("ユーザー名（name）")).toHaveValue("alice");
   expect(textbox("自己紹介")).toHaveValue("hello");
   expect(textbox("Lightning アドレス (lud16)")).toHaveValue("a@ln.example");
   expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
@@ -150,6 +152,23 @@ it("画像のアップロード中は保存できない。終わると URL が�
     picture: UPLOADED_URL,
   });
   expect(await screen.findByRole("button", { name: "保存しました ✓" })).toBeInTheDocument();
+});
+
+it("[#922] 表示名を変えて保存しても name は残る（display_name だけ差し替える）", async () => {
+  const user = userEvent.setup();
+  vi.mocked(requestOnce).mockReturnValue(EMPTY);
+  addVerified(profile({ name: "shino3", display_name: "しの", about: "hi" }, 1_000));
+  render(<ProfileEditSection />);
+  await waitFor(() => expect(textbox("表示名")).toBeEnabled());
+  expect(textbox("表示名")).toHaveValue("しの");
+  expect(textbox("ユーザー名（name）")).toHaveValue("shino3");
+
+  await user.type(textbox("表示名"), "🌸");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+
+  expect(vi.mocked(publishEvent)).toHaveBeenCalledTimes(1);
+  const [draft] = vi.mocked(publishEvent).mock.calls[0];
+  expect(JSON.parse(draft.content)).toEqual({ name: "shino3", display_name: "しの🌸", about: "hi" });
 });
 
 it("画像 URL があれば下にプレビューを出す。読み込み中→失敗/成功（S16）", async () => {

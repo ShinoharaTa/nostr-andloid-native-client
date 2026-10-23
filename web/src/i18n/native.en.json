@@ -193,6 +193,7 @@
   "field_display_name": "Display name",
   "field_icon": "Icon image",
   "field_lud16": "Lightning address (lud16)",
+  "field_name": "Username (name)",
   "field_website": "Website",
   "followers_check": "Check followers",
   "followers_scope_note": "Only what could be observed on relays (not the total).",
