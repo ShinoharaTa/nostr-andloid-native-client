@@ -2,12 +2,13 @@
 //   node distribution/store/scripts/play-listing.mjs <画像のフォルダ>
 //   （GitHub Actions の store-listing.yml から動かす。Play の認証は Actions の中にしかない）
 // 環境変数: PLAY_ACCESS_TOKEN（androidpublisher のスコープ）、DRY_RUN=true で送らずに内容だけを出す、
-//   SEND_FOR_REVIEW=true で確定と同時に審査へ送る（既定は送らない）。
+//   SEND_FOR_REVIEW=false で審査に送らずに置いておく（既定は確定と同時に審査へ送る）。
 // 画像のフォルダ: <dir>/<ja|en>/{phone,tablet-7,tablet-10}/*.jpg、<dir>/<ja|en>/feature-1024x500.jpg、<dir>/icon-512.png
 //   （build-store-images.mjs の out/play と同じ並び）
-// 既定は「審査に送らない」で確定する（changesNotSentForReview）。Play Console で確かめてから人が審査に送る。
-// ただし「公開の管理（Managed publishing）」が無効のアプリは変更が自動で審査に送られ、この指定を受け付けない。
-// そのときは確定せずに止める（公開の管理を有効にするか、SEND_FOR_REVIEW=true で送るかを人が選ぶ）。
+// 既定は確定と同時に審査へ送る。「管理対象の公開（Managed publishing）」がオンなので、承認後に Play Console で
+// 「変更を公開」を押すまで掲載には反映されない。
+// SEND_FOR_REVIEW=false は審査に送らずに置いておく（changesNotSentForReview）。管理対象の公開がオフのアプリは
+// この指定を受け付けないので、そのときは確定せずに止める。
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,7 @@ const PKG = "net.shino3.nostrism";
 const BASE = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PKG}`;
 const UPLOAD = `https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/${PKG}`;
 const DRY = process.env.DRY_RUN === "true";
-const SEND = process.env.SEND_FOR_REVIEW === "true";
+const SEND = process.env.SEND_FOR_REVIEW !== "false";
 const imagesDir = process.argv[2];
 if (!imagesDir) throw new Error("画像のフォルダを指定する");
 const token = process.env.PLAY_ACCESS_TOKEN || (() => { throw new Error("PLAY_ACCESS_TOKEN が未設定"); })();
@@ -89,15 +90,15 @@ try {
   } else {
     if (SEND) {
       await call("POST", `${BASE}/edits/${edit}:commit`);
-      console.log("確定して審査に送った（承認後に掲載へ反映される）");
+      console.log("確定して審査に送った（承認後、Play Console の公開の概要で「変更を公開」を押すと掲載に反映される）");
     } else {
       try {
         await call("POST", `${BASE}/edits/${edit}:commit?changesNotSentForReview=true`);
         console.log("確定した（審査には送っていない。Play Console の「公開の概要」から送る）");
       } catch (e) {
         if (String(e.message).includes("sent for review automatically")) {
-          throw new Error("このアプリは変更が自動で審査に送られる設定（公開の管理が無効）なので、審査に送らずに確定できない。" +
-            "Play Console で「公開の管理」を有効にしてから動かすか、send_for_review=true で動かす（編集は破棄した）");
+          throw new Error("このアプリは変更が自動で審査に送られる設定（管理対象の公開がオフ）なので、審査に送らずに確定できない。" +
+            "Play Console で「管理対象の公開」をオンにしてから動かすか、send_for_review=true で動かす（編集は破棄した）");
         }
         throw e;
       }
