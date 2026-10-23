@@ -1,3 +1,4 @@
-- Tapping a reaction notification opens the original post's thread and highlights that person's reaction; reactions to your reactions open the original post too
-- The reaction list in a thread is now a tree: reactions and reposts of a reaction appear indented under its emoji row
-- The reaction list now fits the column width (long text reactions, wide emoji, many people)
+- On phones, tapping Home scrolls the current column back to the top; tap it again at the top to go to Following
+- Profile editing now has separate Display name and Username (name) fields; changing your display name no longer overwrites your username
+- Fixed custom emoji in your name or bio disappearing when you saved your profile
+- Fixed the first profile save after switching accounts picking up the previous account's picture and bio
