@@ -12,6 +12,10 @@ on:
         description: "true=送らずに内容だけを確かめる"
         required: false
         default: "true"
+      check_managed_publishing:
+        description: "true=「管理対象の公開」がオンかだけを確かめる（掲載は変えない）"
+        required: false
+        default: "false"
       send_for_review:
         description: "true=確定と同時に審査へ送る（承認後に「変更を公開」で反映）/ false=審査に送らずに置いておく"
         required: false
@@ -54,4 +58,5 @@ jobs:
           PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           DRY_RUN: ${{ inputs.dry_run }}
           SEND_FOR_REVIEW: ${{ inputs.send_for_review }}
+          CHECK_MANAGED: ${{ inputs.check_managed_publishing }}
         run: node distribution/store/scripts/play-listing.mjs store-assets/play
