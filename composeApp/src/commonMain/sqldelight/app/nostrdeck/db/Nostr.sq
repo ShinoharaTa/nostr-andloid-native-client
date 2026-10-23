@@ -122,6 +122,10 @@ SELECT * FROM profile WHERE pubkey = ?;
 myProfileContent:
 SELECT content FROM event WHERE kind = 0 AND pubkey = ? ORDER BY created_at DESC LIMIT 1;
 
+-- [#921] 自分の最新 kind:0 のタグ（保存時に引き継ぐ。KV に無いときの取り出し元）。
+myProfileTags:
+SELECT tags_json FROM event WHERE kind = 0 AND pubkey = ? ORDER BY created_at DESC LIMIT 1;
+
 allProfiles:
 SELECT * FROM profile;
 
