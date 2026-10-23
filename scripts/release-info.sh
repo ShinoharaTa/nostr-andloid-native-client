@@ -61,9 +61,11 @@ EOS
 echo
 echo "■ 人の操作（Android / Play Console）"
 cat <<EOS
-  ※ status=completed で配信した場合は操作不要（リリースノートは whatsnew から自動反映）。
-  1. Play Console → Nostrism → テスト → クローズドテスト（Alpha）
-  2. リリース $NAME ($BUILD) が「配信中」か確認
-  3. 製品版へ出す場合: リリースダッシュボード → 製品版へ昇格
+  ※ 「管理対象の公開」がオンなので、Play Console で公開するまでテスターに届かない（リリースノートは whatsnew から自動反映）。
+  1. Play Console → Nostrism → 公開の概要
+  2. 「審査にまだ送信されていない変更」にリリース $NAME ($BUILD) があれば「審査に送信」
+  3. 審査が通って「変更の公開準備完了」に移ったら「変更を公開」
+  4. テスト → クローズドテスト（Alpha）で $NAME ($BUILD) が「配信中」か確認
+  5. 製品版へ出す場合: リリースダッシュボード → 製品版へ昇格（同じく公開の概要から公開）
 EOS
 bar
