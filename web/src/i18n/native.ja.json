@@ -193,6 +193,7 @@
   "field_display_name": "表示名",
   "field_icon": "アイコン画像",
   "field_lud16": "Lightning アドレス (lud16)",
+  "field_name": "ユーザー名（name）",
   "field_website": "Web サイト",
   "followers_check": "フォロワーを確認",
   "followers_scope_note": "リレーで観測できた範囲のみ表示しています（全数ではありません）",

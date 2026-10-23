@@ -5,8 +5,27 @@ import { OwnReplaceableUnreachableError, refetchOwnReplaceable } from "../../nos
 import { writeRelays } from "../../nostr/pool";
 import { PublishError, type PublishFailure, publishEvent } from "../../nostr/publish";
 
-/** 編集できる項目（kind:0 のキー。表示名は name に入れる。ネイティブ AccountSettings と同じ 7 つ） */
-export const PROFILE_FIELDS = ["name", "about", "picture", "banner", "lud16", "nip05", "website"] as const;
+/*
+ * [#922] プロフィール編集（kind:0）の初期値の読み取りと、発行する content の組み立て。
+ * ネイティブ ProfileEdit.kt（#920）と同じ規則・同じテストケースにそろえる。
+ *
+ * NIP-24: name と display_name は別の項目。display_name は「name より大きく、豊かな文字を使える別の名前」で、
+ * name は「display_name があっても必ず置く」。displayName は非推奨（display_name を使う。見つけたら無視するか消す）。
+ * 以前は表示名の欄を name に書き、土台の display_name / displayName も同じ値にしていたため、別の値にしていた
+ * name が消えていた。
+ */
+
+/** 編集できる項目（kind:0 のキー。ネイティブ ProfileEdit.FIELDS と同じ順） */
+export const PROFILE_FIELDS = [
+  "name",
+  "display_name",
+  "about",
+  "picture",
+  "banner",
+  "lud16",
+  "nip05",
+  "website",
+] as const;
 
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 
@@ -16,8 +35,8 @@ export type ProfileFields = Record<ProfileField, string>;
 /** 発行で差し替える項目（空文字 = キーを消す） */
 export type ProfileChanges = Partial<ProfileFields>;
 
-/** 表示名を持つキー（name 以外。土台が持っていれば name と同じ値にする。ネイティブ publishProfile） */
-const DISPLAY_NAME_KEYS = ["display_name", "displayName"] as const;
+/** 非推奨の表示名のキー（NIP-24） */
+const LEGACY_DISPLAY_NAME = "displayName";
 
 /**
  * unreachable = 直前の取り直しでどのリレーからも応答が無かった（古い版で上書きしうるので止めた）。
@@ -53,15 +72,16 @@ function stringOf(value: unknown): string {
 }
 
 /**
- * 編集欄の初期値。表示名 = display_name → displayName → name の最初の空でない値、他は同名のキー
- * （文字列でない値は空欄）。
+ * 編集欄の初期値。表示名（display_name）は display_name → displayName の最初の空でない値（name には
+ * フォールバックしない）。他は同名のキー（文字列でない値は空欄）。content が読めなければ全部空欄。
  */
 export function profileFieldsOf(event: NostrEvent | null): ProfileFields {
   const json = contentObject(event) ?? {};
-  const name =
-    [json.display_name, json.displayName, json.name].map(stringOf).find((v) => v.trim() !== "") ?? "";
+  const displayName =
+    [json.display_name, json[LEGACY_DISPLAY_NAME]].map(stringOf).find((v) => v.trim() !== "") ?? "";
   return {
-    name,
+    name: stringOf(json.name),
+    display_name: displayName,
     about: stringOf(json.about),
     picture: stringOf(json.picture),
     banner: stringOf(json.banner),
@@ -83,8 +103,8 @@ export function changedFields(initial: ProfileFields, current: ProfileFields): P
 
 /**
  * 発行する content。取り直した版（base）の JSON を土台に、変えた項目だけ上書きし、空欄にした項目はキーを消す
- * （未知のキーはそのまま）。表示名は name に入れ、土台が display_name / displayName を持っていればそれも
- * 同じ値にする（空欄なら消す。ネイティブ publishProfile と同じ）。
+ * （未知のキーはそのまま）。name と display_name は同期しない。非推奨の displayName は消し、display_name が空で
+ * 表示名の欄も変えていなければ、その値を display_name に移す（ネイティブ ProfileEdit.buildContent と同じ）。
  */
 export function buildProfileContent(base: NostrEvent | null, changed: ProfileChanges): string {
   const json: Record<string, unknown> = { ...(contentObject(base) ?? {}) };
@@ -94,13 +114,10 @@ export function buildProfileContent(base: NostrEvent | null, changed: ProfileCha
     if (value === "") delete json[field];
     else json[field] = value;
   }
-  const name = changed.name?.trim();
-  if (name !== undefined) {
-    for (const key of DISPLAY_NAME_KEYS) {
-      if (!(key in json)) continue;
-      if (name === "") delete json[key];
-      else json[key] = name;
-    }
+  const legacy = stringOf(json[LEGACY_DISPLAY_NAME]).trim();
+  delete json[LEGACY_DISPLAY_NAME];
+  if (!("display_name" in changed) && stringOf(json.display_name).trim() === "" && legacy !== "") {
+    json.display_name = legacy;
   }
   return JSON.stringify(json);
 }

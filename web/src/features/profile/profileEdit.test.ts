@@ -8,6 +8,7 @@ import { addVerified } from "../../nostr/store";
 import {
   buildProfileContent,
   changedFields,
+  PROFILE_FIELDS,
   ProfileEditError,
   profileFieldsOf,
   publishProfile,
@@ -78,8 +79,118 @@ function published(): {
   return { ...draft, content: JSON.parse(draft.content) as Record<string, unknown> };
 }
 
+/**
+ * [#922] ネイティブ ProfileEditTest（#920）と同じケース・同じ名前。name と display_name を別の項目として扱い
+ * （NIP-24）、片方を変えてももう片方を書き換えないことを守る。
+ */
+describe("ProfileEdit（ネイティブ ProfileEditTest と同じケース）", () => {
+  /** content 文字列の kind:0（土台・初期値の読み取り用） */
+  const ev = (content: string) => profile(content, 1_000);
+  const obj = (content: string) => JSON.parse(content) as Record<string, unknown>;
+
+  // ---- 初期値 ----
+
+  it("fields_keep_name_and_display_name_apart", () => {
+    const f = profileFieldsOf(ev(`{"name":"shino3","display_name":"しの","about":"hi"}`));
+    expect(f.name).toBe("shino3");
+    expect(f.display_name).toBe("しの");
+    expect(f.about).toBe("hi");
+  });
+
+  it("display_name_falls_back_to_legacy_displayName", () => {
+    const f = profileFieldsOf(ev(`{"name":"shino3","display_name":"","displayName":"しの"}`));
+    expect(f.display_name).toBe("しの");
+    expect(f.name).toBe("shino3");
+  });
+
+  it("name_does_not_fill_display_name", () => {
+    // 表示名が無い人の表示名の欄は空のまま（name を表示名の欄に出さない）。
+    const f = profileFieldsOf(ev(`{"name":"shino3"}`));
+    expect(f.display_name).toBe("");
+    expect(f.name).toBe("shino3");
+  });
+
+  it("non_string_values_and_broken_json_are_blank", () => {
+    const f = profileFieldsOf(ev(`{"name":123,"about":null}`));
+    expect(f.name).toBe("");
+    expect(f.about).toBe("");
+    expect(Object.values(profileFieldsOf(ev("not json"))).every((v) => v === "")).toBe(true);
+    expect(Object.values(profileFieldsOf(null)).every((v) => v === "")).toBe(true);
+    expect(new Set(Object.keys(profileFieldsOf(null)))).toEqual(new Set(PROFILE_FIELDS));
+  });
+
+  // ---- 変えた欄 ----
+
+  it("changed_has_only_edited_fields_trimmed", () => {
+    const initial = profileFieldsOf(ev(`{"name":"shino3","display_name":"しの","about":"hi"}`));
+    const current = { ...initial, display_name: " しの🌸 ", about: "hi  " };
+    expect(changedFields(initial, current)).toEqual({ display_name: "しの🌸" });
+  });
+
+  // ---- 発行する content ----
+
+  it("editing_display_name_keeps_name", () => {
+    // 不具合の再現: 以前は name も「しの🌸」になって「shino3」が消えていた。
+    const out = obj(
+      buildProfileContent(ev(`{"name":"shino3","display_name":"しの"}`), { display_name: "しの🌸" }),
+    );
+    expect(out.name).toBe("shino3");
+    expect(out.display_name).toBe("しの🌸");
+  });
+
+  it("editing_name_keeps_display_name", () => {
+    const out = obj(buildProfileContent(ev(`{"name":"shino3","display_name":"しの"}`), { name: "shino" }));
+    expect(out.name).toBe("shino");
+    expect(out.display_name).toBe("しの");
+  });
+
+  it("editing_name_does_not_create_display_name", () => {
+    const out = obj(buildProfileContent(ev(`{"name":"shino3"}`), { name: "shino" }));
+    expect(out.name).toBe("shino");
+    expect("display_name" in out).toBe(false);
+  });
+
+  it("unknown_keys_stay_and_blank_removes_key", () => {
+    const out = obj(
+      buildProfileContent(ev(`{"name":"shino3","about":"hi","custom_app_field":{"x":1},"lud06":"lnurl1"}`), {
+        about: "  ",
+      }),
+    );
+    expect("about" in out).toBe(false);
+    expect(out.name).toBe("shino3");
+    expect("custom_app_field" in out).toBe(true);
+    expect(out.lud06).toBe("lnurl1");
+  });
+
+  it("legacy_displayName_moves_to_display_name_when_missing", () => {
+    const out = obj(buildProfileContent(ev(`{"name":"shino3","displayName":"しの"}`), { about: "hi" }));
+    expect("displayName" in out).toBe(false);
+    expect(out.display_name).toBe("しの");
+    expect(out.name).toBe("shino3");
+  });
+
+  it("legacy_displayName_is_dropped_when_display_name_exists", () => {
+    const out = obj(buildProfileContent(ev(`{"display_name":"しの","displayName":"old"}`), { about: "hi" }));
+    expect("displayName" in out).toBe(false);
+    expect(out.display_name).toBe("しの");
+  });
+
+  it("clearing_display_name_does_not_revive_legacy_value", () => {
+    // 表示名の欄（displayName から読んだ値）を空にして保存したら、表示名は消えたまま。
+    const out = obj(buildProfileContent(ev(`{"name":"shino3","displayName":"しの"}`), { display_name: "" }));
+    expect("displayName" in out).toBe(false);
+    expect("display_name" in out).toBe(false);
+    expect(out.name).toBe("shino3");
+  });
+
+  it("no_base_publishes_only_changed_fields", () => {
+    const out = obj(buildProfileContent(null, { name: "shino3", display_name: "しの", about: "" }));
+    expect(new Set(Object.keys(out))).toEqual(new Set(["name", "display_name"]));
+  });
+});
+
 describe("編集欄の値", () => {
-  it("表示名は display_name → displayName → name の最初の空でない値。他は同名のキー、文字列でなければ空欄", () => {
+  it("name と display_name（無ければ displayName）は別々に読む。他は同名のキー、文字列でなければ空欄", () => {
     expect(
       profileFieldsOf(
         profile(
@@ -98,7 +209,8 @@ describe("編集欄の値", () => {
         ),
       ),
     ).toEqual({
-      name: "Alice D",
+      name: "alice",
+      display_name: "Alice D",
       about: "hello",
       picture: "https://img.example/a.png",
       banner: "",
@@ -106,9 +218,9 @@ describe("編集欄の値", () => {
       nip05: "alice@example.com",
       website: "example.com",
     });
-    expect(profileFieldsOf(profile({ name: "bob" }, 1_000)).name).toBe("bob");
     expect(profileFieldsOf(null)).toEqual({
       name: "",
+      display_name: "",
       about: "",
       picture: "",
       banner: "",
@@ -140,21 +252,6 @@ describe("content", () => {
       about: "new",
       bot: false,
       pronouns: "she/her",
-    });
-  });
-
-  it("display_name / displayName を持つ土台では name と同じ値にし、表示名を空欄にしたら両方消す", () => {
-    const base = profile({ name: "alice", display_name: "Alice", displayName: "Alice", about: "a" }, 1_000);
-    expect(JSON.parse(buildProfileContent(base, { name: "Alicia" }))).toEqual({
-      name: "Alicia",
-      display_name: "Alicia",
-      displayName: "Alicia",
-      about: "a",
-    });
-    expect(JSON.parse(buildProfileContent(base, { name: "" }))).toEqual({ about: "a" });
-    // 持っていなければ足さない
-    expect(JSON.parse(buildProfileContent(profile({ name: "bob" }, 1_000), { name: "Bob" }))).toEqual({
-      name: "Bob",
     });
   });
 

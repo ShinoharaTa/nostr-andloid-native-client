@@ -145,8 +145,15 @@ function ProfileEditForm({ me }: { me: string }) {
           {t("loading")}
         </p>
       )}
+      {/* [#922] 表示名（display_name）とユーザー名（name）は別の項目。片方を変えてももう片方は書き換えない */}
       <TextField
         label={t("field_display_name")}
+        value={fields.display_name}
+        disabled={disabled}
+        onChange={(v) => edit({ display_name: v })}
+      />
+      <TextField
+        label={t("field_name")}
         value={fields.name}
         disabled={disabled}
         onChange={(v) => edit({ name: v })}
