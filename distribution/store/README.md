@@ -91,6 +91,20 @@ node distribution/store/scripts/check-listing.mjs
 - 端末ごとの画面サイズと密度、場面の一覧は `StoreScreenshots.kt` にある。`STORE_VIEWPORTS=iphone,ipad` で端末を絞れる
 - コピー・背景の色・枠の一覧は `scripts/build-store-images.mjs` の先頭にある。`--only <枠>` で 1 つの枠だけ作り直せる
 
+## App Store Connect へ登録する（コマンド）
+
+掲載文と画像は App Store Connect API で登録できる（`scripts/asc.mjs`）。認証は TestFlight の配信と同じ環境変数（`ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_KEY_PATH`。Admin ロールの API キー）。
+審査への提出はしない。
+
+```bash
+node distribution/store/scripts/asc.mjs status
+node distribution/store/scripts/asc.mjs metadata          # 名前・サブタイトル・説明・キーワード・プロモーションテキスト・URL（日英）とカテゴリ
+node distribution/store/scripts/asc.mjs screenshots       # iPhone 6.9" / 6.3" と iPad 13"（日英）。既存があればスキップ、差し替えは --replace
+```
+
+どちらも `--dry-run` で送る内容だけを確かめられる。
+API でできないもの（コンソールの画面で行う）: App のプライバシー、iPhone Duo の画像（API にまだ枠の種類が無い）、規約・税・口座。
+
 ## 提出前チェックリスト
 
 ### 両ストア共通
