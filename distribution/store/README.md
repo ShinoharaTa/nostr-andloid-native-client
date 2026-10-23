@@ -113,8 +113,12 @@ Play の認証は GitHub Actions の中にしかないので、掲載情報の�
 
 ```bash
 gh workflow run store-listing.yml --ref main -f dry_run=true    # 送る内容だけを確かめる
-gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録する
+gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録する（審査には送らない）
+gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review=true   # 登録して審査に送る
 ```
+
+Play Console の「公開の管理」が無効のアプリは、変更が自動で審査に送られる。その場合、審査に送らない登録はできないので、ワークフローは確定せずに止まる。
+公開の管理を有効にしてから動かすか、`send_for_review=true` で動かす。
 
 画像を作り直したら、`out/play/` の中身（foldable を除く）を `store-assets` ブランチの `play/` へ入れてコミットする。
 サービスアカウントに Play Console の「ストアでの表示の管理」の権限が要る。

@@ -1,7 +1,8 @@
 # Google Play のストア掲載情報（日英の文言・スクリーンショット・フィーチャーグラフィック・アイコン）を登録する。
 # 文言は distribution/store/listing.md、画像は store-assets ブランチの play/ から取る
 # （画像は生成物で main には入れていない。distribution/store/README.md の手順で作って store-assets へ置く）。
-# 変更は「審査に送らない」で確定する。Play Console の「公開の概要」で確かめてから審査に送る。
+# 既定は「審査に送らない」で確定する。Play Console の「公開の概要」で確かめてから審査に送る。
+# 「公開の管理」が無効のアプリは自動で審査に送られるため、send_for_review=true でないと確定できない。
 name: Play store listing
 
 on:
@@ -11,6 +12,10 @@ on:
         description: "true=送らずに内容だけを確かめる"
         required: false
         default: "true"
+      send_for_review:
+        description: "true=確定と同時に審査へ送る（既定は送らない。公開の管理が無効のアプリでは送らないと確定できない）"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -48,4 +53,5 @@ jobs:
         env:
           PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           DRY_RUN: ${{ inputs.dry_run }}
+          SEND_FOR_REVIEW: ${{ inputs.send_for_review }}
         run: node distribution/store/scripts/play-listing.mjs store-assets/play
