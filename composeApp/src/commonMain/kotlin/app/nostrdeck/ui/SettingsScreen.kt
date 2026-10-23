@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.ProfileEdit
 import app.nostrdeck.model.UploadProtocol
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -864,6 +865,7 @@ private fun AccountSettings() {
     LaunchedEffect(pubkey) { pubkey?.let { repo.fetchProfilesNow(listOf(it)) } }
 
     var name by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }   // [#920] name とは別の項目（NIP-24）
     var about by remember { mutableStateOf("") }
     var picture by remember { mutableStateOf("") }
     var banner by remember { mutableStateOf("") }
@@ -877,27 +879,43 @@ private fun AccountSettings() {
     val initial = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
     var loadedFromProfile by remember { mutableStateOf(false) }
     fun snapshotInitial() {
-        initial["name"] = name; initial["about"] = about; initial["picture"] = picture
+        initial["name"] = name; initial["display_name"] = displayName; initial["about"] = about; initial["picture"] = picture
         initial["banner"] = banner; initial["website"] = website; initial["lud16"] = lud16
         initial["nip05"] = nip05
     }
     // 取得済みプロフィールで初期値を一度だけ埋める（以後の編集は上書きしない）。
+    // [#920] name と表示名（display_name）を分けて読むため、表示用にまとめた profile 表ではなく生の kind:0 から読む。
+    // 生の版が手元に無いとき（取り直しが届く前）は少し待ち、それでも無ければ profile 表で埋める（表示名の欄にまとめた名前）。
     LaunchedEffect(profile) {
         val p = profile
-        if (!initialized && p != null) {
-            name = p.name; about = p.about; picture = p.pictureUrl ?: ""; banner = p.banner ?: ""
-            website = p.website ?: ""; lud16 = p.lud16 ?: ""; nip05 = p.handle
-            snapshotInitial()
-            loadedFromProfile = true
-            initialized = true
+        if (initialized || p == null) return@LaunchedEffect
+        var raw = repo.myProfileContent()
+        var waited = 0L
+        while (raw == null && waited < RAW_PROFILE_WAIT_MS) {
+            kotlinx.coroutines.delay(200); waited += 200
+            raw = repo.myProfileContent()
         }
+        if (initialized) return@LaunchedEffect
+        if (raw != null) {
+            val f = ProfileEdit.fieldsOf(raw)
+            name = f.getValue("name"); displayName = f.getValue("display_name"); about = f.getValue("about")
+            picture = f.getValue("picture"); banner = f.getValue("banner"); website = f.getValue("website")
+            lud16 = f.getValue("lud16"); nip05 = f.getValue("nip05")
+        } else {
+            displayName = p.name; about = p.about; picture = p.pictureUrl ?: ""; banner = p.banner ?: ""
+            website = p.website ?: ""; lud16 = p.lud16 ?: ""; nip05 = p.handle
+        }
+        snapshotInitial()
+        loadedFromProfile = true
+        initialized = true
     }
     // [#246] 自分の kind:0 が無い（初回作成）/まだ取得できていない場合でも編集・保存できる
     // ように、一定時間で編集可能へ倒す。従来は profile 行が現れるまで保存が永久に無効で、
     // 新規ユーザーがプロフィールを作成できず、既存ユーザーも取得失敗中は保存不能だった。
     LaunchedEffect(pubkey) {
         kotlinx.coroutines.delay(5_000)
-        if (!initialized) { snapshotInitial(); initialized = true }
+        // profile 表に行があるときは上の LaunchedEffect が生の版を待って埋めるので、ここでは空で開かない。
+        if (!initialized && profile == null) { snapshotInitial(); initialized = true }
     }
     var uploadingPic by remember { mutableStateOf(false) }
     var uploadingBanner by remember { mutableStateOf(false) }
@@ -925,7 +943,9 @@ private fun AccountSettings() {
     }
     Spacer(Modifier.size(DeckSpace.Md))
 
-    ProfileField(stringResource(Res.string.field_display_name), name) { name = it; saved = false }
+    // [#920] 表示名（display_name）と名前（name）は別の項目。片方を変えてももう片方は書き換えない。
+    ProfileField(stringResource(Res.string.field_display_name), displayName) { displayName = it; saved = false }
+    ProfileField(stringResource(Res.string.field_name), name) { name = it; saved = false }
     ProfileField(stringResource(Res.string.field_about), about, singleLine = false) { about = it; saved = false }
     ProfileImageField(stringResource(Res.string.field_icon), picture, uploadingPic, banner = false, onValueChange = { picture = it; saved = false }, onPick = { picPicker.launch() })
     ProfileImageField(stringResource(Res.string.field_banner), banner, uploadingBanner, banner = true, onValueChange = { banner = it; saved = false }, onPick = { bannerPicker.launch() })
@@ -944,11 +964,11 @@ private fun AccountSettings() {
                 // publishProfile に渡さない（渡すと空文字=キー削除の契約により、読み込めて
                 // いない既存プロフィールを丸ごと消してしまうため）。
                 val current = mapOf(
-                    "name" to name.trim(), "about" to about.trim(), "picture" to picture.trim(),
-                    "banner" to banner.trim(), "website" to website.trim(),
+                    "name" to name.trim(), "display_name" to displayName.trim(), "about" to about.trim(),
+                    "picture" to picture.trim(), "banner" to banner.trim(), "website" to website.trim(),
                     "lud16" to lud16.trim(), "nip05" to nip05.trim(),
                 )
-                val changed = current.filterKeys { k -> (initial[k] ?: "").trim() != current.getValue(k) }
+                val changed = ProfileEdit.changed(initial, current)
                 val ok = if (changed.isEmpty()) true else repo.publishProfile(changed)
                 if (ok) initial.putAll(current)   // 次回保存の差分基準を更新
                 saving = false
@@ -960,6 +980,9 @@ private fun AccountSettings() {
     Spacer(Modifier.size(DeckSpace.Lg))
     }
 }
+
+/** [#920] プロフィール編集を開いたとき、生の kind:0 が手元に届くのを待つ上限（ms）。 */
+private const val RAW_PROFILE_WAIT_MS = 3_000L
 
 /** プロフィール編集の1フィールド（ラベル＋DeckTextField）。 */
 @Composable

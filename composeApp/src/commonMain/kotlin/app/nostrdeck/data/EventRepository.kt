@@ -44,6 +44,7 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import app.nostrdeck.ui.extractMedia
+import app.nostrdeck.model.ProfileEdit
 import app.nostrdeck.model.UserStatuses
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
@@ -4530,17 +4531,34 @@ class EventRepository(
      * 自分の最新 kind:0 の生 content(JSON)。未取得なら null。編集時の未知フィールド温存に使う。
      * イベント表は起動時 purge で消える & 受信 kind:0 は profile 表にしか入らないため、
      * 自分の分だけ KV(MY_PROFILE_JSON)に退避したものを優先で読む（無ければイベント表）。
+     * [#920] KV は公開鍵ごとに分ける。以前は 1 つだけで、鍵を切り替えても前のアカウントの版が残り、
+     * 新しい鍵で初めて保存したプロフィールに前のアカウントの項目（アイコン・自己紹介など）が混ざっていた。
      */
     fun myProfileContent(): String? {
         val pk = myPubkey ?: return null
-        return q.getSetting(MY_PROFILE_JSON).executeAsOneOrNull()?.ifBlank { null }
+        return q.getSetting(ownProfileKey(MY_PROFILE_JSON, pk)).executeAsOneOrNull()?.ifBlank { null }
             ?: q.myProfileContent(pk).executeAsOneOrNull()
     }
 
     /**
+     * [#921] 自分の最新 kind:0 のタグ（カスタム絵文字など）。保存時にそのまま引き継ぐ。
+     * KV（公開鍵ごと）を優先し、無ければイベント表。どちらにも無ければ空。
+     */
+    internal fun myProfileTags(pk: String): List<List<String>> {
+        val raw = q.getSetting(ownProfileKey(MY_PROFILE_TAGS, pk)).executeAsOneOrNull()?.ifBlank { null }
+            ?: q.myProfileTags(pk).executeAsOneOrNull()
+        return raw?.let { parseTags(it) } ?: emptyList()
+    }
+
+    /** [#920] 自分の kind:0 を退避する KV のキー（公開鍵ごと）。 */
+    private fun ownProfileKey(base: String, pk: String) = "$base:$pk"
+
+    /**
      * [M18-#2] プロフィール(kind:0)を発行。既存 content の**未知フィールドは保持**し、標準キーだけ上書き。
-     * 空文字のキーは削除。表示名は `name` に集約し、既存が `display_name`/`displayName` を持つ場合のみ同値で同期。
-     * [fields] は "name"/"about"/"picture"/"banner"/"website"/"lud16"/"nip05" のうち編集対象のみ。
+     * 空文字のキーは削除。組み立ては [ProfileEdit.buildContent]。
+     * [#920] name と display_name は別の項目として、変えたキーだけを書き換える（以前は表示名を name にも書き、name が消えていた）。
+     * [#921] タグ（カスタム絵文字など）は取り直した最新版のものを引き継ぐ（以前は空で発行して消えていた）。
+     * [fields] は [ProfileEdit.FIELDS] のうち変えた項目だけ。
      *
      * [#171] 署名（Keychain/外部署名等）や配信の失敗を握って **成否を Boolean で返す**。
      * 以前は例外を投げ、呼び出し側が捕捉せず「保存成功」表示のまま実発行されない不具合があった
@@ -4553,20 +4571,12 @@ class EventRepository(
             // 取り直して手元（KV）に反映させてから、変えた項目（[fields]）だけ差し替える。取れなければ発行しない。
             if (refreshOwn(0) { myProfileAt } is OwnRefetch.Result.Unreachable) return false
             // KV優先(purge耐性)で生JSONを読む。イベント表は起動時purgeで消えるため直読みは不可。
-            val base = myProfileContent()
-                ?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
-            val map = LinkedHashMap<String, JsonElement>()
-            base?.forEach { (k, v) -> map[k] = v }  // 未知フィールドを温存
-            fields.forEach { (k, v) -> if (v.isBlank()) map.remove(k) else map[k] = JsonPrimitive(v) }
-            // 表示名(name)を display_name/displayName にも同期（既存が持っている場合のみ）
-            fields["name"]?.let { nm ->
-                listOf("display_name", "displayName").forEach { key ->
-                    if (map.containsKey(key)) { if (nm.isBlank()) map.remove(key) else map[key] = JsonPrimitive(nm) }
-                }
-            }
-            val content = json.encodeToString(JsonObject.serializer(), JsonObject(map))
-            val signed = publishSigned(UnsignedEvent(kind = 0, content = content, tags = emptyList()))
-            q.putSetting(MY_PROFILE_JSON, content)  // 次回編集の温存元を更新（purge 耐性のため KV に保持）
+            val content = ProfileEdit.buildContent(myProfileContent(), fields)
+            val tags = myProfileTags(pk)
+            val signed = publishSigned(UnsignedEvent(kind = 0, content = content, tags = tags))
+            // 次回編集の温存元を更新（purge 耐性のため KV に保持）
+            q.putSetting(ownProfileKey(MY_PROFILE_JSON, pk), content)
+            q.putSetting(ownProfileKey(MY_PROFILE_TAGS, pk), tagsToJson(tags))
             upsertProfile(signed)  // ローカル projection を即更新
             true
         } catch (e: CancellationException) {
@@ -4599,7 +4609,8 @@ class EventRepository(
         // [#478] 後から届いた古い版で退避を戻さない（編集の土台が古くなる）。
         if (e.pubkey == myPubkey && e.createdAt >= myProfileAt) {
             myProfileAt = e.createdAt
-            q.putSetting(MY_PROFILE_JSON, e.content)
+            q.putSetting(ownProfileKey(MY_PROFILE_JSON, e.pubkey), e.content)
+            q.putSetting(ownProfileKey(MY_PROFILE_TAGS, e.pubkey), tagsToJson(e.tags))   // [#921]
         }
     }
 
@@ -6364,6 +6375,8 @@ class EventRepository(
 
         /** 自分の最新 kind:0 生JSON（プロフィール編集の未知フィールド温存・purge 耐性用）。 */
         const val MY_PROFILE_JSON = "my_profile_json"
+        /** [#921] 自分の kind:0 のタグ（公開鍵ごと）。保存時に引き継ぐ。 */
+        const val MY_PROFILE_TAGS = "my_profile_tags"
 
         /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
         const val AUTH_POLICY = "nip42_auth_policy"
