@@ -109,16 +109,16 @@ API でできないもの（コンソールの画面で行う）: App のプラ�
 
 Play の認証は GitHub Actions の中にしかないので、掲載情報の登録はワークフロー `store-listing.yml` で行う（`scripts/play-listing.mjs`）。
 文言は `listing.md` の Google Play の節、画像は `store-assets` ブランチの `play/` から取る（画像は生成物なので main には入れない）。
-変更は「審査に送らない」で確定するので、Play Console の「公開の概要」で確かめてから審査に送る。
+既定は確定と同時に審査へ送る。「管理対象の公開」がオンなので、承認後に Play Console の「公開の概要」で「変更を公開」を押すまで掲載には反映されない。
 
 ```bash
 gh workflow run store-listing.yml --ref main -f dry_run=true    # 送る内容だけを確かめる
-gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録する（審査には送らない）
-gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review=true   # 登録して審査に送る
+gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録して審査に送る（承認後に「変更を公開」で反映）
+gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review=false   # 審査に送らずに置いておく
 ```
 
-Play Console の「公開の管理」が無効のアプリは、変更が自動で審査に送られる。その場合、審査に送らない登録はできないので、ワークフローは確定せずに止まる。
-公開の管理を有効にしてから動かすか、`send_for_review=true` で動かす。
+`send_for_review=false` は、審査で却下されたあとなど、Play が変更を自動で審査に送れない状態のときだけ使える。それ以外では確定せずに止まる。
+管理対象の公開のオン・オフは API から読めないので、Play Console の公開の概要で確かめる。
 
 画像を作り直したら、`out/play/` の中身（foldable を除く）を `store-assets` ブランチの `play/` へ入れてコミットする。
 サービスアカウントに Play Console の「ストアでの表示の管理」の権限が要る。
