@@ -1,0 +1,51 @@
+# Google Play のストア掲載情報（日英の文言・スクリーンショット・フィーチャーグラフィック・アイコン）を登録する。
+# 文言は distribution/store/listing.md、画像は store-assets ブランチの play/ から取る
+# （画像は生成物で main には入れていない。distribution/store/README.md の手順で作って store-assets へ置く）。
+# 変更は「審査に送らない」で確定する。Play Console の「公開の概要」で確かめてから審査に送る。
+name: Play store listing
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true=送らずに内容だけを確かめる"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  id-token: write  # WIF: GitHub OIDC トークンの発行に必要
+
+concurrency:
+  group: play-edit   # Play の edit は同時に 1 つ
+  cancel-in-progress: false
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: store-assets
+          path: store-assets
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAY_SA_EMAIL }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Update store listing
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node distribution/store/scripts/play-listing.mjs store-assets/play

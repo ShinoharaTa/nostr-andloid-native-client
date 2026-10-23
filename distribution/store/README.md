@@ -105,6 +105,20 @@ node distribution/store/scripts/asc.mjs screenshots       # iPhone 6.9" / 6.3" �
 どちらも `--dry-run` で送る内容だけを確かめられる。
 API でできないもの（コンソールの画面で行う）: App のプライバシー、iPhone Duo の画像（API にまだ枠の種類が無い）、規約・税・口座。
 
+## Google Play へ登録する（ワークフロー）
+
+Play の認証は GitHub Actions の中にしかないので、掲載情報の登録はワークフロー `store-listing.yml` で行う（`scripts/play-listing.mjs`）。
+文言は `listing.md` の Google Play の節、画像は `store-assets` ブランチの `play/` から取る（画像は生成物なので main には入れない）。
+変更は「審査に送らない」で確定するので、Play Console の「公開の概要」で確かめてから審査に送る。
+
+```bash
+gh workflow run store-listing.yml --ref main -f dry_run=true    # 送る内容だけを確かめる
+gh workflow run store-listing.yml --ref main -f dry_run=false   # 登録する
+```
+
+画像を作り直したら、`out/play/` の中身（foldable を除く）を `store-assets` ブランチの `play/` へ入れてコミットする。
+サービスアカウントに Play Console の「ストアでの表示の管理」の権限が要る。
+
 ## 提出前チェックリスト
 
 ### 両ストア共通

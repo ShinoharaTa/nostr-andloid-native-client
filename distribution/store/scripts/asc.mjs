@@ -122,10 +122,11 @@ async function metadata() {
   if (!editable) throw new Error("編集できる版がない");
   const texts = listing();
   const infoLocs = (await api("GET", `/v1/appInfos/${info.id}/appInfoLocalizations`)).data;
-  const verLocs = (await api("GET", `/v1/appStoreVersions/${editable.id}/appStoreVersionLocalizations`)).data;
   for (const [locale, f] of Object.entries(texts)) {
     await upsertLocalization("appInfoLocalizations", "appInfo", "appInfos", info.id, infoLocs, locale,
       { name: f.name, subtitle: f.subtitle, privacyPolicyUrl: PRIVACY_URL });
+    // 基本情報の欄を新しい言語で作ると、Apple 側が版の同じ言語の欄も作る。読み直してから更新する
+    const verLocs = (await api("GET", `/v1/appStoreVersions/${editable.id}/appStoreVersionLocalizations`)).data;
     await upsertLocalization("appStoreVersionLocalizations", "appStoreVersion", "appStoreVersions", editable.id, verLocs, locale,
       { description: f.description, keywords: f.keywords, promotionalText: f.promotionalText, supportUrl: SUPPORT_URL, marketingUrl: MARKETING_URL });
   }
