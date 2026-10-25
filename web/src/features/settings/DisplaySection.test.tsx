@@ -4,6 +4,7 @@ import { afterEach, expect, it } from "vitest";
 import { KANSAI_KEY, setKansaiMode, setLocaleSetting, useLocale } from "../../i18n/locale";
 import { NYAN_MODE_KEY, useNyanMode } from "../../ui/nyan";
 import { DEFAULT_EMBED_PREFS, EMBED_PREFS_KEY, useEmbedPrefs } from "../linkcard/embedPrefs";
+import { REACTION_COUNTS_KEY, useReactionCountsPref } from "../reactions/reactionCountsPref";
 import { DEFAULT_THEME_PREFS, THEME_KEY, useThemePrefs } from "../theme/themePrefs";
 import { DisplaySection } from "./DisplaySection";
 
@@ -12,6 +13,7 @@ afterEach(() => {
   useEmbedPrefs.setState(DEFAULT_EMBED_PREFS);
   useNyanMode.setState({ mode: "off" });
   useThemePrefs.setState(DEFAULT_THEME_PREFS);
+  useReactionCountsPref.setState({ enabled: true });
 });
 
 it("埋め込み表示の 6 項目は既定ですべて ON", () => {
@@ -144,4 +146,21 @@ it("[#710] 言語が English のときはうにゅうと握手を無効にして
   } finally {
     setLocaleSetting("ja");
   }
+});
+
+it("[#941] リアクションの数は既定でオン。トグルを切ると保存され、次の描画にも残る", async () => {
+  const user = userEvent.setup();
+  const { unmount } = render(<DisplaySection />);
+
+  const toggle = screen.getByRole("checkbox", { name: "リアクションの数を出す" });
+  expect(toggle).toBeChecked();
+
+  await user.click(toggle);
+
+  expect(useReactionCountsPref.getState().enabled).toBe(false);
+  expect(localStorage.getItem(REACTION_COUNTS_KEY)).toBe("off");
+  unmount();
+
+  render(<DisplaySection />);
+  expect(screen.getByRole("checkbox", { name: "リアクションの数を出す" })).not.toBeChecked();
 });

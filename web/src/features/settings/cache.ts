@@ -1,5 +1,6 @@
 import { db } from "../../db";
 import { createDatabase } from "../../db/schema";
+import { forgetFetchedReactionCounts } from "../reactions/reactionCounts";
 
 /**
  * キャッシュの DB（nostrism: イベント・送信待ち・OGP・復号済みの DM）を消す（ネイティブ purgeCache）。
@@ -10,6 +11,8 @@ import { createDatabase } from "../../db/schema";
 export async function clearCache(
   opts: { indexedDB?: IDBFactory; IDBKeyRange?: typeof IDBKeyRange } = {},
 ): Promise<void> {
+  // [#941] 取ったリアクションの記録も消す（数が 0 のまま戻らなくなるため）
+  forgetFetchedReactionCounts();
   // 開いている接続を先に閉じる（閉じないと削除が待たされる）
   db?.close();
   await createDatabase(opts).delete();
