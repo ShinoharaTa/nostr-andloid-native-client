@@ -793,6 +793,12 @@
     <string name="bold_text_title">文字を太くする</string>
     <string name="bold_text_desc">全体の文字を1段太くします。コントラストの低いテーマで読みやすくなります。</string>
     <string name="bold_text_toggle">太い文字を使う</string>
+    <!-- [#930] 時刻の表示 -->
+    <string name="time_display_title">時刻の表示</string>
+    <string name="time_display_desc">投稿・通知・チャット・記事・ステータスの時刻を、経過時間（5m など）と日時のどちらで出すかを選びます。日時は、今日なら時刻だけ、今年なら月日と時刻を出します。「秒まで」は投稿の詳細の日時にも効きます。</string>
+    <string name="time_display_relative">経過時間</string>
+    <string name="time_display_absolute">日時</string>
+    <string name="time_display_absolute_seconds">日時（秒まで）</string>
     <!-- [#378] にゃにゃにゃウイルス（猫化モード） -->
     <string name="nyan_mode_title">にゃにゃにゃウイルス</string>
     <string name="nyan_mode_desc">お遊びの猫化モード。アバターに猫耳が生え、本文の「な」が「にゃ」に化けます。この端末の表示だけの演出で、実際の投稿内容は変わりません。</string>

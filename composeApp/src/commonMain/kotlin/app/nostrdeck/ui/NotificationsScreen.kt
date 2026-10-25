@@ -42,7 +42,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
@@ -363,7 +362,7 @@ fun NoticeRow(
                             )
                         }
                         Spacer(Modifier.width(DeckSpace.Sm))
-                        HintText(relativeTime(n.createdAt))
+                        HintText(timeLabel(n.createdAt))
                     }
                 }
             }
@@ -467,14 +466,3 @@ private fun kindTint(k: NotificationKind): Color = when (k) {
     NotificationKind.DM -> DeckColors.Accent
 }
 
-private fun relativeTime(createdAt: Long): String {
-    val diff = currentUnixTime() - createdAt
-    return when {
-        diff < 10 -> "now"
-        diff < 60 -> "${diff}s"
-        diff < 3600 -> "${diff / 60}m"
-        diff < 86400 -> "${diff / 3600}h"
-        diff < 604800 -> "${diff / 86400}d"
-        else -> "${diff / 604800}w"
-    }
-}

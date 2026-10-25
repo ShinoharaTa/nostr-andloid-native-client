@@ -83,7 +83,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
-import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NostrEvent
@@ -393,7 +392,7 @@ private fun MessageBubble(
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false),
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))
-                    Text(relativeTime(m.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Micro)
+                    Text(timeLabel(m.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Micro)
                 }
                 Spacer(Modifier.size(DeckSpace.Xs))
             }
@@ -583,18 +582,6 @@ private fun Bubble(
         }
         // リンク埋め込み（吹き出しの下）。埋め込み対象が無ければ何も描かない。
         LinkEmbeds(m.event.content, tags = m.event.tags, modifier = Modifier.padding(top = DeckSpace.Xs))
-    }
-}
-
-private fun relativeTime(createdAt: Long): String {
-    val diff = currentUnixTime() - createdAt
-    return when {
-        diff < 10 -> "now"
-        diff < 60 -> "${diff}s"
-        diff < 3600 -> "${diff / 60}m"
-        diff < 86400 -> "${diff / 3600}h"
-        diff < 604800 -> "${diff / 86400}d"
-        else -> "${diff / 604800}w"
     }
 }
 

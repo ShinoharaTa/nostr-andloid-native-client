@@ -127,6 +127,22 @@ enum class NyanMode(val id: String) {
 }
 
 /**
+ * [#930] 時刻の表示（設定 > 表示）。既定は経過時間（従来どおり）。端末ローカル設定。
+ *  - RELATIVE        : 経過時間（now / 12s / 5m / 3h / 2d / 1w）
+ *  - ABSOLUTE        : 日時（今日なら時刻だけ・今年なら月日と時刻・それより前は年から。分まで）
+ *  - ABSOLUTE_SECONDS: 日時を秒まで（投稿の詳細の日時も秒まで出す）
+ */
+enum class TimeDisplay(val id: String) {
+    RELATIVE("relative"),
+    ABSOLUTE("absolute"),
+    ABSOLUTE_SECONDS("absolute_seconds");
+
+    companion object {
+        fun fromId(id: String?): TimeDisplay = entries.firstOrNull { it.id == id } ?: RELATIVE
+    }
+}
+
+/**
  * [#152] テーマ（設定 > 表示）。既定はダーク（従来挙動そのまま）。
  * SYSTEM は OS のダークモード設定に追従する。
  */
