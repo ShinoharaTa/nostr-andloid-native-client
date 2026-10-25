@@ -37,7 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -271,7 +271,10 @@ private fun ExpandedDeck(state: DeckState) {
 
 @Composable
 private fun CompactPager(state: DeckState) {
-    val pager = rememberPagerState(pageCount = { state.columns.size })
+    // [#933] ページ番号は保存・復元しない（rememberPagerState は rememberSaveable で、画面の作り直しや
+    // Android のプロセスの復元で前のページ番号だけが戻る）。DeckState は毎回ホームから作り直すので食い違い、
+    // 前に見ていた通知カラムなどが開いていた。開いたときはホームのカラム（フォロー中）から始める。
+    val pager = remember { PagerState(currentPage = state.homeColumnIndex()) { state.columns.size } }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.jumpTarget) {

@@ -128,9 +128,12 @@ class DeckState(
      */
     fun openHome() {
         clearDetail()
-        val target = columns.firstOrNull { it.kind == ColumnKind.FOLLOWING }?.id ?: columns.firstOrNull()?.id
+        val target = columns.getOrNull(homeColumnIndex())?.id
         if (target != null) jumpTo(target) else navDest = NavDest.HOME
     }
+
+    /** [#422][#933] ホームのカラム（フォロー中。無ければ先頭）の位置。カラムが無ければ 0。 */
+    fun homeColumnIndex(): Int = columns.indexOfFirst { it.kind == ColumnKind.FOLLOWING }.coerceAtLeast(0)
 
     /**
      * [#917] スマホ表示で先頭へ戻すよう求められたカラム id。CompactPager がスクロールし終えたら null に戻す。
