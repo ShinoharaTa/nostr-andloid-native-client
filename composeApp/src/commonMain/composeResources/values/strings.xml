@@ -820,6 +820,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="dense_mode_toggle">Use dense mode</string>
     <!-- [#326] カード化したリンクのURLを本文から畳む -->
     <string name="embed_hide_carded_urls">Hide the URL text when a card is shown</string>
+    <!-- [#932] Reaction counts on the timeline -->
+    <string name="reaction_counts_title">Reaction counts</string>
+    <string name="reaction_counts_desc">Show how many reactions each post has. To count them, the app fetches the reactions of the posts you see, which uses more data.</string>
+    <string name="reaction_counts_toggle">Show reaction counts</string>
     <!-- [#351] 開発者モード / イベントJSONビューア -->
     <string name="dev_mode_title">Developer mode</string>
     <string name="dev_mode_desc">Adds "View event JSON" to the post and chat menus, so you can inspect the raw event of anything on your timeline.</string>
