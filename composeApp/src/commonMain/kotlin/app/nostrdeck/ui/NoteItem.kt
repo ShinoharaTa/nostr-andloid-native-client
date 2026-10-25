@@ -53,6 +53,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
+import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.cardedUrlsToHide
 import app.nostrdeck.model.removeUrls
@@ -792,7 +793,7 @@ private fun NoteMetaLine(note: NoteUi, authorTap: Modifier, modifier: Modifier =
             )
             Spacer(Modifier.width(DeckSpace.Xs))
             Text(
-                note.author.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                Nip05Display.label(note.author.handle), color = DeckColors.Text3, fontSize = DeckType.Label,   // [#931]
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }

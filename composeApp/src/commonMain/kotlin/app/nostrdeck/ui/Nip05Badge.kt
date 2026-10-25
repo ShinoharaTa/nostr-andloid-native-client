@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.Nip05Display
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -48,7 +49,7 @@ fun Nip05Handle(
     }
     val iconSize = 14.dp
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(nip05, color = DeckColors.Text2, fontSize = fontSize)
+        Text(Nip05Display.label(nip05), color = DeckColors.Text2, fontSize = fontSize)   // [#931] 検証は元の値で
         when (status) {
             Nip05Status.CHECKING -> {}
             Nip05Status.VERIFIED -> {

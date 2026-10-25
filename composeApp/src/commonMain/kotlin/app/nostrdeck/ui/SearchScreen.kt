@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.ReqFilter
 import app.nostrdeck.model.buildSearchColumn
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -399,7 +400,7 @@ private fun SearchUserRow(profile: app.nostrdeck.model.Profile, onClick: () -> U
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             profile.handle.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(Nip05Display.label(it), color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)   // [#931]
             }
             profile.about.takeIf { it.isNotBlank() }?.let {
                 Text(
