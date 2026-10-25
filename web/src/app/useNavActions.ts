@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { columnScrollOf } from "../features/deck/columnScroll";
-import { notificationsColumnId, useDeck } from "../store/deck";
+import { homeColumnId, notificationsColumnId, useDeck } from "../store/deck";
 import type { LayoutMode } from "../ui/useLayoutMode";
 import { homeTapAction } from "./homeTap";
 import { type Dest, NAV_PATH, type NavKey } from "./navState";
@@ -56,7 +56,7 @@ export function useNavActions({ mode, dest, hasOverlay }: NavContext): NavAction
           }
           // ネイティブ openHome: フォロー中、無ければ先頭のカラムへ
           goDeck();
-          const target = s.columns.find((c) => c.kind === "FOLLOWING")?.id ?? s.columns[0]?.id;
+          const target = homeColumnId(s);
           if (target) s.jumpTo(target);
         } else if (key === "notifications") {
           // ネイティブ openNotifications: 通知カラムがあればそこへ、無ければ通知画面

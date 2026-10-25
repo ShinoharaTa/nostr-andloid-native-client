@@ -331,9 +331,12 @@ describe("ナビ", () => {
   });
 
   describe("[#919] 1 カラム表示のホーム", () => {
-    /** 表示中のカラムを #nostr にして、スクロールの窓口を差し替える。jump した先を集める */
+    /**
+     * 表示中のカラムを #nostr にして、スクロールの窓口を差し替える。jump した先を集める。
+     * [#938] 1 カラム表示はマウント時にフォロー中へ寄せるので、描いたあとに呼ぶ
+     */
     function setup(atTop: boolean) {
-      useDeck.setState({ visibleColumnId: "c_hashtag" });
+      act(() => useDeck.setState({ visibleColumnId: "c_hashtag" }));
       const scrollToTop = vi.fn();
       const unregister = registerColumnScroll("c_hashtag", { atTop: () => atTop, scrollToTop });
       const targets: string[] = [];
@@ -351,8 +354,8 @@ describe("ナビ", () => {
     }
 
     it("途中まで読んだカラムでホームを押すと、そのカラムを先頭へ戻し、フォロー中へは移らない", async () => {
-      const t = setup(false);
       const router = renderAt(["/"]);
+      const t = setup(false);
       await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
       t.dispose();
       expect(t.scrollToTop).toHaveBeenCalledTimes(1);
@@ -362,8 +365,8 @@ describe("ナビ", () => {
     });
 
     it("レール（1 カラム）でも同じ", async () => {
-      const t = setup(false);
       renderAt(["/"], 700);
+      const t = setup(false);
       await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
       t.dispose();
       expect(t.scrollToTop).toHaveBeenCalledTimes(1);
@@ -371,8 +374,8 @@ describe("ナビ", () => {
     });
 
     it("先頭にいればホームは従来どおりフォロー中へ jump する", async () => {
-      const t = setup(true);
       renderAt(["/"]);
+      const t = setup(true);
       await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
       t.dispose();
       expect(t.scrollToTop).not.toHaveBeenCalled();
@@ -380,8 +383,8 @@ describe("ナビ", () => {
     });
 
     it("デッキ表示（expanded）では途中まで読んでいても従来どおりフォロー中へ", async () => {
-      const t = setup(false);
       renderAt(["/"], 1400);
+      const t = setup(false);
       await userEvent.click(within(mainNav()).getByRole("button", { name: "ホーム" }));
       t.dispose();
       expect(t.scrollToTop).not.toHaveBeenCalled();
@@ -549,6 +552,8 @@ describe("投稿ボタン", () => {
     const room = roomColumnFor({ id: "a".repeat(64), name: "ルーム", about: "" });
     useDeck.setState({ columns: [room, ...structuredClone([...DEFAULT_COLUMNS])], visibleColumnId: room.id });
     renderAt(["/"]);
+    // [#938] 1 カラム表示はマウント時にフォロー中へ寄せるので、描いたあとにルームへ移る
+    act(() => useDeck.getState().setVisibleColumn(room.id));
     expect(screen.queryByRole("button", { name: "投稿" })).toBeNull();
 
     act(() => useDeck.getState().setVisibleColumn("c_notif"));

@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildColumn, type ColumnSpec, DEFAULT_COLUMNS, decodeDeckColumns } from "../lib/columns";
 
 /** 保存が空の状態からストアを作り直す（一時カラムの戻りスタックもモジュールごと初期化する） */
@@ -240,4 +240,47 @@ it("applyPinnedColumns: 固定カラムを置き換え、開いている一時�
   useDeck.getState().applyPinnedColumns(synced);
   expect(useDeck.getState().columns.map((c) => c.id)).toEqual(["c_notif", synced[0].id, transient.id]);
   expect(savedIds(COLUMNS_KEY)).toEqual(["c_notif", synced[0].id]);
+});
+
+// [#938] ホームのカラムの位置（ネイティブ HomeColumnTest と同じ 5 件）。1 カラム表示は開いたときここから始め、
+// [#422] ホームのナビもここへ移る
+describe("HomeColumnTest", () => {
+  const [following, tag, notif] = DEFAULT_COLUMNS;
+
+  it("following_column_is_home_even_when_not_first", async () => {
+    const { homeColumnIndex, homeColumnId, useDeck } = await freshDeck();
+    useDeck.setState({ columns: [notif, following] });
+    expect(homeColumnIndex(useDeck.getState().columns)).toBe(1);
+    expect(homeColumnId(useDeck.getState())).toBe("c_following");
+  });
+
+  it("first_column_when_no_following", async () => {
+    const { homeColumnIndex, homeColumnId, useDeck } = await freshDeck();
+    useDeck.setState({ columns: [tag, notif] });
+    expect(homeColumnIndex(useDeck.getState().columns)).toBe(0);
+    expect(homeColumnId(useDeck.getState())).toBe("c_hashtag");
+  });
+
+  it("follows_reordering", async () => {
+    // 検索・設定から戻るときなどデッキを作り直すたびに頼る値なので、並べ替えのあとも追従する
+    const { homeColumnIndex, homeColumnId, useDeck } = await freshDeck();
+    useDeck.getState().moveColumn("c_following", 1);
+    useDeck.getState().moveColumn("c_following", 1);
+    expect(homeColumnIndex(useDeck.getState().columns)).toBe(2);
+    expect(homeColumnId(useDeck.getState())).toBe("c_following");
+  });
+
+  it("first_following_when_several", async () => {
+    const { homeColumnIndex, homeColumnId, useDeck } = await freshDeck();
+    useDeck.setState({ columns: [tag, { ...following, id: "f1" }, { ...following, id: "f2" }] });
+    expect(homeColumnIndex(useDeck.getState().columns)).toBe(1);
+    expect(homeColumnId(useDeck.getState())).toBe("f1");
+  });
+
+  it("no_columns", async () => {
+    const { homeColumnIndex, homeColumnId, useDeck } = await freshDeck();
+    useDeck.setState({ columns: [] });
+    expect(homeColumnIndex([])).toBe(0);
+    expect(homeColumnId(useDeck.getState())).toBeNull();
+  });
 });
