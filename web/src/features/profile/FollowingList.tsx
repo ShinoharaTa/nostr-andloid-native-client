@@ -6,6 +6,7 @@ import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { ScreenHeader } from "../../ui/ScreenHeader";
 import { Avatar } from "../timeline/NoteItem";
 import styles from "./FollowingList.module.css";
+import { nip05Label } from "./nip05";
 
 /**
  * フォロー中の一覧（ネイティブ UserListScreen）。プロフィールを置き換えて出し、「←」で戻る。
@@ -43,7 +44,7 @@ export function UserRow({ pubkey }: { pubkey: string }) {
       <Avatar key={picture} url={picture} size="lg" seed={name} pubkey={pubkey} />
       <span className={styles.texts}>
         <span className={styles.name}>{name}</span>
-        {nip05 && <span className={styles.nip05}>{nip05}</span>}
+        {nip05 && <span className={styles.nip05}>{nip05Label(nip05)}</span>}
       </span>
     </Link>
   );

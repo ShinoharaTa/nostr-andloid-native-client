@@ -42,6 +42,7 @@ import {
 import { uploadServers, useMediaServer } from "../compose/mediaServer";
 import { ProfileAvatar } from "../compose/ProfileAvatar";
 import { type ProfileHit, searchProfiles } from "../compose/searchProfiles";
+import { nip05Label } from "../profile/nip05";
 import styles from "./ChatComposer.module.css";
 import { withChatMedia } from "./chatMessage";
 import { sendChannelMessage } from "./send";
@@ -273,7 +274,7 @@ export function ChatComposer({
                 onClick={() => update(completeMention(value, npubEncode(hit.pubkey)))}
               >
                 <ProfileAvatar pubkey={hit.pubkey} size={28} />
-                <span className={styles.mentionName}>{hit.name || hit.handle}</span>
+                <span className={styles.mentionName}>{hit.name || nip05Label(hit.handle)}</span>
               </button>
             ))}
           </div>

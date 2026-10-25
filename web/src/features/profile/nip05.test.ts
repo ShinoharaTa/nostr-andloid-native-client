@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseNip05, verifyNip05 } from "./nip05";
+import { nip05Label, parseNip05, verifyNip05 } from "./nip05";
 
 /** テストごとに別の pubkey（同じ pubkey + nip05 は結果が使い回されるため） */
 function pubkey(n: number): string {
@@ -93,5 +93,39 @@ describe("verifyNip05", () => {
     await expect(verifyNip05(pk, "example.org", fetchImpl)).resolves.toBe("verified");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toBe("https://example.org/.well-known/nostr.json?name=_");
+  });
+});
+
+/** [#939] `_@domain` はドメインだけを出し、それ以外はそのまま出す（ネイティブ Nip05DisplayTest） */
+describe("nip05Label", () => {
+  it("root_identifier_shows_domain_only", () => {
+    expect(nip05Label("_@example.com")).toBe("example.com");
+    expect(nip05Label("  _@Example.COM ")).toBe("example.com");
+  });
+
+  it("other_identifiers_stay_as_is", () => {
+    expect(nip05Label("alice@example.com")).toBe("alice@example.com");
+    expect(nip05Label("Alice@Example.COM")).toBe("Alice@Example.COM"); // 小文字にするのはルートだけ
+    expect(nip05Label(" alice@example.com ")).toBe("alice@example.com");
+    expect(nip05Label("@example.com")).toBe("@example.com");
+    expect(nip05Label("_")).toBe("_");
+    expect(nip05Label("_alice@example.com")).toBe("_alice@example.com");
+    expect(nip05Label("example.com")).toBe("example.com");
+    expect(nip05Label("")).toBe("");
+  });
+
+  it("malformed_values_stay_as_is", () => {
+    // 照会できない形は畳まない（verifyNip05 はドメインに `.` が無い値を照会しない）
+    expect(nip05Label("_@")).toBe("_@");
+    expect(nip05Label("_@a@b.com")).toBe("_@a@b.com");
+    expect(nip05Label("_@ example.com")).toBe("_@ example.com");
+    expect(nip05Label("_@localhost")).toBe("_@localhost");
+  });
+
+  it("never_blank_for_non_blank_input", () => {
+    // 表示箇所は生の値が空でないかで出し分けるので、空を返すと空行だけが残る
+    for (const value of ["_@", "_", "@", "_@example.com", "a@b"]) {
+      expect(nip05Label(value).trim()).not.toBe("");
+    }
   });
 });

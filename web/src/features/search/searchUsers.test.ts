@@ -63,3 +63,13 @@ it("rankUsers: 51 件 → 50 件、語が空なら空", () => {
   expect(rankUsers(many, "alice")).toHaveLength(50);
   expect(rankUsers(many, "  ")).toEqual([]);
 });
+
+it("[#939] rankUsers: `_@domain` は表示どおりドメインの前方一致として先に並ぶ。値は元のまま", () => {
+  const other = profile({ nip05: "x@example.com" }, 300);
+  const root = profile({ nip05: "_@Example.com" }, 100);
+
+  const hits = rankUsers([other, root], "exam");
+  expect(hits.map((h) => h.pubkey)).toEqual([root.pubkey, other.pubkey]);
+  expect(hits[0].handle).toBe("_@Example.com");
+  expect(rankUsers([other, root], "example").map((h) => h.pubkey)).toEqual([root.pubkey, other.pubkey]);
+});
