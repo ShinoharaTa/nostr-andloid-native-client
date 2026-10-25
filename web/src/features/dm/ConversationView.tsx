@@ -44,6 +44,7 @@ import { uploadServers, useMediaServer } from "../compose/mediaServer";
 import { ProfileAvatar } from "../compose/ProfileAvatar";
 import { type ProfileHit, searchProfiles } from "../compose/searchProfiles";
 import { NoteMedia } from "../media/NoteMedia";
+import { nip05Label } from "../profile/nip05";
 import { NoteContent } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
 import styles from "./ConversationView.module.css";
@@ -145,7 +146,7 @@ export function ConversationView({
           <Avatar key={picture} url={picture} size="lg" seed={name} pubkey={peer} />
           <span className={styles.peerTexts}>
             <h2 className={styles.peerName}>{name}</h2>
-            <span className={styles.peerNpub}>{nip05 ?? shortNpub(peer)}</span>
+            <span className={styles.peerNpub}>{nip05 !== null ? nip05Label(nip05) : shortNpub(peer)}</span>
           </span>
         </Link>
         {onClose && (
@@ -375,8 +376,10 @@ function Composer({
               >
                 <ProfileAvatar pubkey={hit.pubkey} size={28} />
                 <span className={styles.mentionText}>
-                  <span className={styles.mentionName}>{hit.name || hit.handle}</span>
-                  {hit.handle !== "" && <span className={styles.mentionHandle}>{hit.handle}</span>}
+                  <span className={styles.mentionName}>{hit.name || nip05Label(hit.handle)}</span>
+                  {hit.handle !== "" && (
+                    <span className={styles.mentionHandle}>{nip05Label(hit.handle)}</span>
+                  )}
                 </span>
               </button>
             ))}

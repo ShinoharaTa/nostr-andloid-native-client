@@ -32,6 +32,7 @@ import { EmojiInsertButton } from "../actions/EmojiInsertButton";
 import { openHashtagManager } from "../hashtags/hashtagManagerStore";
 import { pinLimitMessage, togglePinnedHashtag } from "../hashtags/pinnedHashtags";
 import { type EditAction, Lightbox } from "../media/Lightbox";
+import { nip05Label } from "../profile/nip05";
 import { NoteContent } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
 import {
@@ -676,8 +677,10 @@ export function ComposeDialog({ request }: { request: ComposeRequest }) {
                     >
                       <ProfileAvatar pubkey={hit.pubkey} size={28} />
                       <span className={styles.mentionText}>
-                        <span className={styles.mentionName}>{hit.name || hit.handle}</span>
-                        {hit.handle !== "" && <span className={styles.mentionHandle}>{hit.handle}</span>}
+                        <span className={styles.mentionName}>{hit.name || nip05Label(hit.handle)}</span>
+                        {hit.handle !== "" && (
+                          <span className={styles.mentionHandle}>{nip05Label(hit.handle)}</span>
+                        )}
                       </span>
                     </button>
                   ))}

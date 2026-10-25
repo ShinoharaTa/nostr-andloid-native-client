@@ -56,3 +56,14 @@ it("確認中は何も付けない", () => {
   expect(screen.getByText("bob@example.com")).toBeInTheDocument();
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
 });
+
+it("[#939] `_@domain` はドメインだけを出す", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  render(<Nip05Handle pubkey={pubkey(5)} nip05="_@Example.com" size="sub" />);
+
+  expect(screen.getByText("example.com")).toBeInTheDocument();
+  expect(screen.queryByText("_@Example.com")).not.toBeInTheDocument();
+});

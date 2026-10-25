@@ -28,6 +28,21 @@ export function parseNip05(value: string): Nip05Address | null {
   return { local, domain };
 }
 
+/**
+ * [#939] NIP-05 の表示（ネイティブ Nip05Display.label）。ローカル部が `_` の識別子（`_@domain`）はそのドメインの
+ * 「ルート」の識別子で、ドメインだけを表示してよい（NIP-05）。表示だけを変え、検証（照会）とプロフィールの値は元のまま使う。
+ * 照会できない形（ドメインに `.` が無い・`@` が 2 つ・空白を含む）は畳まずにそのまま出す。
+ */
+export function nip05Label(nip05: string): string {
+  const value = nip05.trim();
+  const at = value.indexOf("@");
+  if (at < 0) return value;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  const queryable = domain.includes(".") && !domain.includes("@") && !/\s/.test(domain);
+  return local === "_" && queryable ? domain.toLowerCase() : value;
+}
+
 export function nip05Url(p: Nip05Address): string {
   return `https://${p.domain}/.well-known/nostr.json?name=${encodeURIComponent(p.local)}`;
 }

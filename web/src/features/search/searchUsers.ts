@@ -7,6 +7,7 @@ import { asyncScheduler, map, throttleTime } from "rxjs";
 import { LOADING_TIMEOUT_MS, SEARCH_RELAYS } from "../../lib/columnRequest";
 import { subscribeTo } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
+import { nip05Label } from "../profile/nip05";
 
 /**
  * 検索画面の「ユーザー」（ネイティブ subscribeProfileSearch / searchProfilesFlow / searchProfilesByText の写し）。
@@ -65,6 +66,7 @@ function hitOf(event: NostrEvent): UserHit | null {
 /**
  * kind:0 を 名前・NIP-05・自己紹介の部分一致（大小無視）で絞って並べる。pubkey ごとに最新の 1 件だけを見る。
  * 並び: 名前か NIP-05 が前方一致 → 名前あり → kind:0 の新しい順。
+ * [#939] `_@domain` は画面にドメインだけを出すので、表示どおりの値（nip05Label）でも照らし合わせる。
  */
 export function rankUsers(
   profiles: readonly NostrEvent[],
@@ -85,8 +87,15 @@ export function rankUsers(
     if (!hit) continue;
     const name = hit.name.toLowerCase();
     const handle = hit.handle.toLowerCase();
-    if (!name.includes(q) && !handle.includes(q) && !hit.about.toLowerCase().includes(q)) continue;
-    hits.push({ hit, prefix: name.startsWith(q) || handle.startsWith(q) });
+    const label = nip05Label(hit.handle).toLowerCase();
+    if (
+      !name.includes(q) &&
+      !handle.includes(q) &&
+      !label.includes(q) &&
+      !hit.about.toLowerCase().includes(q)
+    )
+      continue;
+    hits.push({ hit, prefix: name.startsWith(q) || handle.startsWith(q) || label.startsWith(q) });
   }
   hits.sort(
     (a, b) =>

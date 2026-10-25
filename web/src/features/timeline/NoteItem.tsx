@@ -21,6 +21,7 @@ import { roomHrefOf } from "../chat/chatMessage";
 import { NoteFooter } from "../compose/NoteFooter";
 import { useLinkCards } from "../linkcard/useLinkCards";
 import { NoteMedia } from "../media/NoteMedia";
+import { nip05Label } from "../profile/nip05";
 import { type NoteAccentKind, noteAccentKindOf } from "../theme/noteAccent";
 import { useThemePrefs } from "../theme/themePrefs";
 import { useTranslation, useTranslationPending } from "../translate/translateStore";
@@ -224,7 +225,7 @@ function NoteBody({
               <Link className={styles.name} to={profileHref}>
                 {name}
               </Link>
-              {nip05 && <span className={styles.handle}>{nip05}</span>}
+              {nip05 && <span className={styles.handle}>{nip05Label(nip05)}</span>}
             </span>
             {threadHref ? (
               <Link to={threadHref} className={styles.timeLink}>

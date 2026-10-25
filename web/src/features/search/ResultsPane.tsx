@@ -7,6 +7,7 @@ import { hrefForProfile, oneLine } from "../../lib/content/labels";
 import { unixNow } from "../../lib/time";
 import { useDeck } from "../../store/deck";
 import { useColumnFeed } from "../deck/useColumnFeed";
+import { nip05Label } from "../profile/nip05";
 import { Avatar, NoteItem } from "../timeline/NoteItem";
 import styles from "./ResultsPane.module.css";
 import { SEARCH_ROWS_TOTAL, searchSpecOf, searchSummary, tokensToFilter, userQueryOf } from "./searchTokens";
@@ -125,7 +126,7 @@ function UserRow({ hit }: { hit: UserHit }) {
       />
       <span className={styles.userTexts}>
         <span className={styles.userName}>{hit.name || hit.pubkey.slice(0, 10)}</span>
-        {hit.handle && <span className={styles.userHandle}>{hit.handle}</span>}
+        {hit.handle && <span className={styles.userHandle}>{nip05Label(hit.handle)}</span>}
         {hit.about && <span className={styles.userAbout}>{oneLine(hit.about)}</span>}
       </span>
     </Link>
