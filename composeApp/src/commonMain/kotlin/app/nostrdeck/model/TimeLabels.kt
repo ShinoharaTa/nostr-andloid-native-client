@@ -26,15 +26,17 @@ object TimeLabels {
     fun label(createdAt: Long, now: Long, mode: TimeDisplay, format: (Long, Boolean) -> String): String {
         if (mode == TimeDisplay.RELATIVE) return relative(createdAt, now)
         val full = format(createdAt, mode == TimeDisplay.ABSOLUTE_SECONDS)
-        val today = format(now, false)
-        val m = DATE_TIME.find(full) ?: return full
-        val (year, month, day, time) = m.destructured
+        val target = DATE_TIME.find(full) ?: return full
+        val today = DATE_TIME.find(format(now, false)) ?: return full
+        val (year, month, day, time) = target.destructured
+        val (nowYear, nowMonth, nowDay) = today.destructured
         return when {
-            full.take(10) == today.take(10) -> time
-            year == today.take(4) -> "${month.toInt()}/${day.toInt()} $time"
+            year == nowYear && month.toInt() == nowMonth.toInt() && day.toInt() == nowDay.toInt() -> time
+            year == nowYear -> "${month.toInt()}/${day.toInt()} $time"
             else -> full
         }
     }
 
-    private val DATE_TIME = Regex("""^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{2}:\d{2}(?::\d{2})?)$""")
+    /** 端末の書式化の出力（`yyyy/MM/dd HH:mm[:ss]`）。desktopTest で実際の書式化と一致することを確かめる。 */
+    internal val DATE_TIME = Regex("""^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{2}:\d{2}(?::\d{2})?)$""")
 }

@@ -61,6 +61,23 @@ class TimeLabelsTest {
     }
 
     @Test
+    fun day_and_year_boundaries() {
+        val midnight = 1_761_350_400L   // 2025/10/25 00:00:00 UTC
+        // 日付の境目: 0 時を越えたら前日の投稿は月日つき
+        assertEquals("10/24 23:59", TimeLabels.label(midnight - 60, midnight + 30, TimeDisplay.ABSOLUTE, ::utc))
+        assertEquals("00:00", TimeLabels.label(midnight, midnight + 30, TimeDisplay.ABSOLUTE, ::utc))
+        // 年またぎ: 去年の投稿は年から
+        val newYear = 1_767_225_600L    // 2026/01/01 00:00:00 UTC
+        assertEquals("2025/12/31 23:50", TimeLabels.label(newYear - 600, newYear + 600, TimeDisplay.ABSOLUTE, ::utc))
+    }
+
+    @Test
+    fun future_and_older_with_seconds() {
+        assertEquals("14:46", label(now + 3600, TimeDisplay.ABSOLUTE))   // 未来でも同じ日なら時刻だけ
+        assertEquals("2024/12/31 23:59:00", label(1_735_689_540L, TimeDisplay.ABSOLUTE_SECONDS))
+    }
+
+    @Test
     fun unexpected_format_is_returned_as_is() {
         assertEquals("Oct 25", TimeLabels.label(now - 300, now, TimeDisplay.ABSOLUTE) { _, _ -> "Oct 25" })
     }

@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
-import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.cardedUrlsToHide
 import app.nostrdeck.model.removeUrls

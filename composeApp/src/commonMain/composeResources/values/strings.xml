@@ -797,13 +797,13 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="bold_text_title">Bold text</string>
     <string name="bold_text_desc">Makes all text one step heavier. Helps readability on low-contrast themes.</string>
     <string name="bold_text_toggle">Use bolder text</string>
-    <!-- [#378] にゃにゃにゃウイルス（猫化モード） -->
     <!-- [#930] Time display -->
     <string name="time_display_title">Time display</string>
-    <string name="time_display_desc">Show the time of posts, notifications and chat messages as elapsed time (such as 5m) or as date and time. Date and time shows only the time for today, and the month and day for this year.</string>
+    <string name="time_display_desc">Show the time of posts, notifications, chat messages, articles and statuses as elapsed time (such as 5m) or as a date. Today shows only the time, and this year shows the month and day. “Date + seconds” also adds seconds to the date in post details.</string>
     <string name="time_display_relative">Elapsed</string>
-    <string name="time_display_absolute">Date and time</string>
-    <string name="time_display_absolute_seconds">With seconds</string>
+    <string name="time_display_absolute">Date</string>
+    <string name="time_display_absolute_seconds">Date + seconds</string>
+    <!-- [#378] にゃにゃにゃウイルス（猫化モード） -->
     <string name="nyan_mode_title">Nyan-nyan-nya virus</string>
     <string name="nyan_mode_desc">A just-for-fun cat mode: cat ears on avatars and "nya-ized" text (na → nya). Display-only on this device — your actual posts are never changed.</string>
     <string name="nyan_mode_off">Off</string>

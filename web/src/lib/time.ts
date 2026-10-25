@@ -4,7 +4,7 @@ export function unixNow(): number {
 }
 
 /**
- * 投稿の相対時刻（ネイティブの NoteItem.kt の relativeTime と同じ表記）。
+ * 投稿の相対時刻（ネイティブの TimeLabels.kt の relative と同じ表記）。
  * 10 秒未満 = now、以降 秒 s / 分 m / 時間 h / 日 d / 週 w（端数は切り捨て）。未来の時刻も now。
  */
 export function relativeTime(createdAt: number, now = unixNow()): string {
