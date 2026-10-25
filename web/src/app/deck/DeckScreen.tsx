@@ -3,7 +3,7 @@ import { ColumnMenu, DeckColumn } from "../../features/deck/DeckColumn";
 import { KbColumn } from "../../features/keyboard/KbList";
 import { useT } from "../../i18n";
 import { columnLabel } from "../../lib/columns";
-import { useDeck } from "../../store/deck";
+import { homeColumnIndex, useDeck } from "../../store/deck";
 import { ColumnTabs } from "../../ui/ColumnTabs";
 import { prefersReducedMotion, scrollBehavior, scrollToLeft, useLayoutMode } from "../../ui/useLayoutMode";
 import styles from "./DeckScreen.module.css";
@@ -63,6 +63,15 @@ export function DeckScreen() {
     if (id !== s.visibleColumnId) s.setVisibleColumn(id);
   }, [mode]);
 
+  /** Compact でページ idx へ寄せる間、途中の位置を visibleColumnId に反映しない（指で止められたら時間で解く） */
+  const holdUntilArrive = useCallback((idx: number) => {
+    programmaticTarget.current = idx;
+    clearTimeout(programmaticTimer.current);
+    programmaticTimer.current = setTimeout(() => {
+      programmaticTarget.current = null;
+    }, PROGRAMMATIC_TIMEOUT_MS);
+  }, []);
+
   const onScroll = () => {
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
@@ -83,6 +92,20 @@ export function DeckScreen() {
     window.addEventListener("resize", syncVisible);
     return () => window.removeEventListener("resize", syncVisible);
   }, [syncVisible]);
+
+  // [#938] 1 カラム表示で開いたとき（起動時・検索や設定から戻ったとき）は、前に見ていたカラムではなく
+  // ホームのカラム（フォロー中。無ければ先頭）から始める（ネイティブ #934）。jump 要求があればそちらに任せる。
+  // マウント時だけ（カラムの増減・モード切替では動かさない）。下のモード切替より先に visibleColumnId を決める
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時の 1 回だけが目的
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const s = useDeck.getState();
+    if (mode === "expanded" || s.jumpTarget !== null || !strip || s.columns.length === 0) return;
+    const idx = homeColumnIndex(s.columns);
+    holdUntilArrive(idx);
+    s.setVisibleColumn(s.columns[idx].id);
+    scrollToLeft(strip, idx * strip.clientWidth, "instant");
+  }, []);
 
   // モード切替: 見ていたカラムへ瞬時に寄せてから計算し直す
   useLayoutEffect(() => {
@@ -156,11 +179,7 @@ export function DeckScreen() {
       let left: number;
       if (mode !== "expanded") {
         left = idx * strip.clientWidth;
-        programmaticTarget.current = idx;
-        clearTimeout(programmaticTimer.current);
-        programmaticTimer.current = setTimeout(() => {
-          programmaticTarget.current = null;
-        }, PROGRAMMATIC_TIMEOUT_MS);
+        holdUntilArrive(idx);
         // タブを即座に点灯する
         s.setVisibleColumn(jumpTarget);
       } else {
@@ -169,7 +188,7 @@ export function DeckScreen() {
       scrollToLeft(strip, left, scrollBehavior());
     }
     s.consumeJump();
-  }, [jumpTarget, columns, mode]);
+  }, [jumpTarget, columns, mode, holdUntilArrive]);
 
   const activeId = visibleColumnId ?? columns[0]?.id ?? null;
   const active = columns.find((c) => c.id === activeId);

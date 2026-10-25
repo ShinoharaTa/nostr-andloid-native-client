@@ -70,6 +70,11 @@ function scrollTo(el: HTMLElement, left: number) {
   });
 }
 
+/** [#938] マウント時のホームへの寄せが着いたことにする（jsdom はマウント時の幅が 0 なので、着いたと判定できない） */
+function arriveAtHome(el: HTMLElement) {
+  scrollTo(el, 0);
+}
+
 describe("compact", () => {
   beforeEach(() => {
     mockViewport(400, { hover: false });
@@ -107,6 +112,7 @@ describe("compact", () => {
   it("スワイプでページが変わると visibleColumnId とタブの点灯が追従する", () => {
     render(<DeckScreen />);
     setBox(strip(), { clientWidth: 400 });
+    arriveAtHome(strip());
 
     scrollTo(strip(), 800);
     expect(useDeck.getState().visibleColumnId).toBe("c_notif");
@@ -129,6 +135,7 @@ describe("compact", () => {
   it("見ているカラムを移動しても画面に残り、削除したらスクロール位置のカラムになる", () => {
     render(<DeckScreen />);
     setBox(strip(), { clientWidth: 400 });
+    arriveAtHome(strip());
     act(() => {
       useDeck.setState({ visibleColumnId: "c_hashtag" });
     });
@@ -143,6 +150,49 @@ describe("compact", () => {
       useDeck.getState().removeColumn("c_hashtag");
     });
     expect(useDeck.getState().visibleColumnId).toBe("c_notif");
+  });
+
+  describe("[#938] マウント時はホームのカラムから始める", () => {
+    beforeEach(() => {
+      // [通知, フォロー中, #nostr]。前回は #nostr を見ていた
+      const [following, tag, notif] = DEFAULT_COLUMNS;
+      useDeck.setState({
+        columns: [
+          { ...notif, order: 0 },
+          { ...following, order: 1 },
+          { ...tag, order: 2 },
+        ],
+        visibleColumnId: "c_hashtag",
+      });
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("compact でマウントしたらフォロー中のページから始まる。ほかの画面から戻った（作り直した）ときも同じ", () => {
+      const first = render(<DeckScreen />);
+      expect(useDeck.getState().visibleColumnId).toBe("c_following");
+      expect(strip().scrollLeft).toBe(400);
+      expect(screen.getByRole("button", { name: "フォロー中" })).toHaveAttribute("aria-current", "true");
+
+      scrollTo(strip(), 0);
+      expect(useDeck.getState().visibleColumnId).toBe("c_notif");
+      first.unmount();
+
+      render(<DeckScreen />);
+      expect(useDeck.getState().visibleColumnId).toBe("c_following");
+      expect(strip().scrollLeft).toBe(400);
+    });
+
+    it("jumpTarget があればそちらが優先", () => {
+      useDeck.setState({ jumpTarget: "c_hashtag" });
+      render(<DeckScreen />);
+      expect(useDeck.getState().visibleColumnId).toBe("c_hashtag");
+      expect(strip().scrollLeft).toBe(800);
+      expect(useDeck.getState().jumpTarget).toBeNull();
+    });
   });
 });
 

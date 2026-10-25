@@ -419,6 +419,19 @@ export function notificationsColumnId(s: DeckState): string | null {
   return s.columns.find((c) => c.kind === "NOTIFICATIONS")?.id ?? null;
 }
 
+/** [#422][#938] ホームのカラム（フォロー中。無ければ先頭）の位置。カラムが無ければ 0（ネイティブ homeColumnIndex） */
+export function homeColumnIndex(columns: readonly ColumnSpec[]): number {
+  return Math.max(
+    columns.findIndex((c) => c.kind === "FOLLOWING"),
+    0,
+  );
+}
+
+/** ホームのカラムの id（カラムが無ければ null） */
+export function homeColumnId(s: DeckState): string | null {
+  return s.columns[homeColumnIndex(s.columns)]?.id ?? null;
+}
+
 /** 戻る操作で閉じられる一時カラムがあるか */
 export function hasTransient(s: DeckState): boolean {
   return s.columns.some((c) => !c.pinned);
