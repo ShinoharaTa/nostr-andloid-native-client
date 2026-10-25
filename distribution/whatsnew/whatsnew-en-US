@@ -1,4 +1,4 @@
-- On phones, tapping Home scrolls the current column back to the top; tap it again at the top to go to Following
-- Profile editing now has separate Display name and Username (name) fields; changing your display name no longer overwrites your username
-- Fixed custom emoji in your name or bio disappearing when you saved your profile
-- Fixed the first profile save after switching accounts picking up the previous account's picture and bio
+- Choose how times are shown: elapsed, date, or date with seconds (Settings > Appearance). Today shows only the time, and this year shows the month and day
+- Posts now show how many reactions they have. To save data, turn off "Show reaction counts" in Settings > Appearance
+- NIP-05 addresses like "_@domain" now show just the domain
+- Fixed the app sometimes opening on notifications instead of Home
