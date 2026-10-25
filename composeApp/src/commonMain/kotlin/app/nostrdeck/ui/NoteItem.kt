@@ -53,10 +53,10 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.currentUnixTime
-import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.cardedUrlsToHide
 import app.nostrdeck.model.removeUrls
+import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.NoteAccentStyle
 import app.nostrdeck.model.NoteAccentKind
 import app.nostrdeck.model.ReactionUi
