@@ -12,6 +12,7 @@ import { renderWithRouter } from "../../test/renderWithRouter";
 import { useToast } from "../../ui/toast";
 import linkCardStyles from "../linkcard/LinkCard.module.css";
 import gridStyles from "../media/ImageGrid.module.css";
+import { setTimeDisplay } from "../settings/timeDisplay";
 import { DEFAULT_THEME_PREFS, setNoteAccent, useThemePrefs } from "../theme/themePrefs";
 import { useTranslateStore } from "../translate/translateStore";
 import contentStyles from "./NoteContent.module.css";
@@ -26,6 +27,7 @@ vi.mock("../../nostr/loaders", async (importOriginal) => ({
 
 afterEach(() => {
   useThemePrefs.setState(DEFAULT_THEME_PREFS);
+  setTimeDisplay("relative");
 });
 
 // applesauce の Tokens.link はホストにドットを要求するため、テストの URL は *.test にする
@@ -252,6 +254,20 @@ it("相対時刻は時間が経つと進む", () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("[#940] 時刻の表示が「日時」なら今日の投稿は HH:mm、去年より前は yyyy/MM/dd HH:mm", () => {
+  setTimeDisplay("absolute");
+  const { container } = renderWithRouter(<NoteItem event={post("today")} />);
+  expect(container.querySelector("time")?.textContent).toMatch(/^\d{2}:\d{2}$/);
+
+  setTimeDisplay("absolute_seconds");
+  const old = finalizeEvent(
+    { kind: 1, created_at: new Date(2020, 0, 2, 3, 4, 5).getTime() / 1000, tags: [], content: "old" },
+    generateSecretKey(),
+  );
+  const { container: oldContainer } = renderWithRouter(<NoteItem event={old} />);
+  expect(oldContainer.querySelector("time")).toHaveTextContent("2020/01/02 03:04:05");
 });
 
 it("画像 URL 2 本だけの投稿は本文を出さず、2 列のグリッドに並べる（URL のリンクは出さない）", () => {

@@ -7,6 +7,7 @@ import { DEFAULT_EMBED_PREFS, EMBED_PREFS_KEY, useEmbedPrefs } from "../linkcard
 import { REACTION_COUNTS_KEY, useReactionCountsPref } from "../reactions/reactionCountsPref";
 import { DEFAULT_THEME_PREFS, THEME_KEY, useThemePrefs } from "../theme/themePrefs";
 import { DisplaySection } from "./DisplaySection";
+import { reloadTimeDisplayForTest, TIME_DISPLAY_KEY } from "./timeDisplay";
 
 afterEach(() => {
   localStorage.clear();
@@ -14,6 +15,7 @@ afterEach(() => {
   useNyanMode.setState({ mode: "off" });
   useThemePrefs.setState(DEFAULT_THEME_PREFS);
   useReactionCountsPref.setState({ enabled: true });
+  reloadTimeDisplayForTest();
 });
 
 it("埋め込み表示の 6 項目は既定ですべて ON", () => {
@@ -163,4 +165,35 @@ it("[#941] リアクションの数は既定でオン。トグルを切ると保
 
   render(<DisplaySection />);
   expect(screen.getByRole("checkbox", { name: "リアクションの数を出す" })).not.toBeChecked();
+});
+
+it("[#940] 時刻の表示は既定で経過時間。3 択を選ぶと保存され、次の描画にも残る", async () => {
+  const user = userEvent.setup();
+  const { unmount } = render(<DisplaySection />);
+
+  expect(screen.getByRole("heading", { name: "時刻の表示" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "経過時間" })).toHaveAttribute("aria-pressed", "true");
+
+  await user.click(screen.getByRole("button", { name: "日時" }));
+  expect(localStorage.getItem(TIME_DISPLAY_KEY)).toBe("absolute");
+  expect(screen.getByRole("button", { name: "日時" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "経過時間" })).toHaveAttribute("aria-pressed", "false");
+
+  await user.click(screen.getByRole("button", { name: "日時（秒まで）" }));
+  expect(localStorage.getItem(TIME_DISPLAY_KEY)).toBe("absolute_seconds");
+  unmount();
+
+  reloadTimeDisplayForTest();
+  render(<DisplaySection />);
+  expect(screen.getByRole("button", { name: "日時（秒まで）" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("[#940] 時刻の表示はネイティブと同じく 文字を太くする の下・にゃにゃにゃ の上", () => {
+  const { container } = render(<DisplaySection />);
+  const text = container.textContent ?? "";
+  const positions = ["文字を太くする", "時刻の表示", "にゃにゃにゃウイルス"].map((label) =>
+    text.indexOf(label),
+  );
+  expect(positions.every((p) => p >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
 });

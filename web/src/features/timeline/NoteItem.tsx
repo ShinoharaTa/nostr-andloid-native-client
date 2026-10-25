@@ -10,7 +10,7 @@ import { isBlankContent, parseNoteContent, withoutLinks, withoutMention } from "
 import { clientNameOf, contentWarningOf, quotePointerOf, replyParentPointerOf } from "../../lib/content/tags";
 import { isDataSaver, markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
-import { relativeTime } from "../../lib/time";
+import { timeLabel } from "../../lib/time";
 import { displayName, pictureOf, useEventByPointer, useProfile, useRepostedEvent } from "../../nostr/loaders";
 import { CatEars } from "../../ui/CatEars";
 import { useNyanApplies } from "../../ui/nyan";
@@ -22,6 +22,7 @@ import { NoteFooter } from "../compose/NoteFooter";
 import { useLinkCards } from "../linkcard/useLinkCards";
 import { NoteMedia } from "../media/NoteMedia";
 import { nip05Label } from "../profile/nip05";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import { type NoteAccentKind, noteAccentKindOf } from "../theme/noteAccent";
 import { useThemePrefs } from "../theme/themePrefs";
 import { useTranslation, useTranslationPending } from "../translate/translateStore";
@@ -292,6 +293,7 @@ function TranslationBlock({ eventId }: { eventId: string }) {
 function RelativeTime({ createdAt, client }: { createdAt: number; client: string | null }) {
   const t = useT();
   const now = useNow();
+  const mode = useTimeDisplay();
   const date = new Date(createdAt * 1000);
   // created_at は任意の数値なので、Date の範囲外なら属性を付けない（toISOString が例外を投げる）
   const valid = Number.isFinite(date.getTime());
@@ -300,7 +302,7 @@ function RelativeTime({ createdAt, client }: { createdAt: number; client: string
     : undefined;
   return (
     <time className={styles.time} dateTime={valid ? date.toISOString() : undefined} title={title}>
-      {relativeTime(createdAt, now)}
+      {timeLabel(createdAt, now, mode)}
     </time>
   );
 }

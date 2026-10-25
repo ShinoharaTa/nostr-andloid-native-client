@@ -2,7 +2,7 @@ import { memo, type ReactNode, useRef } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForProfile } from "../../lib/content/labels";
-import { relativeTime } from "../../lib/time";
+import { timeLabel } from "../../lib/time";
 import { displayName, pictureOf, useEventByPointer, useProfile } from "../../nostr/loaders";
 import {
   AlternateEmailIcon,
@@ -14,6 +14,7 @@ import {
 } from "../../ui/icons";
 import { ReactionEventActions } from "../actions/NoteActionButtons";
 import { ReactionDisplay } from "../actions/ReactionDisplay";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import { normalizeReaction } from "../thread/engagement";
 import { ReactorEmoji } from "../thread/ReactorRow";
 import { Avatar, NoteItem } from "../timeline/NoteItem";
@@ -57,6 +58,7 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
   const profile = useProfile(item.actor);
   const picture = pictureOf(profile);
   const now = useNow();
+  const timeDisplay = useTimeDisplay();
   // 対象（自分の投稿）。kind:42 ならチャンネルのルームを開く。返信・メンションは見出しの抜粋にも使う
   const targetEvent = useEventByPointer(item.target);
   const href = notificationHref(item, targetEvent);
@@ -104,7 +106,9 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
         </Link>
         {item.kind === "zap" && <span className={styles.sats}>⚡ {item.zapSats ?? 0}</span>}
         <Link to={href} className={styles.time}>
-          <time dateTime={valid ? date.toISOString() : undefined}>{relativeTime(item.createdAt, now)}</time>
+          <time dateTime={valid ? date.toISOString() : undefined}>
+            {timeLabel(item.createdAt, now, timeDisplay)}
+          </time>
         </Link>
       </div>
     );

@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForProfile } from "../../lib/content/labels";
 import { markProxyBlocked, originOf, proxied } from "../../lib/imageProxy";
-import { relativeTime } from "../../lib/time";
+import { timeLabel } from "../../lib/time";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import {
   AddReactionIcon,
@@ -22,8 +22,10 @@ import { useDefaultReaction } from "../actions/reactionPrefs";
 import { publishReaction, reactWithDefault, useIsReacted } from "../actions/reactions";
 import { openCompose } from "../compose/composeStore";
 import { ActionButton } from "../compose/NoteFooter";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import type { ThreadEntry } from "../thread/threadTree";
 import { Avatar, NoteItem } from "../timeline/NoteItem";
+import { useNow } from "../timeline/useNow";
 import { ArticleMarkdown } from "./ArticleMarkdown";
 import styles from "./ArticleReader.module.css";
 
@@ -56,6 +58,8 @@ export function ArticleReader({
   const image = tagValue(article, "image");
   const summary = tagValue(article, "summary");
   const publishedAt = Number(tagValue(article, "published_at")) || article.created_at;
+  const now = useNow();
+  const timeDisplay = useTimeDisplay();
 
   return (
     <>
@@ -65,7 +69,7 @@ export function ArticleReader({
         <Link className={styles.author} to={hrefForProfile(article.pubkey)}>
           <Avatar url={pictureOf(profile)} size="sm" seed={article.pubkey} pubkey={article.pubkey} />
           <span className={styles.authorName}>{displayName(profile, article.pubkey)}</span>
-          <span className={styles.time}>{relativeTime(publishedAt)}</span>
+          <span className={styles.time}>{timeLabel(publishedAt, now, timeDisplay)}</span>
         </Link>
         {image && <ArticleBanner url={image} />}
         {summary && <p className={styles.summary}>{summary}</p>}

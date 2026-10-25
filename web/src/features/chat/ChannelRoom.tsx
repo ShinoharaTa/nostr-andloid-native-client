@@ -13,7 +13,7 @@ import { t, useT } from "../../i18n";
 import { oneLine } from "../../lib/content/labels";
 import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
-import { relativeTime } from "../../lib/time";
+import { timeLabel } from "../../lib/time";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { retryUnsentNow, useIsUnsent } from "../../nostr/publish";
 import { useSession } from "../../signer/session";
@@ -51,6 +51,7 @@ import { NoteMedia } from "../media/NoteMedia";
 import { useMuteMatcher } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { useDeveloperMode } from "../settings/devMode";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import type { ReactionGroup } from "../thread/engagement";
 import { NewItemsPill } from "../timeline/NewItemsPill";
 import { NoteContent } from "../timeline/NoteContent";
@@ -326,6 +327,7 @@ function MessageRow({
   const picture = pictureOf(profile);
   const name = displayName(profile, message.pubkey);
   const now = useNow();
+  const timeDisplay = useTimeDisplay();
   const media = extractMedia(message);
   const hasMedia = media.images.length + media.videos.length + media.youtube.length > 0;
   const unsent = useIsUnsent(message.id);
@@ -345,7 +347,7 @@ function MessageRow({
         {!continuation && (
           <div className={styles.meta}>
             <span className={styles.name}>{name}</span>
-            <span className={styles.time}>{relativeTime(message.created_at, now)}</span>
+            <span className={styles.time}>{timeLabel(message.created_at, now, timeDisplay)}</span>
           </div>
         )}
         {parent && <ReplyQuote parent={parent} />}
