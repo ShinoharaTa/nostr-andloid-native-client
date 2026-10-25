@@ -2,6 +2,7 @@ import type { NostrEvent } from "nostr-tools/pure";
 import type { CSSProperties, ReactNode } from "react";
 import { clientNameOf } from "../../lib/content/tags";
 import { formatAbsoluteTime } from "../../lib/time";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import { NoteItem } from "../timeline/NoteItem";
 import styles from "./ThreadRow.module.css";
 import type { ThreadEntry } from "./threadTree";
@@ -29,12 +30,13 @@ export function ThreadRow({ entry, stats }: { entry: ThreadEntry; stats?: ReactN
   );
 }
 
-/** 起点の日時（yyyy/MM/dd HH:mm）+ client タグがあれば「 · via <client>」 */
+/** 起点の日時（yyyy/MM/dd HH:mm。[#940] 時刻の表示が「日時（秒まで）」なら秒まで）+ client タグがあれば「 · via <client>」 */
 function FocusNoteMeta({ event }: { event: NostrEvent }) {
   const client = clientNameOf(event);
+  const timeDisplay = useTimeDisplay();
   return (
     <p className={styles.meta}>
-      {formatAbsoluteTime(event.created_at)}
+      {formatAbsoluteTime(event.created_at, timeDisplay === "absolute_seconds")}
       {client ? ` · via ${client}` : ""}
     </p>
   );

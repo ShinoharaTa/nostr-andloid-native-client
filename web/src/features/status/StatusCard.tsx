@@ -5,10 +5,11 @@ import { memo, type ReactNode, useRef } from "react";
 import { Link } from "react-router";
 import { useT } from "../../i18n";
 import { hrefForEvent, hrefForProfile, shortUrlLabel } from "../../lib/content/labels";
-import { formatAbsoluteTime, relativeTime } from "../../lib/time";
+import { formatAbsoluteTime, timeLabel } from "../../lib/time";
 import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { Icon } from "../../ui/icons";
 import { LinkCards } from "../linkcard/LinkCard";
+import { useTimeDisplay } from "../settings/timeDisplay";
 import { useThemePrefs } from "../theme/themePrefs";
 import { NoteContent } from "../timeline/NoteContent";
 import { Avatar } from "../timeline/NoteItem";
@@ -57,6 +58,7 @@ export function StatusCardFrame({
   children: ReactNode;
 }) {
   const now = useNow(STATUS_CLOCK_MS);
+  const timeDisplay = useTimeDisplay();
   const ref = useRef<HTMLElement>(null);
   const profileHref = hrefForProfile(pubkey);
   useOpenOnClick(ref, profileHref);
@@ -78,7 +80,7 @@ export function StatusCardFrame({
               {name}
             </Link>
             <time className={styles.time} title={formatAbsoluteTime(createdAt) || undefined}>
-              {relativeTime(createdAt, now)}
+              {timeLabel(createdAt, now, timeDisplay)}
             </time>
           </div>
           {children}
