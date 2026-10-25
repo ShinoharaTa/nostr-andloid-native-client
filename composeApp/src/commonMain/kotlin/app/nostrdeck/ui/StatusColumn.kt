@@ -147,7 +147,7 @@ private fun StatusCard(e: NostrEvent, now: Long, onAuthorClick: (String) -> Unit
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                     )
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    HintText(noteRelativeTime(e.createdAt))
+                    HintText(timeLabel(e.createdAt))   // [#930]
                 }
                 Spacer(Modifier.size(DeckDensity.NoteGap))
                 StatusBody(e, now)

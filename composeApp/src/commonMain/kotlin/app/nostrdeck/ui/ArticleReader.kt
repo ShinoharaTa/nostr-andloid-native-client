@@ -200,7 +200,7 @@ private fun AuthorRow(pubkey: String, profile: Profile?, publishedAt: Long, onCl
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(DeckSpace.Sm))
-        HintText(relativeTime(publishedAt))
+        HintText(timeLabel(publishedAt))
     }
 }
 
@@ -218,14 +218,3 @@ private fun ActionIcon(
     }
 }
 
-private fun relativeTime(createdAt: Long): String {
-    val diff = app.nostrdeck.crypto.currentUnixTime() - createdAt
-    return when {
-        diff < 10 -> "now"
-        diff < 60 -> "${diff}s"
-        diff < 3600 -> "${diff / 60}m"
-        diff < 86400 -> "${diff / 3600}h"
-        diff < 604800 -> "${diff / 86400}d"
-        else -> "${diff / 604800}w"
-    }
-}

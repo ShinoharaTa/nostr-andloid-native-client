@@ -446,6 +446,7 @@ class EventRepository(
         loadDenseMode()  // [#675]
         loadKansaiMode() // [#710]
         loadNyanMode()   // [#378]
+        loadTimeDisplay()   // [#930]
         loadDeveloperMode()   // [#351]
         loadNoteAccentStyle()
         loadCustomTheme()
@@ -5229,6 +5230,18 @@ class EventRepository(
         nyanModeState.value = NyanMode.fromId(q.getSetting(NYAN_MODE_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#930] 時刻の表示（経過時間 / 日時 / 日時を秒まで。既定は経過時間）----
+    // 端末ローカル設定（#374 の SettingsSync ホワイトリストには入れない）。
+    private val timeDisplayState = MutableStateFlow(app.nostrdeck.model.TimeDisplay.RELATIVE)
+    fun timeDisplayFlow(): StateFlow<app.nostrdeck.model.TimeDisplay> = timeDisplayState
+    fun setTimeDisplay(mode: app.nostrdeck.model.TimeDisplay) {
+        timeDisplayState.value = mode
+        putSettingAsync(TIME_DISPLAY_KEY, mode.id)
+    }
+    private fun loadTimeDisplay() {
+        timeDisplayState.value = app.nostrdeck.model.TimeDisplay.fromId(q.getSetting(TIME_DISPLAY_KEY).executeAsOneOrNull())
+    }
+
     // ---- [#351] 開発者モード（既定OFF）----
     // ON にすると投稿/チャットの ⋯ メニューに「イベントJSONを表示」が出る。
     private val developerModeState = MutableStateFlow(false)
@@ -6346,6 +6359,7 @@ class EventRepository(
         const val BOLD_TEXT_KEY = "appearance_bold_text"   // [#327]       // [#appearance] 表示サイズ（s/m/l）
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
+        const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
         const val DENSITY_KEY = "ui:density"       // [#675] 廃人モード（normal/dense）
         const val KANSAI_MODE_KEY = "ui:kansai_mode" // [#710] うにゅうと握手（on/off）
         const val NOTE_ACCENT_STYLE_KEY = "ui:note_accent"  // [#256][#257] 種別の視覚表示（none/line/bg）

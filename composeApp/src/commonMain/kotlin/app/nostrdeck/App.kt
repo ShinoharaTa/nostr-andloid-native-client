@@ -246,6 +246,10 @@ fun App(
         val nyanMe by (repository?.loggedInPubkey()?.collectAsState(null)
             ?: remember { mutableStateOf<String?>(null) })
         Nyan.apply(nyanMode, nyanMe)
+        // [#930] 時刻の表示。TimeDisplaySetting も snapshot state なので apply するだけで時刻を出す全箇所に効く。
+        val timeDisplay by (repository?.timeDisplayFlow()?.collectAsState()
+            ?: remember { mutableStateOf(app.nostrdeck.model.TimeDisplay.RELATIVE) })
+        app.nostrdeck.ui.TimeDisplaySetting.apply(timeDisplay)
         val density = LocalDensity.current
         // [#196] スケール込み density を1つ作り、LocalDensity と（Dialog へ伝播させる用の）
         // LocalDeckDensity の両方へ供給する。Dialog/Popup 内では DeckScaled で再適用する。

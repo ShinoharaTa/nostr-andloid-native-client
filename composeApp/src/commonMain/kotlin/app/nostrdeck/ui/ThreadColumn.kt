@@ -184,7 +184,8 @@ private fun ThreadRow(
  */
 @Composable
 private fun FocusNoteMeta(note: NoteUi) {
-    val time = remember(note.event.createdAt) { formatAbsoluteTime(note.event.createdAt) }
+    // [#930]「日時（秒まで）」なら秒まで
+    val time = remember(note.event.createdAt, TimeDisplaySetting.mode) { detailTimeLabel(note.event.createdAt) }
     val client = note.clientName
     Text(
         if (client != null) "$time · ${stringResource(Res.string.thread_posted_via_fmt, client)}" else time,

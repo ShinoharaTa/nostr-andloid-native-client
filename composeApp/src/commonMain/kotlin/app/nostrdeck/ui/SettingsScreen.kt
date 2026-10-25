@@ -1184,6 +1184,14 @@ private fun themeModeLabel(m: app.nostrdeck.model.ThemeMode): String = when (m) 
     app.nostrdeck.model.ThemeMode.CUSTOM -> stringResource(Res.string.theme_custom)
 }
 
+// [#930] 時刻の表示のラベル。
+@Composable
+private fun timeDisplayLabel(m: app.nostrdeck.model.TimeDisplay): String = when (m) {
+    app.nostrdeck.model.TimeDisplay.RELATIVE -> stringResource(Res.string.time_display_relative)
+    app.nostrdeck.model.TimeDisplay.ABSOLUTE -> stringResource(Res.string.time_display_absolute)
+    app.nostrdeck.model.TimeDisplay.ABSOLUTE_SECONDS -> stringResource(Res.string.time_display_absolute_seconds)
+}
+
 // [#378] にゃにゃにゃウイルスの適用範囲ラベル。
 @Composable
 private fun nyanModeLabel(m: app.nostrdeck.model.NyanMode): String = when (m) {
@@ -1412,6 +1420,24 @@ private fun AppearanceSettings() {
         SettingToggle(stringResource(Res.string.bold_text_toggle), bold) { repo.setBoldText(it) }
     }
     Spacer(Modifier.height(DeckSpace.Lg))
+
+    // [#930] 時刻の表示（経過時間 / 日時 / 日時を秒まで）。タイムライン・通知・チャット・記事の時刻に効く。
+    SectionCaption(stringResource(Res.string.time_display_title))
+    Spacer(Modifier.height(DeckSpace.Xs))
+    Text(
+        stringResource(Res.string.time_display_desc),
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    run {
+        val timeDisplay by repo.timeDisplayFlow().collectAsState()
+        Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+            app.nostrdeck.model.TimeDisplay.entries.forEach { m ->
+                ChoiceChip(timeDisplayLabel(m), selected = timeDisplay == m) { repo.setTimeDisplay(m) }
+            }
+        }
+    }
+    Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#378] にゃにゃにゃウイルス（オフ/自分のみ/全員）。この端末の表示だけの猫化演出。
     SectionCaption(stringResource(Res.string.nyan_mode_title))

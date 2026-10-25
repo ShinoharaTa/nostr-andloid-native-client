@@ -797,20 +797,7 @@ private fun NoteMetaLine(note: NoteUi, authorTap: Modifier, modifier: Modifier =
             )
         }
         Spacer(Modifier.width(DeckSpace.Sm))
-        HintText(noteRelativeTime(note.event.createdAt))
-    }
-}
-
-/** 投稿の相対時刻（now / 12s / 5m / 3h / 2d / 1w）。[#772] ステータスのカードも同じ表記を使う。 */
-internal fun noteRelativeTime(createdAt: Long): String {
-    val diff = currentUnixTime() - createdAt
-    return when {
-        diff < 10 -> "now"
-        diff < 60 -> "${diff}s"
-        diff < 3600 -> "${diff / 60}m"
-        diff < 86400 -> "${diff / 3600}h"
-        diff < 604800 -> "${diff / 86400}d"
-        else -> "${diff / 604800}w"
+        HintText(timeLabel(note.event.createdAt))   // [#930] 設定に従って経過時間か日時
     }
 }
 
