@@ -132,9 +132,12 @@ SELECT * FROM profile;
 -- [#250] メンション補完: name/handle の前方一致を SQL 側で絞って上位のみ返す。
 -- 従来は allProfiles を全件メモリへ読んでから filter していて、プロフィールが増えるほど
 -- 入力1文字ごとにメインスレッドが止まっていた（実測 8.5ms/回・実機ではさらに悪化）。
+-- [#931] `_@domain`（ルートの識別子）は画面にドメインだけを出すので、見た目どおり「domain」と打っても当てる。
+-- LIKE の `_` は 1 文字のワイルドカードなので ESCAPE で文字としての `_` にする。
 searchProfilesByPrefix:
 SELECT * FROM profile
 WHERE lower(name) LIKE :prefix || '%' OR lower(handle) LIKE :prefix || '%'
+   OR lower(handle) LIKE '\_@' || :prefix || '%' ESCAPE '\'
 ORDER BY (CASE WHEN name != '' THEN 0 ELSE 1 END), updated_at DESC
 LIMIT :limit;
 

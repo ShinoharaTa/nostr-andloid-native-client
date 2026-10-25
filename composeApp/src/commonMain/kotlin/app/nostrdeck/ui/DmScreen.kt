@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.nostrdeck.data.EventRepository
 import app.nostrdeck.data.SampleData
-import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
@@ -119,7 +118,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                 else SampleData.dmMessages(selected.pubkey)
                 ChannelRoomColumn(
                     spec = ColumnSpec(
-                        id = "dm_${selected.pubkey}", title = selected.name, subtitle = Nip05Display.label(selected.handle),   // [#931]
+                        id = "dm_${selected.pubkey}", title = selected.name, subtitle = selected.handle,
                         kind = ColumnKind.DM, renderer = ColumnRenderer.ROOM,
                         filter = ReqFilter(kinds = listOf(14)),   // [#415] 表示は復号後の kind:14
                     ),
