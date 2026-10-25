@@ -810,6 +810,10 @@
     <string name="dense_mode_toggle">廃人モードを使う</string>
     <!-- [#326] カード化したリンクのURLを本文から畳む -->
     <string name="embed_hide_carded_urls">カードを出したリンクのURLを本文から隠す</string>
+    <!-- [#932] タイムラインのリアクション数 -->
+    <string name="reaction_counts_title">リアクションの数</string>
+    <string name="reaction_counts_desc">タイムラインの投稿に、付いたリアクションの数を出します。数えるために、画面に出た投稿のリアクションを取得するので、通信量が増えます。</string>
+    <string name="reaction_counts_toggle">リアクションの数を出す</string>
     <!-- [#351] 開発者モード / イベントJSONビューア -->
     <string name="dev_mode_title">開発者モード</string>
     <string name="dev_mode_desc">投稿やチャットの「⋯」メニューに「イベントJSONを表示」が追加され、タイムラインに流れてくるイベントの生データを確認できます。</string>

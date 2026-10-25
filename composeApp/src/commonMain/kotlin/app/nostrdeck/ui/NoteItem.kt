@@ -114,6 +114,12 @@ fun NoteItem(
   // 一斉に再コンポーズされスクロールが詰まる。derivedStateOf でこのノートの値だけに依存させ、
   // 自分の zap 合計が変わったときのみ再コンポーズする。
   val zapSats by remember(note.event.id) { derivedStateOf { zapTotals[note.event.id] ?: 0L } }
+  // [#932] リアクションの数。画面に出たら取りに行く（設定で切っていれば出さず、取得もしない）。
+  // zapTotals と同じく、Map 全体の差し替えで全項目が描き直されないよう、このノートの値だけに依存させる。
+  val showReactionCounts by (repo?.showReactionCountsFlow()?.collectAsState() ?: remember { mutableStateOf(false) })
+  val reactionCounts by (repo?.reactionCountsFlow()?.collectAsState() ?: remember { mutableStateOf(emptyMap<String, Int>()) })
+  val reactionCount by remember(note.event.id) { derivedStateOf { reactionCounts[note.event.id] ?: 0 } }
+  LaunchedEffect(note.event.id, showReactionCounts) { if (showReactionCounts) repo?.requestReactionCounts(note.event.id) }
   val defaultReaction by (repo?.defaultReactionFlow()?.collectAsState() ?: remember { mutableStateOf("+" to null) })
   var repostMenu by remember { mutableStateOf(false) }
   var moreMenu by remember { mutableStateOf(false) }
@@ -360,14 +366,23 @@ fun NoteItem(
                         }
                     }
                     // デフォルトリアクション（設定で ♡/☆/絵文字を変更可）。押すと送信し、押下状態になる。
-                    DefaultReactionButton(
-                        content = defaultReaction.first, active = note.mineReacted,
-                        onClick = {
-                            // 付与済み→取り消し(kind:5)は確認を挟む。未付与→即送信。絵文字ピッカーは別途何度でも可。
-                            if (note.mineReacted) confirmUnreact = true
-                            else scope.launch { repo?.reactWithDefault(note.event) }
-                        },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DefaultReactionButton(
+                            content = defaultReaction.first, active = note.mineReacted,
+                            onClick = {
+                                // 付与済み→取り消し(kind:5)は確認を挟む。未付与→即送信。絵文字ピッカーは別途何度でも可。
+                                if (note.mineReacted) confirmUnreact = true
+                                else scope.launch { repo?.reactWithDefault(note.event) }
+                            },
+                        )
+                        // [#932] 付いたリアクションの数（すべての絵文字の合計。Zap の金額と同じ置き方）
+                        if (showReactionCounts && reactionCount > 0) {
+                            Text(
+                                compactCount(reactionCount.toLong()), color = DeckColors.Text3, fontSize = DeckType.Label,
+                                modifier = Modifier.offset(x = -DeckSpace.Xs),
+                            )
+                        }
+                    }
                     // 絵文字リアクション（ピッカーから任意の Unicode/カスタム絵文字で kind:7）。
                     ActionButton(Icons.Outlined.AddReaction, DeckColors.Text3, onClick = { showReactionPicker = true })
                     // Zap は絵文字の隣。lud16 があれば送信可、Zap 受領があれば合計 sats を表示。
@@ -709,6 +724,9 @@ private fun ZapAction(sats: Long, tint: Color, onClick: (() -> Unit)?) {
         }
     }
 }
+
+/** [#932] 数を短く整形（1234→1.2k / 1000000→1.0M）。sats と同じ表記。 */
+internal fun compactCount(n: Long): String = formatSats(n)
 
 /** sats を短く整形（1234→1.2k / 1000000→1.0M）。 */
 private fun formatSats(sats: Long): String = when {

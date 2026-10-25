@@ -1486,6 +1486,20 @@ private fun AppearanceSettings() {
         stringResource(Res.string.embed_hide_carded_urls), prefs.hideCardedUrls,
         onChange = { repo.setEmbedPrefs(prefs.copy(hideCardedUrls = it)) },
     )
+    Spacer(Modifier.size(DeckSpace.Lg))
+
+    // [#932] タイムラインのリアクション数。数えるために画面に出た投稿のリアクションを取るので、通信量が増える。
+    SectionCaption(stringResource(Res.string.reaction_counts_title))
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(
+        stringResource(Res.string.reaction_counts_desc),
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Xs))
+    run {
+        val show by repo.showReactionCountsFlow().collectAsState()
+        SettingToggle(stringResource(Res.string.reaction_counts_toggle), show) { repo.setShowReactionCounts(it) }
+    }
 }
 
 /** ラベル + 右端チェックボックスの1行トグル（設定用）。 */

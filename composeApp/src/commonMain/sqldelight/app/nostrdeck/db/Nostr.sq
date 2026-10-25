@@ -467,6 +467,16 @@ JOIN event_tag et ON et.event_id = e.id AND et.tag = 'e'
 WHERE e.kind = 7 AND et.value = :id
   AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e');
 
+-- [#932] タイムラインのリアクション数: 対象（最後の e タグ）が :ids のどれかである kind:7 を対象ごとに数える。
+-- 数え方は投稿詳細（reactionsForNote）と同じ（同じ人の複数のリアクションもそれぞれ数える）。
+reactionCountsForNotes:
+SELECT et.value AS note_id, COUNT(*) AS cnt
+FROM event e
+JOIN event_tag et ON et.event_id = e.id AND et.tag = 'e'
+WHERE e.kind = 7 AND et.value IN :ids
+  AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e')
+GROUP BY et.value;
+
 -- [#254] 投稿詳細: リアクションした人（絵文字ごとの内訳にアバターを並べる）。名前解決込み・新しい順。
 reactionsForNoteWithAuthors:
 SELECT e.content, e.tags_json, e.pubkey, p.name AS pname, p.picture_url AS ppicture

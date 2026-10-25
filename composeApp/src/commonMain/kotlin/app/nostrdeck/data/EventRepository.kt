@@ -133,6 +133,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -418,6 +419,7 @@ class EventRepository(
         // NIP-28 チャンネル一覧を取得（ピン留めルームが起動直後にチャンネルのリレーへ繋げるよう先に）。
         scope.launch { refreshChannels() }
         scope.launch { profileBatchLoop() }
+        scope.launch { reactionBatchLoop() }   // [#932]
         // ミュートリスト(kind:10000)を常時購読（フィルタは全カラムで常に有効）。
         subscribeMuteList("mute_global")
         // カラム別「ミュートを表示」設定を KV から復元。
@@ -447,6 +449,7 @@ class EventRepository(
         loadKansaiMode() // [#710]
         loadNyanMode()   // [#378]
         loadDeveloperMode()   // [#351]
+        loadShowReactionCounts()   // [#932]
         loadNoteAccentStyle()
         loadCustomTheme()
         loadImageCompression()
@@ -5574,6 +5577,80 @@ class EventRepository(
     }
     fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
 
+    // ---- [#932] タイムラインの投稿のリアクション数 ----
+    // 画面に出た投稿（NoteItem）の kind:7 を一度だけ取りに行き、手元の DB で数える。設定で切ったら取得もしない
+    // （表示中の投稿の id で `{"kinds":[7],"#e":[…]}` を引く分だけ通信量が増えるため）。端末ローカル設定。
+    private val showReactionCountsState = MutableStateFlow(true)
+    fun showReactionCountsFlow(): StateFlow<Boolean> = showReactionCountsState
+    fun setShowReactionCounts(enabled: Boolean) {
+        showReactionCountsState.value = enabled
+        putSettingAsync(REACTION_COUNTS_KEY, if (enabled) "on" else "off")
+    }
+    private fun loadShowReactionCounts() {
+        showReactionCountsState.value = q.getSetting(REACTION_COUNTS_KEY).executeAsOneOrNull() != "off"
+    }
+
+    /** 数える対象（画面に出た投稿の id。新しく出たものを先頭に [REACTION_COUNT_TARGETS] 件まで）。 */
+    private val reactionCountTargets = MutableStateFlow<List<String>>(emptyList())
+    private val reactionRequests = Channel<String>(Channel.UNLIMITED)
+    private var reactionReqSeq = 0
+
+    /**
+     * 画面に出た投稿を数える対象に加え、このプロセスでまだ取っていなければ kind:7 を取りに行く（まとめて取得）。
+     * 設定で切っているときは何もしない。
+     */
+    fun requestReactionCounts(noteId: String) {
+        if (!showReactionCountsState.value || noteId.isBlank()) return
+        reactionCountTargets.update { cur -> if (noteId in cur) cur else (listOf(noteId) + cur).take(REACTION_COUNT_TARGETS) }
+        reactionRequests.trySend(noteId)
+    }
+
+    /**
+     * 対象の投稿ごとのリアクション数（対象＝最後の e タグ。数え方は投稿の詳細と同じ）。設定で切っていれば空。
+     * 対象の追加はスクロール中に続くので少しまとめてから数え直す。
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private val reactionCounts: StateFlow<Map<String, Int>> by lazy {
+        combine(showReactionCountsState, reactionCountTargets.debounce(300)) { on, ids -> if (on) ids else emptyList() }
+            .distinctUntilChanged()
+            .flatMapLatest { ids ->
+                if (ids.isEmpty()) flowOf(emptyMap())
+                else q.reactionCountsForNotes(ids).asFlow().mapToList(Dispatchers.Default)
+                    .map { rows -> rows.associate { it.note_id to it.cnt.toInt() } }
+            }
+            .flowOn(Dispatchers.Default)
+            .stateIn(scope, feedSharing, emptyMap())
+    }
+    fun reactionCountsFlow(): StateFlow<Map<String, Int>> = reactionCounts
+
+    /** [#932] 画面に出た投稿の kind:7 をまとめて取りに行く（プロフィールの取得と同じく、一意の購読で取って閉じる）。 */
+    private suspend fun reactionBatchLoop() {
+        val requested = LinkedHashSet<String>()   // このプロセスで取りに行った id（古いものから捨てる）
+        val pending = LinkedHashSet<String>()
+        while (true) {
+            val first = reactionRequests.receive()
+            if (first !in requested) pending.add(first)
+            withTimeoutOrNull(400) {
+                while (true) {
+                    val next = reactionRequests.receive()
+                    if (next !in requested) pending.add(next)
+                }
+            }
+            if (pending.isEmpty()) continue
+            if (!showReactionCountsState.value) { pending.clear(); continue }
+            val batch = pending.toList()
+            pending.clear()
+            requested.addAll(batch)
+            while (requested.size > REACTION_REQUESTED_CAP) requested.remove(requested.first())
+            batch.chunked(REACTION_FETCH_CHUNK).forEach { chunk ->
+                val subId = "reactions-${reactionReqSeq++}"
+                subscribeAll(subId, Filter(kinds = listOf(7), eTags = chunk, limit = chunk.size * REACTION_FETCH_PER_NOTE))
+                // 蓄積イベントは EOSE 後すぐ届く。一定時間で CLOSE して sub を溜めない（新しく付いた分は数え直さない）。
+                scope.launch { delay(10_000); unsubscribeAll(subId) }
+            }
+        }
+    }
+
     /** 9735 のタグ群から zap 額(sats)を取り出す（純関数 [Nip57] に委譲・単体テスト可能）。 */
     private fun zapAmountSats(tags: List<List<String>>): Long = Nip57.zapAmountSats(tags)
 
@@ -6377,6 +6454,15 @@ class EventRepository(
         const val MY_PROFILE_JSON = "my_profile_json"
         /** [#921] 自分の kind:0 のタグ（公開鍵ごと）。保存時に引き継ぐ。 */
         const val MY_PROFILE_TAGS = "my_profile_tags"
+        /** [#932] タイムラインのリアクション数（on/off。既定 on）。 */
+        const val REACTION_COUNTS_KEY = "ui:reaction_counts"
+        /** [#932] 数える対象の上限（画面に出た投稿の新しい順）。 */
+        const val REACTION_COUNT_TARGETS = 300
+        /** [#932] 取りに行った id を覚えておく上限。 */
+        const val REACTION_REQUESTED_CAP = 3000
+        /** [#932] 1 回の REQ に入れる投稿の数と、投稿 1 件あたりの件数の目安（limit）。 */
+        const val REACTION_FETCH_CHUNK = 50
+        const val REACTION_FETCH_PER_NOTE = 20
 
         /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
         const val AUTH_POLICY = "nip42_auth_policy"
