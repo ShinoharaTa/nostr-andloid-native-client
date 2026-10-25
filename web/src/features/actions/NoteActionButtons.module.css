@@ -110,3 +110,17 @@
   left: calc(var(--sp-1) * -1);
   font-size: var(--type-label);
 }
+
+/* [#941] 既定リアクション + 付いたリアクションの数（均等配置では 1 つの項目） */
+.reactionWithCount {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+/* 数はボタンの余白の分だけ左へ寄せ、寄せた分は幅からも引く（ネイティブ NoteItem.kt。隣のボタンとの間隔を広げない） */
+.reactionCount {
+  margin-left: calc(var(--sp-1) * -1);
+  color: var(--text-3);
+  font-size: var(--type-label);
+}

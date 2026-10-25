@@ -469,5 +469,7 @@
   "web_status_filter_all": "ぜんぶ",
   "web_status_empty": "いまステータス出しとる人はおらへんで",
   "web_status_empty_music": "いま Now Playing 出しとる人はおらへんで",
-  "web_status_login_needed": "ログインしたら、フォローしとる人のステータスが出るで"
+  "web_status_login_needed": "ログインしたら、フォローしとる人のステータスが出るで",
+  "reaction_counts_desc": "投稿に付いたリアクションの数を出すで。数えるために、画面に出た投稿のリアクションを取りに行くから、通信量が増えるで。",
+  "reaction_counts_toggle": "リアクションの数、出すで"
 }

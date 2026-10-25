@@ -7,6 +7,7 @@ import { type NyanMode, setNyanMode, useNyanMode } from "../../ui/nyan";
 import { type EmbedPrefs, setEmbedPref, useEmbedPrefs } from "../linkcard/embedPrefs";
 import { ThemeSettings } from "../theme/ThemeSettings";
 import { setDensity, useThemePrefs } from "../theme/themePrefs";
+import { ReactionCountsSettings } from "./ReactionCountsSettings";
 import styles from "./SettingsSections.module.css";
 
 /**
@@ -26,6 +27,7 @@ export function DisplaySection() {
       <KansaiBlock />
       <DensityBlock />
       <EmbedPrefsBlock />
+      <ReactionCountsSettings />
       <DataSaverBlock />
     </>
   );

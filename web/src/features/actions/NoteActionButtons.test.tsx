@@ -19,6 +19,8 @@ import { toggleBookmark, togglePinned, useOwnLists } from "../lists/ownLists";
 import { EMPTY_MUTE_LIST, setMuteList } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { toggleFollow } from "../profile/follow";
+import { resetReactionCountsForTest } from "../reactions/reactionCounts";
+import { setShowReactionCounts } from "../reactions/reactionCountsPref";
 import { setDeveloperMode } from "../settings/devMode";
 import { NoteActionButtons, NoteMoreMenu, REACTION_PENDING_MS } from "./NoteActionButtons";
 import styles from "./NoteActionButtons.module.css";
@@ -30,10 +32,10 @@ vi.mock("../../nostr/publish", async (importOriginal) => {
   return { ...actual, publishEvent: vi.fn() };
 });
 
-// 自分の kind:7 の購読はリレーへ張らない
+// 自分の kind:7 の購読・[#941] リアクションの数の取得はリレーへ張らない
 vi.mock("../../nostr/pool", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../nostr/pool")>();
-  return { ...actual, subscribe: vi.fn(() => NEVER) };
+  return { ...actual, subscribe: vi.fn(() => NEVER), subscribeTo: vi.fn(() => NEVER) };
 });
 
 // ミュート / 解除は muteSync の関数を呼ぶところまで（取り直し・発行は muteSync.test.ts）
@@ -107,6 +109,8 @@ afterEach(() => {
   useToast.setState({ queue: [] });
   useSession.setState({ status: "loading", method: null, pubkey: null });
   setDeveloperMode(false);
+  setShowReactionCounts(true);
+  resetReactionCountsForTest();
 });
 
 function post(key = generateSecretKey(), tags: string[][] = []): NostrEvent {
@@ -236,6 +240,42 @@ describe("既定リアクション", () => {
     setDefaultReaction("⭐", null);
     renderRow(event);
     expect(button("リアクション").querySelector("[data-shape]")).toHaveAttribute("data-shape", "star");
+  });
+});
+
+describe("[#941] リアクションの数", () => {
+  /** target への他人の kind:7 を n 件ストアに入れる */
+  function addReactions(target: NostrEvent, n: number) {
+    act(() => {
+      for (let i = 0; i < n; i++) {
+        eventStore.add(
+          finalizeEvent(
+            { kind: 7, created_at: unixNow(), tags: [["e", target.id]], content: i === 0 ? "+" : "🎉" },
+            generateSecretKey(),
+          ),
+        );
+      }
+    });
+  }
+
+  it("件数が 3 なら ♡ の右に 3 を --text-3 の小さい字で出す", () => {
+    const event = post();
+    renderRow(event);
+    expect(document.querySelector(`.${styles.reactionCount}`)).toBeNull();
+
+    addReactions(event, 3);
+    const count = button("リアクション").nextElementSibling;
+    expect(count).toHaveClass(styles.reactionCount);
+    expect(count).toHaveTextContent(/^3$/);
+  });
+
+  it("設定を切っていれば出さない", () => {
+    setShowReactionCounts(false);
+    const event = post();
+    addReactions(event, 3);
+    renderRow(event);
+    expect(button("リアクション").nextElementSibling).toBeNull();
+    expect(document.querySelector(`.${styles.reactionCount}`)).toBeNull();
   });
 });
 

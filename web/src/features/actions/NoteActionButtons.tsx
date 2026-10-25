@@ -27,6 +27,8 @@ import { useMuteMatcher } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { followsFromContacts } from "../profile/contacts";
 import { FollowError, toggleFollow } from "../profile/follow";
+import { acquireReactionCount, releaseReactionCount, useReactionCount } from "../reactions/reactionCounts";
+import { useShowReactionCounts } from "../reactions/reactionCountsPref";
 import { useDeveloperMode } from "../settings/devMode";
 import { translateAvailable } from "../translate/translate";
 import { hideTranslation, requestTranslation, useTranslation } from "../translate/translateStore";
@@ -62,7 +64,7 @@ function warn(message: string) {
 
 /**
  * 投稿のアクション行の「返信」の後ろ（NoteItem から NoteFooter の children として呼ぶ唯一の入口）:
- * リポスト → 既定リアクション（♡ / ☆）→ 絵文字 → ⚡。数は Zap の合計だけ出す（他は押下状態だけ）。
+ * リポスト → 既定リアクション（♡ / ☆）→ 絵文字 → ⚡。数は ♡ の右のリアクションの数（#941）と Zap の合計だけ出す。
  * [#683] ⋯（NoteMoreMenu）はここには含めない。NoteFooter の primaryActions（返信〜Zap を行の幅に
  * 均等配置する箱）の外に置き、行の右端に固定するため NoteFooter の more props へ別に渡す。
  */
@@ -71,11 +73,30 @@ export function NoteActionButtons({ event }: { event: NostrEvent }) {
   return (
     <>
       <RepostButton event={event} />
-      <DefaultReactionButton event={event} />
+      <span className={styles.reactionWithCount}>
+        <DefaultReactionButton event={event} />
+        <ReactionCount noteId={event.id} />
+      </span>
       <EmojiReactionButton event={event} />
       <ZapAction event={event} />
     </>
   );
+}
+
+/**
+ * [#941] ♡ の右の、付いたリアクションの数（すべての絵文字の合計。ネイティブ NoteItem.kt #932）。
+ * 出ている間だけ数える対象にする（設定で切っていれば出さず、取得もしない）。0 なら出さない。
+ */
+function ReactionCount({ noteId }: { noteId: string }) {
+  const show = useShowReactionCounts();
+  const count = useReactionCount(noteId);
+  useEffect(() => {
+    if (!show) return;
+    acquireReactionCount(noteId);
+    return () => releaseReactionCount(noteId);
+  }, [noteId, show]);
+  if (!show || count === 0) return null;
+  return <span className={styles.reactionCount}>{formatSats(count)}</span>;
 }
 
 /**
