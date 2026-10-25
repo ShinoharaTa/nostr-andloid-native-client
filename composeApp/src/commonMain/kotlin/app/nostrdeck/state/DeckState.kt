@@ -42,6 +42,8 @@ sealed interface DetailRoute {
  * NOTE: 現状は `remember` で保持する想定。Android の折り↔展開は
  *   コンフィグ変更で破棄されるため、本番では ViewModel / rememberSaveable へ
  *   hoist してスクロール位置とともに保持する（whiteboard の TODO）。
+ *   [#933] そのときはスマホ表示の開始ページ（CompactPager。いまはホームのカラムから始める）も、
+ *   ページ番号ではなくカラム id で戻すよう見直す。
  */
 class DeckState(
     initial: List<ColumnSpec>,
@@ -106,7 +108,7 @@ class DeckState(
         val back = settingsReturn?.takeIf { it.section == settingsSection }
         settingsSection = null
         if (back == null) return
-        // ホームはカラムの位置まで戻す（ホームを離れている間に Pager が作り直されて先頭へ戻っているため）。
+        // ホームはカラムの位置まで戻す（ホームを離れている間に Pager が作り直されてホームのカラムへ戻っているため。#933）。
         val column = back.columnId?.takeIf { id -> back.dest == NavDest.HOME && columns.any { it.id == id } }
         if (column != null) jumpTo(column) else navDest = back.dest
         detailStack.addAll(back.details)
@@ -128,9 +130,12 @@ class DeckState(
      */
     fun openHome() {
         clearDetail()
-        val target = columns.firstOrNull { it.kind == ColumnKind.FOLLOWING }?.id ?: columns.firstOrNull()?.id
+        val target = columns.getOrNull(homeColumnIndex())?.id
         if (target != null) jumpTo(target) else navDest = NavDest.HOME
     }
+
+    /** [#422][#933] ホームのカラム（フォロー中。無ければ先頭）の位置。カラムが無ければ 0。 */
+    fun homeColumnIndex(): Int = columns.indexOfFirst { it.kind == ColumnKind.FOLLOWING }.coerceAtLeast(0)
 
     /**
      * [#917] スマホ表示で先頭へ戻すよう求められたカラム id。CompactPager がスクロールし終えたら null に戻す。
