@@ -60,6 +60,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
@@ -1190,7 +1191,7 @@ private fun UserListRow(pubkey: String, profile: app.nostrdeck.db.Profile?, onCl
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(Nip05Display.label(it), color = DeckColors.Text3, fontSize = DeckType.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)   // [#931]
             }
         }
     }

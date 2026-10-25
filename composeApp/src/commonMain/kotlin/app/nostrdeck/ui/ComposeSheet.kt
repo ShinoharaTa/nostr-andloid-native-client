@@ -1,5 +1,6 @@
 package app.nostrdeck.ui
 
+import app.nostrdeck.model.Nip05Display
 import app.nostrdeck.model.ImageTransform
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -1178,7 +1179,7 @@ internal fun MentionRow(profile: Profile, onClick: () -> Unit) {
             Text(name, color = DeckColors.Text, fontSize = DeckType.Sub, fontWeight = DeckWeight.Name,
                 lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (profile.handle.isNotBlank()) {
-                Text(profile.handle, color = DeckColors.Text3, fontSize = DeckType.Label,
+                Text(Nip05Display.label(profile.handle), color = DeckColors.Text3, fontSize = DeckType.Label,   // [#931]
                     lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
