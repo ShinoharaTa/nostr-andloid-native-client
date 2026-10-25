@@ -133,7 +133,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -144,6 +143,7 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.serializer
@@ -898,6 +898,7 @@ class EventRepository(
      * キャッシュを安全に掃除・リセットするための手動操作。
      */
     fun purgeCache() {
+        resetReactionFetches()   // [#932]
         scope.launch {
             // 解決済みフォロー集合(in-memory)は保持。イベント/プロフィール等のキャッシュのみ全消去。
             q.transaction {
@@ -5577,8 +5578,8 @@ class EventRepository(
     }
     fun zapTotalsFlow(): StateFlow<Map<String, Long>> = zapTotals
 
-    // ---- [#932] タイムラインの投稿のリアクション数 ----
-    // 画面に出た投稿（NoteItem）の kind:7 を一度だけ取りに行き、手元の DB で数える。設定で切ったら取得もしない
+    // ---- [#932] 投稿に付いたリアクションの数 ----
+    // いま画面に出ている投稿（NoteItem）の kind:7 を取りに行き、手元の DB で数える。設定で切ったら出さず、取得もしない
     // （表示中の投稿の id で `{"kinds":[7],"#e":[…]}` を引く分だけ通信量が増えるため）。端末ローカル設定。
     private val showReactionCountsState = MutableStateFlow(true)
     fun showReactionCountsFlow(): StateFlow<Boolean> = showReactionCountsState
@@ -5590,32 +5591,43 @@ class EventRepository(
         showReactionCountsState.value = q.getSetting(REACTION_COUNTS_KEY).executeAsOneOrNull() != "off"
     }
 
-    /** 数える対象（画面に出た投稿の id。新しく出たものを先頭に [REACTION_COUNT_TARGETS] 件まで）。 */
-    private val reactionCountTargets = MutableStateFlow<List<String>>(emptyList())
+    /**
+     * 数える対象: いま画面に出ている投稿の id → それを出している項目の数（参照カウント）。
+     * 上限付きの「最近出た順」にすると、Deck で別のカラムを長くスクロールしたときに、見えたままの投稿が押し出されて
+     * 数が消えていた。出ている間だけ対象にすれば、対象の数は見えている項目の数で自然に抑えられる。
+     */
+    private val reactionCountRefs = MutableStateFlow<Map<String, Int>>(emptyMap())
     private val reactionRequests = Channel<String>(Channel.UNLIMITED)
     private var reactionReqSeq = 0
 
-    /**
-     * 画面に出た投稿を数える対象に加え、このプロセスでまだ取っていなければ kind:7 を取りに行く（まとめて取得）。
-     * 設定で切っているときは何もしない。
-     */
-    fun requestReactionCounts(noteId: String) {
+    /** 投稿が画面に出た（NoteItem）。数える対象に加え、まだ取っていなければ kind:7 を取りに行く。設定で切っていれば何もしない。 */
+    fun acquireReactionCount(noteId: String) {
         if (!showReactionCountsState.value || noteId.isBlank()) return
-        reactionCountTargets.update { cur -> if (noteId in cur) cur else (listOf(noteId) + cur).take(REACTION_COUNT_TARGETS) }
+        reactionCountRefs.update { it + (noteId to ((it[noteId] ?: 0) + 1)) }
         reactionRequests.trySend(noteId)
+    }
+
+    /** 投稿が画面から外れた。[acquireReactionCount] と対にして呼ぶ。 */
+    fun releaseReactionCount(noteId: String) {
+        reactionCountRefs.update { m ->
+            val n = (m[noteId] ?: return@update m) - 1
+            if (n <= 0) m - noteId else m + (noteId to n)
+        }
     }
 
     /**
      * 対象の投稿ごとのリアクション数（対象＝最後の e タグ。数え方は投稿の詳細と同じ）。設定で切っていれば空。
-     * 対象の追加はスクロール中に続くので少しまとめてから数え直す。
+     * スクロール中も 300ms ごとに数え直す（debounce だと止まるまで新しい投稿の数が出なかった）。
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class, ExperimentalCoroutinesApi::class)
     private val reactionCounts: StateFlow<Map<String, Int>> by lazy {
-        combine(showReactionCountsState, reactionCountTargets.debounce(300)) { on, ids -> if (on) ids else emptyList() }
+        val ids = reactionCountRefs.map { it.keys }.distinctUntilChanged().sample(300)
+        combine(showReactionCountsState, ids) { on, set -> if (on) set else emptySet() }
             .distinctUntilChanged()
-            .flatMapLatest { ids ->
-                if (ids.isEmpty()) flowOf(emptyMap())
-                else q.reactionCountsForNotes(ids).asFlow().mapToList(Dispatchers.Default)
+            .flatMapLatest { set ->
+                if (set.isEmpty()) flowOf(emptyMap())
+                // SQLite の変数の上限（古い Android は 999）を超えないように絞る。見えている項目の数なので普段は届かない
+                else q.reactionCountsForNotes(set.take(REACTION_QUERY_MAX)).asFlow().mapToList(Dispatchers.Default)
                     .map { rows -> rows.associate { it.note_id to it.cnt.toInt() } }
             }
             .flowOn(Dispatchers.Default)
@@ -5623,32 +5635,59 @@ class EventRepository(
     }
     fun reactionCountsFlow(): StateFlow<Map<String, Int>> = reactionCounts
 
-    /** [#932] 画面に出た投稿の kind:7 をまとめて取りに行く（プロフィールの取得と同じく、一意の購読で取って閉じる）。 */
+    /** 取りに行った id → 取りに行った時刻（秒）。古いものから捨てる。[reactionFetchLock] の中で触る。 */
+    private val reactionFetchedAt = LinkedHashMap<String, Long>()
+    private val reactionFetchLock = Mutex()
+    /** 同時に開く取得用の購読の数（リレーの同時購読数の上限に当たらないように）。 */
+    private val reactionFetchGate = kotlinx.coroutines.sync.Semaphore(REACTION_FETCH_PARALLEL)
+
+    /**
+     * [#932] 画面に出た投稿の kind:7 をまとめて取りに行く。
+     *  - 読み込みリレーだけに送る（一時接続のインデクサ・ヒントにまで送ると、同じイベントを接続の数だけ受け取る）
+     *  - 20 件ずつ・limit は 500。limit は REQ 全体にかかるので、人気の投稿と同じ REQ に入った投稿の分が落ちないよう小さく分ける
+     *  - 同時に開く購読は [REACTION_FETCH_PARALLEL] 本まで。EOSE が来たら少し待って閉じる（来なければ 10 秒で閉じ、取り直せるようにする）
+     *  - 取った id は [REACTION_REFETCH_SEC] 秒は取り直さない
+     */
     private suspend fun reactionBatchLoop() {
-        val requested = LinkedHashSet<String>()   // このプロセスで取りに行った id（古いものから捨てる）
         val pending = LinkedHashSet<String>()
         while (true) {
-            val first = reactionRequests.receive()
-            if (first !in requested) pending.add(first)
-            withTimeoutOrNull(400) {
-                while (true) {
-                    val next = reactionRequests.receive()
-                    if (next !in requested) pending.add(next)
-                }
+            pending.add(reactionRequests.receive())
+            withTimeoutOrNull(REACTION_BATCH_WINDOW_MS) {
+                while (true) pending.add(reactionRequests.receive())
             }
-            if (pending.isEmpty()) continue
             if (!showReactionCountsState.value) { pending.clear(); continue }
-            val batch = pending.toList()
+            val now = currentUnixTime()
+            val batch = reactionFetchLock.withLock {
+                val due = pending.filter { id -> reactionFetchedAt[id]?.let { now - it >= REACTION_REFETCH_SEC } ?: true }
+                due.forEach { reactionFetchedAt.remove(it); reactionFetchedAt[it] = now }
+                while (reactionFetchedAt.size > REACTION_REQUESTED_CAP) reactionFetchedAt.remove(reactionFetchedAt.keys.first())
+                due
+            }
             pending.clear()
-            requested.addAll(batch)
-            while (requested.size > REACTION_REQUESTED_CAP) requested.remove(requested.first())
             batch.chunked(REACTION_FETCH_CHUNK).forEach { chunk ->
                 val subId = "reactions-${reactionReqSeq++}"
-                subscribeAll(subId, Filter(kinds = listOf(7), eTags = chunk, limit = chunk.size * REACTION_FETCH_PER_NOTE))
-                // 蓄積イベントは EOSE 後すぐ届く。一定時間で CLOSE して sub を溜めない（新しく付いた分は数え直さない）。
-                scope.launch { delay(10_000); unsubscribeAll(subId) }
+                scope.launch {
+                    val reached = reactionFetchGate.withPermit { fetchReactionsOnce(subId, chunk) }
+                    // 応答が無かった（オフライン・復帰直後で未接続など）分は、次に画面に出たときに取り直す
+                    if (!reached) reactionFetchLock.withLock { chunk.forEach { reactionFetchedAt.remove(it) } }
+                }
             }
         }
+    }
+
+    /** 1 回分の取得。EOSE を受けたら true。購読は閉じ、読み込み済みの記録（columnLoadedState）からも外す。 */
+    private suspend fun fetchReactionsOnce(subId: String, ids: List<String>): Boolean {
+        subscribeRead(subId, Filter(kinds = listOf(7), eTags = ids, limit = REACTION_FETCH_LIMIT))
+        val reached = withTimeoutOrNull(REACTION_FETCH_TIMEOUT_MS) { columnLoadedState.first { subId in it } } != null
+        if (reached) delay(REACTION_EOSE_GRACE_MS)   // ほかの読み込みリレーの分を少し待つ
+        unsubscribeAll(subId)
+        columnLoadedState.update { it - subId }
+        return reached
+    }
+
+    /** キャッシュを消したら、取った記録も消す（数が 0 のまま戻らなくなるため）。 */
+    private fun resetReactionFetches() {
+        scope.launch { reactionFetchLock.withLock { reactionFetchedAt.clear() } }
     }
 
     /** 9735 のタグ群から zap 額(sats)を取り出す（純関数 [Nip57] に委譲・単体テスト可能）。 */
@@ -6456,13 +6495,19 @@ class EventRepository(
         const val MY_PROFILE_TAGS = "my_profile_tags"
         /** [#932] タイムラインのリアクション数（on/off。既定 on）。 */
         const val REACTION_COUNTS_KEY = "ui:reaction_counts"
-        /** [#932] 数える対象の上限（画面に出た投稿の新しい順）。 */
-        const val REACTION_COUNT_TARGETS = 300
-        /** [#932] 取りに行った id を覚えておく上限。 */
+        /** [#932] 一度に数える投稿の上限（SQLite の変数の上限 999 より小さく）。 */
+        const val REACTION_QUERY_MAX = 900
+        /** [#932] 取りに行った id を覚えておく上限と、取り直すまでの時間（秒）。 */
         const val REACTION_REQUESTED_CAP = 3000
-        /** [#932] 1 回の REQ に入れる投稿の数と、投稿 1 件あたりの件数の目安（limit）。 */
-        const val REACTION_FETCH_CHUNK = 50
-        const val REACTION_FETCH_PER_NOTE = 20
+        const val REACTION_REFETCH_SEC = 600L
+        /** [#932] 取得の要求をためる時間・1 回の REQ に入れる投稿の数・limit・同時に開く購読の数。 */
+        const val REACTION_BATCH_WINDOW_MS = 500L
+        const val REACTION_FETCH_CHUNK = 20
+        const val REACTION_FETCH_LIMIT = 500
+        const val REACTION_FETCH_PARALLEL = 2
+        /** [#932] EOSE を待つ上限と、EOSE のあとほかのリレーの分を待つ時間。 */
+        const val REACTION_FETCH_TIMEOUT_MS = 10_000L
+        const val REACTION_EOSE_GRACE_MS = 1_500L
 
         /** [NIP-42] AUTH 応答ポリシーの KV キー（"off"/"dm"/"always"）。 */
         const val AUTH_POLICY = "nip42_auth_policy"
