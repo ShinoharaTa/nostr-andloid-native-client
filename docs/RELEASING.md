@@ -94,6 +94,18 @@ gh run watch "$RUN" --exit-status
 
 内部テストトラックは管理対象の公開の対象外（すぐ届く）。
 
+### トラック間の昇格（クローズド → オープン → 製品版）
+同じビルド番号は二度アップロードできないので、`release-beta.yml` を別トラックで動かし直すのではなく、
+**審査の通った版をそのまま昇格する**（`play-promote.yml`。ビルドし直さない）。
+
+```bash
+gh workflow run play-promote.yml --ref main -f from_track=alpha -f to_track=beta -f dry_run=true    # 内容だけ確かめる
+gh workflow run play-promote.yml --ref main -f from_track=alpha -f to_track=beta -f dry_run=false   # 昇格する
+```
+
+`version_code` を空にすると昇格元の配信中のリリースを出す。確定と同時に審査へ送られるので、承認後に公開の概要で「変更を公開」を押す。
+オープンテストの配信国や、製品版の申請に必要な条件は Play Console 側で設定する。
+
 ### 確認
 - Play Console → 対象アプリ → テスト → クローズドテスト（Alpha）に新バージョンが出ているか。
 - 失敗時は `gh run view "$RUN" --log-failed` でログ確認。よくある詰まり:

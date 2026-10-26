@@ -1,0 +1,60 @@
+# Google Play のトラック間でリリースを昇格する（ビルドし直さず、同じ AAB をそのまま出す）。
+# 例: クローズドテスト（alpha）で審査が通った版をオープンテスト（beta）へ出す。
+# 「管理対象の公開」がオンなので、確定と同時に審査へ送られ、承認後に公開の概要で「変更を公開」を押すと配信される。
+name: Play promote track
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_track:
+        description: "昇格元（alpha=クローズド / internal=内部 / beta=オープン）"
+        required: false
+        default: "alpha"
+      to_track:
+        description: "昇格先（beta=オープン / production=製品版）"
+        required: false
+        default: "beta"
+      version_code:
+        description: "昇格するビルド番号（空なら昇格元の配信中のリリース）"
+        required: false
+        default: ""
+      dry_run:
+        description: "true=送らずに内容だけを確かめる"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  id-token: write  # WIF: GitHub OIDC トークンの発行に必要
+
+concurrency:
+  group: play-edit   # Play の edit は同時に 1 つ
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_PLAY_SA_EMAIL }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Promote release
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          FROM_TRACK: ${{ inputs.from_track }}
+          TO_TRACK: ${{ inputs.to_track }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node distribution/store/scripts/play-promote.mjs
