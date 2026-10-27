@@ -4,7 +4,7 @@ import app.nostrdeck.model.TtsVoice
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -27,6 +27,12 @@ interface SpeechEngine {
     fun close()
 }
 
+/**
+ * [#948] エンジンが使えなくなった（WebView のプロセスが落ちた・応答が返ってこない）。
+ * 作り直せば直ることがあるので、ふつうの失敗（その文章だけ読めない）とは分ける。
+ */
+class SpeechEngineLost(message: String) : Exception(message)
+
 /** [#948] この端末の読み上げのエンジン。読み上げに対応しない端末（デスクトップ）は null。 */
 expect fun createSpeechEngine(): SpeechEngine?
 
@@ -39,7 +45,7 @@ expect val speechSupported: Boolean
  * ページは 1 文ずつ 16bit PCM（base64）を返し、こちらが順に再生する（次の文の合成は再生中に進む）。
  *
  * 端末ごとに実装するのは、ページを開く・JavaScript を実行する・PCM を再生する・片付けるの 4 つ。
- * ページからの知らせ（JSON 文字列）は [onHostMessage] に渡す。
+ * ページからの知らせ（JSON 文字列）は [onHostMessage] に、WebView のプロセスが落ちたことは [onHostLost] に渡す。
  */
 abstract class HostedSpeechEngine : SpeechEngine {
     /** WebView を作って仲介ページを開く（まだなら）。ページが開くと {type:"ready"} が届く。 */
@@ -56,45 +62,54 @@ abstract class HostedSpeechEngine : SpeechEngine {
     /** ページからの知らせ。 */
     data class HostMessage(val type: String, val id: Int?, val index: Int?, val sampleRate: Int?, val pcm: String?, val message: String?)
 
-    private val messages = Channel<HostMessage>(Channel.UNLIMITED)
+    /**
+     * ページからの知らせ（JSON のまま）。解釈は待っている側（[speak] などのコルーチン）でする:
+     * iOS ではメインスレッドで届くので、大きな音声（base64）の解析で画面を止めないため。
+     */
+    private val messages = Channel<String>(Channel.UNLIMITED)
     private val mutex = Mutex()
     private var seq = 0
     private var ready = false
     @Volatile private var stopped = false
+    @Volatile private var lost = false
     /** 読み上げ中の依頼（止めたときに待ちを起こすため）。 */
     @Volatile private var speaking = 0
 
-    /** ページからの知らせ（JSON）。どのスレッドから呼んでもよい。読めないものは捨てる。 */
+    /** ページからの知らせ（JSON）。どのスレッドから呼んでもよい（すぐ戻る）。 */
     fun onHostMessage(json: String) {
-        val o = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return
-        fun str(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
-        fun int(k: String) = (o[k] as? JsonPrimitive)?.intOrNull
-        val type = str("type") ?: return
-        messages.trySend(HostMessage(type, int("id"), int("index"), int("sampleRate"), str("pcm"), str("message")))
+        messages.trySend(json)
+    }
+
+    /** WebView のプロセスが落ちた（端末ごとの実装が呼ぶ）。待っている依頼を起こし、以後は [SpeechEngineLost] にする。 */
+    protected fun onHostLost() {
+        lost = true
+        messages.trySend("""{"type":"$LOST"}""")
     }
 
     override suspend fun load(voice: TtsVoice) = mutex.withLock {
+        if (lost) throw SpeechEngineLost("tts host lost")
         if (!ready) {
             openHost()
-            withTimeout(READY_TIMEOUT_MS) { while (messages.receive().type != "ready") Unit }
+            await(READY_TIMEOUT_MS) { it.type == "ready" }
             ready = true
         }
         val id = ++seq
         evaluate("nostrismTtsLoad($id, ${JsonPrimitive(voice.id)})")
-        val m = withTimeout(LOAD_TIMEOUT_MS) { next(id) }
+        val m = await(LOAD_TIMEOUT_MS) { it.id == id }
         if (m.type != "loaded") throw IllegalStateException("tts load: ${m.message ?: m.type}")
     }
 
     @OptIn(ExperimentalEncodingApi::class)
     override suspend fun speak(text: String) = mutex.withLock {
         check(ready) { "tts not loaded" }
+        if (lost) throw SpeechEngineLost("tts host lost")
         stopped = false
         val id = ++seq
         speaking = id
         evaluate("nostrismTtsSpeak($id, ${JsonPrimitive(text)})")
         while (!stopped) {
-            // 1 文の合成は 1 秒もかからないが、端末が遅い・裏に回ったときのために長めに待つ
-            val m = withTimeout(SENTENCE_TIMEOUT_MS) { next(id) }
+            // 1 文の合成は 1 秒もかからないが、端末が遅いときのために長めに待つ（それでも来なければエンジンが止まっている）
+            val m = await(SENTENCE_TIMEOUT_MS) { it.id == id }
             when (m.type) {
                 "chunk" -> {
                     val pcm = m.pcm ?: continue
@@ -110,7 +125,7 @@ abstract class HostedSpeechEngine : SpeechEngine {
         stopped = true
         stopAudio()
         // 次の文の合成を待っているところなら起こす（ページの残りの知らせは、次の依頼の待ちで捨てる）
-        messages.trySend(HostMessage(STOPPED, speaking, null, null, null, null))
+        messages.trySend("""{"type":"$STOPPED","id":$speaking}""")
     }
 
     override fun close() {
@@ -118,17 +133,36 @@ abstract class HostedSpeechEngine : SpeechEngine {
         closeHost()
     }
 
-    /** [id] の知らせを待つ（ほかの依頼の残りは捨てる）。 */
-    private suspend fun next(id: Int): HostMessage {
+    /**
+     * [match] する知らせを待つ（ほかの依頼の残りは捨てる）。WebView のプロセスが落ちた・[timeoutMs] 待っても来ないときは
+     * [SpeechEngineLost]（タイムアウトを取り消し（CancellationException）として外へ漏らさない）。
+     */
+    private suspend fun await(timeoutMs: Long, match: (HostMessage) -> Boolean): HostMessage =
+        withTimeoutOrNull(timeoutMs) { receive(match) }
+            ?: throw SpeechEngineLost("tts host did not respond in ${timeoutMs / 1000}s")
+
+    private suspend fun receive(match: (HostMessage) -> Boolean): HostMessage {
         while (true) {
-            val m = messages.receive()
-            if (m.id == id) return m
+            val m = parse(messages.receive()) ?: continue
+            if (m.type == LOST) throw SpeechEngineLost("tts host lost")
+            if (match(m)) return m
         }
     }
 
     companion object {
         /** [stop] がこちらで流す知らせ（ページからは来ない）。 */
         private const val STOPPED = "stopped"
+        /** [onHostLost] がこちらで流す知らせ（ページからは来ない）。 */
+        private const val LOST = "lost"
+
+        /** ページからの知らせ（JSON）を読む。読めないものは null。 */
+        internal fun parse(json: String): HostMessage? {
+            val o = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return null
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
+            fun int(k: String) = (o[k] as? JsonPrimitive)?.intOrNull
+            val type = str("type") ?: return null
+            return HostMessage(type, int("id"), int("index"), int("sampleRate"), str("pcm"), str("message"))
+        }
         const val SAMPLE_RATE = 44_100
         const val READY_TIMEOUT_MS = 20_000L
         const val LOAD_TIMEOUT_MS = 90_000L

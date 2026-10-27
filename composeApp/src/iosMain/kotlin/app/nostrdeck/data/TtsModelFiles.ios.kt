@@ -7,6 +7,7 @@ import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSData
+import platform.Foundation.NSDataReadingMappedIfSafe
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
@@ -37,6 +38,10 @@ internal actual object TtsModelFiles {
     private fun full(path: String): String? = dir?.takeIf { !path.contains("..") && !path.startsWith("/") }?.let { "$it/$path" }
 
     actual fun read(path: String): ByteArray? = full(path)?.let { NSData.dataWithContentsOfFile(it) }?.toByteArray()
+
+    /** モデルのファイル（WebView へはここから直接渡す。メモリに写像するだけで、一度にコピーしない）。 */
+    fun data(path: String): NSData? =
+        full(path)?.let { NSData.dataWithContentsOfFile(it, options = NSDataReadingMappedIfSafe, error = null) }
 
     actual fun size(path: String): Long? {
         val p = full(path) ?: return null

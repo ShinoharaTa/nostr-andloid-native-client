@@ -42,19 +42,29 @@ window.nostrismTtsLoad = async (id, voice) => {
   }
 };
 
+/** 文（区切りの記号・改行まで）。ZEN-TTS は読む文字の無い文で失敗し、その後の文も読めなくなるので、1 文ずつ渡す。 */
+const SENTENCES = /[^。！？!?\n]*[。！？!?\n]+|[^。！？!?\n]+$/g;
+const SPEAKABLE = /[\p{L}\p{N}]/u;
+
 window.nostrismTtsSpeak = async (id, text) => {
   current = id;
-  try {
-    if (!tts) throw new Error('not loaded');
-    let index = 0;
-    for await (const chunk of tts.speakStream(text)) {
-      if (current !== id) return;   // 止められた・次の依頼が来た
-      post({ type: 'chunk', id, index: index++, sampleRate: chunk.sampleRate, pcm: pcm16Base64(chunk.pcm) });
+  if (!tts) { post({ type: 'error', id, message: 'not loaded' }); return; }
+  let index = 0;
+  let lastError = null;
+  for (const sentence of text.match(SENTENCES) ?? []) {
+    if (!SPEAKABLE.test(sentence)) continue;
+    try {
+      for await (const chunk of tts.speakStream(sentence)) {
+        if (current !== id) return;   // 止められた・次の依頼が来た
+        post({ type: 'chunk', id, index: index++, sampleRate: chunk.sampleRate, pcm: pcm16Base64(chunk.pcm) });
+      }
+    } catch (e) {
+      lastError = e;   // その文だけ飛ばして続ける
     }
-    if (current === id) post({ type: 'end', id });
-  } catch (e) {
-    post({ type: 'error', id, message: errorText(e) });
+    if (current !== id) return;
   }
+  // 1 文も読めなかったときだけ失敗として返す
+  post(index === 0 && lastError ? { type: 'error', id, message: errorText(lastError) } : { type: 'end', id });
 };
 
 window.nostrismTtsStop = () => { current = -1; };

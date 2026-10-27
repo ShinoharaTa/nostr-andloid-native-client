@@ -41,6 +41,16 @@ class NewPostPickerTest {
     }
 
     @Test
+    fun restart_moves_the_start_time() {
+        val p = NewPostPicker(since)
+        p.pick(emptyList())
+        p.restart(since + 3600)   // 裏から戻った
+        // 裏にいる間の投稿は、戻る直前のものでも（まとめて遅れて届いても）読まない
+        val got = p.pick(listOf(note("away", since + 600), note("just-before", since + 3600 - 30), note("now", since + 3600 + 5)))
+        assertEquals(listOf("now"), got.map { it.event.id })
+    }
+
+    @Test
     fun reposts_are_not_read() {
         val p = NewPostPicker(since)
         p.pick(emptyList())

@@ -126,7 +126,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -575,6 +577,7 @@ class EventRepository(
     fun onForeground() {
         bgPauseJob?.cancel()
         bgPauseJob = null
+        readerInstance?.onAppForeground()   // [#948]
         scope.launch(relayDispatcher) {
             relays.values.forEach {
                 it.start()   // pause 済みなら再開（購読中の REQ は接続時に自動で張り直される）。未 pause なら no-op
@@ -594,6 +597,7 @@ class EventRepository(
      * 切らず、置きっぱなしだけを止める」ための猶予。
      */
     fun onBackground(delayMs: Long = BG_PAUSE_DELAY_MS) {
+        readerInstance?.onAppBackground()   // [#948] 読み上げのエンジンは読み上げ側の猶予で片付ける
         bgPauseJob?.cancel()
         bgPauseJob = scope.launch {
             delay(delayMs)
@@ -4946,9 +4950,18 @@ class EventRepository(
             scope = scope,
             ready = { ttsModels.isReady(it) },
             voice = { ttsVoiceState.value },
-            posts = followingFeed(),
+            // 最初の 1 回（「前からある投稿」として覚える分）だけ、いまの DB から組み立てる: 共有の StateFlow は
+            // 画面が見ていない間の古い値（または空）を持っていることがあり、それで覚えると ON の前からあった投稿を読んでしまう。
+            // 以後は画面のフォロー中と同じ共有の StateFlow を見る。followingFeed() をずっと別に組み立てると、
+            // 重い変換（全プロフィールの読み出しを含む）が読み上げの間ずっと二重に走る
+            posts = flow {
+                emit(followingFeed().first())
+                emitAll(followingFeedMixed().map { entries -> entries.mapNotNull { (it as? FeedEntry.Post)?.note } })
+            },
             mutes = muteListFlow(),
-            names = profileNames(),
+            personName = { pubkey ->
+                withContext(Dispatchers.Default) { q.profileByPubkey(pubkey).executeAsOneOrNull()?.name?.takeIf { it.isNotBlank() } }
+            },
             me = { myPubkey },
         ).also { readerInstance = it }
 

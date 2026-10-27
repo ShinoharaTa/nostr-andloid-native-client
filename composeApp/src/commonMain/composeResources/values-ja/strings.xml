@@ -910,5 +910,7 @@
     <string name="speech_fail_unsupported">この端末では読み上げを使えません</string>
     <string name="speech_preview">試聴</string>
     <string name="speech_sample_fmt">こんにちは。%1$sです。フォロー中に新しく届いた投稿を、この声で読み上げます。</string>
-    <string name="speech_fail_engine">読み上げを始められませんでした</string>
+    <string name="speech_fail_engine">読み上げのエンジンを読み込めませんでした</string>
+    <string name="speech_stats_fmt">この ON の間に読んだ投稿: %1$d 件（読めなかった投稿: %2$d 件）</string>
+    <string name="speech_stats_error_fmt">最後のエラー: %1$s</string>
 </resources>

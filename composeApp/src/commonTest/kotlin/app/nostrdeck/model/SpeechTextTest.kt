@@ -61,6 +61,35 @@ class SpeechTextTest {
     }
 
     @Test
+    fun sentences_without_letters_are_dropped() {
+        // ZEN-TTS は読む文字の無い文で失敗し、その投稿の残りも読めなくなる
+        assertEquals("ひより。おはよう。", of("ひより", "おはよう。😀"))
+        assertEquals("ひより。おはよう☀️", of("ひより", "おはよう☀️"))   // 文の中の絵文字はそのまま（読み飛ばされる）
+        assertEquals("ひより。きょうは晴れ", of("ひより", "！！！\nきょうは晴れ"))
+    }
+
+    @Test
+    fun emoji_only_body_and_name() {
+        assertEquals("ひより。絵文字", of("ひより", "🐧"))
+        assertEquals("ひより。絵文字", of("ひより", "🍣🍣 :sushi:"))
+        assertNull(of("ひより", "！！！"))
+        assertEquals("こんにちは", of("🐧", "こんにちは"))   // 名前も読む文字が無ければ読まない
+        assertEquals("ペンギン🐧。こんにちは", of("ペンギン🐧", "こんにちは"))
+    }
+
+    @Test
+    fun content_warning_hides_the_body() {
+        assertEquals("ひより。注意書きのある投稿、ネタバレ", SpeechText.of("ひより", "犯人は…", false, contentWarning = "ネタバレ") { null })
+        assertEquals("ひより。注意書きのある投稿", SpeechText.of("ひより", "犯人は…", false, contentWarning = "") { null })
+    }
+
+    @Test
+    fun person_refs_are_listed_once() {
+        assertEquals(listOf(npub), SpeechText.personRefs("nostr:$npub と nostr:$npub"))
+        assertEquals(emptyList(), SpeechText.personRefs("nostr:nevent1qqsabc123"))
+    }
+
+    @Test
     fun blank_lines_collapse() {
         assertEquals("ひより。一行目\n二行目", of("ひより", "一行目\n\n\n  二行目  "))
     }

@@ -914,5 +914,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="speech_fail_unsupported">Read aloud is not available on this device</string>
     <string name="speech_preview">Preview</string>
     <string name="speech_sample_fmt">こんにちは。%1$sです。フォロー中に新しく届いた投稿を、この声で読み上げます。</string>
-    <string name="speech_fail_engine">Couldn’t start reading aloud</string>
+    <string name="speech_fail_engine">Couldn’t load the speech engine</string>
+    <string name="speech_stats_fmt">Read %1$d posts since turning on (%2$d couldn’t be read)</string>
+    <string name="speech_stats_error_fmt">Last error: %1$s</string>
 </resources>

@@ -129,7 +129,10 @@ fun SpeechSettings() {
         when {
             !speechSupported -> Text(stringResource(Res.string.speech_unsupported), color = DeckColors.Warn, fontSize = DeckType.Label)
             !available -> Text(stringResource(Res.string.speech_no_runtime), color = DeckColors.Warn, fontSize = DeckType.Label)
-            else -> VoiceList()
+            else -> {
+                VoiceList()
+                ReaderStats()
+            }
         }
         Spacer(Modifier.height(DeckSpace.Lg))
         SpeechCredit()
@@ -223,6 +226,21 @@ private fun VoiceList() {
             },
             onDismiss = { deleting = null },
         )
+    }
+}
+
+/** いまの ON の間に読んだ・読めなかった投稿の数（読まれないときの手がかり）。読み上げを始めてからだけ出す。 */
+@Composable
+private fun ReaderStats() {
+    val repo = LocalRepository.current ?: return
+    val reader = remember(repo) { repo.timelineReader }
+    val status by reader.status.collectAsState()
+    val stats by reader.stats.collectAsState()
+    if (status == TimelineReader.Status.OFF && stats == TimelineReader.Stats()) return
+    Spacer(Modifier.height(DeckSpace.Md))
+    Text(stringResource(Res.string.speech_stats_fmt, stats.read, stats.failed), color = DeckColors.Text3, fontSize = DeckType.Label)
+    stats.lastError?.let {
+        Text(stringResource(Res.string.speech_stats_error_fmt, it.take(120)), color = DeckColors.Text3, fontSize = DeckType.Label)
     }
 }
 

@@ -32,6 +32,8 @@ class HostedSpeechEngineTest {
         override fun stopAudio() { stopAudioCalls++ }
         override fun closeHost() { closed = true }
         fun idOf(script: String) = script.substringAfter('(').substringBefore(',').substringBefore(')').trim().toInt()
+        /** WebView のプロセスが落ちた。 */
+        fun lose() = onHostLost()
     }
 
     private fun chunk(id: Int, index: Int, bytes: Int) =
@@ -86,6 +88,22 @@ class HostedSpeechEngineTest {
         assertTrue(e.stopAudioCalls >= 1)
         e.close()
         assertTrue(e.closed)
+    }
+
+    @Test
+    fun a_lost_host_wakes_the_waiting_speak_and_stays_lost(): Unit = runBlocking {
+        val e = FakeEngine { s ->
+            val id = idOf(s)
+            if (s.startsWith("nostrismTtsLoad")) onHostMessage("""{"type":"loaded","id":$id}""")
+            if (s.startsWith("nostrismTtsSpeak")) onHostMessage(chunk(id, 0, 4))   // end は来ない
+        }
+        e.load(TtsVoice.MARINE)
+        val job = CoroutineScope(Dispatchers.Default).async { runCatching { e.speak("長い文") }.exceptionOrNull() }
+        while (e.played.isEmpty()) delay(5)
+        e.lose()
+        assertTrue(withTimeout(2_000) { job.await() } is SpeechEngineLost)
+        assertFailsWith<SpeechEngineLost> { e.speak("次の文") }
+        assertFailsWith<SpeechEngineLost> { e.load(TtsVoice.MARINE) }
     }
 
     @Test

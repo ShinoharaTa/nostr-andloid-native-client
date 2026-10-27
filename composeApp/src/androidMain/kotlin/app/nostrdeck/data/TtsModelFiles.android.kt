@@ -7,7 +7,8 @@ internal actual object TtsModelFiles {
     @Volatile
     var dir: File? = null
 
-    private fun file(path: String): File? {
+    /** モデルのファイル（WebView へはここから直接流す。大きいので一度に読み込まない）。 */
+    fun file(path: String): File? {
         val d = dir ?: return null
         val f = File(d, path)
         // models/ の外を指すパスは扱わない（"../" など）

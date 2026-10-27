@@ -27,6 +27,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Foundation.create
 import platform.UIKit.UIApplication
+import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKURLSchemeHandlerProtocol
@@ -55,6 +56,7 @@ private class WKSpeechEngine : HostedSpeechEngine() {
     private var player: AVAudioPlayer? = null
     private var deactivate: Job? = null
     private val bridge = Bridge(this)
+    private val navigation = Navigation { onHostLost() }
 
     override suspend fun openHost() = withContext(Dispatchers.Main) {
         if (webView != null) return@withContext
@@ -64,6 +66,7 @@ private class WKSpeechEngine : HostedSpeechEngine() {
         val wv = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = config)
         wv.alpha = 0.01
         wv.userInteractionEnabled = false
+        wv.navigationDelegate = navigation
         UIApplication.sharedApplication.keyWindow?.addSubview(wv)
         webView = wv
         wv.loadRequest(NSURLRequest(NSURL(string = "$SCHEME://app/host/host.html")))
@@ -76,13 +79,15 @@ private class WKSpeechEngine : HostedSpeechEngine() {
     }
 
     override suspend fun playPcm16(pcm: ByteArray, sampleRate: Int) {
+        // WAV にする・NSData に写すのはメインスレッドの外で（1 文で数百 KB ある）
+        val wav = wavOf(pcm, sampleRate).toNSData()
         val p = withContext(Dispatchers.Main) {
             deactivate?.cancel()
             val session = AVAudioSession.sharedInstance()
             session.setCategory(AVAudioSessionCategoryPlayback, mode = AVAudioSessionModeSpokenAudio,
                 options = AVAudioSessionCategoryOptionDuckOthers, error = null)
             session.setActive(true, error = null)
-            AVAudioPlayer(data = wavOf(pcm, sampleRate).toNSData(), error = null).also {
+            AVAudioPlayer(data = wav, error = null).also {
                 player = it
                 it.play()
             }
@@ -112,13 +117,19 @@ private class WKSpeechEngine : HostedSpeechEngine() {
             val wv = webView ?: return@launch
             webView = null
             wv.configuration.userContentController.removeScriptMessageHandlerForName("tts")
+            wv.navigationDelegate = null
             wv.removeFromSuperview()
             AVAudioSession.sharedInstance().setActive(false, withOptions = AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation, error = null)
         }
     }
 }
 
-/** ページからの知らせ（JSON 文字列）をエンジンへ渡す。 */
+/** WebView のプロセスが落ちた（メモリが足りず OS に止められたときなど）ことをエンジンへ知らせる。 */
+private class Navigation(private val onLost: () -> Unit) : NSObject(), WKNavigationDelegateProtocol {
+    override fun webViewWebContentProcessDidTerminate(webView: WKWebView) = onLost()
+}
+
+/** ページからの知らせ（JSON 文字列）をエンジンへ渡す（解釈はエンジンの待ち側でするので、ここはすぐ戻る）。 */
 private class Bridge(private val engine: HostedSpeechEngine) : NSObject(), WKScriptMessageHandlerProtocol {
     override fun userContentController(userContentController: WKUserContentController, didReceiveScriptMessage: WKScriptMessage) {
         (didReceiveScriptMessage.body as? String)?.let { engine.onHostMessage(it) }
@@ -136,7 +147,12 @@ private class SchemeHandler(private val scope: CoroutineScope) : NSObject(), WKU
         val task = startURLSchemeTask
         val url = task.request.URL
         scope.launch {
-            val file = withContext(Dispatchers.Default) { SpeechHostFiles.read(url?.path.orEmpty()) }
+            val path = url?.path.orEmpty()
+            val file = withContext(Dispatchers.Default) {
+                // 声のモデル（1 ファイル最大 20 MB）はファイルをメモリに写像して渡す（一度にコピーしない）
+                if (path.startsWith("/models/")) TtsModelFiles.data(path.removePrefix("/models/"))?.let { "application/octet-stream" to it }
+                else SpeechHostFiles.read(path)?.let { it.first to it.second.toNSData() }
+            }
             if (stopped.removeAll { it === task }) return@launch
             if (url == null || file == null) {
                 task.didFailWithError(NSError(domain = "nostrism-tts", code = 404, userInfo = null))
@@ -145,7 +161,7 @@ private class SchemeHandler(private val scope: CoroutineScope) : NSObject(), WKU
             val headers = mapOf<Any?, Any?>("Content-Type" to file.first, "Cache-Control" to "no-store")
             val resp = NSHTTPURLResponse(uRL = url, statusCode = 200, HTTPVersion = "HTTP/1.1", headerFields = headers)
             task.didReceiveResponse(resp)
-            task.didReceiveData(file.second.toNSData())
+            task.didReceiveData(file.second)
             task.didFinish()
         }
     }
