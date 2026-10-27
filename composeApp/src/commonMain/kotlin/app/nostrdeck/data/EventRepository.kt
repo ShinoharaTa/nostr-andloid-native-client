@@ -449,6 +449,7 @@ class EventRepository(
         loadKansaiMode() // [#710]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
+        loadTtsVoice()   // [#948]
         loadDeveloperMode()   // [#351]
         loadShowReactionCounts()   // [#932]
         loadNoteAccentStyle()
@@ -848,6 +849,7 @@ class EventRepository(
      * default/manual のリレー設定は残す。
      */
     fun reloadForNewIdentity() {
+        readerInstance?.stop()   // [#948] 前のアカウントのフィードを読み続けない
         scope.launch {
             val me = SignerProvider.current().publicKeyHex()
             myPubkey = me; myPubkeyFlow.value = me
@@ -4922,6 +4924,34 @@ class EventRepository(
     /** [#879] 文字から作る絵文字のフォント（作成フォームのプレビューを端末で描く。初回だけ取ってくる）。 */
     val emojiFonts = EmojiFonts(uploadHttp, scope)
 
+    // ---- [#948] フォロー中フィードの読み上げ（ZEN-TTS）----
+    /** 声のモデル（設定画面からダウンロードする）。 */
+    val ttsModels: TtsModels by lazy { TtsModels(uploadHttp, scope) }
+
+    /** 読み上げに使う声（端末ローカル設定）。 */
+    private val ttsVoiceState = MutableStateFlow(app.nostrdeck.model.TtsVoice.DEFAULT)
+    fun ttsVoiceFlow(): StateFlow<app.nostrdeck.model.TtsVoice> = ttsVoiceState
+    fun setTtsVoice(voice: app.nostrdeck.model.TtsVoice) {
+        ttsVoiceState.value = voice
+        putSettingAsync(TTS_VOICE_KEY, voice.id)
+    }
+    private fun loadTtsVoice() {
+        ttsVoiceState.value = app.nostrdeck.model.TtsVoice.fromId(q.getSetting(TTS_VOICE_KEY).executeAsOneOrNull())
+    }
+
+    private var readerInstance: TimelineReader? = null
+    /** フォロー中フィードの読み上げ（ON / OFF は投稿ボタンの上から）。 */
+    val timelineReader: TimelineReader
+        get() = readerInstance ?: TimelineReader(
+            scope = scope,
+            ready = { ttsModels.isReady(it) },
+            voice = { ttsVoiceState.value },
+            posts = followingFeed(),
+            mutes = muteListFlow(),
+            names = profileNames(),
+            me = { myPubkey },
+        ).also { readerInstance = it }
+
     /** [M11] DB のメディアサーバ一覧（Settings 用）。enabled/順序つき。 */
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
         q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
@@ -6476,6 +6506,7 @@ class EventRepository(
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
+        const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
         const val DENSITY_KEY = "ui:density"       // [#675] 廃人モード（normal/dense）
         const val KANSAI_MODE_KEY = "ui:kansai_mode" // [#710] うにゅうと握手（on/off）
         const val NOTE_ACCENT_STYLE_KEY = "ui:note_accent"  // [#256][#257] 種別の視覚表示（none/line/bg）

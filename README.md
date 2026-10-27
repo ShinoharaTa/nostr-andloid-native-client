@@ -60,6 +60,11 @@ JDK 17 から起動しても手元に 21 があればそちらを使う（無け
 Desktop の依存（secp256k1-kmp-jni-jvm 0.17 以降）が JVM 21 を要求するため、17 では解決に失敗する。
 生成するバイトコード（`jvmTarget`）は 17 のまま。
 
+**読み上げ（#948）の ZEN-TTS ランタイム**はライセンス上リポジトリに入れていない。ビルドの前に一度
+`scripts/fetch-zen-tts.sh` を実行して取ってくる（Node.js と git が要る。固定したコミットから取り、取ってあれば何もしない）。
+取っていないビルドは読み上げを使えない（設定に「エンジンが入っていません」と出る）だけで、ほかは動く。
+配信用のスクリプト（`release-beta.yml` / `testflight.sh` / `release-github.sh`）は自動で実行する。
+
 ```bash
 # JDK が PATH に無い場合は Android Studio 同梱の JBR(21) を使う:
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"

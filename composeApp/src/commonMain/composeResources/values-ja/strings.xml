@@ -879,4 +879,36 @@
     <string name="hashtags_discard_text">ピン留めの変更はまだ保存されていません。</string>
     <string name="hashtags_discard_confirm">破棄する</string>
     <string name="hashtags_unavailable">ピン留めを管理するにはログインしてください。</string>
+    <!-- [#948] 読み上げ（ZEN-TTS） -->
+    <string name="section_speech">読み上げ</string>
+    <string name="speech_desc">ホーム（フォロー中）を開いている間に新しく届いた投稿を、音声で読み上げます。ON / OFF は投稿ボタンの上のボタンで切り替えます。読み上げには声のデータのダウンロードが必要です（1 つ約 31 MB）。声のデータは ZEN-TTS の公式の配布元（GitHub）から取ってきます。</string>
+    <string name="speech_unsupported">この端末では読み上げを使えません（Android / iOS のみ）。</string>
+    <string name="speech_no_runtime">このビルドには読み上げのエンジンが入っていません。</string>
+    <string name="speech_voices">声</string>
+    <string name="speech_download_fmt">ダウンロード（%1$d MB）</string>
+    <string name="speech_downloading_fmt">ダウンロード中 %1$d%</string>
+    <string name="speech_downloaded">ダウンロード済み</string>
+    <string name="speech_delete">削除</string>
+    <string name="speech_delete_title">声のデータを削除しますか？</string>
+    <string name="speech_delete_text">この声で読み上げるには、もう一度ダウンロードが必要になります。</string>
+    <string name="speech_retry">もう一度</string>
+    <string name="speech_failed_network">ダウンロードできませんでした</string>
+    <string name="speech_failed_corrupt">データが正しくありませんでした</string>
+    <string name="speech_failed_storage">保存できませんでした</string>
+    <string name="speech_voice_marine_desc">やわらかく落ち着いた女性の声</string>
+    <string name="speech_voice_hashiro_desc">落ち着いた、深みのある男性の声</string>
+    <string name="speech_voice_kai_desc">40代の男性。響きのある低音</string>
+    <string name="speech_voice_kikka_desc">素朴で透明感のある若い女性の声</string>
+    <string name="speech_credit_prefix">音声合成：ZEN-TTS（</string>
+    <string name="speech_credit_suffix">）</string>
+    <string name="speech_toggle_on">読み上げを止める</string>
+    <string name="speech_toggle_off">読み上げを始める</string>
+    <string name="speech_confirm_title">読み上げを始めますか？</string>
+    <string name="speech_confirm_text">フォロー中に新しく届いた投稿を、音声で読み上げます。音が出るので、周りに気をつけてください。止めるときは、もう一度このボタンを押します。</string>
+    <string name="speech_confirm_ok">読み上げる</string>
+    <string name="speech_fail_not_downloaded">声のデータがありません。設定 → 読み上げ からダウンロードしてください</string>
+    <string name="speech_fail_unsupported">この端末では読み上げを使えません</string>
+    <string name="speech_preview">試聴</string>
+    <string name="speech_sample_fmt">こんにちは。%1$sです。フォロー中に新しく届いた投稿を、この声で読み上げます。</string>
+    <string name="speech_fail_engine">読み上げを始められませんでした</string>
 </resources>

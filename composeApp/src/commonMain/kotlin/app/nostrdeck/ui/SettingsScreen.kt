@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Description
@@ -213,6 +214,7 @@ private val paletteGroups = listOf(
     Res.string.group_app to listOf(
         SItem("appearance", Res.string.section_appearance, Icons.Outlined.Visibility),
         SItem("reaction", Res.string.section_reaction, Icons.Outlined.FavoriteBorder),
+        SItem("speech", Res.string.section_speech, Icons.Outlined.RecordVoiceOver),   // [#948]
         SItem("data", Res.string.section_data, Icons.Outlined.Storage),
         SItem("about", Res.string.section_about, Icons.Outlined.Info),
     ),
@@ -303,6 +305,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
                 "wallet" -> WalletSettings()
                 "data" -> DataSettings()
                 "appearance" -> AppearanceSettings()
+                "speech" -> SpeechSettings()   // [#948]
                 "about" -> AboutSettings(state)   // [#840]
                 "licenses" -> LicensesScreen()     // [#840] 「このアプリについて」から開く（一覧には並べない）
                 else -> Text(stringResource(Res.string.section_unimplemented), color = DeckColors.Text3, fontSize = DeckType.Sub)
@@ -1134,6 +1137,7 @@ private fun sectionTitle(sectionId: String): String = when (sectionId) {
     "emoji" -> stringResource(Res.string.section_emoji)
     "hashtags" -> stringResource(Res.string.section_hashtags)
     "appearance" -> stringResource(Res.string.section_appearance)
+    "speech" -> stringResource(Res.string.section_speech)   // [#948]
     "data" -> stringResource(Res.string.section_data)
     "about" -> stringResource(Res.string.section_about)
     "licenses" -> stringResource(Res.string.section_licenses)   // [#840]

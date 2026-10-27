@@ -218,9 +218,9 @@ class AccountMenuTest {
 
     @Test
     fun settings_list_has_nostr_and_app_settings() {
-        // [#806] 設定の一覧は「Nostr の設定」8 つと「アプリの設定」4 つ。「よく使う」はメニューからだけ。
+        // [#806] 設定の一覧は「Nostr の設定」8 つと「アプリの設定」5 つ。「よく使う」はメニューからだけ。
         assertEquals(
-            listOf("account", "emoji", "hashtags", "relays", "dmrelays", "media", "wallet", "signer", "appearance", "reaction", "data", "about"),
+            listOf("account", "emoji", "hashtags", "relays", "dmrelays", "media", "wallet", "signer", "appearance", "reaction", "speech", "data", "about"),
             settingsPaletteIds,
         )
         assertEquals(SampleData.settingsSectionIds, settingsPaletteIds)
