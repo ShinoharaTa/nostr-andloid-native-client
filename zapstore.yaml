@@ -1,0 +1,60 @@
+# Zapstore（https://zapstore.dev）の掲載設定。zsp v2 が読む。
+# GitHub Releases の正式版（vX.Y.Z）の APK を Zapstore の indexer が取り込む（preview-* のプレリリースは対象外）。
+# 掲載文は Google Play（English）と同じ。変えるときは distribution/store/listing.md と揃える。
+repository: https://github.com/ShinoharaTa/nostr-andloid-native-client
+release_filter: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+match: '-android\.apk$'
+
+# zsp v2 は読まないが、Zapstore のリレーが開発者を確かめるときにリポジトリのこの値を見る
+pubkey: npub1l60d6h2uvdwa9yq0r7r2suhgrnsadcst6nsx2j03xwhxhu2cjyascejxe5
+
+name: Nostrism
+summary: A comfortable Nostr client with side-by-side timelines and clear notifications.
+description: |
+  Nostrism is a client for Nostr, the decentralized social protocol.
+  Your timeline, hashtags, public chats and notifications, clean and comfortable.
+
+  ### ALL YOUR TIMELINES, SIDE BY SIDE
+  On tablets and foldables, Nostrism becomes a deck: Following, hashtags, chats and notifications sit next to each other in columns. Fold your phone and you get the phone layout; unfold it and you get the deck. Add and reorder columns as you like.
+
+  ### NOTIFICATIONS THAT MAKE SENSE
+  See replies, mentions, reactions, reposts and Zaps in one place. Tap a reaction notification to open the original thread with that person highlighted.
+
+  ### REACTIONS, THREADED
+  In a thread, reactions to reactions and reposts appear as a tree under the original emoji.
+
+  ### CUSTOM EMOJI
+  React and post with custom emoji. You can even make your own emoji from text and add them to your emoji list.
+
+  ### PUBLIC CHATS
+  Join public chats (NIP-28) and hang out.
+
+  ### STATUS
+  See what people you follow are up to, or listening to, on their profiles and in the status column (NIP-38).
+
+  ### MAKE IT YOURS
+  Pick three colors (background, text and accent) to build your own theme, or use themes others have shared.
+
+  ### AND MORE
+  - Photo and video posts (NIP-96 / Blossom); location and other metadata are removed from images before upload
+  - Encrypted direct messages (NIP-17)
+  - Zaps (NIP-57) and payments through a connected wallet (NIP-47), confirmed every time
+  - Keyword search (NIP-50)
+  - Bookmarks, pinned posts and long-form articles (NIP-23)
+  - Mute words and users, report (NIP-56), and collapsed posts with content warnings
+  - Relay settings (NIP-65)
+  - Keyboard shortcuts
+  - Sign in with a private key (kept in the device's secure storage), an external signer app (NIP-55) or a remote signer (NIP-46)
+  - English and Japanese
+
+  ### GETTING STARTED
+  No sign-up needed. Just create a new key in the app. Your key stays on your device and is never sent to our servers. If you lose your key, you lose the account, so keep a backup as soon as you create one.
+
+  ### PRIVACY
+  Nostrism has no analytics, ads or tracking. Public events such as posts are sent to the relays you choose and are public. See the privacy policy for details.
+website: https://nostrism.shino3.net
+tags: [social, nostr]
+supported_nips: ["01", "04", "10", "17", "18", "19", "21", "23", "25", "28", "30", "36", "38", "42", "44", "46", "47", "50", "51", "55", "56", "57", "65", "78", "96"]
+
+# スクリーンショットは公開中の Play のページから取る（アイコンは APK から）
+metadata_sources: [playstore]
