@@ -238,7 +238,7 @@ private fun ReaderStats() {
     val stats by reader.stats.collectAsState()
     if (status == TimelineReader.Status.OFF && stats == TimelineReader.Stats()) return
     Spacer(Modifier.height(DeckSpace.Md))
-    Text(stringResource(Res.string.speech_stats_fmt, stats.read, stats.failed), color = DeckColors.Text3, fontSize = DeckType.Label)
+    Text(stringResource(Res.string.speech_stats_fmt, stats.read, stats.failed, stats.waiting), color = DeckColors.Text3, fontSize = DeckType.Label)
     stats.lastError?.let {
         Text(stringResource(Res.string.speech_stats_error_fmt, it.take(120)), color = DeckColors.Text3, fontSize = DeckType.Label)
     }

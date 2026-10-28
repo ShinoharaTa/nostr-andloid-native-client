@@ -12,7 +12,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -24,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -32,10 +30,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
 
 /**
- * [#948] フォロー中フィードの読み上げ。ON にした後に届いた投稿を、古い順に 1 件ずつ読む。
- *  - ON にした時点でフィードにあった投稿は読まない（[NewPostPicker]）。エンジンを読み込んでいる間に届いた投稿は読む
+ * [#948] フォロー中フィードの読み上げ。ON にした後にカラムへ描かれた投稿を、再生用のスロットに入れて古い順に 1 件ずつ読む。
+ *  - 読む投稿はフォロー中のカラムが描く一覧から拾う（[onFeedRendered]。画面に出たものと読むものが一致する）。
+ *    ON にした時点で出ていた投稿は読まない（[NewPostPicker]）。エンジンを読み込んでいる間に出た投稿は読む
  *  - リポスト・自分の投稿・ミュート対象は読まない
- *  - 読み上げ待ちは [MAX_QUEUE] 件まで。あふれたら古いものから捨てる（追いつけないときは新しいものを優先）
+ *  - スロットは待ちの上限を設けない（追いつけなくても捨てず、届いた順に全部読む。待ちの件数は [Stats.waiting]）
+ *  - カラムが画面から消えた（別のページ・設定など）間に届いた投稿は読まない（戻ったときの一覧は「前からある投稿」）
  *  - ON / OFF は端末に覚えない（起動したら OFF）
  *  - 声のエンジン（見えない WebView。百数十 MB 使う）は ON の間だけ持つ。OFF にしたら捨てる。
  *    ON のままアプリが裏に [backgroundReleaseMs] いたら捨て、戻ってから次に読むときに読み込み直す
@@ -46,8 +46,6 @@ class TimelineReader(
     /** その声のモデルをダウンロード済みか（[TtsModels.isReady]）。 */
     private val ready: (TtsVoice) -> Boolean,
     private val voice: () -> TtsVoice,
-    /** フォロー中フィード（画面と同じもの。読み上げのために別に組み立てない）。 */
-    private val posts: Flow<List<NoteUi>>,
     private val mutes: Flow<MuteList?>,
     /** 公開鍵（hex）→ 表示名（本文の nostr:npub を名前で読むため。分からなければ null）。読む投稿にあるときだけ引く。 */
     private val personName: suspend (String) -> String?,
@@ -61,8 +59,8 @@ class TimelineReader(
     /** ON にできなかった・続けられなかった理由（画面にトーストで出す）。 */
     enum class Failure { NOT_DOWNLOADED, UNSUPPORTED, ENGINE }
 
-    /** いまの ON の間に読んだ・読めなかった投稿の数（設定画面に出す。読まれないときの手がかり）。 */
-    data class Stats(val read: Int = 0, val failed: Int = 0, val lastError: String? = null)
+    /** いまの ON の間に読んだ・読めなかった投稿の数と、スロットで待っている数（設定画面に出す。読まれないときの手がかり）。 */
+    data class Stats(val read: Int = 0, val failed: Int = 0, val waiting: Int = 0, val lastError: String? = null)
 
     private val statusState = MutableStateFlow(Status.OFF)
     val status: StateFlow<Status> = statusState.asStateFlow()
@@ -75,6 +73,12 @@ class TimelineReader(
 
     private var job: Job? = null
     @Volatile private var engine: SpeechEngine? = null
+    /** 再生用のスロット（読む順に並ぶ）。ON の間だけある。 */
+    @Volatile private var slot: Channel<NoteUi>? = null
+    /** 裏に回ってエンジンを捨てた後（前に戻るまでスロットに入れない）。 */
+    @Volatile private var sleeping = false
+    /** カラムが描く一覧から「新しく出た投稿」を選ぶ。OFF の間も覚え続ける（ON にした時点の一覧を「前からある投稿」にするため）。 */
+    private val picker = NewPostPicker(now)
     /** 続けてエンジンが落ちた回数（読めたら 0 に戻す）。[MAX_LOST_IN_A_ROW] に届いたら作り直しをやめる。 */
     private var lostInARow = 0
     /** エンジンを読み込む・使う・捨てるのを 1 つずつにする。 */
@@ -89,6 +93,24 @@ class TimelineReader(
     /** アプリが前に出た・裏に回った（[EventRepository.onForeground] / [EventRepository.onBackground] から）。 */
     fun onAppForeground() { inBackground.value = false }
     fun onAppBackground() { inBackground.value = true }
+
+    /**
+     * フォロー中のカラムが描く一覧（上が新しい）。一覧が変わるたびに呼ぶ（メインスレッド）。
+     * 前に無かった投稿を、読み上げ中ならスロットへ入れる。OFF の間は覚えるだけ。
+     */
+    fun onFeedRendered(posts: List<NoteUi>) {
+        val fresh = picker.pick(posts)
+        if (fresh.isEmpty() || sleeping) return
+        val s = slot ?: return
+        var added = 0
+        for (note in fresh) if (s.trySend(note).isSuccess) added++
+        if (added > 0) statsState.update { it.copy(waiting = it.waiting + added) }
+    }
+
+    /** フォロー中のカラムが画面から消えた。次に描かれる一覧は「前からある投稿」として覚え、読まない。 */
+    fun onFeedDetached() {
+        picker.rebase()
+    }
 
     /**
      * 設定画面の試聴: [voice] で [text] を読む（読み上げ中・試聴中は何もしない）。読み終えたらエンジンを片付ける。
@@ -129,6 +151,8 @@ class TimelineReader(
             try {
                 run()
             } finally {
+                slot = null
+                sleeping = false
                 releaseEngine()
                 statusState.value = Status.OFF
             }
@@ -145,56 +169,61 @@ class TimelineReader(
         statusState.value = Status.PREPARING
         val v = voice()
         if (!ready(v)) { failureEvents.tryEmit(Failure.NOT_DOWNLOADED); return }
-        val queue = Channel<String>(MAX_QUEUE, BufferOverflow.DROP_OLDEST)
-        val picker = NewPostPicker(since = now())
-        val primed = CompletableDeferred<Unit>()
+        // ここより前に作られた投稿は読まない（遅れて届く分の猶予は付ける）。覚えている一覧はそのまま「前からある投稿」
+        picker.restart(now() - NewPostPicker.GRACE_SEC)
+        val queue = Channel<NoteUi>(Channel.UNLIMITED)
+        slot = queue
+        sleeping = false
+        val matcher = MutableStateFlow(MuteMatcher.from(null))
+        val mutesReady = CompletableDeferred<Unit>()
         coroutineScope {
-            // フィードを見張る。エンジンを読み込む前から始め、読み込んでいる間に届いた投稿も拾う
-            launch {
-                combine(posts, mutes) { p, m -> p to MuteMatcher.from(m) }.collect { (feed, matcher) ->
-                    val mine = me()
-                    for (note in picker.pick(feed)) {
-                        if (note.event.pubkey == mine || matcher.muted(note)) continue
-                        // 名前を DB から引くので失敗しうる。1 件の失敗で読み上げ全体を止めない
-                        val text = try {
-                            textOf(note)
-                        } catch (c: CancellationException) {
-                            throw c
-                        } catch (t: Throwable) {
-                            statsState.update { it.copy(failed = it.failed + 1, lastError = t.message ?: t.toString()) }
-                            null
-                        }
-                        text?.let { queue.trySend(it) }
-                    }
-                    primed.complete(Unit)
-                }
-            }
+            launch { mutes.collect { matcher.value = MuteMatcher.from(it); mutesReady.complete(Unit) } }
             // 裏に回ってしばらくしたらエンジンを捨てる。戻ったら、裏にいる間に届いた投稿は読まない（画面で見られる）
             launch {
                 var released = false
                 inBackground.collectLatest { bg ->
                     if (bg) {
                         delay(backgroundReleaseMs)
+                        sleeping = true
                         engine?.stop()
                         engineLock.withLock { releaseEngine() }
-                        while (queue.tryReceive().isSuccess) Unit
+                        clear(queue)
                         released = true
                     } else if (released) {
+                        clear(queue)
                         picker.restart(now())
+                        sleeping = false
                         released = false
                     }
                 }
             }
             if (engineLock.withLock { loadEngine(v) } == null) { coroutineContext.cancelChildren(); return@coroutineScope }
-            // いまのフィードを覚え終えてから ON にする（ON の直後に届いた投稿を「前からある投稿」として読み飛ばさない）
-            primed.await()
+            mutesReady.await()
             statusState.value = Status.ON
-            for (text in queue) {
+            for (note in queue) {
+                statsState.update { it.copy(waiting = (it.waiting - 1).coerceAtLeast(0)) }
                 // 裏でエンジンを捨てた後は読み込み直さない（前に戻るまで読まない）
-                if (inBackground.value && engine == null) continue
+                if (sleeping || (inBackground.value && engine == null)) continue
+                if (note.event.pubkey == me() || matcher.value.muted(note)) continue
+                // 名前を DB から引くので失敗しうる。1 件の失敗で読み上げ全体を止めない
+                val text = try {
+                    textOf(note)
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (t: Throwable) {
+                    statsState.update { it.copy(failed = it.failed + 1, lastError = t.message ?: t.toString()) }
+                    null
+                }
+                if (text == null) continue
                 if (!speak(v, text)) { coroutineContext.cancelChildren(); return@coroutineScope }
             }
         }
+    }
+
+    /** スロットを空にする（裏に回ったとき）。 */
+    private fun clear(queue: Channel<NoteUi>) {
+        while (queue.tryReceive().isSuccess) Unit
+        statsState.update { it.copy(waiting = 0) }
     }
 
     /**
@@ -278,7 +307,6 @@ class TimelineReader(
     }
 
     companion object {
-        const val MAX_QUEUE = 5
         /**
          * 裏に回ってからエンジンを捨てるまで（ちょっと別のアプリを見て戻るくらいでは捨てない）。
          * Android は画面を消した（ロックした）ときも裏に回った扱い。どちらにしても裏では OS に通信を止められ、
@@ -291,34 +319,45 @@ class TimelineReader(
 }
 
 /**
- * [#948] フィードから「読み上げる新しい投稿」を選ぶ（純粋な状態機械。テストする）。
- * 最初に渡されたフィードは読まずに覚えるだけ。以後に現れた投稿のうち、作成時刻が [since] − [GRACE_SEC] 以降のものを
- * 古い順に返す（リレーの遅れで少し前の時刻の投稿が後から届くのは読む。過去の投稿を読み足したものは読まない）。
- * リポストは読まない。
+ * [#948] カラムが描く一覧から「新しく出た投稿」を選ぶ（純粋な状態機械。テストする）。
+ * 最初に渡された空でない一覧は読まずに覚えるだけ（[rebase] の後も同じ）。以後に現れた投稿のうち、
+ * 作成時刻が [restart] で決めた時刻以降のものを古い順に返す（リレーの遅れで少し前の時刻の投稿が後から届くのは読む。
+ * 過去の投稿を読み足したものは読まない）。リポストは読まない。
  */
-class NewPostPicker(since: Long) {
+class NewPostPicker(private val now: () -> Long) {
     /** これより前に作られた投稿は読まない。 */
-    @Volatile private var from = since - GRACE_SEC
+    @Volatile private var from = 0L
     private val seen = LinkedHashSet<String>()
-    private var primed = false
+    /** 次に渡された空でない一覧を「前からある投稿」として覚える（まだ何も覚えていない・[rebase] の後）。 */
+    @Volatile private var rebasing = true
 
     fun pick(feed: List<NoteUi>): List<NoteUi> {
+        if (rebasing) {
+            // 空の一覧（読み込み前）は基準にしない: 直後に埋まった一覧を全部「新しい」と見ないため
+            if (feed.isEmpty()) return emptyList()
+            seen.clear()
+            feed.forEach { seen.add(keyOf(it)) }
+            from = now() - GRACE_SEC
+            rebasing = false
+            return emptyList()
+        }
         val fresh = feed.filter { keyOf(it) !in seen }
         fresh.forEach { seen.add(keyOf(it)) }
         while (seen.size > MAX_SEEN) seen.remove(seen.first())
-        if (!primed) {
-            primed = true
-            return emptyList()
-        }
         val from = from
         return fresh
             .filter { it.repostedBy == null && it.event.createdAt >= from }
             .sortedBy { it.event.createdAt }
     }
 
+    /** 次に渡された一覧を「前からある投稿」として覚え直す（カラムが画面から消えて、また描かれるとき）。 */
+    fun rebase() {
+        rebasing = true
+    }
+
     /**
-     * ここから後に作られた投稿だけを読む（裏から戻ったとき）。猶予は付けない: 裏にいる間は通信が止められ、
-     * その間の投稿は戻ってからまとめて届く。それは画面で見られるので読まない。
+     * ここから後に作られた投稿だけを読む（ON にしたとき・裏から戻ったとき）。裏から戻るときは猶予を付けない:
+     * 裏にいる間は通信が止められ、その間の投稿は戻ってからまとめて届く。それは画面で見られるので読まない。
      */
     fun restart(since: Long) {
         from = since

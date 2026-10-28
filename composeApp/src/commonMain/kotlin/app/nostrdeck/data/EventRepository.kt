@@ -126,9 +126,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -4944,20 +4942,14 @@ class EventRepository(
     }
 
     private var readerInstance: TimelineReader? = null
-    /** フォロー中フィードの読み上げ（ON / OFF は投稿ボタンの上から）。 */
+    /** フォロー中フィードの読み上げ（ON / OFF は投稿ボタンの上から。読む投稿はカラムの描画から [TimelineReader.onFeedRendered] で受け取る）。 */
     val timelineReader: TimelineReader
         get() = readerInstance ?: TimelineReader(
             scope = scope,
             ready = { ttsModels.isReady(it) },
             voice = { ttsVoiceState.value },
-            // 最初の 1 回（「前からある投稿」として覚える分）だけ、いまの DB から組み立てる: 共有の StateFlow は
-            // 画面が見ていない間の古い値（または空）を持っていることがあり、それで覚えると ON の前からあった投稿を読んでしまう。
-            // 以後は画面のフォロー中と同じ共有の StateFlow を見る。followingFeed() をずっと別に組み立てると、
-            // 重い変換（全プロフィールの読み出しを含む）が読み上げの間ずっと二重に走る
-            posts = flow {
-                emit(followingFeed().first())
-                emitAll(followingFeedMixed().map { entries -> entries.mapNotNull { (it as? FeedEntry.Post)?.note } })
-            },
+            // 読む投稿はフォロー中のカラムが描く一覧から受け取る（DeckScreen → TimelineReader.onFeedRendered）。
+            // フィードを別に組み立てて見張らない（画面に出たものと読むものを一致させる・重い変換を二重に走らせない）
             mutes = muteListFlow(),
             personName = { pubkey ->
                 withContext(Dispatchers.Default) { q.profileByPubkey(pubkey).executeAsOneOrNull()?.name?.takeIf { it.isNotBlank() } }
