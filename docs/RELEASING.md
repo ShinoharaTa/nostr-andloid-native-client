@@ -6,6 +6,7 @@
 - Android → Play Console クローズドテスト（`alpha` トラック）
 - iOS → TestFlight（**macOS への提供はしない**。[#221] で `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO`）
 - macOS / Android → **GitHub Releases**（**プレビュー配布**。dmg + APK。`scripts/release-github.sh`）
+- Android → **Zapstore**（GitHub Releases の正式版の APK を Zapstore が取り込む。リリースのたびの操作は無い。§3）
 
 **3系統は毎回セットで出す**（同じタグ・同じ build 番号）。GitHub Releases は
 「ストアのテスターでない人にも手早く触ってもらう」ためのプレビュー用で、ストア配信の代わりではない。
@@ -183,6 +184,18 @@ scripts/release-github.sh
   クラッシュするため。コードは CI で全ターゲット検証済み）。恒常化するなら lint 側の整合を取る。
 - versionCode/Name はスクリプトが `version.sh` の値を `-PversionCode/-PversionName` で渡す。
   手で `assembleRelease` すると既定値（1 / 0.1.0）になるので注意。
+
+### Zapstore（https://zapstore.dev）
+GitHub Releases の正式版（`vX.Y.Z`）に付いた `Nostrism-<version>-android.apk` を、Zapstore の indexer が
+取り込んで掲載する（`preview-*` のプレリリースは取り込まない）。設定はリポジトリ直下の `zapstore.yaml`。
+**リリースのたびの操作は無い**。掲載文は Google Play（English）と同じなので、変えるときは
+`distribution/store/listing.md` と揃える。
+
+- 開発者の確認は「APK の署名鍵（アップロード鍵）の持ち主はこの npub」という証明（NIP-C1）で行う。
+  証明は**作ってから 2 年で切れる**。切れる前に、人がリポジトリ直下で zsp のウィザード（`zsp`）をもう一度実行して更新する
+  （キーストアと Nostr の署名を扱うので、エージェントは実行しない）
+- 掲載の状態は `zsp check`（読むだけ）で見られる。掲載されているか・掲載中の最新の versionCode・証明の有無が出る
+- アップロード鍵を変えると証明が合わなくなる。そのときもウィザードで証明を作り直す
 
 ---
 
