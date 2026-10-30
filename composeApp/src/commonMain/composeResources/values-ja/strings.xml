@@ -437,6 +437,13 @@
     <string name="logout">ログアウト</string>
     <string name="logout_title">ログアウトしますか？</string>
     <string name="logout_text">この端末のログイン情報を削除します。ローカル鍵(nsec)は端末から消去されるため、バックアップが無いと元に戻せません。外部署名(Amber/リモート/パスキー)の接続も解除されます。</string>
+    <!-- [#953] アカウントの削除 -->
+    <string name="account_delete">アカウントを削除</string>
+    <string name="account_delete_title">アカウントを削除しますか？</string>
+    <string name="account_delete_text">この端末から秘密鍵を破棄し、端末内のデータ（投稿のキャッシュ・カラム・リレーと表示の設定・ウォレットの接続など）をすべて消します。元に戻せません。\n\n秘密鍵のバックアップが無いと、このアカウントには二度とログインできません。リレーに送った投稿やプロフィールは、Nostr の仕組み上、このアプリからは消せません。</string>
+    <string name="account_delete_type_hint">確認のため「account delete」と入力してください。</string>
+    <string name="account_delete_confirm">削除する</string>
+    <string name="account_deleted_toast">アカウントを削除しました</string>
     <string name="signer_nip55">外部署名アプリ（Amber 等）</string>
     <string name="signer_nip46">リモート署名（NIP-46）</string>
     <string name="signer_nosskey">パスキー保護（Nosskey）</string>

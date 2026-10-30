@@ -441,6 +441,13 @@
     <string name="logout">Log out</string>
     <string name="logout_title">Log out?</string>
     <string name="logout_text">Removes the login from this device. A local key (nsec) is erased and cannot be recovered without a backup. External signing (Amber / remote / passkey) connections are also removed.</string>
+    <!-- [#953] Account deletion -->
+    <string name="account_delete">Delete account</string>
+    <string name="account_delete_title">Delete your account?</string>
+    <string name="account_delete_text">Your private key is removed from this device, and all data on this device (cached posts, columns, relay and display settings, wallet connection, etc.) is erased. This can’t be undone.\n\nWithout a backup of your private key, you can never log in to this account again. Posts and your profile already sent to relays can’t be removed from this app, because of how Nostr works.</string>
+    <string name="account_delete_type_hint">To confirm, type “account delete”.</string>
+    <string name="account_delete_confirm">Delete</string>
+    <string name="account_deleted_toast">Account deleted</string>
     <string name="signer_nip55">External signing app (Amber etc.)</string>
     <string name="signer_nip46">Remote signing (NIP-46)</string>
     <string name="signer_nosskey">Passkey-protected (Nosskey)</string>

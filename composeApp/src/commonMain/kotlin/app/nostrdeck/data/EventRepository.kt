@@ -422,6 +422,46 @@ class EventRepository(
         scope.launch { reactionBatchLoop() }   // [#932]
         // ミュートリスト(kind:10000)を常時購読（フィルタは全カラムで常に有効）。
         subscribeMuteList("mute_global")
+        // 端末ローカルの設定（KV）を読む。[#953] アカウント削除で消したあとも読み直す。
+        loadLocalSettings()
+        // [#287][#393] 絵文字リスト / ピン留めハッシュタグを KV から復元（リレーから届く前・オフラインでも使える）。
+        restoreOwnLists()
+        // [NIP-42] AUTH 応答ポリシーを KV から復元。
+        loadAuthPolicy()
+        // [#887] ログインして鍵が使えるようになったら、見送っていた AUTH のチャレンジに応答する。
+        scope.launch { myPubkeyFlow.filterNotNull().collect { reevaluateAuth() } }
+        // [#9] 通知/DM の最終閲覧時刻を KV から復元。
+        loadUnreadSeen()
+        scope.launch { eventBatchLoop() }
+        // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
+        scope.launch { ingestLoop() }
+        // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
+        // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
+        scope.launch {
+            // 未ログイン時は自分の識別子が無いので、identity 依存の購読はしない。
+            // ログイン後に reloadForNewIdentity() から張り直す（#login: 勝手に鍵を作らない）。
+            if (!SignerProvider.hasSession()) return@launch
+            val me = SignerProvider.current().publicKeyHex()
+            myPubkey = me; myPubkeyFlow.value = me
+            subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
+            subscribeOwnLists(me)   // [#396] 10002 / 10030 / 30015
+            // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
+            subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
+            subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
+            // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
+            // 10050 が届いたら updateDmRelayList が DM リレーへも追加購読する（broad は維持）。
+            subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
+            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
+            // NIP-04 旧型DM(kind:4): 受信(自分宛)・送信(自分発)の両方を購読して統合表示。
+            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
+            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
+            // [M16] 自分のリアクション(kind:7)を購読し、宛先ノートと共に TL へ混ぜる。
+            subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
+        }
+    }
+
+    /** 端末ローカルの設定（KV = app_setting）を手元の状態へ読む。無いものは既定に戻る。 */
+    private fun loadLocalSettings() {
         // カラム別「ミュートを表示」設定を KV から復元。
         revealMutedFlow.value = q.settingsByPrefix(REVEAL_MUTED_PREFIX).executeAsList()
             .filter { it.value_ == "1" }
@@ -460,40 +500,6 @@ class EventRepository(
         loadThemeMode()
         // デフォルトリアクション（♡ボタンの送信内容）を KV から復元。
         loadDefaultReaction()
-        // [#287][#393] 絵文字リスト / ピン留めハッシュタグを KV から復元（リレーから届く前・オフラインでも使える）。
-        restoreOwnLists()
-        // [NIP-42] AUTH 応答ポリシーを KV から復元。
-        loadAuthPolicy()
-        // [#887] ログインして鍵が使えるようになったら、見送っていた AUTH のチャレンジに応答する。
-        scope.launch { myPubkeyFlow.filterNotNull().collect { reevaluateAuth() } }
-        // [#9] 通知/DM の最終閲覧時刻を KV から復元。
-        loadUnreadSeen()
-        scope.launch { eventBatchLoop() }
-        // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
-        scope.launch { ingestLoop() }
-        // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
-        // TODO: Settings で別 nsec に切替えたら myPubkey を更新して再購読する。
-        scope.launch {
-            // 未ログイン時は自分の識別子が無いので、identity 依存の購読はしない。
-            // ログイン後に reloadForNewIdentity() から張り直す（#login: 勝手に鍵を作らない）。
-            if (!SignerProvider.hasSession()) return@launch
-            val me = SignerProvider.current().publicKeyHex()
-            myPubkey = me; myPubkeyFlow.value = me
-            subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
-            subscribeOwnLists(me)   // [#396] 10002 / 10030 / 30015
-            // 自分の固定投稿(kind:10001) / ブックマーク(kind:10003)（NIP-51）。
-            subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
-            subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
-            // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
-            // 10050 が届いたら updateDmRelayList が DM リレーへも追加購読する（broad は維持）。
-            subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
-            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
-            // NIP-04 旧型DM(kind:4): 受信(自分宛)・送信(自分発)の両方を購読して統合表示。
-            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
-            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
-            // [M16] 自分のリアクション(kind:7)を購読し、宛先ノートと共に TL へ混ぜる。
-            subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
-        }
     }
 
     /**
@@ -840,6 +846,37 @@ class EventRepository(
             relayListRep.commit(tags, signed.createdAt)
             true
         }.getOrElse { false }
+    }
+
+    /**
+     * [#953] アカウント削除: 端末内のデータを消し、入れたばかりと同じ状態に戻す。
+     * 鍵・外部署名・ウォレットの接続は呼び出し側が消す（ログアウトと同じ手順）。ここは DB と、それを読んだ手元の状態。
+     * 前のアカウントの購読も閉じる（開いたままだと、消したそばから DM 等を取り込み直してしまう）。
+     * カラムは [defaultColumns]（初回と同じ既定）に戻し、画面にも反映する（[remoteDeckColumnsFlow]）。
+     */
+    fun wipeLocalData(defaultColumns: List<ColumnSpec>) {
+        resetReactionFetches()
+        IDENTITY_SUBS.forEach { unsubscribeAll(it) }
+        ownLists.forEach { unsubscribeAll(it.subId) }
+        unsubscribeAll("mute_global")
+        myPubkey = null; myPubkeyFlow.value = null
+        follows.value = emptyList(); followsAt = 0L; ownContacts = null; myProfileAt = 0L
+        resetOwnLists()
+        syncEventByD.value = emptyMap()
+        muteListAt = 0L; muteFlow.value = null
+        muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
+        q.transaction {
+            q.clearEvents(); q.clearTags(); q.clearProfiles(); q.clearChannels(); q.clearPublishQueue()
+            q.clearPinnedColumns(); q.clearAllRelays(); q.clearRelayStatus(); q.clearUsedHashtags()
+            q.clearMediaServers(); q.clearSettings(); q.clearUsedEmojis(); q.clearCustomEmojis()
+            q.clearDeletedEvents(); q.clearDeletedAddrs(); q.clearOgpCache()
+            // 既定のリレーとアップロード先は、初回（[start]）と同じく入れ直す。
+            bootstrapUrls.forEach { q.insertRelayIfAbsent(normalizeRelayUrl(it), 1, 1, "default") }
+            DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong(), UploadProtocol.NIP96.id) }
+        }
+        loadLocalSettings()
+        loadAuthPolicy()
+        applySyncedColumns(defaultColumns)
     }
 
     /**
@@ -6529,6 +6566,9 @@ class EventRepository(
 
         /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
         const val SEARCH_HISTORY = "search_history"
+
+        /** [#953] 自分の鍵に結びついた購読（[start] / [reloadForNewIdentity] で張るもの）。アカウント削除で閉じる。 */
+        val IDENTITY_SUBS = listOf("contacts", "pinnedlist", "bookmarklist", "dmrelays", "dm_inbox", "dm4_in", "dm4_out", "myreactions")
 
         /** [#951] ブロックしたときに出す通報（NIP-56）の補足。開発者がブロック由来の通報と見分けるため。 */
         const val BLOCK_REPORT_REASON = "blocked"

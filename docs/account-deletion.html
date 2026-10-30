@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アカウントの削除 / Deleting your account — Nostrism</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.75; color: #1a1a1a; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #0f0f0f; } a { color: #7db4ff; } code { background:#222; } }
+  h1 { font-size: 1.6rem; margin-bottom: .2em; }
+  h2 { font-size: 1.2rem; margin-top: 2em; border-bottom: 1px solid #8884; padding-bottom: .2em; }
+  .meta { color: #8a8a8a; font-size: .9rem; }
+  code { background: #f0f0f0; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  hr { border: none; border-top: 1px solid #8884; margin: 2.5em 0; }
+  ul, ol { padding-left: 1.3em; }
+</style>
+</head>
+<body>
+<h1>アカウントの削除 / Deleting your account — Nostrism</h1>
+<p class="meta">最終更新 / Last updated: 2026-10-30</p>
+
+<hr>
+
+<h2>日本語</h2>
+<p><strong>Nostrism</strong>（以下「本アプリ」）は、分散型プロトコル Nostr のクライアントです。アカウントは利用者の端末にある鍵そのもので、開発者のサーバーにはアカウントがありません。本アプリでアカウントを削除すると、鍵と端末内のデータを消します。</p>
+
+<h3>削除の手順</h3>
+<ol>
+  <li>本アプリで、設定 → アカウント を開きます。</li>
+  <li>いちばん下の「アカウントを削除」を押します。</li>
+  <li>確認のため <code>account delete</code> と入力し、「削除する」を押します。</li>
+</ol>
+
+<h3>消えるもの</h3>
+<ul>
+  <li>端末に保存した秘密鍵（nsec）と、外部の署名アプリ（NIP-55）・リモート署名（NIP-46）・パスキーの接続</li>
+  <li>ウォレットの接続（NWC）</li>
+  <li>端末内のデータ: 投稿やプロフィールのキャッシュ、カラムの構成、リレー・表示などの設定、使った絵文字やハッシュタグ、画像のキャッシュ</li>
+</ul>
+<p>消したあとは元に戻せません。秘密鍵のバックアップが無いと、そのアカウントには二度とログインできません。</p>
+
+<h3>消えないもの</h3>
+<ul>
+  <li>リレーに送った投稿・プロフィールなどの公開イベントは、Nostr の仕組み上、本アプリからは消せません。リレーはそれぞれの運営者が管理しています。</li>
+  <li>開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送ったイベントの削除をご希望の場合は、下の連絡先までご連絡ください。</li>
+</ul>
+
+<h3>お問い合わせ</h3>
+<ul>
+  <li>連絡先: <a href="mailto:tshinoharawork@gmail.com">tshinoharawork@gmail.com</a></li>
+</ul>
+
+<hr>
+
+<h2>English</h2>
+<p><strong>Nostrism</strong> ("the App") is a client for the decentralized Nostr protocol. Your account is the key stored on your device, and there is no account on the developer's servers. Deleting your account in the App erases the key and the data on your device.</p>
+
+<h3>How to delete your account</h3>
+<ol>
+  <li>In the App, open Settings → Account.</li>
+  <li>Tap "Delete account" at the bottom.</li>
+  <li>To confirm, type <code>account delete</code> and tap "Delete".</li>
+</ol>
+
+<h3>What is erased</h3>
+<ul>
+  <li>The private key (nsec) stored on the device, and the connections to external signer apps (NIP-55), remote signers (NIP-46) and passkeys</li>
+  <li>The wallet connection (NWC)</li>
+  <li>Data on the device: cached posts and profiles, columns, relay and display settings, recently used emoji and hashtags, and cached images</li>
+</ul>
+<p>This can't be undone. Without a backup of your private key, you can never log in to that account again.</p>
+
+<h3>What is not erased</h3>
+<ul>
+  <li>Public events already sent to relays, such as posts and your profile, can't be removed from the App because of how Nostr works. Each relay is managed by its operator.</li>
+  <li>If you want events sent to the relay operated by the developer (<code>relay-jp.shino3.net</code>) to be deleted, contact us at the address below.</li>
+</ul>
+
+<h3>Contact</h3>
+<ul>
+  <li>Contact: <a href="mailto:tshinoharawork@gmail.com">tshinoharawork@gmail.com</a></li>
+</ul>
+</body>
+</html>
