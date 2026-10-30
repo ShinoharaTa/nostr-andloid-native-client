@@ -168,9 +168,13 @@ How to try the app:
 2. The app connects to public Nostr relays. Use Search to find and follow accounts, or open the Global/hashtag columns.
 
 User-generated content:
-- Users can mute users and words, and report posts (NIP-56) from the "..." menu on every post.
+- Terms of Use: shown before choosing a login method. Users must tap "Agree and continue". Full text: https://nostrism.shino3.net/terms.html
+- Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile.
+- Block: "..." menu on every post or profile > "Block this user". Their posts and notifications are hidden immediately, and a report is sent to the developer's relay (relay-jp.shino3.net). The developer reviews reports within 24 hours.
+- Users can also mute words and hashtags in Settings > Mute & block.
 - Posts marked with a content warning are collapsed until tapped.
 - Contact: tshinoharawork@gmail.com
+- Screen recording on a physical device: (Terms of Use → Report → Block の録画を添付する)
 
 Account deletion:
 - (アカウント削除を実装したら、ここに手順を書く。例: Settings > Account > Delete account)
@@ -211,4 +215,5 @@ Google Play も、アカウントを作れるアプリにアプリ内と Web の
 指摘を受けた場合は、iOS 版だけ投稿への Zap を隠してプロフィールへの Zap に限る、という対応が考えられる。
 
 **利用者が作るコンテンツ（App Store 1.2）。**
-通報・ミュート・内容の警告の折りたたみ・連絡先はそろっている。審査メモでその場所を説明しておく。
+2026-10-30 の初回の審査で指摘された（#951）。ログインの前の利用規約の同意、ブロック（ミュートリスト＋通報を開発者のリレーへ）を足した。
+通報・ブロック・内容の警告の折りたたみ・連絡先の場所を審査メモで説明し、実機の画面録画（規約の同意 → 通報 → ブロック）を審査メモ欄に付ける。

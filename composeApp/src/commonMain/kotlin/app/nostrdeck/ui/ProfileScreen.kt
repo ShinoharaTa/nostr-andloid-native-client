@@ -870,14 +870,12 @@ private fun ProfileHeaderCard(
             destructive = !muted,
             onConfirm = {
                 confirmMute = false
-                scope.launch {
-                    val ok = if (muted) repo?.unmuteUser(pubkey) == true else repo?.muteUserPrivate(pubkey) == true
+                // [#951] ブロック = ミュートリスト＋この人の通報。結果のトーストは App が出す（[EventRepository.blockResultFlow]）。
+                if (!muted) repo?.blockUser(pubkey)
+                else scope.launch {
                     toast(
-                        when {
-                            ok && muted -> getString(Res.string.note_unmuted_toast)
-                            ok -> getString(Res.string.muted_toast)
-                            else -> getString(Res.string.mute_change_failed)
-                        }
+                        if (repo?.unmuteUser(pubkey) == true) getString(Res.string.note_unmuted_toast)
+                        else getString(Res.string.mute_change_failed)
                     )
                 }
             },

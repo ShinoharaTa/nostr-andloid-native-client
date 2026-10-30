@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,6 +112,9 @@ import nostr_deck_client.composeapp.generated.resources.embed_youtube
 import nostr_deck_client.composeapp.generated.resources.group_app
 import nostr_deck_client.composeapp.generated.resources.group_nostr
 import nostr_deck_client.composeapp.generated.resources.section_about
+import nostr_deck_client.composeapp.generated.resources.about_open_web_sub
+import nostr_deck_client.composeapp.generated.resources.about_privacy
+import nostr_deck_client.composeapp.generated.resources.about_terms
 import nostr_deck_client.composeapp.generated.resources.section_licenses
 import nostr_deck_client.composeapp.generated.resources.licenses_open_sub
 import nostr_deck_client.composeapp.generated.resources.section_account
@@ -312,11 +316,30 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
 }
 
 /**
- * [#840] このアプリについて。今はオープンソースライセンス（[LicensesScreen]）への導線だけ。
+ * [#840] このアプリについて。オープンソースライセンス（[LicensesScreen]）への導線と、
+ * [#951] 利用規約・プライバシーポリシー（Web ページ）へのリンク。
  * ライセンスは設定の一覧に並ばない節 "licenses" として右ペイン（Compact は単独の画面）に開く。
  */
 @Composable
 private fun AboutSettings(state: DeckState) {
+    val uri = LocalUriHandler.current
+    listOf(
+        Res.string.about_terms to TERMS_URL,
+        Res.string.about_privacy to PRIVACY_POLICY_URL,
+    ).forEach { (label, url) ->
+        SettingsNavRow(
+            label = stringResource(label),
+            sublabel = stringResource(Res.string.about_open_web_sub),
+            leading = {
+                Icon(
+                    Icons.Outlined.Description, contentDescription = null,
+                    tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+                )
+            },
+            onClick = { uri.openUri(url) },
+        )
+        Spacer(Modifier.size(DeckSpace.Sm))
+    }
     SettingsNavRow(
         label = stringResource(Res.string.section_licenses),
         sublabel = stringResource(Res.string.licenses_open_sub),

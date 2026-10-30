@@ -447,6 +447,7 @@ class EventRepository(
         loadBoldText()   // [#327]
         loadDenseMode()  // [#675]
         loadKansaiMode() // [#710]
+        loadTermsAccepted()   // [#951]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
         loadDeveloperMode()   // [#351]
@@ -2559,12 +2560,18 @@ class EventRepository(
             listOf("e", target.id, type),
             listOf("p", target.pubkey),
         )
-        publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = tags))
+        publishReport(UnsignedEvent(kind = 1984, content = reason, tags = tags))
     }
 
     /** [#95] NIP-56 ユーザー通報。対象イベントの無い通報は p タグにレポートタイプを付す。 */
     suspend fun reportUser(pubkey: String, type: String, reason: String = "") {
-        publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = listOf(listOf("p", pubkey, type))))
+        publishReport(UnsignedEvent(kind = 1984, content = reason, tags = listOf(listOf("p", pubkey, type))))
+    }
+
+    /** [#951] 通報はいつもの送り先に加えて開発者のリレー（[MODERATION_RELAY]）にも送る（開発者が受け取れるように）。 */
+    private suspend fun publishReport(unsigned: UnsignedEvent) {
+        val signed = publishSigned(unsigned)
+        publishToRelays(RelayProtocol.event(signed), listOf(MODERATION_RELAY))
     }
 
     /** リアクションピッカーの「最近」用に、飛ばした絵文字を記録（"+"/空は対象外）。 */
@@ -3803,6 +3810,23 @@ class EventRepository(
     /** 解析済みミュートリスト（公開 + 復号済み非公開）。未取得は null。 */
     fun muteListFlow(): StateFlow<MuteList?> = muteFlow
 
+    /**
+     * [#951] ブロックを押してからミュートリストを出し直すまでの間も隠しておく人。
+     * 出し直す前にリレーから取り直すので数秒かかることがあり、その間もフィードからすぐ消すため。
+     */
+    private val blockingUsers = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * 画面で隠す判定に使うミュート（[muteListFlow] ＋ ブロックの途中の人）。
+     * ミュートの編集画面は [muteListFlow] を使う（途中の人を保存してしまわないように）。
+     */
+    private val muteFilterState: StateFlow<MuteList?> = combine(muteFlow, blockingUsers) { m, blocking ->
+        val extra = blocking.filter { pk -> m?.entries?.none { it.category == MuteCategory.USER && it.value == pk } ?: true }
+        if (extra.isEmpty()) m
+        else (m ?: MuteList()).let { it.copy(entries = it.entries + extra.map { pk -> MuteEntry(MuteCategory.USER, pk, isPublic = false, isPrivate = true) }) }
+    }.stateIn(scope, SharingStarted.Eagerly, null)
+    fun muteFilterFlow(): StateFlow<MuteList?> = muteFilterState
+
     // カラム別「ミュートを表示（フィルタ解除）」の集合。KV(app_setting)に永続。
     private val revealMutedFlow = MutableStateFlow<Set<String>>(emptySet())
     fun revealMutedColumns(): StateFlow<Set<String>> = revealMutedFlow
@@ -4027,7 +4051,35 @@ class EventRepository(
 
     /** [#94/#95] 自分がミュート中のユーザー pubkey 集合（公開/非公開の別を問わない）。 */
     fun mutedUsersFlow(): Flow<Set<String>> =
-        muteFlow.map { m -> m?.entries?.filter { it.category == MuteCategory.USER }?.map { it.value }?.toSet() ?: emptySet() }
+        muteFilterState.map { m -> m?.entries?.filter { it.category == MuteCategory.USER }?.map { it.value }?.toSet() ?: emptySet() }
+
+    /** [#951] ブロックの結果（ミュートリストに入れられたか）。画面はこれを受けてトーストで知らせる。 */
+    private val blockResults = MutableSharedFlow<Boolean>(extraBufferCapacity = 4)
+    fun blockResultFlow(): SharedFlow<Boolean> = blockResults.asSharedFlow()
+
+    /**
+     * [#951] ブロック = 非公開のミュート（[muteUserPrivate]）＋ 通報（NIP-56）。App Store ガイドライン 1.2 のとおり、
+     * 押したらすぐフィードから消し（[blockingUsers]）、通報で開発者にも知らせる（[publishReport]）。
+     * [note] から押したときはその投稿を、プロフィールからなら人を通報する。
+     * 押した投稿の行はすぐ消え、その行のコルーチンも止まるので、処理はこのスコープで続け、結果は [blockResultFlow] で知らせる
+     * （すでにブロック済み・ロック中・失敗は false。失敗したら隠すのもやめる）。
+     */
+    fun blockUser(pubkey: String, note: NostrEvent? = null) {
+        blockingUsers.update { it + pubkey }
+        scope.launch {
+            val ok = try {
+                muteUserPrivate(pubkey).also { ok ->
+                    if (ok) runCatching {
+                        if (note != null) reportNote(note, "other", BLOCK_REPORT_REASON)
+                        else reportUser(pubkey, "other", BLOCK_REPORT_REASON)
+                    }
+                }
+            } finally {
+                blockingUsers.update { it - pubkey }
+            }
+            blockResults.emit(ok)
+        }
+    }
 
     /**
      * [#94/#95] 指定ユーザーのミュートを解除する（公開/非公開の両方の USER エントリを除いて再発行）。
@@ -5193,6 +5245,20 @@ class EventRepository(
     }
     private fun loadBoldText() {
         boldTextState.value = q.getSetting(BOLD_TEXT_KEY).executeAsOneOrNull() == "1"
+    }
+
+    // ---- [#951] 利用規約の同意 ----
+    // App Store ガイドライン 1.2: 登録・ログインの前に利用規約に同意してもらう。同意した版を端末に覚え、
+    // 規約の版（[TERMS_VERSION]）が変わったら取り直す。
+    private val termsAcceptedState = MutableStateFlow(false)
+    fun termsAcceptedFlow(): StateFlow<Boolean> = termsAcceptedState
+    fun acceptTerms() {
+        termsAcceptedState.value = true
+        putSettingAsync(TERMS_ACCEPTED_KEY, TERMS_VERSION)
+    }
+    private fun loadTermsAccepted() {
+        // [store] スクリーンショット用の描画には同意の画面を出さない。
+        termsAcceptedState.value = offline || q.getSetting(TERMS_ACCEPTED_KEY).executeAsOneOrNull() == TERMS_VERSION
     }
 
     // ---- [#710] うにゅうと握手（関西弁 UI。既定OFF）----
@@ -6463,6 +6529,13 @@ class EventRepository(
 
         /** [#27] 検索履歴（改行区切り・新しい順）の KV キー。 */
         const val SEARCH_HISTORY = "search_history"
+
+        /** [#951] ブロックしたときに出す通報（NIP-56）の補足。開発者がブロック由来の通報と見分けるため。 */
+        const val BLOCK_REPORT_REASON = "blocked"
+
+        /** [#951] 同意した利用規約の版の KV キー。規約を変えて同意を取り直すときは [TERMS_VERSION] を上げる。 */
+        const val TERMS_ACCEPTED_KEY = "terms_accepted_version"
+        const val TERMS_VERSION = "2026-10-30"
 
         /** [#13] 投稿の下書き（未送信テキスト）の KV キー。 */
         const val COMPOSE_DRAFT = "compose_draft"
