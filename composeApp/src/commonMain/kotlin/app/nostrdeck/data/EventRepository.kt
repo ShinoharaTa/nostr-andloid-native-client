@@ -468,6 +468,7 @@ class EventRepository(
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
         loadUnreadSeen()
         scope.launch { eventBatchLoop() }
+        scope.launch(coverageDispatcher) { runCoverage() }   // [#955]
         // 受信イベントの取り込みループ（バッチ検証＋1トランザクション書き込み）。
         scope.launch { ingestLoop() }
         // 自分の kind:3（フォロー）と kind:10002（NIP-65 リレーリスト）を取得する。
@@ -742,6 +743,9 @@ class EventRepository(
             subTargets[subId] = read
             val (close, open) = RelayRouting.retarget(old, read)
             close.forEach { relays[it]?.unsubscribe(subId) }
+            coverageSubs.value[subId]?.let { sub ->   // [#955] 外れたリレーは下限の計算に残さない
+                close.forEach { coverageSignals.trySend(CoverageSignal.DropRelay(sub.columnId, normalizeRelayUrl(it))) }
+            }
             open.forEach { url -> relays[url]?.subscribe(subId, *filters.toTypedArray()) }
         }
     }
@@ -870,6 +874,7 @@ class EventRepository(
                 q.clearCustomEmojis()  // カスタム絵文字リストはアカウント別なので消す。
             }
 
+            restartAllCoverage()   // [#955]
             // 新しい鍵でフォロー(kind:3)と自分のリスト(10002/10030/30015)を取り直す。
             subscribeAll("contacts", Filter(kinds = listOf(3), authors = listOf(me)))
             subscribeOwnLists(me)   // [#396]
@@ -900,6 +905,7 @@ class EventRepository(
      */
     fun purgeCache() {
         resetReactionFetches()   // [#932]
+        restartAllCoverage()   // [#955] 張り直す購読の最初の取得から数え直す
         scope.launch {
             // 解決済みフォロー集合(in-memory)は保持。イベント/プロフィール等のキャッシュのみ全消去。
             q.transaction {
@@ -1161,7 +1167,8 @@ class EventRepository(
             subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT))
             return
         }
-        val proto = filter.toProtocol(limit = 100)
+        val proto = filter.toProtocol(limit = COLUMN_FETCH_LIMIT)
+        if (filter.search.isNullOrBlank()) startCoverage(columnId, key = filter)   // [#955]
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
             // [#210] 検索は取りこぼしが多いので取得上限を増やす（表示は feedBySearch 側で LIMIT）。
@@ -1210,6 +1217,7 @@ class EventRepository(
             val writeRelays = filter.authors.flatMap { authorWriteRelays(it) }.distinct()
                 .map { normalizeRelayUrl(it) }.filter { it.isNotBlank() && it !in relays.keys }
             if (writeRelays.isNotEmpty() && columnId in openColumns) {
+                trackCoverageSub("$columnId~outbox", columnId)   // [#955]
                 subscribeTargeted("$columnId~outbox", writeRelays.toSet(), proto)
             }
         }
@@ -1243,6 +1251,11 @@ class EventRepository(
      * 取り込まれた古いイベントは feedBy* クエリ(降順・上限)に載って表示される。
      */
     fun loadOlderColumn(columnId: String, filter: ReqFilter, untilSec: Long) {
+        // [#955] 検索以外は、リレーごとに自分の境界から遡る（[untilSec] で全リレーに聞くと、取れた幅の差で歯抜けが出る）。
+        if (filter.words.isEmpty() && filter.search.isNullOrBlank()) {
+            pageOlder(columnId) { until -> filter.toProtocol(limit = COLUMN_FETCH_LIMIT).copy(until = until) }
+            return
+        }
         val proto = filter.toProtocol(limit = 100).copy(until = untilSec)
         val subId = "older-$columnId-${olderReqSeq++}"
         when {
@@ -1258,6 +1271,125 @@ class EventRepository(
         scope.launch { delay(6000); unsubscribeAll(subId); openColumns.remove(subId) }
     }
 
+    /** [#955] フォロー中カラムの遡り（フォロー中 + 自分の投稿を、リレーごとに自分の境界から）。 */
+    fun loadOlderFollowing(columnId: String) {
+        val withMe = (follows.value + listOfNotNull(myPubkey)).distinct()
+        if (withMe.isEmpty()) return
+        pageOlder(columnId) { until ->
+            Filter(kinds = FOLLOWING_KINDS, authors = withMe, limit = COLUMN_FETCH_LIMIT, until = until)
+        }
+    }
+
+    // ---- [#955] リレーごとの取得範囲（遡ったタイムラインの歯抜けを防ぐ。[TimelineCoverage]） ----
+
+    /** 購読がどのカラムのものか。[olderSeq] は遡りの要求なら [TimelineCoverage.OlderRequest.seq]、カラムの購読そのものなら null。 */
+    private data class CoverageSub(val columnId: String, val olderSeq: Int? = null)
+
+    /** 購読 id → [CoverageSub]。各リレーの受信（[onMessage]）から読むので、丸ごと差し替えて持つ。 */
+    private val coverageSubs = MutableStateFlow<Map<String, CoverageSub>>(emptyMap())
+
+    private sealed interface CoverageSignal {
+        val columnId: String
+        /** 数え始める。同じ条件（[key]）で張り直すだけなら、それまでの境界を引き継ぐ（[force] なら数え直す）。 */
+        data class Start(override val columnId: String, val key: Any, val force: Boolean = false) : CoverageSignal
+        /** DB の投稿を消したので、閉じているカラムの分も含めて境界をすべて捨てる。 */
+        data object ForgetAll : CoverageSignal { override val columnId: String = "" }
+        data class Received(override val columnId: String, val relay: String, val createdAt: Long, val older: Boolean) : CoverageSignal
+        data class Eose(override val columnId: String, val relay: String, val olderSeq: Int?) : CoverageSignal
+        data class OlderTimeout(override val columnId: String, val relay: String, val seq: Int) : CoverageSignal
+        data class DropRelay(override val columnId: String, val relay: String) : CoverageSignal
+    }
+
+    /** 受信・EOSE・購読の開始と終わりを、届いた順に 1 本で数える（[coverages] は [coverageDispatcher] 上でだけ触る）。 */
+    private val coverageSignals = Channel<CoverageSignal>(Channel.UNLIMITED)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val coverageDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val coverages = mutableMapOf<String, TimelineCoverage>()
+    /** [coverages] を数え始めたときの条件（フィルタ・フォロー）。同じなら張り直しでも引き継ぐ。 */
+    private val coverageKeys = mutableMapOf<String, Any>()
+
+    /** カラム id → 画面に並べてよい下限（created_at）。無いカラムは下限なし。 */
+    private val floorsState = MutableStateFlow<Map<String, Long>>(emptyMap())
+    fun timelineFloorFlow(): StateFlow<Map<String, Long>> = floorsState
+
+    /**
+     * カラムの購読（購読 id = カラムの id）を張る・張り直す前に呼ぶ。[key] はその購読の条件（フィルタ・フォローの一覧）。
+     * 条件が同じなら、それまでの境界を引き継ぐ（スマホ表示でカラムを切り替えると張り直しになるが、遡って取った分は DB に残っている）。
+     */
+    private fun startCoverage(columnId: String, key: Any) {
+        coverageSubs.update { m -> m.filterValues { it.columnId != columnId } + (columnId to CoverageSub(columnId)) }
+        coverageSignals.trySend(CoverageSignal.Start(columnId, key))
+    }
+
+    /** カラムに付随する購読（アウトボックスなど）も、そのカラムの取得範囲として数える。 */
+    private fun trackCoverageSub(subId: String, columnId: String) {
+        coverageSubs.update { m -> if (m[columnId] == null) m else m + (subId to CoverageSub(columnId)) }
+    }
+
+    /** カラムを閉じた（境界は残す。同じ条件で開き直したら引き継ぐ）。 */
+    private fun stopCoverage(columnId: String) {
+        coverageSubs.update { m -> m.filterValues { it.columnId != columnId } }
+    }
+
+    /** キャッシュを消して購読を張り直すとき（[purgeCache] / [reloadForNewIdentity]）。DB の投稿が消えるので、最初の取得から数え直す。 */
+    private fun restartAllCoverage() {
+        coverageSubs.update { m -> m.filterValues { it.olderSeq == null } }
+        coverageSignals.trySend(CoverageSignal.ForgetAll)
+        coverageSubs.value.values.map { it.columnId }.distinct().forEach { id ->
+            coverageSignals.trySend(CoverageSignal.Start(id, key = Unit, force = true))
+        }
+    }
+
+    private suspend fun runCoverage() {
+        for (signal in coverageSignals) {
+            if (signal is CoverageSignal.ForgetAll) {
+                coverages.clear(); coverageKeys.clear(); floorsState.value = emptyMap()
+                continue
+            }
+            val id = signal.columnId
+            when (signal) {
+                is CoverageSignal.ForgetAll -> Unit
+                is CoverageSignal.Start -> if (signal.force || coverages[id] == null || coverageKeys[id] != signal.key) {
+                    coverages[id] = TimelineCoverage()
+                    if (!signal.force) coverageKeys[id] = signal.key
+                }
+                is CoverageSignal.Received -> coverages[id]?.onEvent(signal.relay, signal.createdAt, signal.older)
+                is CoverageSignal.Eose -> coverages[id]?.onEose(signal.relay, signal.olderSeq)
+                is CoverageSignal.OlderTimeout -> coverages[id]?.onOlderTimeout(signal.relay, signal.seq)
+                is CoverageSignal.DropRelay -> coverages[id]?.dropRelay(signal.relay)
+            }
+            val floor = coverages[id]?.floor()
+            floorsState.update { m ->
+                when {
+                    m[id] == floor -> m
+                    floor == null -> m - id
+                    else -> m + (id to floor)
+                }
+            }
+        }
+    }
+
+    /**
+     * 遡る。下限の近くで止まっているリレーにだけ、それぞれの境界を until にして 1 リレーずつ聞く（[TimelineCoverage.olderRequests]）。
+     * 返事（EOSE）か [OLDER_TIMEOUT_MS] で閉じる。
+     */
+    private fun pageOlder(columnId: String, filterAt: (until: Long) -> Filter) {
+        scope.launch(coverageDispatcher) {
+            val requests = coverages[columnId]?.olderRequests(currentUnixTime()).orEmpty()
+            requests.forEach { (relay, request) ->
+                val subId = "older-$columnId-${olderReqSeq++}"
+                coverageSubs.update { it + (subId to CoverageSub(columnId, olderSeq = request.seq)) }
+                subscribeTargeted(subId, setOf(relay), filterAt(request.until))
+                scope.launch {
+                    delay(OLDER_TIMEOUT_MS)
+                    coverageSignals.trySend(CoverageSignal.OlderTimeout(columnId, relay, request.seq))
+                    coverageSubs.update { it - subId }
+                    unsubscribeAll(subId)
+                }
+            }
+        }
+    }
+
     /** [#388-review] カラム id → アウトボックス解決ジョブ（subscribeAuthorOutbox）。閉じたら cancel。 */
     private val outboxJobs = mutableMapOf<String, Job>()
 
@@ -1268,6 +1400,7 @@ class EventRepository(
         outboxJobs.remove(columnId)?.cancel()
         columnAuthors.remove(columnId)
         columnLoadedState.value = columnLoadedState.value - columnId  // [#17]
+        stopCoverage(columnId)   // [#955]
         if (openColumns.remove(columnId)) unsubscribeAll(columnId)
         // [#209] アウトボックスの追加購読も CLOSE。
         unsubscribeAll("$columnId~outbox")
@@ -1301,7 +1434,8 @@ class EventRepository(
                     // こちらに残り続ける（フォロー先が消したものも同じ）。件数は少なく負荷にならない。
                     // [#380] kind:1111 NIP-22 コメントも流す（ルート文脈の1行プレビュー付きで表示）。
                     // [#793] kind:42 パブリックチャットの発言も流す（「#チャンネル名 で発言」の1行付きで表示）。
-                    subscribeRead(columnId, Filter(kinds = listOf(1, 6, 16, 5, 1111, 42), authors = withMe, limit = 100))
+                    startCoverage(columnId, key = withMe)   // [#955] フォローが変わったら数え直す
+                    subscribeRead(columnId, Filter(kinds = FOLLOWING_KINDS, authors = withMe, limit = COLUMN_FETCH_LIMIT))
                 }
             }
         }
@@ -3538,6 +3672,11 @@ class EventRepository(
         when (msg) {
             is RelayMessage.Event -> {
                 ingestChannel.trySend(msg.event to client.url)
+                coverageSubs.value[msg.subscriptionId]?.let {   // [#955]
+                    coverageSignals.trySend(
+                        CoverageSignal.Received(it.columnId, normalizeRelayUrl(client.url), msg.event.createdAt, older = it.olderSeq != null),
+                    )
+                }
                 // [#478] 取り直しの一時 REQ は結果を直接集める（取り込み経路にも流すので手元の状態も追いつく）。
                 ownRefetches.value[msg.subscriptionId]?.events?.update { it + msg.event }
             }
@@ -3550,6 +3689,9 @@ class EventRepository(
             // [#17] EOSE = 蓄積イベント送信完了。どこか1リレーから来たらそのカラムを「読込済み」に。
             is RelayMessage.Eose -> {
                 columnLoadedState.value = columnLoadedState.value + msg.subscriptionId
+                coverageSubs.value[msg.subscriptionId]?.let {   // [#955]
+                    coverageSignals.trySend(CoverageSignal.Eose(it.columnId, normalizeRelayUrl(client.url), it.olderSeq))
+                }
                 ownRefetches.value[msg.subscriptionId]?.eose?.update { it + client.url }   // [#478]
             }
             // [#423] 送信の受理確認。待っている id だけ記録する。[#887] AUTH の OK と auth-required は別に扱う。
@@ -6413,6 +6555,12 @@ class EventRepository(
             "wss://relay.noswhere.sh",
             "wss://search.nos.today",
         )
+        /** [#955] カラムの 1 回の取得で各リレーに頼む件数（最初の取得・遡りとも）。 */
+        const val COLUMN_FETCH_LIMIT = 100
+        /** [#955] 遡りの要求で、リレーの返事（EOSE）を待つ時間。過ぎたら閉じて、何も返さなかったリレーは下限の計算から外す。 */
+        const val OLDER_TIMEOUT_MS = 6_000L
+        /** フォロー中カラムで取る種類: 本文・リポスト・削除・コメント（NIP-22）・パブリックチャットの発言。 */
+        val FOLLOWING_KINDS = listOf(1, 6, 16, 5, 1111, 42)
         // [#210] 検索の取得上限。ローカル LIKE 表示（feedBySearch, LIMIT 300）に十分載るよう多めに取る。
         const val SEARCH_FETCH_LIMIT = 300
         // [#358] バックグラウンドでリレーを一時停止するまでの猶予（5分）。
