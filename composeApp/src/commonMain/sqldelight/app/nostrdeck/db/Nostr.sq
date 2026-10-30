@@ -763,3 +763,28 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 
 purgeOgpCache:
 DELETE FROM ogp_cache WHERE fetched_at < ?;
+
+-- ============ [#953] アカウント削除: 端末内のデータを消す（clear* の無い表の分） ============
+clearAllRelays:
+DELETE FROM relay;
+
+clearRelayStatus:
+DELETE FROM relay_status;
+
+clearUsedHashtags:
+DELETE FROM used_hashtag;
+
+clearMediaServers:
+DELETE FROM media_server;
+
+clearSettings:
+DELETE FROM app_setting;
+
+clearDeletedEvents:
+DELETE FROM deleted_event;
+
+clearDeletedAddrs:
+DELETE FROM deleted_addr;
+
+clearOgpCache:
+DELETE FROM ogp_cache;

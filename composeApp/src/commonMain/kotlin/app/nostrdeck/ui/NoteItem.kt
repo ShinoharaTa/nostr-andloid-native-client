@@ -478,6 +478,7 @@ fun NoteItem(
                             )
                         } else {
                             // [#94] ミュート済みなら「ミュートを解除」に切替。ミュートは確認してから実行する。
+                            // [#951] 利用者へのミュートは「ブロック」として出す（中身はミュートリスト＋通報）。
                             val mutedUsers by (repo?.mutedUsersFlow()?.collectAsState(emptySet())
                                 ?: remember { mutableStateOf(emptySet<String>()) })
                             val isMuted = note.event.pubkey in mutedUsers
@@ -616,6 +617,8 @@ fun NoteItem(
   }
 
   // [#94] ミュートの確認。実行結果はトーストで知らせる。
+  // [#951] ブロック: その人をミュートし、この投稿を通報する（[EventRepository.blockUser]）。
+  // この行はすぐ消えるので、結果のトーストは App が [EventRepository.blockResultFlow] を受けて出す。
   if (confirmMute) {
       DeckConfirmDialog(
           title = stringResource(Res.string.mute_confirm_title),
@@ -623,12 +626,7 @@ fun NoteItem(
           confirmLabel = stringResource(Res.string.mute_confirm), destructive = true,
           onConfirm = {
               confirmMute = false
-              scope.launch {
-                  toast(
-                      if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
-                      else getString(Res.string.note_mute_locked)
-                  )
-              }
+              repo?.blockUser(note.event.pubkey, note.event)
           },
           onDismiss = { confirmMute = false },
       )
@@ -652,7 +650,7 @@ fun NoteItem(
   // [#6] 通報（NIP-56 kind:1984）。理由を選んで報告イベントを発行する。
   if (showReport) {
       ReportDialog(
-          onPick = { type -> showReport = false; scope.launch { repo?.reportNote(note.event, type) } },
+          onPick = { type -> showReport = false; scope.launch { repo?.reportNote(note.event, type); toast(getString(Res.string.reported_toast)) } },
           onDismiss = { showReport = false },
       )
   }

@@ -76,6 +76,11 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
     val loaded = if (repo != null) repo.dmConversationsFlow().collectAsState().value
     else SampleData.dmConversations
     val convos = loaded.orEmpty()
+    // [#951] ブロックした相手の会話は開いたままにしない（一覧から外れるのに、開いていた画面だけ残らないように）。
+    val blocked by (repo?.mutedUsersFlow()?.collectAsState(emptySet()) ?: remember { mutableStateOf(emptySet<String>()) })
+    LaunchedEffect(state.dmThread, blocked) {
+        if (state.dmThread != null && state.dmThread in blocked) state.dmThread = null
+    }
     // 既存会話に無い相手（新規メッセージ）でもスレッドを開けるよう、無ければ即席の会話を作る。
     val selected = convos.firstOrNull { it.pubkey == state.dmThread }
         ?: state.dmThread?.let { pk ->

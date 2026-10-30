@@ -6,11 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.nostrdeck.model.MuteMatcher
 
-/** 現在のミュート集合から判定器を作る（muteFlow の変化で再構築）。 */
+/** 現在のミュート集合から判定器を作る（muteFlow の変化で再構築）。[#951] ブロックの途中の人も隠す。 */
 @Composable
 fun rememberMuteMatcher(): MuteMatcher {
     val repo = LocalRepository.current
-    val mute by (repo?.muteListFlow()?.collectAsState() ?: return remember { MuteMatcher.from(null) })
+    val mute by (repo?.muteFilterFlow()?.collectAsState() ?: return remember { MuteMatcher.from(null) })
     return remember(mute) { MuteMatcher.from(mute) }
 }
 
