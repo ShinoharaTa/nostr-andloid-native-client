@@ -101,6 +101,7 @@ import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.signer.parseBunkerUri
 import app.nostrdeck.nostr.RelayUrl
+import app.nostrdeck.model.nfkc
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
@@ -1806,6 +1807,13 @@ private fun SignerSettings(state: DeckState) {
 private const val ACCOUNT_DELETE_PHRASE = "account delete"
 
 /**
+ * [#953] 入力が [ACCOUNT_DELETE_PHRASE] か。日本語のキーボードでは空白が変換に使われて消えたり全角になったりするので、
+ * 全角・半角（NFKC）、大文字・小文字、空白の有無は問わない。
+ */
+internal fun isAccountDeletePhrase(typed: String): Boolean =
+    nfkc(typed).lowercase().filterNot { it.isWhitespace() } == ACCOUNT_DELETE_PHRASE.filterNot { it.isWhitespace() }
+
+/**
  * [#953] アカウントの削除（App Store ガイドライン 5.1.1(v)）。ログアウトと同じく鍵と外部の接続を破棄し、
  * あわせてウォレットの接続・端末内のデータ（DB・画像のキャッシュ）を消して、入れたばかりと同じ状態（利用規約の同意から）に戻す。
  * 取り消せないので、[ACCOUNT_DELETE_PHRASE] を手で入力したときだけ実行する。
@@ -1818,7 +1826,7 @@ private fun AccountDeleteDialog(state: DeckState, onDismiss: () -> Unit) {
     val deletedMsg = stringResource(Res.string.account_deleted_toast)
     val imageLoader = SingletonImageLoader.get(LocalPlatformContext.current)
     var typed by remember { mutableStateOf("") }
-    val ready = typed.trim() == ACCOUNT_DELETE_PHRASE
+    val ready = isAccountDeletePhrase(typed)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DeckColors.Surface,
@@ -1833,7 +1841,12 @@ private fun AccountDeleteDialog(state: DeckState, onDismiss: () -> Unit) {
                     Spacer(Modifier.size(DeckSpace.Sm))
                     DeckTextField(
                         value = typed, onValueChange = { typed = it }, placeholder = ACCOUNT_DELETE_PHRASE,
-                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
+                        // 英字のキーボードで開く（日本語入力だと変換されて打ちにくい）
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
+                            autoCorrectEnabled = false,
+                            capitalization = KeyboardCapitalization.None,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
