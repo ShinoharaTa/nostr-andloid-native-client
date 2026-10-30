@@ -59,7 +59,10 @@ class AccountWipeTest {
             repo.addSearchHistory("nostr")
             val custom = SampleData.columns.take(1)
             repo.persistPinnedColumns(custom)
+            val blocked = "ab".repeat(32)
+            repo.blockUser(blocked)   // リレーに届かないので保存待ちのまま残る
             delay(300)   // KV の書き込み（putSettingAsync）を待つ
+            assertTrue(repo.mutedUsersFlow().first().contains(blocked))
             assertEquals("""{"name":"me"}""", repo.myProfileContent())
 
             val defaults = SampleData.columns.filter { it.pinned }
@@ -71,6 +74,7 @@ class AccountWipeTest {
             assertEquals(bootstrap, repo.relaysFlow().first().map { it.url })
             assertEquals(EventRepository.DEFAULT_MEDIA_SERVERS.toSet(), repo.mediaServersFlow().first().map { it.url }.toSet())
             assertEquals(defaults.map { it.id }, repo.loadPinnedColumns().map { it.id })
+            withTimeout(1_000) { repo.mutedUsersFlow().first { it.isEmpty() } }   // 保存待ちのブロックも消える
 
             // 同じ鍵で入り直しても、前のプロフィールは手元に残っていない
             SignerProvider.use(LocalSigner(InMemoryKeyVault().apply { importPrivateKey(secret) }))

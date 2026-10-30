@@ -443,6 +443,7 @@
     <string name="account_delete_text">この端末から秘密鍵を破棄し、端末内のデータ（投稿のキャッシュ・カラム・リレーと表示の設定・ウォレットの接続など）をすべて消します。元に戻せません。\n\n秘密鍵のバックアップが無いと、このアカウントには二度とログインできません。リレーに送った投稿やプロフィールは、Nostr の仕組み上、このアプリからは消せません。</string>
     <string name="account_delete_type_hint">確認のため「account delete」と入力してください。</string>
     <string name="account_delete_confirm">削除する</string>
+    <string name="account_deleting">削除しています…</string>
     <string name="account_deleted_toast">アカウントを削除しました</string>
     <string name="signer_nip55">外部署名アプリ（Amber 等）</string>
     <string name="signer_nip46">リモート署名（NIP-46）</string>
@@ -580,9 +581,10 @@
     <string name="unfollow_text_fmt">%1$s のフォローを解除します。</string>
     <string name="unfollow_confirm">解除する</string>
     <string name="mute_confirm_title">このユーザーをブロックしますか？</string>
-    <string name="mute_confirm_text">この人の投稿と通知をすぐに表示しなくなり、不適切な利用者として通報（NIP-56）も送ります。設定 → ミュート・ブロック でいつでも解除できます。</string>
+    <string name="mute_confirm_text">この人の投稿と通知をすぐに表示しなくなり、不適切な利用者として開発者に通報（NIP-56）します。設定 → ミュート・ブロック でいつでも解除できます。</string>
     <string name="mute_confirm">ブロック</string>
     <string name="muted_toast">ブロックしました</string>
+    <string name="block_pending_toast">ブロックしました（ミュートリストへの保存は、リレーにつながったときにやり直します）</string>
     <string name="cw_sensitive">センシティブな内容</string>
     <string name="report_title">この投稿を通報</string>
     <string name="report_illegal">違法・児童の安全に関わる</string>
@@ -689,7 +691,7 @@
     <string name="followers_check">フォロワーを確認</string>
     <string name="unmute_confirm_title">ブロックを解除しますか？</string>
     <string name="unmute_confirm_text">このユーザーの投稿が再びタイムラインに表示されるようになります。</string>
-    <string name="mute_confirm_text2">この人の投稿をすぐに表示しなくなり、不適切な利用者として通報（NIP-56）も送ります。ブロックはミュートリスト（NIP-51）に非公開で保存されます。</string>
+    <string name="mute_confirm_text2">この人の投稿をすぐに表示しなくなり、不適切な利用者として開発者に通報（NIP-56）します。ブロックはミュートリスト（NIP-51）に非公開で保存され、通報は開発者のリレーにだけ送ります。</string>
     <string name="lift_confirm">解除する</string>
     <string name="mute_confirm_action">ブロックする</string>
     <string name="mute_change_failed">変更できませんでした</string>

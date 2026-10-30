@@ -128,6 +128,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -430,6 +432,8 @@ class EventRepository(
         loadAuthPolicy()
         // [#887] ログインして鍵が使えるようになったら、見送っていた AUTH のチャレンジに応答する。
         scope.launch { myPubkeyFlow.filterNotNull().collect { reevaluateAuth() } }
+        // [#951] 保存できていないブロックを、ログインしてリレーに繋がった頃にやり直す。
+        scope.launch { myPubkeyFlow.filterNotNull().collectLatest { delay(BLOCK_RETRY_DELAY_MS); retryPendingBlocks() } }
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
         loadUnreadSeen()
         scope.launch { eventBatchLoop() }
@@ -488,6 +492,7 @@ class EventRepository(
         loadDenseMode()  // [#675]
         loadKansaiMode() // [#710]
         loadTermsAccepted()   // [#951]
+        loadPendingBlocks()   // [#951]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
         loadDeveloperMode()   // [#351]
@@ -851,10 +856,12 @@ class EventRepository(
     /**
      * [#953] アカウント削除: 端末内のデータを消し、入れたばかりと同じ状態に戻す。
      * 鍵・外部署名・ウォレットの接続は呼び出し側が消す（ログアウトと同じ手順）。ここは DB と、それを読んだ手元の状態。
-     * 前のアカウントの購読も閉じる（開いたままだと、消したそばから DM 等を取り込み直してしまう）。
+     * 前のアカウントの購読と、既定以外のリレーへの接続も閉じる（開いたままだと、消したそばから DM 等を取り込み直してしまう）。
+     * DB の消去は KV の書き込み（[putSettingAsync]）と同じ [relayDispatcher] で行う（先に積まれた書き込みが消去の後に着地しないように）。
      * カラムは [defaultColumns]（初回と同じ既定）に戻し、画面にも反映する（[remoteDeckColumnsFlow]）。
      */
-    fun wipeLocalData(defaultColumns: List<ColumnSpec>) {
+    suspend fun wipeLocalData(defaultColumns: List<ColumnSpec>) {
+        identityGeneration++   // 復号中の DM を、消したあとに書かないように（[storeDm] の前で比べる）
         resetReactionFetches()
         IDENTITY_SUBS.forEach { unsubscribeAll(it) }
         ownLists.forEach { unsubscribeAll(it.subId) }
@@ -865,17 +872,27 @@ class EventRepository(
         syncEventByD.value = emptyMap()
         muteListAt = 0L; muteFlow.value = null
         muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
-        q.transaction {
-            q.clearEvents(); q.clearTags(); q.clearProfiles(); q.clearChannels(); q.clearPublishQueue()
-            q.clearPinnedColumns(); q.clearAllRelays(); q.clearRelayStatus(); q.clearUsedHashtags()
-            q.clearMediaServers(); q.clearSettings(); q.clearUsedEmojis(); q.clearCustomEmojis()
-            q.clearDeletedEvents(); q.clearDeletedAddrs(); q.clearOgpCache()
-            // 既定のリレーとアップロード先は、初回（[start]）と同じく入れ直す。
-            bootstrapUrls.forEach { q.insertRelayIfAbsent(normalizeRelayUrl(it), 1, 1, "default") }
-            DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong(), UploadProtocol.NIP96.id) }
+        processedWraps.clear(); processedLegacyDm.clear(); dmRelaysAtByAuthor.clear()
+        contactsByAuthor.value = emptyMap(); statuses.value = emptyMap(); pinsByAuthor.value = emptyMap()
+        dmRelaysByAuthor.value = emptyMap(); ogpCache.clear()
+        withContext(relayDispatcher) {
+            q.transaction {
+                q.clearEvents(); q.clearTags(); q.clearProfiles(); q.clearChannels(); q.clearPublishQueue()
+                q.clearPinnedColumns(); q.clearAllRelays(); q.clearRelayStatus(); q.clearUsedHashtags()
+                q.clearMediaServers(); q.clearSettings(); q.clearUsedEmojis(); q.clearCustomEmojis()
+                q.clearDeletedEvents(); q.clearDeletedAddrs(); q.clearOgpCache()
+                // 既定のリレーとアップロード先は、初回（[start]）と同じく入れ直す。
+                bootstrapUrls.forEach { q.insertRelayIfAbsent(normalizeRelayUrl(it), 1, 1, "default") }
+                DEFAULT_MEDIA_SERVERS.forEachIndexed { i, url -> q.insertMediaServerIfAbsent(url, 1, i.toLong(), UploadProtocol.NIP96.id) }
+            }
+            // 前のアカウントの NIP-65・手動・DM のリレーへの接続を切る（既定のリレーだけ残す）。
+            val keep = bootstrapUrls.map { normalizeRelayUrl(it) }.toSet()
+            relays.keys.filter { it !in keep }.forEach { url -> relays.remove(url)?.stop(); hintRelays.remove(url) }
+            refreshRelayConns()
         }
         loadLocalSettings()
         loadAuthPolicy()
+        loadUnreadSeen()
         applySyncedColumns(defaultColumns)
     }
 
@@ -3848,16 +3865,25 @@ class EventRepository(
     fun muteListFlow(): StateFlow<MuteList?> = muteFlow
 
     /**
-     * [#951] ブロックを押してからミュートリストを出し直すまでの間も隠しておく人。
-     * 出し直す前にリレーから取り直すので数秒かかることがあり、その間もフィードからすぐ消すため。
+     * [#951] ブロックしたが、まだミュートリストに保存できていない人（KV に残す）。
+     * 保存の前にリレーから取り直すので数秒かかり、リレーに届かなければ保存できない。その間も、保存できなくても、
+     * フィードからはすぐ消したままにする（App Store ガイドライン 1.2）。保存できたら外す（[saveBlock]）。
      */
-    private val blockingUsers = MutableStateFlow<Set<String>>(emptySet())
+    private val pendingBlocks = MutableStateFlow<Set<String>>(emptySet())
+    private fun loadPendingBlocks() {
+        pendingBlocks.value = q.getSetting(BLOCK_PENDING_KEY).executeAsOneOrNull()
+            ?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    }
+    private fun updatePendingBlocks(change: (Set<String>) -> Set<String>) {
+        val next = pendingBlocks.updateAndGet(change)
+        putSettingAsync(BLOCK_PENDING_KEY, next.joinToString("\n"))
+    }
 
     /**
-     * 画面で隠す判定に使うミュート（[muteListFlow] ＋ ブロックの途中の人）。
-     * ミュートの編集画面は [muteListFlow] を使う（途中の人を保存してしまわないように）。
+     * 画面で隠す判定に使うミュート（[muteListFlow] ＋ 保存待ちのブロック [pendingBlocks]）。
+     * ミュートの編集画面は [muteListFlow] を使う（保存待ちの人を編集のついでに保存してしまわないように）。
      */
-    private val muteFilterState: StateFlow<MuteList?> = combine(muteFlow, blockingUsers) { m, blocking ->
+    private val muteFilterState: StateFlow<MuteList?> = combine(muteFlow, pendingBlocks) { m, blocking ->
         val extra = blocking.filter { pk -> m?.entries?.none { it.category == MuteCategory.USER && it.value == pk } ?: true }
         if (extra.isEmpty()) m
         else (m ?: MuteList()).let { it.copy(entries = it.entries + extra.map { pk -> MuteEntry(MuteCategory.USER, pk, isPublic = false, isPrivate = true) }) }
@@ -4090,32 +4116,59 @@ class EventRepository(
     fun mutedUsersFlow(): Flow<Set<String>> =
         muteFilterState.map { m -> m?.entries?.filter { it.category == MuteCategory.USER }?.map { it.value }?.toSet() ?: emptySet() }
 
-    /** [#951] ブロックの結果（ミュートリストに入れられたか）。画面はこれを受けてトーストで知らせる。 */
-    private val blockResults = MutableSharedFlow<Boolean>(extraBufferCapacity = 4)
-    fun blockResultFlow(): SharedFlow<Boolean> = blockResults.asSharedFlow()
+    /** [#951] ブロックの結果。画面はこれを受けてトーストで知らせる。 */
+    enum class BlockResult {
+        /** ミュートリストに保存できた（すでに入っていた場合も）。 */
+        SAVED,
+
+        /** 隠したが、ミュートリストにはまだ保存できていない（リレーに届かない・ロック中など）。あとでやり直す。 */
+        PENDING,
+    }
+    private val blockResults = MutableSharedFlow<BlockResult>(extraBufferCapacity = 4)
+    fun blockResultFlow(): SharedFlow<BlockResult> = blockResults.asSharedFlow()
 
     /**
-     * [#951] ブロック = 非公開のミュート（[muteUserPrivate]）＋ 通報（NIP-56）。App Store ガイドライン 1.2 のとおり、
-     * 押したらすぐフィードから消し（[blockingUsers]）、通報で開発者にも知らせる（[publishReport]）。
-     * [note] から押したときはその投稿を、プロフィールからなら人を通報する。
-     * 押した投稿の行はすぐ消え、その行のコルーチンも止まるので、処理はこのスコープで続け、結果は [blockResultFlow] で知らせる
-     * （すでにブロック済み・ロック中・失敗は false。失敗したら隠すのもやめる）。
+     * [#951] ブロック = 非公開のミュート（[muteUserPrivate]）＋ 開発者への通報（NIP-56）。App Store ガイドライン 1.2 のとおり、
+     * 押したらすぐフィードから消し（[pendingBlocks]）、通報で開発者に知らせる（[reportToDeveloper]）。
+     * [note] から押したときはその投稿を、プロフィールからなら人を通報する。通報はミュートリストの保存とは別に送る（保存できなくても届くように）。
+     * 押した投稿の行はすぐ消え、その行のコルーチンも止まるので、処理はこのスコープで続け、結果は [blockResultFlow] で知らせる。
      */
     fun blockUser(pubkey: String, note: NostrEvent? = null) {
-        blockingUsers.update { it + pubkey }
+        updatePendingBlocks { it + pubkey }
         scope.launch {
-            val ok = try {
-                muteUserPrivate(pubkey).also { ok ->
-                    if (ok) runCatching {
-                        if (note != null) reportNote(note, "other", BLOCK_REPORT_REASON)
-                        else reportUser(pubkey, "other", BLOCK_REPORT_REASON)
-                    }
-                }
-            } finally {
-                blockingUsers.update { it - pubkey }
+            runCatching {
+                reportToDeveloper(
+                    if (note != null) listOf(listOf("e", note.id, "other"), listOf("p", note.pubkey))
+                    else listOf(listOf("p", pubkey, "other")),
+                )
             }
-            blockResults.emit(ok)
+            blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING)
         }
+    }
+
+    /** 保存を直列にする（並べて出し直すと、後から出したミュートリストが先の分を消してしまう）。 */
+    private val blockSaveLock = Mutex()
+
+    /** [pubkey] をミュートリストに保存する。保存できた（すでに入っていた）ら保存待ちから外す。 */
+    private suspend fun saveBlock(pubkey: String): Boolean = blockSaveLock.withLock {
+        val saved = runCatching { muteUserPrivate(pubkey) }.getOrDefault(false) ||
+            muteFlow.value?.entries?.any { it.category == MuteCategory.USER && it.value == pubkey } == true
+        if (saved) updatePendingBlocks { it - pubkey }
+        saved
+    }
+
+    /** 保存待ちのブロックをやり直す（ログインしてしばらく後。リレーに繋がってから）。 */
+    private suspend fun retryPendingBlocks() {
+        pendingBlocks.value.forEach { saveBlock(it) }
+    }
+
+    /**
+     * [#951] ブロックしたことを開発者に通報（NIP-56）で知らせる。開発者のリレー（[MODERATION_RELAY]）にだけ送り、
+     * 自分の書き込み先には出さない（ブロックは非公開のミュートなので、相手が読むリレーに「誰がブロックしたか」を残さない）。
+     */
+    private suspend fun reportToDeveloper(tags: List<List<String>>) {
+        val signed = SignerProvider.current().sign(UnsignedEvent(kind = 1984, content = BLOCK_REPORT_REASON, tags = tags))
+        publishToRelays(RelayProtocol.event(signed), listOf(MODERATION_RELAY))
     }
 
     /**
@@ -4123,6 +4176,11 @@ class EventRepository(
      * 戻り値: 発行できたか（未ミュート/NIP-44 ロック中/失敗は false）。
      */
     suspend fun unmuteUser(pubkey: String): Boolean {
+        // [#951] 保存待ちのブロックは手元で外す。ミュートリストに入っていなければそれで終わり（リレーに届かなくても外せる）。
+        if (pubkey in pendingBlocks.value) {
+            updatePendingBlocks { it - pubkey }
+            if (muteFlow.value?.entries?.none { it.category == MuteCategory.USER && it.value == pubkey } != false) return true
+        }
         refreshMute() ?: return false   // [#478]
         val current = muteFlow.value ?: return false
         if (current.nip44Locked) return false                    // 編集不可（NIP-44 ロック中）
@@ -5977,11 +6035,17 @@ class EventRepository(
 
     private val processedWraps = mutableSetOf<String>()
 
+    /** [#953] アカウントを消すたびに進める。復号を待つ間に消されたら、その DM は保存しない。 */
+    @kotlin.concurrent.Volatile private var identityGeneration = 0
+
     /** 受信 gift wrap(1059) を復号し、DM本体(kind:14)としてローカル保存。重複/失敗は無視。 */
     private fun ingestGiftWrap(e: NostrEvent) {
+        if (!SignerProvider.hasSession()) return   // [#953] 未ログイン（消した直後など）は復号できない
         if (!processedWraps.add(e.id)) return
+        val generation = identityGeneration
         scope.launch {
             val rumor = Nip17.unwrap(SignerProvider.current(), e) ?: return@launch
+            if (generation != identityGeneration) return@launch
             requestProfile(rumor.sender); rumor.recipient?.let { requestProfile(it) }
             // DM相手のアイコン/名前は接続中リレーに無いことが多いのでインデクサからも確実に取る。
             requestProfileFromIndexers(listOfNotNull(rumor.sender, rumor.recipient))
@@ -5997,13 +6061,16 @@ class EventRepository(
      * 自分が送信者なら p タグ(受信者)、そうでなければ送信者。復号失敗は無視。
      */
     private fun ingestLegacyDm(e: NostrEvent) {
+        if (!SignerProvider.hasSession()) return   // [#953]
         if (!processedLegacyDm.add(e.id)) return
+        val generation = identityGeneration
         scope.launch {
             val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
             val recipient = e.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
             val peer = if (e.pubkey == me) recipient else e.pubkey
             if (peer.isNullOrBlank()) return@launch
             val plain = runCatching { SignerProvider.current().nip04Decrypt(peer, e.content) }.getOrNull() ?: return@launch
+            if (generation != identityGeneration) return@launch
             requestProfile(e.pubkey); recipient?.let { requestProfile(it) }
             requestProfileFromIndexers(listOfNotNull(e.pubkey, recipient))
             storeDm(e.id, e.pubkey, recipient ?: me, plain, e.createdAt)
@@ -6217,8 +6284,8 @@ class EventRepository(
     private fun buildDmConversations(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
         else combine(
-            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen,
-        ) { rows, profiles, seenByPeer, firstSeen ->
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen, mutedUsersFlow(),
+        ) { rows, profiles, seenByPeer, firstSeen, blocked ->
             val byPk = profiles.associateBy { it.pubkey }
             // [#416] 相手ごとの未読数（相手の発言のうち、その会話の既読基準より新しいもの）。
             val unreadByPeer = rows
@@ -6233,6 +6300,7 @@ class EventRepository(
                     parseTags(row.tags_json).firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
                 else row.pubkey
                 if (other == null || !seen.add(other)) return@mapNotNull null
+                if (other in blocked) return@mapNotNull null   // [#951] ブロックした相手の会話は出さない（未読数にも数えない）
                 val p = byPk[other]
                 DmConversation(
                     pubkey = other,
@@ -6568,10 +6636,16 @@ class EventRepository(
         const val SEARCH_HISTORY = "search_history"
 
         /** [#953] 自分の鍵に結びついた購読（[start] / [reloadForNewIdentity] で張るもの）。アカウント削除で閉じる。 */
-        val IDENTITY_SUBS = listOf("contacts", "pinnedlist", "bookmarklist", "dmrelays", "dm_inbox", "dm4_in", "dm4_out", "myreactions")
+        val IDENTITY_SUBS = listOf(
+            "contacts", "pinnedlist", "bookmarklist", "dmrelays", "dm_inbox", "dm4_in", "dm4_out", "myreactions",
+            "dm_inbox_relays", "dm4_relays",
+        )
 
         /** [#951] ブロックしたときに出す通報（NIP-56）の補足。開発者がブロック由来の通報と見分けるため。 */
         const val BLOCK_REPORT_REASON = "blocked"
+        /** [#951] まだミュートリストに保存できていないブロック（pubkey の改行区切り）の KV キー。 */
+        const val BLOCK_PENDING_KEY = "block_pending"
+        const val BLOCK_RETRY_DELAY_MS = 15_000L
 
         /** [#951] 同意した利用規約の版の KV キー。規約を変えて同意を取り直すときは [TERMS_VERSION] を上げる。 */
         const val TERMS_ACCEPTED_KEY = "terms_accepted_version"

@@ -66,7 +66,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -122,6 +125,7 @@ import nostr_deck_client.composeapp.generated.resources.account_delete_text
 import nostr_deck_client.composeapp.generated.resources.account_delete_title
 import nostr_deck_client.composeapp.generated.resources.account_delete_type_hint
 import nostr_deck_client.composeapp.generated.resources.account_deleted_toast
+import nostr_deck_client.composeapp.generated.resources.account_deleting
 import nostr_deck_client.composeapp.generated.resources.about_open_web_sub
 import nostr_deck_client.composeapp.generated.resources.about_privacy
 import nostr_deck_client.composeapp.generated.resources.about_terms
@@ -1825,10 +1829,12 @@ private fun AccountDeleteDialog(state: DeckState, onDismiss: () -> Unit) {
     val toast = rememberToaster()
     val deletedMsg = stringResource(Res.string.account_deleted_toast)
     val imageLoader = SingletonImageLoader.get(LocalPlatformContext.current)
+    val scope = rememberCoroutineScope()
     var typed by remember { mutableStateOf("") }
-    val ready = isAccountDeletePhrase(typed)
+    var deleting by remember { mutableStateOf(false) }
+    val ready = isAccountDeletePhrase(typed) && !deleting
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!deleting) onDismiss() },
         containerColor = DeckColors.Surface,
         shape = RoundedCornerShape(DeckRadius.Lg),
         title = { DeckScaled { TitleText(stringResource(Res.string.account_delete_title)) } },
@@ -1855,30 +1861,43 @@ private fun AccountDeleteDialog(state: DeckState, onDismiss: () -> Unit) {
         confirmButton = {
             DeckScaled {
                 DeckTextButton(
-                    stringResource(Res.string.account_delete_confirm),
+                    stringResource(if (deleting) Res.string.account_deleting else Res.string.account_delete_confirm),
                     color = if (ready) DeckColors.Warn else DeckColors.Text3,
                     onClick = {
                         if (!ready) return@DeckTextButton
-                        onDismiss()
-                        // ログアウトと同じく外部の永続セッションを破棄し、ウォレットの接続と端末内のデータも消す。
-                        ExternalSignerHost.provider?.logout()
-                        Nip46Manager.disconnect()
-                        NosskeyHost.provider?.logout()
-                        app.nostrdeck.wallet.NwcManager.disconnect()
-                        repo?.wipeLocalData(SampleData.columns.filter { it.pinned })
-                        imageLoader.memoryCache?.clear()
-                        imageLoader.diskCache?.clear()
-                        // 次にログインしたときに設定の画面からではなくホームから始まるように。
-                        state.settingsSection = null
-                        state.clearDetail()
-                        state.navDest = NavDest.HOME
-                        SignerProvider.logout()
-                        toast(deletedMsg)
+                        deleting = true
+                        // DB を消した時点で画面は規約の同意に切り替わり、このダイアログ（とスコープ）も消える。
+                        // 途中で止まると鍵が残るので、最後まで止めずに走らせる。DB と画像の消去は UI スレッドの外で行う。
+                        scope.launch {
+                            withContext(NonCancellable) {
+                                // ログアウトと同じく外部の永続セッションを破棄し、ウォレットの接続と端末内のデータも消す。
+                                ExternalSignerHost.provider?.logout()
+                                Nip46Manager.disconnect()
+                                NosskeyHost.provider?.logout()
+                                app.nostrdeck.wallet.NwcManager.disconnect()
+                                // 開いていた一時カラム（他人のプロフィール・検索など）も閉じ、既定のカラムだけにする。
+                                state.columns.removeAll { !it.pinned }
+                                repo?.wipeLocalData(SampleData.columns.filter { it.pinned })
+                                // 鍵を消すのは DB を消した直後（規約の同意の画面に切り替わった直後）。画像の消去を待たない。
+                                SignerProvider.logout()
+                                // 次にログインしたときに設定の画面からではなくホームから始まるように。
+                                state.settingsSection = null
+                                state.clearDetail()
+                                state.navDest = NavDest.HOME
+                                toast(deletedMsg)
+                                imageLoader.memoryCache?.clear()
+                                withContext(Dispatchers.Default) { imageLoader.diskCache?.clear() }
+                            }
+                        }
                     },
                 )
             }
         },
-        dismissButton = { DeckScaled { DeckTextButton(stringResource(Res.string.common_cancel), onClick = onDismiss, color = DeckColors.Text3) } },
+        dismissButton = {
+            DeckScaled {
+                DeckTextButton(stringResource(Res.string.common_cancel), onClick = { if (!deleting) onDismiss() }, color = DeckColors.Text3)
+            }
+        },
     )
 }
 

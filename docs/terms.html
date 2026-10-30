@@ -52,13 +52,13 @@
 <ul>
   <li>不快な投稿は、投稿の「⋯」から通報できます。利用者は、プロフィールの「⋯」から通報できます。</li>
   <li>不快な利用者は、投稿やプロフィールの「⋯」から<strong>ブロック</strong>できます。ブロックした利用者の投稿と通知は、すぐに表示されなくなります。ブロックは利用者のミュートリスト（NIP-51）に非公開で保存され、設定 → ミュート・ブロック から解除できます。</li>
-  <li>通報とブロックは Nostr の通報（NIP-56）として、利用者のリレーに加えて開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。通報は Nostr の仕様により公開されます。</li>
+  <li>通報とブロックは Nostr の通報（NIP-56）として、開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。「⋯」からの通報は、利用者のリレーにも送られます。通報は Nostr の仕様により公開されます（ブロックの通報は開発者のリレーにだけ送ります）。</li>
 </ul>
 
 <h3>4. 通報への対応</h3>
 <ul>
   <li>開発者は、届いた通報を 24 時間以内に確認します。</li>
-  <li>禁止事項にあたる場合は、開発者が運営するリレーからコンテンツを削除し、投稿した利用者からの書き込みを断るなど、開発者が管理できる範囲で対応します。</li>
+  <li>禁止事項にあたる場合は、開発者が運営するリレーからコンテンツを削除するなど、開発者が管理できる範囲で対応します。</li>
   <li>ほかのリレーは第三者が運営しています。ネットワークから完全に削除するには、それぞれのリレーの運営者の対応が必要です。</li>
   <li>児童の安全に関わる事案など、法令で求められる場合は、関係当局へ報告します。</li>
 </ul>
@@ -117,13 +117,13 @@
 <ul>
   <li>You can report objectionable posts from the "⋯" menu on each post, and report users from the "⋯" menu on their profile.</li>
   <li>You can <strong>block</strong> abusive users from the "⋯" menu on their posts or profile. Posts and notifications from a blocked user are hidden right away. Blocks are stored privately in your mute list (NIP-51), and you can undo them in Settings → Mute &amp; block.</li>
-  <li>Reports and blocks are sent as Nostr reports (NIP-56) to your relays and to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. Under the Nostr protocol, reports are public.</li>
+  <li>Reports and blocks are sent as Nostr reports (NIP-56) to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. Reports from the "⋯" menu are also sent to your relays. Under the Nostr protocol, reports are public (reports for blocks are sent only to the developer's relay).</li>
 </ul>
 
 <h3>4. How reports are handled</h3>
 <ul>
   <li>The developer reviews reports within 24 hours.</li>
-  <li>If the content violates these terms, the developer acts within what it controls, for example by removing the content from the developer's relay and refusing further posts from the user who posted it.</li>
+  <li>If the content violates these terms, the developer acts within what it controls, for example by removing the content from the developer's relay.</li>
   <li>Other relays are run by third parties. Removing content from the whole network requires action by each relay operator.</li>
   <li>Where required by law, such as in child-safety matters, the developer reports to the relevant authorities.</li>
 </ul>

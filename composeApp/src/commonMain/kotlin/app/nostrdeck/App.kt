@@ -10,7 +10,7 @@ import nostr_deck_client.composeapp.generated.resources.emoji_no_base
 import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplicate
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
 import nostr_deck_client.composeapp.generated.resources.muted_toast
-import nostr_deck_client.composeapp.generated.resources.note_mute_locked
+import nostr_deck_client.composeapp.generated.resources.block_pending_toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -135,9 +135,11 @@ fun App(
         }
         // [#951] ブロックの結果を知らせる（押した投稿の行はすぐ消えるので、行ではなくここで出す）。
         LaunchedEffect(repository) {
-            repository?.blockResultFlow()?.collect { ok ->
+            repository?.blockResultFlow()?.collect { result ->
                 val r = nostr_deck_client.composeapp.generated.resources.Res.string
-                toast(app.nostrdeck.i18n.getString(if (ok) r.muted_toast else r.note_mute_locked))
+                toast(app.nostrdeck.i18n.getString(
+                    if (result == app.nostrdeck.data.EventRepository.BlockResult.SAVED) r.muted_toast else r.block_pending_toast,
+                ))
             }
         }
         // [#732] 絵文字ピッカーからリアクションを送ったことを知らせる（投稿の行には出さない方針）。
