@@ -12,7 +12,7 @@ import {
   writeRelaysOf,
   wsRelayUrlsFromEvent,
 } from "./outbox";
-import { requestOnce, subscribeTo } from "./pool";
+import { type RelayProgress, requestOnce, subscribeProgress } from "./pool";
 import { eventStore } from "./store";
 
 // リレーには繋がず、REQ ごとに Subject を返す（完了・失敗はテストから流す）
@@ -20,7 +20,7 @@ vi.mock("./pool", async () => {
   const { Subject } = await import("rxjs");
   return {
     readRelays: () => ["wss://relay.example"],
-    subscribeTo: vi.fn(() => new Subject<"EOSE">()),
+    subscribeProgress: vi.fn(() => new Subject<RelayProgress>()),
     requestOnce: vi.fn(() => new Subject<NostrEvent>()),
   };
 });
@@ -29,7 +29,7 @@ const FILTERS = [{ kinds: [1], authors: ["x"], limit: 100 }];
 
 beforeEach(() => {
   vi.mocked(requestOnce).mockClear();
-  vi.mocked(subscribeTo).mockClear();
+  vi.mocked(subscribeProgress).mockClear();
 });
 
 function relayList(tags: string[][]): NostrEvent {
@@ -50,7 +50,7 @@ function lastRequest() {
 }
 
 function lastSubscription() {
-  return vi.mocked(subscribeTo).mock.results.at(-1)?.value as Subject<"EOSE">;
+  return vi.mocked(subscribeProgress).mock.results.at(-1)?.value as Subject<RelayProgress>;
 }
 
 describe("relayPrefsFromEvent", () => {
@@ -136,7 +136,7 @@ describe("authorOutbox$", () => {
       OUTBOX_RELAYLIST_WAIT_MS,
     );
     expect(OUTBOX_RELAYLIST_WAIT_MS).toBe(10_000);
-    expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
 
     addRelayList([
       ["r", "wss://w1"],
@@ -145,8 +145,8 @@ describe("authorOutbox$", () => {
     ]);
     lastRequest().complete();
 
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(["wss://w1/"], FILTERS);
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(["wss://w1/"], FILTERS);
     sub.unsubscribe();
   });
 
@@ -156,7 +156,7 @@ describe("authorOutbox$", () => {
     addRelayList([["r", "wss://w1"]]);
     lastRequest().error(new Error("timeout"));
 
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(["wss://w1/"], FILTERS);
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(["wss://w1/"], FILTERS);
     sub.unsubscribe();
   });
 
@@ -165,13 +165,13 @@ describe("authorOutbox$", () => {
     known.addRelayList([["r", "wss://w9"]]);
     authorOutbox$([known.pubkey], FILTERS).subscribe().unsubscribe();
     expect(vi.mocked(requestOnce)).not.toHaveBeenCalled();
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(["wss://w9/"], FILTERS);
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(["wss://w9/"], FILTERS);
 
-    vi.mocked(subscribeTo).mockClear();
+    vi.mocked(subscribeProgress).mockClear();
     const own = author();
     own.addRelayList([["r", "wss://relay.example/"]]);
     authorOutbox$([own.pubkey], FILTERS).subscribe().unsubscribe();
-    expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
   });
 
   it("著者 4 人以上・0 人では何もしない", () => {
@@ -179,7 +179,7 @@ describe("authorOutbox$", () => {
     authorOutbox$(four, FILTERS).subscribe().unsubscribe();
     authorOutbox$([], FILTERS).subscribe().unsubscribe();
     expect(vi.mocked(requestOnce)).not.toHaveBeenCalled();
-    expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
   });
 
   it("購読をやめると、待機中の取得も追加の REQ もやめる", () => {

@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { SEARCH_RELAYS } from "../../lib/columnRequest";
 import { DEFAULT_COLUMNS } from "../../lib/columns";
 import { unixNow } from "../../lib/time";
-import { subscribeTo } from "../../nostr/pool";
+import { type RelayProgress, subscribeProgress, subscribeTo } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
 import { COLUMNS_KEY, useDeck } from "../../store/deck";
 import { renderWithRouter } from "../../test/renderWithRouter";
@@ -29,6 +29,7 @@ vi.mock("../../nostr/pool", async (importOriginal) => {
     useReadRelays: () => RELAYS,
     subscribe: vi.fn(() => new Subject<"EOSE">()),
     subscribeTo: vi.fn(() => new Subject<"EOSE">()),
+    subscribeProgress: vi.fn(() => new Subject<RelayProgress>()),
     requestOnce: vi.fn(() => new Subject<NostrEvent>()),
   };
 });
@@ -49,6 +50,7 @@ beforeEach(() => {
   useSearchHistory.setState({ history: [] });
   useDeck.setState({ columns: structuredClone([...DEFAULT_COLUMNS]), widths: {}, jumpTarget: null });
   vi.mocked(subscribeTo).mockClear();
+  vi.mocked(subscribeProgress).mockClear();
 });
 
 afterEach(() => {
@@ -153,11 +155,13 @@ describe("compact", () => {
     const user = userEvent.setup();
     renderScreen(400);
     await user.type(input(), "#nostr{Enter}");
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(
+    // タグのカラムはリレーごとの取得範囲を数える REQ（#955）
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(
       ["wss://relay.example"],
       [{ kinds: [1], "#t": ["nostr"], limit: 100 }],
     );
-    expect(vi.mocked(subscribeTo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("tab", { name: /^ユーザー/ }));
     expect(screen.getByText("条件に合うユーザーがいません。")).toBeInTheDocument();
