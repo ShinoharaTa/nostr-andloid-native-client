@@ -417,7 +417,7 @@
     <string name="terms_lead">Nostrism を使う前に、利用規約を確認して同意してください。</string>
     <string name="terms_point_conduct">違法なもの、児童の性的虐待・搾取、嫌がらせ・脅迫・差別、スパム、なりすましなど、不快なコンテンツと迷惑行為は一切認めません。</string>
     <string name="terms_point_tools">不快な投稿は ⋯ から通報できます。不快な利用者をブロックすると、その人の投稿・通知・DM がすぐに表示されなくなります。通報とブロックは開発者にも届きます。</string>
-    <string name="terms_point_response">開発者は届いた通報を 24 時間以内に確認し、開発者が運営するリレーからの削除など、できる範囲で対応します。</string>
+    <string name="terms_point_response">開発者は届いた通報を確認し、開発者が運営するリレーからの削除など、できる範囲で対応します。</string>
     <string name="terms_point_nostr">Nostr は分散型のネットワークです。リレーに送った投稿は公開され、ネットワーク全体からは完全に消せないことがあります。</string>
     <string name="terms_read_full">利用規約の全文を読む</string>
     <string name="terms_agree">同意して始める</string>

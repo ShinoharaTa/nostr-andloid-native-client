@@ -14,6 +14,14 @@ import nostr_deck_client.composeapp.generated.resources.block_pending_toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +59,7 @@ import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
 import app.nostrdeck.ui.LoginGate
 import app.nostrdeck.ui.TermsGate
+import app.nostrdeck.ui.InAppToastHost
 import app.nostrdeck.ui.NoteNav
 import app.nostrdeck.ui.Nyan
 import app.nostrdeck.state.DetailRoute
@@ -296,6 +305,13 @@ fun App(
                     repository != null && !loggedIn -> LoginGate()
                     else -> AppScaffold(state)
                 }
+                // 画面の中に出すトースト（iOS）。ゲートの外に置き、画面が切り替わっても出せるように（削除の完了など）。
+                // 下のナビバーに重ならない高さに出す。
+                InAppToastHost(
+                    Modifier.align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(bottom = 72.dp),
+                )
             }
         }
     }

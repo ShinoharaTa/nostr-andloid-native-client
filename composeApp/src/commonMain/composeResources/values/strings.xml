@@ -421,7 +421,7 @@
     <string name="terms_lead">Before using Nostrism, please read and agree to the Terms of Use.</string>
     <string name="terms_point_conduct">There is no tolerance for objectionable content or abusive behavior, including illegal content, sexual content involving minors, harassment, threats, hate speech, spam and impersonation.</string>
     <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. When you block an abusive user, their posts, notifications and direct messages are hidden right away. Reports and blocks also reach the developer.</string>
-    <string name="terms_point_response">The developer reviews reports within 24 hours and acts on them where it can, for example by removing the content from the developer’s relay.</string>
+    <string name="terms_point_response">The developer reviews reports and acts on them where it can, for example by removing the content from the developer’s relay.</string>
     <string name="terms_point_nostr">Nostr is a decentralized network. Posts sent to relays are public and may not be fully removable from the network.</string>
     <string name="terms_read_full">Read the full Terms of Use</string>
     <string name="terms_agree">Agree and continue</string>
