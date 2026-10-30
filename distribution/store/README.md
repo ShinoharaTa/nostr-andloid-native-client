@@ -164,13 +164,13 @@ gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review
 Nostrism is a client for Nostr, an open, decentralized social protocol. There is no account on our servers.
 
 How to try the app:
-1. On the first screen, choose "Private key" and tap "Generate new key".
+1. On the first screen, read the Terms of Use and tap "Agree and continue". On the next screen, tap "Generate new key" under "Log in with a private key (nsec)".
 2. The app connects to public Nostr relays. Use Search to find and follow accounts, or open the Global/hashtag columns.
 
 User-generated content:
 - Terms of Use: shown before choosing a login method. Users must tap "Agree and continue". Full text: https://nostrism.shino3.net/terms.html
 - Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile.
-- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately (even if the relays can't be reached), and a report is sent to the developer's relay (relay-jp.shino3.net). The developer reviews reports within 24 hours.
+- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. A report is sent to the developer's relay (relay-jp.shino3.net); if it can't be delivered, the app keeps it and sends it again until the relay accepts it. The developer reviews reports within 24 hours.
 - Users can also mute words and hashtags in Settings > Mute & block.
 - Posts marked with a content warning are collapsed until tapped.
 - Contact: tshinoharawork@gmail.com

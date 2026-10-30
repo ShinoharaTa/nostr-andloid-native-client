@@ -38,7 +38,7 @@
 <p>本アプリでは、次のコンテンツの投稿・送信と、次の行為を禁止します。不快なコンテンツと迷惑行為は<strong>一切認めません</strong>。</p>
 <ul>
   <li>法令に違反するもの、犯罪をあおるもの</li>
-  <li>子どもを性的に扱うもの（児童の性的虐待・搾取。<a href="child-safety.html">児童の安全に関する基準</a>をご覧ください）</li>
+  <li>児童の性的虐待・搾取にあたるもの（<a href="child-safety.html">児童の安全に関する基準</a>をご覧ください）</li>
   <li>他者への嫌がらせ、脅迫、つきまとい、いじめ</li>
   <li>人種・民族・国籍・宗教・性別・性的指向・障害などを理由にした差別や、憎悪をあおるもの</li>
   <li>暴力をたたえる・あおるもの、自傷や自殺をあおるもの</li>
@@ -49,10 +49,12 @@
 </ul>
 
 <h3>3. 通報とブロック</h3>
+<p>Android / iOS / macOS 版では、次のことができます。</p>
 <ul>
-  <li>不快な投稿は、投稿の「⋯」から通報できます。利用者は、プロフィールの「⋯」から通報できます。</li>
-  <li>不快な利用者は、投稿やプロフィールの「⋯」から<strong>ブロック</strong>できます。ブロックした利用者の投稿と通知は、すぐに表示されなくなります。ブロックは利用者のミュートリスト（NIP-51）に非公開で保存され、設定 → ミュート・ブロック から解除できます。</li>
-  <li>通報とブロックは Nostr の通報（NIP-56）として、開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。「⋯」からの通報は、利用者のリレーにも送られます。通報は Nostr の仕様により公開されます（ブロックの通報は開発者のリレーにだけ送ります）。</li>
+  <li><strong>通報</strong>: 不快な投稿は、投稿の「⋯」から通報できます。利用者は、プロフィールの「⋯」から通報できます。</li>
+  <li><strong>ブロック</strong>: 不快な利用者は、投稿やプロフィールの「⋯」からブロックできます。ブロックした利用者の投稿・通知・DM は、すぐに表示されなくなります。ブロックは、あなたの非公開のミュートリスト（NIP-51）に保存します（リレーにつながらないときは端末に覚えておき、つながったら保存します）。解除は、自分のアイコンのメニューの「ミュート・ブロック」からできます。</li>
+  <li><strong>開発者への知らせ</strong>: 通報とブロックは、Nostr の通報（NIP-56）として開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。届かなかったときは、本アプリが送り直します。</li>
+  <li><strong>通報の公開</strong>: 通報は Nostr の公開イベントです。「⋯」からの通報は、あなたのリレーにも送られます。ブロックの通報は、開発者のリレーにだけ送ります。</li>
 </ul>
 
 <h3>4. 通報への対応</h3>
@@ -103,7 +105,7 @@
 <p>You may not post or send the following content, or engage in the following conduct. There is <strong>no tolerance</strong> for objectionable content or abusive users.</p>
 <ul>
   <li>Content that is illegal or encourages crime</li>
-  <li>Sexual content involving minors (child sexual abuse and exploitation; see our <a href="child-safety.html">Child Safety Standards</a>)</li>
+  <li>Child sexual abuse and exploitation (see our <a href="child-safety.html">Child Safety Standards</a>)</li>
   <li>Harassment, threats, stalking or bullying of others</li>
   <li>Discrimination or hate based on race, ethnicity, nationality, religion, sex, sexual orientation, disability or similar grounds</li>
   <li>Content that glorifies or incites violence, or encourages self-harm or suicide</li>
@@ -114,10 +116,12 @@
 </ul>
 
 <h3>3. Reporting and blocking</h3>
+<p>In the Android, iOS and macOS versions, you can:</p>
 <ul>
-  <li>You can report objectionable posts from the "⋯" menu on each post, and report users from the "⋯" menu on their profile.</li>
-  <li>You can <strong>block</strong> abusive users from the "⋯" menu on their posts or profile. Posts and notifications from a blocked user are hidden right away. Blocks are stored privately in your mute list (NIP-51), and you can undo them in Settings → Mute &amp; block.</li>
-  <li>Reports and blocks are sent as Nostr reports (NIP-56) to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. Reports from the "⋯" menu are also sent to your relays. Under the Nostr protocol, reports are public (reports for blocks are sent only to the developer's relay).</li>
+  <li><strong>Report</strong>: Report objectionable posts from the "⋯" menu on each post, and report users from the "⋯" menu on their profile.</li>
+  <li><strong>Block</strong>: Block abusive users from the "⋯" menu on their posts or profile. Their posts, notifications and direct messages are hidden right away. The block is saved in your private mute list (NIP-51); if the relays can't be reached, the App keeps it on your device and saves it once they can. You can undo a block from "Mute &amp; block" in your icon menu.</li>
+  <li><strong>Notifying the developer</strong>: Reports and blocks are sent as Nostr reports (NIP-56) to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. If one can't be delivered, the App sends it again later.</li>
+  <li><strong>Reports are public</strong>: A report is a public Nostr event. Reports from the "⋯" menu are also sent to your relays. Reports for blocks are sent only to the developer's relay.</li>
 </ul>
 
 <h3>4. How reports are handled</h3>

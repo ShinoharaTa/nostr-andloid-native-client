@@ -29,10 +29,10 @@
 <hr>
 
 <h2>日本語</h2>
-<p><strong>Nostrism</strong>（以下「本アプリ」）は、分散型プロトコル <a href="https://nostr.com/">Nostr</a> のクライアントアプリです。Android / iOS / macOS 向けのアプリと、ブラウザで使う Web 版（<code>https://nostrism.shino3.net/app/</code>）があり、本ポリシーはそのすべてに適用します。本アプリは利用者のアカウントを管理するサーバーを持たず、利用者の個人情報を開発者側で収集・保存しません（開発者が運営する既定のリレーと、Web 版が利用する開発者のサーバーについては 3. と 4. をご覧ください）。</p>
+<p><strong>Nostrism</strong>（以下「本アプリ」）は、分散型プロトコル <a href="https://nostr.com/">Nostr</a> のクライアントアプリです。Android / iOS / macOS 向けのアプリと、ブラウザで使う Web 版（<code>https://nostrism.shino3.net/app/</code>）があり、本ポリシーはそのすべてに適用します。本アプリは利用者のアカウントを管理するサーバーを持ちません。開発者が受け取る情報（通報と、開発者が運営するリレーやサーバーに届く情報）は、1.・3.・4. に書きます。</p>
 
 <h3>1. 開発者が収集する情報</h3>
-<p><strong>ありません。</strong> 本アプリは解析ツール・広告・トラッキングSDKを一切使用せず、利用者を識別・追跡するための情報を開発者のサーバーへ送信しません。Web 版が配信と一部の機能のために通信する開発者のサーバー（Cloudflare 上で運用）での取り扱いは「4. Web 版での取り扱い」に記載します。</p>
+<p>本アプリは解析ツール・広告・トラッキングSDKを一切使用せず、利用者を識別・追跡するための情報を開発者のサーバーへ送信しません。ただし、通報とブロックの通報は開発者が運営するリレーに送られ、開発者が確認します（「3. 第三者へ送信される情報」の「通報とブロック」）。Web 版が配信と一部の機能のために通信する開発者のサーバー（Cloudflare 上で運用）での取り扱いは「4. Web 版での取り扱い」に記載します。</p>
 
 <h3>2. 端末内に保存される情報</h3>
 <p>以下は<strong>利用者の端末内にのみ</strong>保存されます（開発者は参照できません）。</p>
@@ -44,11 +44,11 @@
 <p>秘密鍵は署名・暗号化のために端末内で使用されます。これらは、設定 → アカウント →「アカウントを削除」（<a href="account-deletion.html">手順</a>）、またはアプリのデータ削除・アンインストールで消去されます。Web 版で保存される情報と消し方は「4. Web 版での取り扱い」をご覧ください。</p>
 
 <h3>3. 第三者へ送信される情報</h3>
-<p>Nostr は公開プロトコルです。利用者の操作により、以下が<strong>利用者が選んだ第三者</strong>へ送信されます。</p>
+<p>Nostr は公開プロトコルです。利用者の操作により、以下が<strong>利用者が選んだ第三者</strong>と、ここに書いた送り先へ送信されます。</p>
 <ul>
   <li><strong>リレー</strong>：投稿・リアクション・フォロー等の公開イベントは、利用者が設定したリレーへ送信され、公開されます。ダイレクトメッセージは暗号化（NIP-17/NIP-44）されますが、送受信のメタデータはリレーを経由します。</li>
   <li><strong>開発者が運営するリレー</strong>：端末の言語が日本語の場合、既定のリレーの一つに開発者が運営する <code>relay-jp.shino3.net</code> が含まれます。他のリレーと同じく接続先の一つにすぎず、設定で外せます。本アプリはこのリレーを含め特定のサーバーに依存せず、アカウントやデータを特定のサーバーに預けません。このリレーに送られた公開イベントは、他のリレーと同じく Nostr の仕様に従って保存・公開されます。また、リレーの運用に必要な範囲で、接続の記録（IP アドレス等）が一時的に残る場合があります。</li>
-  <li><strong>通報とブロック</strong>：投稿や利用者を通報したときは、通報（NIP-56）を、利用者が設定したリレーに加えて開発者が運営するリレー <code>relay-jp.shino3.net</code> にも送ります（端末の言語を問いません）。利用者をブロックしたときは、通報を開発者のリレーにだけ送ります。通報には、利用者の公開鍵、通報した投稿と相手、理由が含まれ、Nostr の仕様に従って公開されます。開発者は、通報を確認して対応するためにだけ使います（<a href="terms.html">利用規約</a>の 3. と 4.）。</li>
+  <li><strong>通報とブロック</strong>（Android / iOS / macOS 版）：投稿や利用者を通報したときは、通報（NIP-56）を、利用者が設定したリレーに加えて開発者が運営するリレー <code>relay-jp.shino3.net</code> にも送ります（端末の言語を問いません）。利用者をブロックしたときは、通報を開発者のリレーにだけ送ります。開発者のリレーに届かなかった通報は、端末に残して送り直します。通報には、利用者の公開鍵、通報した相手、投稿を通報したときはその投稿の ID、選んだ理由が含まれます（ブロックの通報では、理由はブロックによるものであることです）。通報は Nostr の公開イベントです。開発者は、通報を確認して対応するためにだけ使います（<a href="terms.html">利用規約</a>の 3. と 4.）。</li>
   <li><strong>メディアサーバー</strong>：画像等をアップロードする場合、利用者が選んだサーバー（NIP-96/Blossom）へ送信されます。</li>
   <li><strong>画像プロキシ（wsrv.nl）</strong>：タイムライン上の画像は、表示最適化のため公開画像プロキシ <code>wsrv.nl</code> を経由して読み込まれます。この際、画像URLと利用者のIPアドレスが当該プロキシに送信されます。プロキシが受け付けない画像は、配信元から直接読み込みます。</li>
   <li><strong>Spotify のリンクカード</strong>：Spotify のリンク（曲・アルバム・プレイリスト・アーティスト・エピソード・番組）をリンクカードで表示するとき、タイトルとジャケット画像を表示するため、リンクの URL（種類と ID）が Spotify 公式の oEmbed（<code>open.spotify.com</code>）へ送られます。この際、利用者の IP アドレスも Spotify に伝わります。</li>
@@ -125,10 +125,10 @@
 <hr>
 
 <h2>English</h2>
-<p><strong>Nostrism</strong> ("the App") is a client for the decentralized <a href="https://nostr.com/">Nostr</a> protocol. It is available as apps for Android, iOS and macOS, and as a web version that runs in your browser (<code>https://nostrism.shino3.net/app/</code>); this policy applies to all of them. The App has no server that manages your account, and the developer does <strong>not</strong> collect or store your personal data (see sections 3 and 4 for the default relay operated by the developer and the developer's server used by the web version).</p>
+<p><strong>Nostrism</strong> ("the App") is a client for the decentralized <a href="https://nostr.com/">Nostr</a> protocol. It is available as apps for Android, iOS and macOS, and as a web version that runs in your browser (<code>https://nostrism.shino3.net/app/</code>); this policy applies to all of them. The App has no server that manages your account. Information the developer receives (reports, and what reaches the relay and servers operated by the developer) is described in sections 1, 3 and 4.</p>
 
 <h3>1. Information collected by the developer</h3>
-<p><strong>None.</strong> The App uses no analytics, ads, or tracking SDKs, and sends no data to developer-operated servers for the purpose of identifying or tracking you. How the developer's server used by the web version (hosted on Cloudflare) handles requests is described in section 4.</p>
+<p>The App uses no analytics, ads, or tracking SDKs, and sends no data to developer-operated servers for the purpose of identifying or tracking you. However, reports (including reports sent when you block someone) are sent to the relay operated by the developer, and the developer reviews them (see "Reports and blocks" in section 3). How the developer's server used by the web version (hosted on Cloudflare) handles requests is described in section 4.</p>
 
 <h3>2. Information stored on your device</h3>
 <p>The following are stored <strong>only on your device</strong> (the developer cannot access them):</p>
@@ -140,11 +140,11 @@
 <p>Your private key is used on-device for signing and encryption. These are erased with Settings → Account → "Delete account" (<a href="account-deletion.html">steps</a>), or when you clear the app data or uninstall. For what the web version stores and how to delete it, see section 4.</p>
 
 <h3>3. Information sent to third parties</h3>
-<p>Nostr is a public protocol. By your actions, data is sent to <strong>third parties you choose</strong>:</p>
+<p>Nostr is a public protocol. By your actions, data is sent to <strong>third parties you choose</strong> and to the destinations described here:</p>
 <ul>
   <li><strong>Relays</strong>: Public events (posts, reactions, follows) are published to the relays you configure. Direct messages are encrypted (NIP-17/NIP-44), but delivery metadata passes through relays.</li>
   <li><strong>Relay operated by the developer</strong>: If your device language is Japanese, the default relays include <code>relay-jp.shino3.net</code>, which is operated by the developer. Like any other relay, it is just one of the relays the App connects to, and you can remove it in settings. The App does not depend on any particular server, including this relay, and does not entrust your account or data to any particular server. Public events sent to it are stored and published under the Nostr protocol, like on any other relay. Connection records (such as IP addresses) may be kept temporarily to the extent necessary to operate the relay.</li>
-  <li><strong>Reports and blocks</strong>: When you report a post or a user, the report (NIP-56) is sent to your relays and also to <code>relay-jp.shino3.net</code>, the relay operated by the developer (regardless of your device language). When you block a user, the report is sent only to the developer's relay. A report contains your public key, the reported post and user, and the reason, and is published under the Nostr protocol. The developer uses reports only to review and act on them (sections 3 and 4 of the <a href="terms.html">Terms of Use</a>).</li>
+  <li><strong>Reports and blocks</strong> (Android, iOS and macOS versions): When you report a post or a user, the report (NIP-56) is sent to your relays and also to <code>relay-jp.shino3.net</code>, the relay operated by the developer (regardless of your device language). When you block a user, the report is sent only to the developer's relay. A report that can't be delivered to the developer's relay is kept on your device and sent again. A report contains your public key, the reported user, the post ID when you report a post, and the reason you chose (for a block, that it comes from a block). A report is a public Nostr event. The developer uses reports only to review and act on them (sections 3 and 4 of the <a href="terms.html">Terms of Use</a>).</li>
   <li><strong>Media servers</strong>: If you upload media, it is sent to the server you choose (NIP-96/Blossom).</li>
   <li><strong>Image proxy (wsrv.nl)</strong>: Images in the timeline are loaded through the public image proxy <code>wsrv.nl</code> for optimization; the image URL and your IP address are sent to it. Images the proxy refuses are loaded directly from their source.</li>
   <li><strong>Spotify link cards</strong>: When a Spotify link (track, album, playlist, artist, episode or show) is shown as a link card, the link URL (the type and the ID) is sent to Spotify's official oEmbed (<code>open.spotify.com</code>) to get the title and cover art. Your IP address is also visible to Spotify.</li>

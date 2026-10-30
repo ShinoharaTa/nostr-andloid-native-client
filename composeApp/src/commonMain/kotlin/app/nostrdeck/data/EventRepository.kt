@@ -432,8 +432,18 @@ class EventRepository(
         loadAuthPolicy()
         // [#887] ログインして鍵が使えるようになったら、見送っていた AUTH のチャレンジに応答する。
         scope.launch { myPubkeyFlow.filterNotNull().collect { reevaluateAuth() } }
-        // [#951] 保存できていないブロックを、ログインしてリレーに繋がった頃にやり直す。
-        scope.launch { myPubkeyFlow.filterNotNull().collectLatest { delay(BLOCK_RETRY_DELAY_MS); retryPendingBlocks() } }
+        // [#951] 保存できていないブロックと、開発者に届いていない通報を、ログイン中は一定の間隔でやり直す
+        // （リレーにつながらなかった分が、つながったあとに届くように）。
+        scope.launch {
+            myPubkeyFlow.filterNotNull().collectLatest {
+                delay(MODERATION_RETRY_FIRST_MS)
+                while (true) {
+                    retryPendingBlocks()
+                    retryDeveloperOutbox()
+                    delay(MODERATION_RETRY_INTERVAL_MS)
+                }
+            }
+        }
         // [#9] 通知/DM の最終閲覧時刻を KV から復元。
         loadUnreadSeen()
         scope.launch { eventBatchLoop() }
@@ -493,6 +503,7 @@ class EventRepository(
         loadKansaiMode() // [#710]
         loadTermsAccepted()   // [#951]
         loadPendingBlocks()   // [#951]
+        loadDeveloperOutbox()   // [#951]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
         loadDeveloperMode()   // [#351]
@@ -2625,7 +2636,50 @@ class EventRepository(
     /** [#951] 通報はいつもの送り先に加えて開発者のリレー（[MODERATION_RELAY]）にも送る（開発者が受け取れるように）。 */
     private suspend fun publishReport(unsigned: UnsignedEvent) {
         val signed = publishSigned(unsigned)
-        publishToRelays(RelayProtocol.event(signed), listOf(MODERATION_RELAY))
+        scope.launch { deliverToDeveloper(signed) }   // 受理を待つ間、通報した画面を待たせない
+    }
+
+    /**
+     * [#951] 開発者のリレーに届いていない通報（event id → 送る JSON。KV に残す）。
+     * 一度送って終わりにすると、つながらないときに開発者へ届かない（App Store ガイドライン 1.2 は開発者に知らせることを求める）。
+     * 受理（OK）を確かめるまで残し、ログイン中は [MODERATION_RETRY_INTERVAL_MS] ごとに送り直す。
+     */
+    private val developerOutbox = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** 開発者のリレーが受理した、送り直し中の通報の id（[recordAck] が入れ、[sendToDeveloper] が外す）。 */
+    private val developerAcks = MutableStateFlow<Set<String>>(emptySet())
+
+    private fun loadDeveloperOutbox() {
+        developerOutbox.value = q.getSetting(DEVELOPER_OUTBOX_KEY).executeAsOneOrNull().orEmpty()
+            .lines().mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+            .toMap()
+    }
+    private fun updateDeveloperOutbox(change: (Map<String, String>) -> Map<String, String>) {
+        val next = developerOutbox.updateAndGet(change)
+        putSettingAsync(DEVELOPER_OUTBOX_KEY, next.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+    }
+
+    /** 開発者のリレーへ送る。受理を確かめられなければ送り直しの列に残す。 */
+    private suspend fun deliverToDeveloper(signed: NostrEvent) {
+        val payload = RelayProtocol.event(signed)
+        updateDeveloperOutbox { it + (signed.id to payload) }
+        sendToDeveloper(signed.id, payload)
+    }
+
+    private suspend fun sendToDeveloper(id: String, payload: String): Boolean {
+        publishToRelays(payload, listOf(MODERATION_RELAY))
+        val accepted = withTimeoutOrNull(PublishAck.TIMEOUT_MS) { developerAcks.first { id in it } } != null
+        if (accepted) {
+            updateDeveloperOutbox { it - id }
+            developerAcks.update { it - id }
+        }
+        return accepted
+    }
+
+    /** テスト用: 開発者のリレーに届いていない通報の数。 */
+    internal fun developerOutboxSize(): Int = developerOutbox.value.size
+
+    private suspend fun retryDeveloperOutbox() {
+        developerOutbox.value.forEach { (id, payload) -> sendToDeveloper(id, payload) }
     }
 
     /** リアクションピッカーの「最近」用に、飛ばした絵文字を記録（"+"/空は対象外）。 */
@@ -2920,8 +2974,11 @@ class EventRepository(
     /** 受理待ちを登録する。**送る前に**呼ぶ（先に OK が返ってきても取りこぼさないように）。 */
     private fun registerAck(id: String) = ackWaiters.update { it + (id to (it[id] ?: emptySet())) }
 
-    private fun recordAck(id: String, relay: String) =
+    private fun recordAck(id: String, relay: String) {
+        // [#951] 開発者のリレーに送り直している通報が受理された（[sendToDeveloper] が待つ）。
+        if (normalizeRelayUrl(relay) == MODERATION_RELAY && id in developerOutbox.value) developerAcks.update { it + id }
         ackWaiters.update { m -> m[id]?.let { m + (id to (it + relay)) } ?: m }
+    }
 
     /** どれかのリレーが受理するのを最大 [timeoutMs] 待つ。受理されたら true。終わったら登録を外す。 */
     private suspend fun awaitAck(id: String, timeoutMs: Long = PublishAck.TIMEOUT_MS): Boolean = try {
@@ -4135,6 +4192,7 @@ class EventRepository(
      */
     fun blockUser(pubkey: String, note: NostrEvent? = null) {
         updatePendingBlocks { it + pubkey }
+        // 通報（開発者のリレーの受理を待つ）とミュートリストの保存は別々に進める（片方の待ちで、もう片方とトーストを遅らせない）。
         scope.launch {
             runCatching {
                 reportToDeveloper(
@@ -4142,8 +4200,8 @@ class EventRepository(
                     else listOf(listOf("p", pubkey, "other")),
                 )
             }
-            blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING)
         }
+        scope.launch { blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING) }
     }
 
     /** 保存を直列にする（並べて出し直すと、後から出したミュートリストが先の分を消してしまう）。 */
@@ -4167,8 +4225,7 @@ class EventRepository(
      * 自分の書き込み先には出さない（ブロックは非公開のミュートなので、相手が読むリレーに「誰がブロックしたか」を残さない）。
      */
     private suspend fun reportToDeveloper(tags: List<List<String>>) {
-        val signed = SignerProvider.current().sign(UnsignedEvent(kind = 1984, content = BLOCK_REPORT_REASON, tags = tags))
-        publishToRelays(RelayProtocol.event(signed), listOf(MODERATION_RELAY))
+        deliverToDeveloper(SignerProvider.current().sign(UnsignedEvent(kind = 1984, content = BLOCK_REPORT_REASON, tags = tags)))
     }
 
     /**
@@ -6645,7 +6702,10 @@ class EventRepository(
         const val BLOCK_REPORT_REASON = "blocked"
         /** [#951] まだミュートリストに保存できていないブロック（pubkey の改行区切り）の KV キー。 */
         const val BLOCK_PENDING_KEY = "block_pending"
-        const val BLOCK_RETRY_DELAY_MS = 15_000L
+        const val MODERATION_RETRY_FIRST_MS = 15_000L
+        const val MODERATION_RETRY_INTERVAL_MS = 60_000L
+        /** [#951] 開発者のリレーに届いていない通報（"id\t送る JSON" の改行区切り）の KV キー。 */
+        const val DEVELOPER_OUTBOX_KEY = "developer_outbox"
 
         /** [#951] 同意した利用規約の版の KV キー。規約を変えて同意を取り直すときは [TERMS_VERSION] を上げる。 */
         const val TERMS_ACCEPTED_KEY = "terms_accepted_version"

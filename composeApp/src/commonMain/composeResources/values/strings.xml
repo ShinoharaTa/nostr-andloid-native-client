@@ -420,9 +420,9 @@
     <string name="terms_title">Terms of Use</string>
     <string name="terms_lead">Before using Nostrism, please read and agree to the Terms of Use.</string>
     <string name="terms_point_conduct">There is no tolerance for objectionable content or abusive behavior, including illegal content, sexual content involving minors, harassment, threats, hate speech, spam and impersonation.</string>
-    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu and block abusive users. Their posts are hidden right away. Reports and blocks also reach the developer.</string>
+    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. When you block an abusive user, their posts, notifications and direct messages are hidden right away. Reports and blocks also reach the developer.</string>
     <string name="terms_point_response">The developer reviews reports within 24 hours and acts on them where it can, for example by removing the content from the developer’s relay.</string>
-    <string name="terms_point_nostr">Nostr is a decentralized network. Posts are stored on relays and are public, and may not be fully removable from the app.</string>
+    <string name="terms_point_nostr">Nostr is a decentralized network. Posts sent to relays are public and may not be fully removable from the network.</string>
     <string name="terms_read_full">Read the full Terms of Use</string>
     <string name="terms_agree">Agree and continue</string>
     <string name="about_terms">Terms of Use</string>
@@ -444,11 +444,11 @@
     <!-- [#953] Account deletion -->
     <string name="account_delete">Delete account</string>
     <string name="account_delete_title">Delete your account?</string>
-    <string name="account_delete_text">Your private key is removed from this device, and all data on this device (cached posts, columns, relay and display settings, wallet connection, etc.) is erased. This can’t be undone.\n\nWithout a backup of your private key, you can never log in to this account again. Posts and your profile already sent to relays can’t be removed from this app, because of how Nostr works.</string>
+    <string name="account_delete_text">Your private key is removed from this device, and the data on this device (cached posts, columns, relay and display settings, wallet connection, etc.) is erased. This can’t be undone.\n\nWithout a backup of your private key, you can never log in to this account again. Posts and your profile already sent to relays can’t be removed from this app, because of how Nostr works.</string>
     <string name="account_delete_type_hint">To confirm, type “account delete”.</string>
     <string name="account_delete_confirm">Delete</string>
     <string name="account_deleting">Deleting…</string>
-    <string name="account_deleted_toast">Account deleted</string>
+    <string name="account_deleted_toast">Account and data removed from this device</string>
     <string name="signer_nip55">External signing app (Amber etc.)</string>
     <string name="signer_nip46">Remote signing (NIP-46)</string>
     <string name="signer_nosskey">Passkey-protected (Nosskey)</string>
@@ -572,7 +572,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_mute_user">Block this user</string>
     <string name="note_unmute_user">Unblock</string>
     <string name="note_unmuted_toast">Unblocked</string>
-    <string name="note_mute_locked">Couldn’t change the block (the mute list couldn’t be loaded or is locked)</string>
+    <string name="note_mute_locked">Couldn’t unblock (the mute list couldn’t be loaded or is locked)</string>
     <string name="note_report">Report</string>
     <string name="note_copy_text">Copy text</string>
     <string name="note_copy_link">Copy link (njump)</string>
@@ -585,10 +585,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="unfollow_text_fmt">Unfollows %1$s.</string>
     <string name="unfollow_confirm">Unfollow</string>
     <string name="mute_confirm_title">Block this user?</string>
-    <string name="mute_confirm_text">Their posts and notifications are hidden right away, and the developer is notified with a report (NIP-56). You can undo this anytime in Settings → Mute &amp; block.</string>
+    <string name="mute_confirm_text">Their posts, notifications and direct messages are hidden right away, and the developer is notified. You can undo this anytime from your icon menu → Mute &amp; block.</string>
     <string name="mute_confirm">Block</string>
     <string name="muted_toast">Blocked</string>
-    <string name="block_pending_toast">Blocked (saving to your mute list will be retried when the relays are reachable)</string>
+    <string name="block_pending_toast">Blocked (saving to your mute list will be retried once the relays are reachable)</string>
     <string name="cw_sensitive">Sensitive content</string>
     <string name="report_title">Report this post</string>
     <string name="report_illegal">Illegal / child safety</string>
@@ -694,8 +694,8 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="npub_copied">npub copied</string>
     <string name="followers_check">Check followers</string>
     <string name="unmute_confirm_title">Unblock this user?</string>
-    <string name="unmute_confirm_text">Their posts will appear in your timeline again.</string>
-    <string name="mute_confirm_text2">Their posts are hidden right away, and the developer is notified with a report (NIP-56). Blocks are stored privately in your mute list (NIP-51), and the report is sent only to the developer’s relay.</string>
+    <string name="unmute_confirm_text">Their posts, notifications and direct messages will appear again.</string>
+    <string name="mute_confirm_text2">Their posts, notifications and direct messages are hidden right away, and the developer is notified. The block is saved privately in your mute list (NIP-51).</string>
     <string name="lift_confirm">Unblock</string>
     <string name="mute_confirm_action">Block</string>
     <string name="mute_change_failed">Couldn’t change</string>

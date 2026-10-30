@@ -82,4 +82,28 @@ class BlockUserTest {
             scope2.cancel()
         }
     }
+
+    @Test
+    fun reports_stay_on_the_device_until_the_developer_relay_accepts_them(): Unit = runBlocking {
+        val dbFile = File.createTempFile("developer-outbox", ".db").apply { deleteOnExit() }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(dbFile, scope)
+            // 通報もブロックも、開発者のリレーに届かない（offline）ので端末に残る
+            repo.reportUser(target, "spam")
+            repo.blockUser(target)
+            withTimeout(2_000) { while (repo.developerOutboxSize() < 2) delay(50) }
+            delay(300)   // KV の書き込み（putSettingAsync）を待つ
+        } finally {
+            scope.cancel()
+        }
+        // 起動し直しても残っている（ログイン中は送り直す）
+        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(dbFile, scope2)
+            assertEquals(2, repo.developerOutboxSize())
+        } finally {
+            scope2.cancel()
+        }
+    }
 }

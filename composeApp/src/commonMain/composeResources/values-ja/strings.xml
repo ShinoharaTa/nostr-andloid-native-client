@@ -415,10 +415,10 @@
     <!-- [#951] 利用規約の同意（App Store ガイドライン 1.2） -->
     <string name="terms_title">利用規約</string>
     <string name="terms_lead">Nostrism を使う前に、利用規約を確認して同意してください。</string>
-    <string name="terms_point_conduct">違法なもの、子どもを性的に扱うもの、嫌がらせ・脅迫・差別、スパム、なりすましなど、不快なコンテンツと迷惑行為は一切認めません。</string>
-    <string name="terms_point_tools">不快な投稿は ⋯ から通報できます。不快な利用者はブロックでき、その人の投稿はすぐに表示されなくなります。通報とブロックは開発者にも届きます。</string>
+    <string name="terms_point_conduct">違法なもの、児童の性的虐待・搾取、嫌がらせ・脅迫・差別、スパム、なりすましなど、不快なコンテンツと迷惑行為は一切認めません。</string>
+    <string name="terms_point_tools">不快な投稿は ⋯ から通報できます。不快な利用者をブロックすると、その人の投稿・通知・DM がすぐに表示されなくなります。通報とブロックは開発者にも届きます。</string>
     <string name="terms_point_response">開発者は届いた通報を 24 時間以内に確認し、開発者が運営するリレーからの削除など、できる範囲で対応します。</string>
-    <string name="terms_point_nostr">Nostr は分散型のネットワークです。投稿はリレーに保存されて公開され、アプリからは完全に消せないことがあります。</string>
+    <string name="terms_point_nostr">Nostr は分散型のネットワークです。リレーに送った投稿は公開され、ネットワーク全体からは完全に消せないことがあります。</string>
     <string name="terms_read_full">利用規約の全文を読む</string>
     <string name="terms_agree">同意して始める</string>
     <string name="about_terms">利用規約</string>
@@ -440,11 +440,11 @@
     <!-- [#953] アカウントの削除 -->
     <string name="account_delete">アカウントを削除</string>
     <string name="account_delete_title">アカウントを削除しますか？</string>
-    <string name="account_delete_text">この端末から秘密鍵を破棄し、端末内のデータ（投稿のキャッシュ・カラム・リレーと表示の設定・ウォレットの接続など）をすべて消します。元に戻せません。\n\n秘密鍵のバックアップが無いと、このアカウントには二度とログインできません。リレーに送った投稿やプロフィールは、Nostr の仕組み上、このアプリからは消せません。</string>
+    <string name="account_delete_text">この端末から秘密鍵を破棄し、端末内のデータ（投稿のキャッシュ・カラム・リレーと表示の設定・ウォレットの接続など）を消します。元に戻せません。\n\n秘密鍵のバックアップが無いと、このアカウントには二度とログインできません。リレーに送った投稿やプロフィールは、Nostr の仕組み上、このアプリからは消せません。</string>
     <string name="account_delete_type_hint">確認のため「account delete」と入力してください。</string>
     <string name="account_delete_confirm">削除する</string>
     <string name="account_deleting">削除しています…</string>
-    <string name="account_deleted_toast">アカウントを削除しました</string>
+    <string name="account_deleted_toast">この端末からアカウントとデータを削除しました</string>
     <string name="signer_nip55">外部署名アプリ（Amber 等）</string>
     <string name="signer_nip46">リモート署名（NIP-46）</string>
     <string name="signer_nosskey">パスキー保護（Nosskey）</string>
@@ -568,7 +568,7 @@
     <string name="note_mute_user">このユーザーをブロック</string>
     <string name="note_unmute_user">ブロックを解除</string>
     <string name="note_unmuted_toast">ブロックを解除しました</string>
-    <string name="note_mute_locked">ブロックを変更できませんでした（ミュートリストを取得できないか、ロック中です）</string>
+    <string name="note_mute_locked">ブロックを解除できませんでした（ミュートリストを読み込めないか、ロック中です）</string>
     <string name="note_report">通報</string>
     <string name="note_copy_text">テキストをコピー</string>
     <string name="note_copy_link">リンクをコピー（njump）</string>
@@ -581,10 +581,10 @@
     <string name="unfollow_text_fmt">%1$s のフォローを解除します。</string>
     <string name="unfollow_confirm">解除する</string>
     <string name="mute_confirm_title">このユーザーをブロックしますか？</string>
-    <string name="mute_confirm_text">この人の投稿と通知をすぐに表示しなくなり、不適切な利用者として開発者に通報（NIP-56）します。設定 → ミュート・ブロック でいつでも解除できます。</string>
+    <string name="mute_confirm_text">この人の投稿・通知・DM をすぐに表示しなくなり、開発者にも通報します。自分のアイコンのメニュー →「ミュート・ブロック」でいつでも解除できます。</string>
     <string name="mute_confirm">ブロック</string>
     <string name="muted_toast">ブロックしました</string>
-    <string name="block_pending_toast">ブロックしました（ミュートリストへの保存は、リレーにつながったときにやり直します）</string>
+    <string name="block_pending_toast">ブロックしました（ミュートリストへの保存は、リレーにつながったらやり直します）</string>
     <string name="cw_sensitive">センシティブな内容</string>
     <string name="report_title">この投稿を通報</string>
     <string name="report_illegal">違法・児童の安全に関わる</string>
@@ -690,8 +690,8 @@
     <string name="npub_copied">npub をコピーしました</string>
     <string name="followers_check">フォロワーを確認</string>
     <string name="unmute_confirm_title">ブロックを解除しますか？</string>
-    <string name="unmute_confirm_text">このユーザーの投稿が再びタイムラインに表示されるようになります。</string>
-    <string name="mute_confirm_text2">この人の投稿をすぐに表示しなくなり、不適切な利用者として開発者に通報（NIP-56）します。ブロックはミュートリスト（NIP-51）に非公開で保存され、通報は開発者のリレーにだけ送ります。</string>
+    <string name="unmute_confirm_text">この人の投稿・通知・DM が、また表示されるようになります。</string>
+    <string name="mute_confirm_text2">この人の投稿・通知・DM をすぐに表示しなくなり、開発者にも通報します。ブロックは非公開のミュートリスト（NIP-51）に保存します。</string>
     <string name="lift_confirm">解除する</string>
     <string name="mute_confirm_action">ブロックする</string>
     <string name="mute_change_failed">変更できませんでした</string>
