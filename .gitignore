@@ -39,3 +39,6 @@ distribution/store/raw/
 distribution/store/out/
 distribution/store/.build-tmp/
 distribution/store/demo-media/svg/
+
+# [#948] ZEN-TTS のランタイム（scripts/fetch-zen-tts.sh がビルド時に取ってくる。ライセンス上、再配布できないので入れない）
+composeApp/src/commonMain/composeResources/files/zen-tts/
