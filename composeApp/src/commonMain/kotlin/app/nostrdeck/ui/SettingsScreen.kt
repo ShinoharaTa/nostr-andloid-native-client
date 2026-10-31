@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Mood
@@ -66,9 +67,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +86,7 @@ import app.nostrdeck.crypto.Nip19
 import app.nostrdeck.crypto.hexToBytes
 import app.nostrdeck.crypto.toHex
 import app.nostrdeck.model.AuthPolicy
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
@@ -99,7 +105,9 @@ import app.nostrdeck.signer.SignerMethod
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.signer.parseBunkerUri
 import app.nostrdeck.nostr.RelayUrl
+import app.nostrdeck.model.nfkc
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.embed_ogp
 import nostr_deck_client.composeapp.generated.resources.embed_ogp_images
@@ -112,6 +120,16 @@ import nostr_deck_client.composeapp.generated.resources.embed_youtube
 import nostr_deck_client.composeapp.generated.resources.group_app
 import nostr_deck_client.composeapp.generated.resources.group_nostr
 import nostr_deck_client.composeapp.generated.resources.section_about
+import nostr_deck_client.composeapp.generated.resources.account_delete
+import nostr_deck_client.composeapp.generated.resources.account_delete_confirm
+import nostr_deck_client.composeapp.generated.resources.account_delete_text
+import nostr_deck_client.composeapp.generated.resources.account_delete_title
+import nostr_deck_client.composeapp.generated.resources.account_delete_type_hint
+import nostr_deck_client.composeapp.generated.resources.account_deleted_toast
+import nostr_deck_client.composeapp.generated.resources.account_deleting
+import nostr_deck_client.composeapp.generated.resources.about_open_web_sub
+import nostr_deck_client.composeapp.generated.resources.about_privacy
+import nostr_deck_client.composeapp.generated.resources.about_terms
 import nostr_deck_client.composeapp.generated.resources.section_licenses
 import nostr_deck_client.composeapp.generated.resources.licenses_open_sub
 import nostr_deck_client.composeapp.generated.resources.section_account
@@ -292,7 +310,7 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
         Column(contentMod) {
             when (sectionId) {
                 "account" -> AccountSettings()
-                "signer" -> SignerSettings()
+                "signer" -> SignerSettings(state)
                 "relays" -> RelaySettings()
                 "mute" -> MuteSettings()
                 "favs" -> FavsSettings(state)
@@ -315,11 +333,30 @@ private fun SettingsContent(sectionId: String, state: DeckState, onBack: (() -> 
 }
 
 /**
- * [#840] このアプリについて。今はオープンソースライセンス（[LicensesScreen]）への導線だけ。
+ * [#840] このアプリについて。オープンソースライセンス（[LicensesScreen]）への導線と、
+ * [#951] 利用規約・プライバシーポリシー（Web ページ）へのリンク。
  * ライセンスは設定の一覧に並ばない節 "licenses" として右ペイン（Compact は単独の画面）に開く。
  */
 @Composable
 private fun AboutSettings(state: DeckState) {
+    val uri = LocalUriHandler.current
+    listOf(
+        Res.string.about_terms to TERMS_URL,
+        Res.string.about_privacy to PRIVACY_POLICY_URL,
+    ).forEach { (label, url) ->
+        SettingsNavRow(
+            label = stringResource(label),
+            sublabel = stringResource(Res.string.about_open_web_sub),
+            leading = {
+                Icon(
+                    Icons.Outlined.Description, contentDescription = null,
+                    tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+                )
+            },
+            onClick = { uri.openUri(url) },
+        )
+        Spacer(Modifier.size(DeckSpace.Sm))
+    }
     SettingsNavRow(
         label = stringResource(Res.string.section_licenses),
         sublabel = stringResource(Res.string.licenses_open_sub),
@@ -1662,7 +1699,7 @@ fun LoginGate() {
  * 警告ゲートの先に隔離する。方式のラジオ風一覧は廃止（現在の方式はカード内に1行表示）。
  */
 @Composable
-private fun SignerSettings() {
+private fun SignerSettings(state: DeckState) {
     val repo = LocalRepository.current
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
@@ -1758,14 +1795,114 @@ private fun SignerSettings() {
         )
     }
 
-    // ── ④ ログアウト（最下部に隔離） ──
+    // ── ④ ログアウト・[#953] アカウントの削除（最下部に隔離） ──
+    var confirmDelete by remember { mutableStateOf(false) }
     Spacer(Modifier.size(DeckSpace.Xl))
     HorizontalDivider(color = DeckColors.Border)
     Spacer(Modifier.size(DeckSpace.Lg))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         DeckTextButton(stringResource(Res.string.logout), color = DeckColors.Warn, onClick = { confirmLogout = true })
     }
+    Spacer(Modifier.size(DeckSpace.Sm))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        DeckTextButton(stringResource(Res.string.account_delete), color = DeckColors.Warn, onClick = { confirmDelete = true })
+    }
     if (confirmLogout) LogoutConfirmDialog(onDismiss = { confirmLogout = false })
+    if (confirmDelete) AccountDeleteDialog(state, onDismiss = { confirmDelete = false })
+}
+
+/** [#953] 削除の確認で手入力してもらう語（言語を問わず同じ）。 */
+private const val ACCOUNT_DELETE_PHRASE = "account delete"
+
+/**
+ * [#953] 入力が [ACCOUNT_DELETE_PHRASE] か。日本語のキーボードでは空白が変換に使われて消えたり全角になったりするので、
+ * 全角・半角（NFKC）、大文字・小文字、空白の有無は問わない。
+ */
+internal fun isAccountDeletePhrase(typed: String): Boolean =
+    nfkc(typed).lowercase().filterNot { it.isWhitespace() } == ACCOUNT_DELETE_PHRASE.filterNot { it.isWhitespace() }
+
+/**
+ * [#953] アカウントの削除（App Store ガイドライン 5.1.1(v)）。ログアウトと同じく鍵と外部の接続を破棄し、
+ * あわせてウォレットの接続・端末内のデータ（DB・画像のキャッシュ）を消して、入れたばかりと同じ状態（利用規約の同意から）に戻す。
+ * 取り消せないので、[ACCOUNT_DELETE_PHRASE] を手で入力したときだけ実行する。
+ * リレーに送った投稿は消せない（NIP-62 の削除依頼は出さない）ことをダイアログで伝える。
+ */
+@Composable
+private fun AccountDeleteDialog(state: DeckState, onDismiss: () -> Unit) {
+    val repo = LocalRepository.current
+    val toast = rememberToaster()
+    val deletedMsg = stringResource(Res.string.account_deleted_toast)
+    val imageLoader = SingletonImageLoader.get(LocalPlatformContext.current)
+    val scope = rememberCoroutineScope()
+    var typed by remember { mutableStateOf("") }
+    var deleting by remember { mutableStateOf(false) }
+    val ready = isAccountDeletePhrase(typed) && !deleting
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        containerColor = DeckColors.Surface,
+        shape = RoundedCornerShape(DeckRadius.Lg),
+        title = { DeckScaled { TitleText(stringResource(Res.string.account_delete_title)) } },
+        text = {
+            DeckScaled {
+                Column {
+                    Text(stringResource(Res.string.account_delete_text), color = DeckColors.Text2, fontSize = DeckType.Sub, lineHeight = DeckType.LineTitle)
+                    Spacer(Modifier.size(DeckSpace.Md))
+                    Text(stringResource(Res.string.account_delete_type_hint), color = DeckColors.Text, fontSize = DeckType.Sub)
+                    Spacer(Modifier.size(DeckSpace.Sm))
+                    DeckTextField(
+                        value = typed, onValueChange = { typed = it }, placeholder = ACCOUNT_DELETE_PHRASE,
+                        // 英字のキーボードで開く（日本語入力だと変換されて打ちにくい）
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
+                            autoCorrectEnabled = false,
+                            capitalization = KeyboardCapitalization.None,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            DeckScaled {
+                DeckTextButton(
+                    stringResource(if (deleting) Res.string.account_deleting else Res.string.account_delete_confirm),
+                    color = if (ready) DeckColors.Warn else DeckColors.Text3,
+                    onClick = {
+                        if (!ready) return@DeckTextButton
+                        deleting = true
+                        // DB を消した時点で画面は規約の同意に切り替わり、このダイアログ（とスコープ）も消える。
+                        // 途中で止まると鍵が残るので、最後まで止めずに走らせる。DB と画像の消去は UI スレッドの外で行う。
+                        scope.launch {
+                            withContext(NonCancellable) {
+                                // ログアウトと同じく外部の永続セッションを破棄し、ウォレットの接続と端末内のデータも消す。
+                                ExternalSignerHost.provider?.logout()
+                                Nip46Manager.disconnect()
+                                NosskeyHost.provider?.logout()
+                                app.nostrdeck.wallet.NwcManager.disconnect()
+                                // 開いていた一時カラム（他人のプロフィール・検索など）も閉じ、既定のカラムだけにする。
+                                state.columns.removeAll { !it.pinned }
+                                repo?.wipeLocalData(SampleData.columns.filter { it.pinned })
+                                // 鍵を消すのは DB を消した直後（規約の同意の画面に切り替わった直後）。画像の消去を待たない。
+                                SignerProvider.logout()
+                                // 次にログインしたときに設定の画面からではなくホームから始まるように。
+                                state.settingsSection = null
+                                state.clearDetail()
+                                state.navDest = NavDest.HOME
+                                toast(deletedMsg)
+                                imageLoader.memoryCache?.clear()
+                                withContext(Dispatchers.Default) { imageLoader.diskCache?.clear() }
+                            }
+                        }
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            DeckScaled {
+                DeckTextButton(stringResource(Res.string.common_cancel), onClick = { if (!deleting) onDismiss() }, color = DeckColors.Text3)
+            }
+        },
+    )
 }
 
 /**
