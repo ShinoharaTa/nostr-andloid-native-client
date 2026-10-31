@@ -85,6 +85,15 @@ jobs:
           echo "name=$VN" >> "$GITHUB_OUTPUT"
           echo "versionCode=$VC versionName=$VN track=${{ inputs.track }} status=${{ inputs.status }}"
 
+      # [#948] 読み上げの ZEN-TTS ランタイム（JS / WASM）。ライセンス上リポジトリに入れられないので、
+      # ビルドのたびに固定したコミットから取ってきて同梱する（モデルは入れない。アプリがダウンロードする）。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch ZEN-TTS runtime
+        run: ./scripts/fetch-zen-tts.sh
+
       - name: Build signed AAB
         run: >
           ./gradlew :composeApp:bundleRelease

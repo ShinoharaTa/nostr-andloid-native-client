@@ -149,6 +149,26 @@ it("[#963] ユーザーの ✕ で外すと解除として保存に渡す（通�
   expect(reportBlock).not.toHaveBeenCalled();
 });
 
+it("[#963] 選んでいる方（ミュート）をもう一度押すと解除になり、ブロックを押せばブロックに切り替わる", async () => {
+  const user = userEvent.setup();
+  setMuteList(LIST);
+  render(<MuteSection />);
+
+  await user.click(modeButton(muted, "ミュート"));
+  expect(modeButton(muted, "ミュート")).toHaveAttribute("aria-pressed", "false");
+  expect(modeButton(muted, "ブロック")).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("heading", { name: "ユーザー (0)" })).toBeInTheDocument();
+
+  await user.click(modeButton(muted, "ブロック"));
+  expect(modeButton(muted, "ブロック")).toHaveAttribute("aria-pressed", "true");
+  await user.click(modeButton(muted, "ブロック"));
+  expect(modeButton(muted, "ブロック")).toHaveAttribute("aria-pressed", "false");
+
+  await user.click(modeButton(muted, "ミュート"));
+  expect(modeButton(muted, "ミュート")).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("heading", { name: "ユーザー (1)" })).toBeInTheDocument();
+});
+
 it("ワードなどは両方のチェックを外すと解除として保存に渡す", async () => {
   const user = userEvent.setup();
   setMuteList(LIST);

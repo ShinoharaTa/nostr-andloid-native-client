@@ -376,7 +376,7 @@ function MuteUserRow({
             className={styles.muteMode}
             aria-pressed={muted}
             disabled={!editable || !canPrivate}
-            onClick={() => onChange(MUTE_MODE_PATCH.mute)}
+            onClick={() => onChange(muted ? MUTE_MODE_PATCH.remove : MUTE_MODE_PATCH.mute)}
           >
             {t("mute_mode_mute")}
           </button>
@@ -385,7 +385,7 @@ function MuteUserRow({
             className={styles.muteMode}
             aria-pressed={blocked}
             disabled={!editable}
-            onClick={() => onChange(MUTE_MODE_PATCH.block)}
+            onClick={() => onChange(blocked ? MUTE_MODE_PATCH.remove : MUTE_MODE_PATCH.block)}
           >
             {t("mute_mode_block")}
           </button>

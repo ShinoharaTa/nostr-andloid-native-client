@@ -1,4 +1,6 @@
-- Choose how times are shown: elapsed, date, or date with seconds (Settings > Appearance). Today shows only the time, and this year shows the month and day
-- Posts now show how many reactions they have. To save data, turn off "Show reaction counts" in Settings > Appearance
-- NIP-05 addresses like "_@domain" now show just the domain
-- Fixed the app sometimes opening on notifications instead of Home
+- Read aloud new posts from people you follow (Android / iOS). Voices: Settings > Read aloud. Speech: ZEN-TTS
+- Block people from ⋯ on posts and profiles: hides their posts, notifications and DMs at once and reports them to your relays and the developer. Blocks are public; Mute stays private
+- Reports now show "Reported"
+- Delete your account from Settings > Account (wipes this device)
+- Added a Terms of Use screen
+- Fixed gaps when scrolling back; Following now loads more at the bottom

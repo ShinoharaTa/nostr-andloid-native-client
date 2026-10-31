@@ -167,9 +167,12 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     var followers by remember(pubkey) { mutableStateOf<List<String>?>(null) }   // null=未集計/集計中
     var followersHasMore by remember(pubkey) { mutableStateOf(false) }
     var followersLoading by remember(pubkey) { mutableStateOf(false) }
-    // [#95] ミュート状態（NIP-51 kind:10000 の p）。
-    val muted = repo?.let { remember(it) { it.mutedUsersFlow() } }
+    // [#95][#963] ミュート・ブロックの状態（NIP-51 kind:10000 の p。公開 = ブロック、非公開 = ミュート）。
+    val blocked = repo?.let { remember(it) { it.blockedUsersFlow() } }
         ?.collectAsState(emptySet())?.value?.contains(pubkey) ?: false
+    // どちらの集合も常に集める（短絡で外すと、解除した直後に空から集め直して 1 フレームちらつく）
+    val mutedSet = repo?.let { remember(it) { it.mutedUsersFlow() } }?.collectAsState(emptySet())?.value ?: emptySet()
+    val muted = !blocked && pubkey in mutedSet
     // [#96/#97] フォロー中/フォロワーの一覧表示。null なら通常のプロフィール表示。
     var userList by remember(pubkey) { mutableStateOf<UserListMode?>(null) }
 
@@ -290,6 +293,7 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
         followingCount = followingList.size,
         followsMe = followsMe,
         muted = muted,
+        blocked = blocked,
         onShowFollowing = { userList = UserListMode.FOLLOWING },
         onShowFollowers = { userList = UserListMode.FOLLOWERS },
     )
@@ -355,7 +359,8 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
 private data class ProfileSocial(
     val followingCount: Int,
     val followsMe: Boolean,           // 相手が自分をフォローしているか [#98]
-    val muted: Boolean,               // 自分が相手をミュート中か [#95]
+    val muted: Boolean,               // 自分が相手をミュート中か（非公開）[#95]
+    val blocked: Boolean,             // 自分が相手をブロック中か（公開の p）[#963]
     val onShowFollowing: () -> Unit,
     val onShowFollowers: () -> Unit,  // 「フォロワーを確認」→ 一覧タブで初めて集計する
 )
@@ -684,9 +689,11 @@ private fun ProfileHeaderCard(
     // [#95] …メニューとミュート/通報の確認ダイアログ。
     var moreMenu by remember { mutableStateOf(false) }
     var confirmMute by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }   // [#963] ブロック / ブロック解除の確認
     var showReport by remember { mutableStateOf(false) }
     var showZap by remember { mutableStateOf(false) }
     val muted = social?.muted == true
+    val blocked = social?.blocked == true
     // [#413] タップで拡大表示する画像（null=閉）。アイコン/バナーのどちらも原寸 URL を渡す。
     var zoomUrl by remember { mutableStateOf<String?>(null) }
     val picture = profile?.pictureUrl?.takeIf { it.isNotBlank() }
@@ -757,10 +764,22 @@ private fun ProfileHeaderCard(
                             },
                         )
                         if (!isMe) {
-                            DropdownMenuItem(
-                                text = { Text(if (muted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.mute_confirm)) },
-                                onClick = { moreMenu = false; confirmMute = true },
-                            )
+                            // [#963] ミュート（非公開・通報なし）とブロック（公開・通報あり）の両方。ブロック中なら解除だけ
+                            if (blocked) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.note_unblock_user)) },
+                                    onClick = { moreMenu = false; confirmBlock = true },
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text(if (muted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.note_mute_user)) },
+                                    onClick = { moreMenu = false; confirmMute = true },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.note_block_user)) },
+                                    onClick = { moreMenu = false; confirmBlock = true },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(Res.string.note_report), color = DeckColors.Warn) },
                                 onClick = { moreMenu = false; showReport = true },
@@ -787,10 +806,10 @@ private fun ProfileHeaderCard(
                     Spacer(Modifier.width(DeckSpace.Sm))
                     ProfileBadge(stringResource(Res.string.follows_you))
                 }
-                // [#95] ミュート中の控えめなバッジ。
-                if (muted) {
+                // [#95][#963] ブロック中 / ミュート中の控えめなバッジ。
+                if (blocked || muted) {
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    ProfileBadge(stringResource(Res.string.muted_badge))
+                    ProfileBadge(stringResource(if (blocked) Res.string.blocked_badge else Res.string.muted_badge))
                 }
             }
             profile?.handle?.takeIf { it.isNotBlank() }?.let {
@@ -860,7 +879,7 @@ private fun ProfileHeaderCard(
         }
     }
 
-    // [#95] ミュート/解除の確認。ミュートは非公開（NIP-51 private p）で保存する。
+    // [#95] ミュート/解除の確認。ミュートは非公開（NIP-51 private p）で保存する（通報なし）。
     if (confirmMute) {
         DeckConfirmDialog(
             title = if (muted) stringResource(Res.string.unmute_confirm_title) else stringResource(Res.string.mute_confirm_title),
@@ -873,15 +892,33 @@ private fun ProfileHeaderCard(
                 scope.launch {
                     val ok = if (muted) repo?.unmuteUser(pubkey) == true else repo?.muteUserPrivate(pubkey) == true
                     toast(
-                        when {
-                            ok && muted -> getString(Res.string.note_unmuted_toast)
-                            ok -> getString(Res.string.muted_toast)
-                            else -> getString(Res.string.mute_change_failed)
-                        }
+                        if (!ok) getString(Res.string.mute_change_failed)
+                        else if (muted) getString(Res.string.note_unmuted_toast) else getString(Res.string.muted_toast)
                     )
                 }
             },
             onDismiss = { confirmMute = false },
+        )
+    }
+
+    // [#951][#963] ブロック/解除の確認。ブロック = 公開の p ＋ この人の通報。結果のトーストは App が出す（[EventRepository.blockResultFlow]）。
+    if (confirmBlock) {
+        DeckConfirmDialog(
+            title = if (blocked) stringResource(Res.string.unblock_confirm_title) else stringResource(Res.string.block_confirm_title),
+            text = if (blocked) stringResource(Res.string.unblock_confirm_text) else stringResource(Res.string.block_confirm_text),
+            confirmLabel = if (blocked) stringResource(Res.string.note_unblock_user) else stringResource(Res.string.block_confirm),
+            destructive = !blocked,
+            onConfirm = {
+                confirmBlock = false
+                if (!blocked) repo?.blockUser(pubkey)
+                else scope.launch {
+                    toast(
+                        if (repo?.unmuteUser(pubkey) == true) getString(Res.string.note_unblocked_toast)
+                        else getString(Res.string.mute_change_failed)
+                    )
+                }
+            },
+            onDismiss = { confirmBlock = false },
         )
     }
 

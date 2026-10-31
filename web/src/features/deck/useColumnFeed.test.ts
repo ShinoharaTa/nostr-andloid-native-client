@@ -4,7 +4,14 @@ import type { Subject } from "rxjs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { buildColumn, type ColumnSpec, DEFAULT_COLUMNS } from "../../lib/columns";
 import { authorOutbox$ } from "../../nostr/outbox";
-import { requestOnce, subscribe, subscribeTo } from "../../nostr/pool";
+import {
+  type RelayProgress,
+  requestFrom,
+  requestOnce,
+  subscribe,
+  subscribeProgress,
+  subscribeTo,
+} from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { useDeck } from "../../store/deck";
@@ -22,14 +29,16 @@ vi.mock("../../nostr/pool", async () => {
     useReadRelays: () => relays,
     subscribe: vi.fn(() => new Subject<"EOSE">()),
     subscribeTo: vi.fn(() => new Subject<"EOSE">()),
+    subscribeProgress: vi.fn(() => new Subject<RelayProgress>()),
     requestOnce: vi.fn(() => new Subject<NostrEvent>()),
+    requestFrom: vi.fn(() => new Subject<number | "EOSE" | "TIMEOUT">()),
   };
 });
 
 // アウトボックス購読も Subject にして、張った / やめたを observed で見る
 vi.mock("../../nostr/outbox", async () => {
   const { Subject } = await import("rxjs");
-  return { authorOutbox$: vi.fn(() => new Subject<"EOSE">()) };
+  return { authorOutbox$: vi.fn(() => new Subject<RelayProgress>()) };
 });
 
 const RELAYS = ["wss://relay.example"];
@@ -45,7 +54,9 @@ beforeEach(() => {
   // 前のテストの描画は afterEach の後で片付くので、呼び出しの記録は始めに消す
   vi.mocked(subscribe).mockClear();
   vi.mocked(subscribeTo).mockClear();
+  vi.mocked(subscribeProgress).mockClear();
   vi.mocked(requestOnce).mockClear();
+  vi.mocked(requestFrom).mockClear();
   vi.mocked(authorOutbox$).mockClear();
 });
 
@@ -58,6 +69,34 @@ function lastRequest() {
   const { calls, results } = vi.mocked(subscribeTo).mock;
   const call = calls.at(-1);
   return { relays: call?.[0], filters: call?.[1], eose: results.at(-1)?.value as Subject<"EOSE"> };
+}
+
+/** リレーごとの取得範囲を数える REQ（#955。フォロー中の投稿・通常のカラム） */
+function lastPaged() {
+  const { calls, results } = vi.mocked(subscribeProgress).mock;
+  const call = calls.at(-1);
+  return { relays: call?.[0], filters: call?.[1], progress: results.at(-1)?.value as Subject<RelayProgress> };
+}
+
+/**
+ * relay から created_at の並びが届いて EOSE（数える REQ への返事）。
+ * 聞いた件数（limit=100）ぶん届いたことにする（最後の時刻を繰り返して埋める。件数が少ないと「もう先が無い」扱いになって遡らない）
+ */
+function arrive(progress: Subject<RelayProgress>, relay: string, createdAts: number[]) {
+  const last = createdAts.at(-1);
+  const full = last === undefined ? [] : [...createdAts, ...Array(100 - createdAts.length).fill(last)];
+  for (const createdAt of full) progress.next({ type: "EVENT", from: relay, createdAt });
+  progress.next({ type: "EOSE", from: relay });
+}
+
+/** n 番目の遡りの要求（requestFrom）の宛先・フィルタと、返事を流す Subject */
+function olderRequest(n: number) {
+  const { calls, results } = vi.mocked(requestFrom).mock;
+  return {
+    relay: calls[n]?.[0],
+    filters: calls[n]?.[1],
+    reply: results[n]?.value as Subject<number | "EOSE" | "TIMEOUT">,
+  };
 }
 
 function signed(kind: number, key: Uint8Array, tags: string[][] = [], content = "", createdAt?: number) {
@@ -79,21 +118,21 @@ it("フォロー中: kind:3 未受信の間は自分だけで購読し、届い�
   expect(result.current.loading).toBe(true);
   expect(result.current.emptyText).toBeUndefined();
   expect(vi.mocked(subscribe)).toHaveBeenCalledWith({ kinds: [3], authors: [me] });
-  expect(lastRequest().filters).toEqual([
-    { kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 },
-    ...mix,
-  ]);
+  // 投稿（取得範囲を数える。#955）と、混ぜる通知・自分のリアクションは別の REQ
+  expect(lastPaged().filters).toEqual([{ kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 }]);
+  expect(lastRequest().filters).toEqual(mix);
 
   act(() => {
     eventStore.add(signed(3, meKey, [["p", follow]]));
   });
 
   expect(result.current.mode).toBe("following");
-  expect(lastRequest().relays).toEqual(RELAYS);
-  expect(lastRequest().filters).toEqual([
+  expect(lastPaged().relays).toEqual(RELAYS);
+  expect(lastPaged().filters).toEqual([
     { kinds: [1, 6, 16, 5, 1111, 42], authors: [follow, me], limit: 100 },
-    ...mix,
   ]);
+  expect(lastRequest().relays).toEqual(RELAYS);
+  expect(lastRequest().filters).toEqual(mix);
 
   const followed = signed(1, followKey, [], "フォロー先の投稿");
   act(() => {
@@ -112,11 +151,11 @@ it("フォロー中: kind:3 が届いてフォロー 0 件でも自分だけで�
   });
 
   // authors 無しの REQ（グローバル）は一度も出ない
-  for (const call of vi.mocked(subscribeTo).mock.calls) {
+  for (const call of [...vi.mocked(subscribeTo).mock.calls, ...vi.mocked(subscribeProgress).mock.calls]) {
     for (const f of call[1] as { authors?: string[]; "#p"?: string[] }[])
       expect(f.authors ?? f["#p"]).toBeDefined();
   }
-  expect(lastRequest().filters?.[0]).toEqual({ kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 });
+  expect(lastPaged().filters).toEqual([{ kinds: [1, 6, 16, 5, 1111, 42], authors: [me], limit: 100 }]);
   expect(result.current.events).toEqual([]);
   expect(result.current.emptyText).toBeUndefined();
 });
@@ -127,6 +166,7 @@ it("フォロー中: 未ログインなら REQ を出さず、読み込み中に
 
   expect(vi.mocked(subscribe)).not.toHaveBeenCalled();
   expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+  expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
   expect(result.current.loading).toBe(false);
   expect(result.current.rows).toBeNull();
   expect(result.current.events).toEqual([]);
@@ -156,11 +196,14 @@ it("最初の EOSE で、EOSE が来なくても 8 秒で読み込み中を消�
 it("ハッシュタグ: 設定リレーへ #t の REQ を張り、kind:3 は購読しない", () => {
   const { result } = renderHook(() => useColumnFeed(HASHTAG));
   expect(result.current.mode).toBe("column");
-  expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(RELAYS, [{ kinds: [1], "#t": ["nostr"], limit: 100 }]);
+  expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(RELAYS, [
+    { kinds: [1], "#t": ["nostr"], limit: 100 },
+  ]);
+  expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
   expect(vi.mocked(subscribe)).not.toHaveBeenCalled();
 });
 
-it("loadOlder: 最古の created_at を until にして 1 回だけ取りに行き、同じ最古では繰り返さない", () => {
+it("loadOlder: リレーの境界を until にしてそのリレーへ取りに行き、もう古いものが無ければ繰り返さない（#955）", () => {
   const tag = `older${Date.now()}`;
   const spec: ColumnSpec = { ...HASHTAG, id: "c_older", filter: { ...HASHTAG.filter, hashtags: [tag] } };
   const key = generateSecretKey();
@@ -169,37 +212,110 @@ it("loadOlder: 最古の created_at を until にして 1 回だけ取りに行�
     eventStore.add(signed(1, key, [["t", tag]], "old", 1_000));
   });
   const { result } = renderHook(() => useColumnFeed(spec));
+  act(() => arrive(lastPaged().progress, "wss://a/", [2_000, 1_000]));
   expect(result.current.events).toHaveLength(2);
 
   act(() => result.current.loadOlder());
-  expect(vi.mocked(requestOnce)).toHaveBeenCalledTimes(1);
-  expect(vi.mocked(requestOnce)).toHaveBeenCalledWith(
-    RELAYS,
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledWith(
+    "wss://a/",
     [{ kinds: [1], "#t": [tag], limit: 100, until: 1_000 }],
     6_000,
   );
+  expect(vi.mocked(requestOnce)).not.toHaveBeenCalled();
   expect(result.current.loadingOlder).toBe(true);
 
-  const older = vi.mocked(requestOnce).mock.results[0].value as Subject<NostrEvent>;
-  act(() => older.complete());
-  expect(result.current.loadingOlder).toBe(false);
-
+  // 返事を待っている間は重ねて聞かない
   act(() => result.current.loadOlder());
-  expect(vi.mocked(requestOnce)).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(1);
+
+  // 境界より古いものは無かった → もう聞かない
+  const first = olderRequest(0).reply;
+  act(() => {
+    first.next("EOSE");
+    first.complete();
+  });
+  expect(result.current.loadingOlder).toBe(false);
+  act(() => result.current.loadOlder());
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(1);
+});
+
+it("StrictMode の付け直しの後も、遡りの要求を張ったままにする（#955）", () => {
+  const { result } = renderHook(() => useColumnFeed(HASHTAG), { reactStrictMode: true });
+  act(() => arrive(lastPaged().progress, "wss://a/", [2_000, 1_000]));
+  act(() => result.current.loadOlder());
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(1);
+  expect(olderRequest(0).reply.observed).toBe(true);
+  expect(result.current.loadingOlder).toBe(true);
+});
+
+it("リレーごとに取れた幅が違っても、全リレーが取り終えたところまでしか出さず、浅いリレーだけを遡る（#955）", () => {
+  // いま = 2_000。下限から「いまから下限までの幅」ぶん深いところまでのリレーに聞く
+  vi.useFakeTimers();
+  vi.setSystemTime(2_000_000);
+  const tag = `gap${Date.now()}`;
+  const spec: ColumnSpec = { ...HASHTAG, id: "c_gap", filter: { ...HASHTAG.filter, hashtags: [tag] } };
+  const key = generateSecretKey();
+  const post = (at: number) => signed(1, key, [["t", tag]], `at ${at}`, at);
+  // A は投稿が多く 1_900〜1_800 しか返さない。B は少なく 1_950〜1_000 まで返す
+  const dense = [1_900, 1_850, 1_800].map(post);
+  const sparse = [1_950, 1_400, 1_000].map(post);
+  act(() => {
+    for (const e of [...dense, ...sparse]) eventStore.add(e);
+  });
+  const { result } = renderHook(() => useColumnFeed(spec));
+  act(() => {
+    arrive(lastPaged().progress, "wss://a/", [1_900, 1_850, 1_800]);
+    arrive(lastPaged().progress, "wss://b/", [1_950, 1_400, 1_000]);
+  });
+  // 1_800 より古い B の投稿は、A の分が抜けているかもしれないので出さない
+  expect(result.current.events.map((e) => e.created_at)).toEqual([1_950, 1_900, 1_850, 1_800]);
+
+  // 遡るのは A だけ（A の境界から）。B はずっと深くまで取れている
+  act(() => result.current.loadOlder());
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(1);
+  expect(olderRequest(0).relay).toBe("wss://a/");
+  expect(olderRequest(0).filters).toEqual([{ kinds: [1], "#t": [tag], limit: 100, until: 1_800 }]);
+
+  // A の 1_800〜1_200 が届くと、下限が下がって B の 1_400 も出る
+  const filled = [1_600, 1_200].map(post);
+  act(() => {
+    for (const e of filled) eventStore.add(e);
+    const reply = olderRequest(0).reply;
+    for (const e of filled) reply.next(e.created_at);
+    reply.next("EOSE");
+    reply.complete();
+  });
+  expect(result.current.events.map((e) => e.created_at)).toEqual([
+    1_950, 1_900, 1_850, 1_800, 1_600, 1_400, 1_200,
+  ]);
+
+  // 応えなかったリレーは外して先へ進める（B の 1_000 も出る）
+  act(() => result.current.loadOlder());
+  const next = vi
+    .mocked(requestFrom)
+    .mock.calls.slice(1)
+    .map(([relay]) => relay);
+  expect(next).toEqual(["wss://a/", "wss://b/"]);
+  act(() => {
+    olderRequest(1).reply.next("TIMEOUT");
+    olderRequest(2).reply.next("EOSE");
+  });
+  expect(result.current.events.at(-1)?.created_at).toBe(1_000);
 });
 
 it("refresh: 前の購読をやめて REQ を張り直す", () => {
   const { result } = renderHook(() => useColumnFeed(HASHTAG));
-  const before = lastRequest().eose;
-  act(() => before.next("EOSE"));
+  const before = lastPaged().progress;
+  act(() => before.next({ type: "EOSE", from: "wss://a/" }));
   expect(result.current.loading).toBe(false);
   expect(before.observed).toBe(true);
 
   act(() => result.current.refresh());
   expect(before.observed).toBe(false);
-  expect(vi.mocked(subscribeTo)).toHaveBeenCalledTimes(2);
-  expect(lastRequest().eose).not.toBe(before);
-  expect(lastRequest().eose.observed).toBe(true);
+  expect(vi.mocked(subscribeProgress)).toHaveBeenCalledTimes(2);
+  expect(lastPaged().progress).not.toBe(before);
+  expect(lastPaged().progress.observed).toBe(true);
   expect(result.current.loading).toBe(true);
 });
 
@@ -207,6 +323,7 @@ it("DM カラムは購読せず、読み込み中にもしない", () => {
   const dm: ColumnSpec = { ...HASHTAG, id: "c_dm", kind: "DM", filter: { ...HASHTAG.filter, kinds: [14] } };
   const { result } = renderHook(() => useColumnFeed(dm));
   expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+  expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
   expect(result.current.loading).toBe(false);
 });
 
@@ -214,7 +331,7 @@ it("著者指定のカラム: 著者の書き込みリレーへも張り、refre
   const author = getPublicKey(generateSecretKey());
   const profile = buildColumn("PROFILE", { text: author }, new Set(), 1);
   if (!profile) throw new Error("buildColumn returned null");
-  const outbox = () => vi.mocked(authorOutbox$).mock.results.at(-1)?.value as Subject<"EOSE">;
+  const outbox = () => vi.mocked(authorOutbox$).mock.results.at(-1)?.value as Subject<RelayProgress>;
 
   const { result, unmount } = renderHook(() => useColumnFeed(profile));
   expect(vi.mocked(authorOutbox$)).toHaveBeenCalledWith(
@@ -382,7 +499,7 @@ it("フォロー中: 自分への反応・自分のリアクション・未読 D
   }
 });
 
-it("フォロー中の loadOlder: 投稿の最古を until にして、通知・自分のリアクションも同じ until で取る（#522）", () => {
+it("フォロー中の loadOlder: 投稿はリレーの境界から、通知・自分のリアクションは下限を until にして取る（#522 #955）", () => {
   const followKey = generateSecretKey();
   const follow = getPublicKey(followKey);
   act(() => {
@@ -391,16 +508,48 @@ it("フォロー中の loadOlder: 投稿の最古を until にして、通知・
     eventStore.add(signed(1, followKey, [], "old", 900));
   });
   const { result } = renderHook(() => useColumnFeed(FOLLOWING));
+  act(() => arrive(lastPaged().progress, "wss://a/", [2_000, 900]));
   act(() => result.current.loadOlder());
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledWith(
+    "wss://a/",
+    [{ kinds: [1, 6, 16, 5, 1111, 42], authors: [follow, me], limit: 100, until: 900 }],
+    6_000,
+  );
   expect(vi.mocked(requestOnce)).toHaveBeenCalledWith(
     RELAYS,
     [
-      { kinds: [1, 6, 16, 5, 1111, 42], authors: [follow, me], limit: 100, until: 900 },
       { kinds: [1, 6, 16, 7, 9735, 1111], "#p": [me], limit: 200, until: 900 },
       { kinds: [7], authors: [me], limit: 100, until: 900 },
     ],
     6_000,
   );
+});
+
+it("フォロー中: 混ぜた通知も、下限より古いものは出さない（#955）", () => {
+  const followKey = generateSecretKey();
+  const follow = getPublicKey(followKey);
+  const myPost = signed(1, meKey, [], "自分の投稿", 500);
+  const recent = signed(1, followKey, [], "フォロー先の投稿", 2_000);
+  const reaction = signed(
+    7,
+    generateSecretKey(),
+    [
+      ["e", myPost.id],
+      ["p", me],
+    ],
+    "+",
+    800,
+  );
+  act(() => {
+    for (const e of [signed(3, meKey, [["p", follow]]), myPost, recent, reaction]) eventStore.add(e);
+  });
+  const { result } = renderHook(() => useColumnFeed(FOLLOWING));
+  // a は 1_500 まで、b は 500 まで取れた → 下限は 1_500
+  act(() => {
+    arrive(lastPaged().progress, "wss://a/", [2_000, 1_500]);
+    arrive(lastPaged().progress, "wss://b/", [500]);
+  });
+  expect(describeRows(result.current.rows)).toEqual([`post:${recent.id}`]);
 });
 
 it("フォロー中以外のカラムは混ぜた行を持たない", () => {

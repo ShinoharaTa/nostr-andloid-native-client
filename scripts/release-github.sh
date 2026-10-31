@@ -18,6 +18,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# [#948] 読み上げの ZEN-TTS ランタイム（ライセンス上リポジトリに入れられないので、ビルドのたびに取ってきて同梱する）
+scripts/fetch-zen-tts.sh
+
 SKIP_MAC="${SKIP_MAC:-0}"
 SKIP_ANDROID="${SKIP_ANDROID:-0}"
 

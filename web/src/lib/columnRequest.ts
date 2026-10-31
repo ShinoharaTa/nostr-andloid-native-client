@@ -152,6 +152,32 @@ export function requestFor(spec: ColumnSpec, ctx: Ctx): RequestPlan {
   return { relays: ctx.relays, filters: [toProtocol(f, COLUMN_LIMIT)] };
 }
 
+/**
+ * [#955] リレーごとの取得範囲を数え、リレーごとに自分の境界から遡るカラムの REQ（plan.filters の 1 つ）。
+ * フォロー中の投稿と、通常のカラム（検索・通知・ふぁぼ・ステータス以外。ネイティブ subscribeColumn / subscribeFollowing）。
+ * 対象外は null（いちばん古い投稿の時刻から全リレーへ聞く）。フォロー中に混ぜる通知・自分のリアクションは数えない
+ * （同じ REQ だとどのフィルタへの返事か分からないので、呼び出し側で別の REQ にする）
+ */
+export function pagedFilterFor(spec: ColumnSpec, plan: RequestPlan): Filter | null {
+  if (plan === null) return null;
+  switch (spec.kind) {
+    case "FOLLOWING":
+      return plan.filters[0] ?? null;
+    case "NOTIFICATIONS":
+    case "FAVS":
+    case "STATUS":
+    case "DM":
+    case "THREAD":
+    case "CHANNEL_LIST":
+    case "CHANNEL_ROOM":
+      return null;
+  }
+  const f = spec.filter;
+  if (spec.kind === "GLOBAL" && f.words.length > 0) return null;
+  if (f.search !== null && f.search.trim() !== "") return null;
+  return plan.filters.length === 1 ? plan.filters[0] : null;
+}
+
 /** EventStore から読む条件（limit なし・kind:5 は含めない）。predicate は読んだ後の絞り込み */
 export function viewFor(spec: ColumnSpec, ctx: Ctx): ViewPlan {
   const f = spec.filter;

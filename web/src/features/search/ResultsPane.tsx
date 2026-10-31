@@ -24,7 +24,8 @@ export function ResultsPane({ tokens, onBack }: { tokens: readonly string[]; onB
   // 条件の中身が変わったときだけ作り直す（語に空白・改行は入らない）
   const key = tokens.join("\n");
   const spec = useMemo(() => searchSpecOf(key === "" ? [] : key.split("\n")), [key]);
-  const { events, loading } = useColumnFeed(spec);
+  // 結果は上から SEARCH_ROWS_TOTAL 件だけで、続きは取りに行かない（#955 の下限も掛けない）
+  const { events, loading } = useColumnFeed(spec, { paging: false });
   const posts = useMemo(() => events.slice(0, SEARCH_ROWS_TOTAL), [events]);
   const { users, loading: usersLoading } = useUserSearch(userQueryOf(tokens));
   const [tab, setTab] = useState<Tab>("posts");

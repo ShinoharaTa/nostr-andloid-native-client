@@ -269,7 +269,7 @@
     <string name="mute_saved">Mute list saved</string>
     <string name="mute_save_failed">Save failed (check your key)</string>
     <string name="mute_list_title">Mute list (NIP-51 / kind:10000)</string>
-    <string name="mute_list_desc">Toggle public/private and press Save to republish. Unchecking both removes the entry.</string>
+    <string name="mute_list_desc">For users, choose Mute or Block (tap the selected one again to remove). For words, hashtags and threads, toggle public/private (unchecking both removes the entry). Press Save to republish.</string>
     <string name="mute_word_placeholder">Word to mute (/regex/ allowed)</string>
     <string name="mute_word_added">Mute word added</string>
     <string name="mute_add_failed">Could not add</string>
@@ -420,7 +420,7 @@
     <string name="terms_title">Terms of Use</string>
     <string name="terms_lead">Before using Nostrism, please read and agree to the Terms of Use.</string>
     <string name="terms_point_conduct">There is no tolerance for objectionable content or abusive behavior, including illegal content, sexual content involving minors, harassment, threats, hate speech, spam and impersonation.</string>
-    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. When you block an abusive user, their posts, notifications and direct messages are hidden right away. Reports and blocks also reach the developer.</string>
+    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. You can block abusive users from the ⋯ menu: their posts, notifications and direct messages are hidden right away, and a report is sent to your relays and the developer. Blocks are saved publicly in your mute list, so they and others can see it (use Mute to hide someone without them knowing).</string>
     <string name="terms_point_response">The developer reviews reports and acts on them where it can, for example by removing the content from the developer’s relay.</string>
     <string name="terms_point_nostr">Nostr is a decentralized network. Posts sent to relays are public and may not be fully removable from the network.</string>
     <string name="terms_read_full">Read the full Terms of Use</string>
@@ -585,15 +585,15 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="unfollow_text_fmt">Unfollows %1$s.</string>
     <string name="unfollow_confirm">Unfollow</string>
     <string name="mute_confirm_title">Mute this user?</string>
-    <string name="mute_confirm_text">Their posts and notifications will be hidden. You can undo anytime in Settings → Mute.</string>
+    <string name="mute_confirm_text">Their posts, notifications and direct messages will be hidden. Mutes are private, so they won’t know. You can undo anytime from your icon menu → Mute &amp; block.</string>
     <string name="mute_confirm">Mute</string>
     <string name="muted_toast">Muted</string>
     <string name="block_pending_toast">Blocked (saving to your mute list will be retried once the relays are reachable)</string>
-    <!-- [#963] Block (public mute) vs mute (private) -->
+    <!-- [#963] Block (public p + report), separate from mute (private) -->
     <string name="note_block_user">Block this user</string>
     <string name="note_unblock_user">Unblock</string>
     <string name="block_confirm_title">Block this user?</string>
-    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can undo this anytime in Settings → Mute &amp; block.</string>
+    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can undo this anytime from your icon menu → Mute &amp; block.</string>
     <string name="block_confirm">Block</string>
     <string name="blocked_toast">Blocked</string>
     <string name="blocked_badge">Blocked</string>
@@ -602,7 +602,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_unblocked_toast">Unblocked</string>
     <string name="mute_mode_mute">Mute</string>
     <string name="mute_mode_block">Block</string>
-    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56).</string>
+    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56). Tap the selected one again to remove.</string>
     <string name="cw_sensitive">Sensitive content</string>
     <string name="report_title">Report this post</string>
     <string name="report_illegal">Illegal / child safety</string>
@@ -709,7 +709,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="followers_check">Check followers</string>
     <string name="unmute_confirm_title">Unmute this user?</string>
     <string name="unmute_confirm_text">Their posts will appear in your timeline again.</string>
-    <string name="mute_confirm_text2">Their posts will no longer appear in your timeline. Mutes are stored privately (NIP-51).</string>
+    <string name="mute_confirm_text2">Their posts, notifications and direct messages will be hidden. Mutes are stored privately (NIP-51), so they won’t know.</string>
     <string name="lift_confirm">Unmute</string>
     <string name="mute_confirm_action">Mute</string>
     <string name="mute_change_failed">Couldn’t change</string>
@@ -921,7 +921,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <!-- [#948] Read aloud (ZEN-TTS) -->
     <string name="section_speech">Read aloud</string>
     <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Turn it on or off with the button above the post button. You need to download a voice first (about 31 MB each). Voices are downloaded from ZEN-TTS’s official source (GitHub).</string>
-    <string name="speech_unsupported">Read aloud is not available on this device (Android and iOS only).</string>
+    <string name="speech_unsupported">Read aloud is not available on this device (Android, and iOS 16.4 or later).</string>
     <string name="speech_no_runtime">This build does not include the speech engine.</string>
     <string name="speech_voices">Voice</string>
     <string name="speech_download_fmt">Download (%1$d MB)</string>

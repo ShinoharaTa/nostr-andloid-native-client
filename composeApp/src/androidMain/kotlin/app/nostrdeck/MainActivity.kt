@@ -126,6 +126,9 @@ class MainActivity : ComponentActivity() {
         app.nostrdeck.data.NetworkPolicy.appContext = applicationContext
         // [#879] 文字から作る絵文字のフォント（取り直せるのでキャッシュに置く）。
         app.nostrdeck.data.EmojiFontFiles.dir = java.io.File(cacheDir, "emoji_fonts")
+        // [#948] 読み上げ: 声のモデルの置き場（取り直しになるのでキャッシュではなくアプリのデータの置き場）と、WebView 用の Context
+        app.nostrdeck.data.TtsModelFiles.dir = java.io.File(filesDir, "zen-tts-models")
+        app.nostrdeck.data.SpeechEngineHost.context = applicationContext
 
         val db = createDatabase(DriverFactory(applicationContext))
         // 各カラムが表示時に自分のフィルタで購読する（カラム=REQ ライフサイクル）。

@@ -9,9 +9,19 @@ import nostr_deck_client.composeapp.generated.resources.emoji_saved
 import nostr_deck_client.composeapp.generated.resources.emoji_no_base
 import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplicate
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
+import nostr_deck_client.composeapp.generated.resources.blocked_toast
+import nostr_deck_client.composeapp.generated.resources.block_pending_toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +58,8 @@ import app.nostrdeck.ui.LocalNoteNav
 import app.nostrdeck.ui.LocalProfileNames
 import app.nostrdeck.ui.LocalRepository
 import app.nostrdeck.ui.LoginGate
+import app.nostrdeck.ui.TermsGate
+import app.nostrdeck.ui.InAppToastHost
 import app.nostrdeck.ui.NoteNav
 import app.nostrdeck.ui.Nyan
 import app.nostrdeck.state.DetailRoute
@@ -112,6 +124,7 @@ fun App(
         // [#login] 未ログイン（鍵を自動生成しない）ならログインゲートを出す。
         // ログイン成立の瞬間だけ identity を読み直す（起動時に既ログインなら start() 済みなので二重取得しない）。
         val loggedIn by SignerProvider.session.collectAsState()
+        val termsAccepted by (repository?.termsAcceptedFlow()?.collectAsState() ?: remember { mutableStateOf(true) })
         var wasLoggedIn by remember { mutableStateOf(loggedIn) }
         LaunchedEffect(loggedIn) {
             if (loggedIn && !wasLoggedIn) repository?.reloadForNewIdentity()
@@ -128,6 +141,15 @@ fun App(
         )
         LaunchedEffect(repository) {
             repository?.publishUnconfirmedFlow()?.collect { toast(unconfirmedMsg) }
+        }
+        // [#951] ブロックの結果を知らせる（押した投稿の行はすぐ消えるので、行ではなくここで出す）。
+        LaunchedEffect(repository) {
+            repository?.blockResultFlow()?.collect { result ->
+                val r = nostr_deck_client.composeapp.generated.resources.Res.string
+                toast(app.nostrdeck.i18n.getString(
+                    if (result == app.nostrdeck.data.EventRepository.BlockResult.SAVED) r.blocked_toast else r.block_pending_toast,
+                ))
+            }
         }
         // [#732] 絵文字ピッカーからリアクションを送ったことを知らせる（投稿の行には出さない方針）。
         LaunchedEffect(repository) {
@@ -277,7 +299,19 @@ fun App(
                     .pointerInput(Unit) { detectTapGestures { rootFocus.clearFocus() } },
             ) {
                 // 実データ運用（repository あり）で未ログインならゲート。SampleData プレビュー時は素通し。
-                if (repository != null && !loggedIn) LoginGate() else AppScaffold(state)
+                // [#951] その前に利用規約の同意（ログイン済みでも、同意していない版なら一度出す）。
+                when {
+                    repository != null && !termsAccepted -> TermsGate(onAgree = { repository.acceptTerms() })
+                    repository != null && !loggedIn -> LoginGate()
+                    else -> AppScaffold(state)
+                }
+                // 画面の中に出すトースト（iOS）。ゲートの外に置き、画面が切り替わっても出せるように（削除の完了など）。
+                // 下のナビバーに重ならない高さに出す。
+                InAppToastHost(
+                    Modifier.align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(bottom = 72.dp),
+                )
             }
         }
     }

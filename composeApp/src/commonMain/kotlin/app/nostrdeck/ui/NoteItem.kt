@@ -81,7 +81,9 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 1ノート。アクションはアイコンのみ（数値は出さない）:
@@ -141,6 +143,7 @@ fun NoteItem(
   var confirmUnfollow by remember { mutableStateOf(false) }
   // [#94] ミュートは表示への影響が大きいため、確認してから実行する。
   var confirmMute by remember { mutableStateOf(false) }
+  var confirmBlock by remember { mutableStateOf(false) }   // [#963]
   // [#319] 削除リクエストの確認。取り消せない発行なので必ず挟む。
   var confirmDelete by remember { mutableStateOf(false) }
   val toast = rememberToaster()
@@ -478,21 +481,49 @@ fun NoteItem(
                             )
                         } else {
                             // [#94] ミュート済みなら「ミュートを解除」に切替。ミュートは確認してから実行する。
+                            // [#963] ミュート（非公開・通報なし）とブロック（公開・通報あり）の両方を出す。ブロック中なら解除だけ。
                             val mutedUsers by (repo?.mutedUsersFlow()?.collectAsState(emptySet())
                                 ?: remember { mutableStateOf(emptySet<String>()) })
-                            val isMuted = note.event.pubkey in mutedUsers
-                            DropdownMenuItem(
-                                text = { Text(if (isMuted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.note_mute_user)) },
-                                onClick = {
-                                    moreMenu = false
-                                    if (isMuted) scope.launch {
-                                        toast(
-                                            if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unmuted_toast)
-                                            else getString(Res.string.note_mute_locked)
-                                        )
-                                    } else confirmMute = true
-                                },
-                            )
+                            val blockedUsers by (repo?.blockedUsersFlow()?.collectAsState(emptySet())
+                                ?: remember { mutableStateOf(emptySet<String>()) })
+                            val isBlocked = note.event.pubkey in blockedUsers
+                            val isMuted = !isBlocked && note.event.pubkey in mutedUsers
+                            if (isBlocked) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.note_unblock_user)) },
+                                    onClick = {
+                                        moreMenu = false
+                                        // 行がすぐ消えてもやりきる（この行のスコープは行と一緒に止まる）
+                                        scope.launch {
+                                            withContext(NonCancellable) {
+                                                toast(
+                                                    if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unblocked_toast)
+                                                    else getString(Res.string.note_mute_locked)
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text(if (isMuted) stringResource(Res.string.note_unmute_user) else stringResource(Res.string.note_mute_user)) },
+                                    onClick = {
+                                        moreMenu = false
+                                        if (isMuted) scope.launch {
+                                            withContext(NonCancellable) {
+                                                toast(
+                                                    if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unmuted_toast)
+                                                    else getString(Res.string.note_mute_locked)
+                                                )
+                                            }
+                                        } else confirmMute = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.note_block_user)) },
+                                    onClick = { moreMenu = false; confirmBlock = true },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(Res.string.note_report), color = DeckColors.Warn) },
                                 onClick = { moreMenu = false; showReport = true },
@@ -615,7 +646,7 @@ fun NoteItem(
       )
   }
 
-  // [#94] ミュートの確認。実行結果はトーストで知らせる。
+  // [#94] ミュートの確認（非公開。通報なし）。実行結果はトーストで知らせる。
   if (confirmMute) {
       DeckConfirmDialog(
           title = stringResource(Res.string.mute_confirm_title),
@@ -623,14 +654,32 @@ fun NoteItem(
           confirmLabel = stringResource(Res.string.mute_confirm), destructive = true,
           onConfirm = {
               confirmMute = false
+              // ミュートした行はすぐ消える。この行のスコープは行と一緒に止まるので、保存とトーストは最後までやりきる
               scope.launch {
-                  toast(
-                      if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
-                      else getString(Res.string.note_mute_locked)
-                  )
+                  withContext(NonCancellable) {
+                      toast(
+                          if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
+                          else getString(Res.string.mute_change_failed)
+                      )
+                  }
               }
           },
           onDismiss = { confirmMute = false },
+      )
+  }
+
+  // [#951][#963] ブロック: その人を公開でミュートし、この投稿を通報する（[EventRepository.blockUser]）。
+  // この行はすぐ消えるので、結果のトーストは App が [EventRepository.blockResultFlow] を受けて出す。
+  if (confirmBlock) {
+      DeckConfirmDialog(
+          title = stringResource(Res.string.block_confirm_title),
+          text = stringResource(Res.string.block_confirm_text),
+          confirmLabel = stringResource(Res.string.block_confirm), destructive = true,
+          onConfirm = {
+              confirmBlock = false
+              repo?.blockUser(note.event.pubkey, note.event)
+          },
+          onDismiss = { confirmBlock = false },
       )
   }
 
@@ -652,7 +701,7 @@ fun NoteItem(
   // [#6] 通報（NIP-56 kind:1984）。理由を選んで報告イベントを発行する。
   if (showReport) {
       ReportDialog(
-          onPick = { type -> showReport = false; scope.launch { repo?.reportNote(note.event, type) } },
+          onPick = { type -> showReport = false; scope.launch { repo?.reportNote(note.event, type); toast(getString(Res.string.reported_toast)) } },
           onDismiss = { showReport = false },
       )
   }

@@ -126,7 +126,7 @@ gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review
 ## 提出前チェックリスト
 
 ### 両ストア共通
-- [ ] **アカウント削除の機能を入れる（要実装）**。下の「審査リスク」を参照
+- [x] アカウント削除の機能（#953。設定 → アカウント → アカウントを削除）
 - [ ] 掲載文を [listing.md](listing.md) から貼る（日本語と英語）
 - [ ] プライバシーポリシーの URL が開けることを確かめる（https://nostrism.shino3.net/privacy-policy.html）
 - [ ] 旧素材 `docs/store/screenshot-*.png` と `feature-1024x500.png` には実在のユーザーが写っているので、コンソールに残っていれば今回の画像に差し替える
@@ -164,16 +164,22 @@ gh workflow run store-listing.yml --ref main -f dry_run=false -f send_for_review
 Nostrism is a client for Nostr, an open, decentralized social protocol. There is no account on our servers.
 
 How to try the app:
-1. On the first screen, choose "Private key" and tap "Generate new key".
+1. On the first screen, read the Terms of Use and tap "Agree and continue". On the next screen, tap "Generate new key" under "Log in with a private key (nsec)".
 2. The app connects to public Nostr relays. Use Search to find and follow accounts, or open the Global/hashtag columns.
 
 User-generated content:
-- Users can mute users and words, and report posts (NIP-56) from the "..." menu on every post.
+- Terms of Use: shown before choosing a login method. Users must tap "Agree and continue". Full text: https://nostrism.shino3.net/terms.html
+- Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile.
+- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. The block is saved publicly in the user's NIP-51 mute list, and a report (NIP-56) is sent to the user's relays and to the developer's relay (relay-jp.shino3.net); if it can't be delivered, the app keeps it and sends it again until the relay accepts it. The developer reviews the reports.
+- Mute: "..." menu on every post or profile > "Mute this user". Hides their posts, notifications and direct messages too, but the entry is saved privately and no report is sent (for users who don't want the other person to know).
+- Users can review and switch mutes/blocks, and also mute words and hashtags, in the account menu (tap your own icon) > "Mute & block".
 - Posts marked with a content warning are collapsed until tapped.
 - Contact: tshinoharawork@gmail.com
+- Screen recording on a physical device: (Terms of Use → Report → Block の録画を添付する)
 
 Account deletion:
-- (アカウント削除を実装したら、ここに手順を書く。例: Settings > Account > Delete account)
+- Settings > Account > "Delete account". After typing "account delete" to confirm, the app removes the private key and all data on the device and returns to the first screen. Posts already sent to relays can't be removed from the app because of how Nostr works (this is explained in the dialog).
+- Steps on the web: https://nostrism.shino3.net/account-deletion.html
 ```
 
 新しい鍵ではタイムラインが空に近いので、審査用にフォローの多いデモ用アカウントを用意して、その鍵（nsec）を審査用のログイン情報の欄に入れるとよい。
@@ -194,21 +200,20 @@ Account deletion:
 - 収集するデータ: 「その他のユーザー作成コンテンツ」「写真」「動画」「ユーザー ID」。目的は「アプリの機能」。任意（利用者が投稿したときだけ）
 - 共有: なし（利用者の操作で選んだリレーやアップロード先に送るのは、共有の例外にあたる）
 - 転送時の暗号化: はい（wss / https）
-- 削除の依頼: アカウント削除を実装したあと、その手順を書いた Web ページの URL を登録する
+- 削除の依頼: アプリ内（設定 → アカウント → アカウントを削除）と Web ページ（https://nostrism.shino3.net/account-deletion.html）
 
 ## 審査リスク
 
-**アカウント削除がない（両ストア・最優先）。**
-アプリ内で新しい鍵を作れる（＝アカウントを作れる）が、アカウントを削除する手段がない。
+**アカウント削除（両ストア）。**
 App Store の審査ガイドライン 5.1.1(v) は、アカウントを作れるアプリにアプリ内での削除を求めている。
 Google Play も、アカウントを作れるアプリにアプリ内と Web の両方で削除の依頼手段を求めている。
-いまある「ログアウト」は端末から鍵を消すだけで、削除の要件を満たすとは言いにくい。
-案: 設定に「アカウントを削除」を足し、確認のうえで (1) 削除の依頼（NIP-62 の Request to Vanish）を書き込み先のリレーに送り、(2) プロフィールを空にし、(3) 端末から鍵とデータを消す。
-あわせて、手順を書いた Web ページ（例: `docs/account-deletion.html`）を用意して Play に登録する。
+#953 で、設定 → アカウント に「アカウントを削除」を足した（`account delete` と手で入力して確定。鍵と端末内のデータを消す）。
+リレーへの削除依頼（NIP-62）は出さない方針（2026-10-30 決定）。リレーに送った投稿は消せないことを、ダイアログと Web ページ（`docs/account-deletion.html`。Play に登録する）で伝える。
 
 **投稿への Zap（App Store）。**
 2023 年に Damus が、投稿への Zap を「デジタルコンテンツに結びついた支払い」とされ、ガイドライン 3.1.1 で指摘を受けた前例がある。
 指摘を受けた場合は、iOS 版だけ投稿への Zap を隠してプロフィールへの Zap に限る、という対応が考えられる。
 
 **利用者が作るコンテンツ（App Store 1.2）。**
-通報・ミュート・内容の警告の折りたたみ・連絡先はそろっている。審査メモでその場所を説明しておく。
+2026-10-30 の初回の審査で指摘された（#951）。ログインの前の利用規約の同意、ブロック（ミュートリスト＋通報を開発者のリレーへ）を足した。
+通報・ブロック・内容の警告の折りたたみ・連絡先の場所を審査メモで説明し、実機の画面録画（規約の同意 → 通報 → ブロック）を審査メモ欄に付ける。

@@ -96,11 +96,26 @@ fun MuteSettings() {
         edited = true
     }
 
+    // [#963] ユーザーの行はミュート（非公開）/ ブロック（公開）の切り替え。どちらでもなければ解除（保存で外れる）。
+    fun setMode(entry: MuteEntry, mode: MuteMode?) {
+        val cur = draft ?: return
+        draft = cur.map {
+            if (it.category == entry.category && it.value == entry.value) {
+                it.copy(isPublic = mode == MuteMode.BLOCK, isPrivate = mode == MuteMode.MUTE)
+            } else it
+        }
+        edited = true
+    }
+
     fun save() {
         val d = draft ?: return
+        // [#963] ブロックに変わった人（公開になった人）には、⋯ のブロックと同じく通報も送る
+        val blockedBefore = mute?.entries.orEmpty().filter { it.category == MuteCategory.USER && it.isPublic }.map { it.value }.toSet()
+        val newlyBlocked = d.filter { it.category == MuteCategory.USER && it.isPublic && it.value !in blockedBefore }.map { it.value }
         saving = true
         scope.launch {
             val ok = repo.publishMuteList(d)
+            if (ok && newlyBlocked.isNotEmpty()) repo.reportBlocked(newlyBlocked)
             // 安定待ち: 楽観反映 + リレーエコーが落ち着くまで待ってから編集ロックを解く。
             delay(1500)
             saving = false
@@ -148,11 +163,12 @@ fun MuteSettings() {
                 Text(stringResource(Res.string.mute_empty), color = DeckColors.Text3, fontSize = DeckType.Sub)
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                 if (mute?.editable == false) item { LockedBanner() }
-                item { ColumnLegend() }
-                muteSection(MuteCategory.USER, catUsers, entries, editable, ::toggle)
-                muteSection(MuteCategory.WORD, catWords, entries, editable, ::toggle)
-                muteSection(MuteCategory.HASHTAG, catHashtags, entries, editable, ::toggle)
-                muteSection(MuteCategory.THREAD, catThreads, entries, editable, ::toggle)
+                // [#963] ユーザーはミュート / ブロックの切り替え。公開 / 非公開の列はそれ以外の種類に
+                muteSection(MuteCategory.USER, catUsers, entries, editable, ::toggle, ::setMode)
+                if (entries.any { it.category != MuteCategory.USER }) item { ColumnLegend() }
+                muteSection(MuteCategory.WORD, catWords, entries, editable, ::toggle, ::setMode)
+                muteSection(MuteCategory.HASHTAG, catHashtags, entries, editable, ::toggle, ::setMode)
+                muteSection(MuteCategory.THREAD, catThreads, entries, editable, ::toggle, ::setMode)
             }
         }
 
@@ -167,16 +183,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.muteSection(
     entries: List<MuteEntry>,
     editable: Boolean,
     onToggle: (MuteEntry, Boolean, Boolean) -> Unit,
+    onMode: (MuteEntry, MuteMode?) -> Unit,
 ) {
     // 「両方 false（=解除予定）」も編集中は残す（誤操作をその場で戻せるように）。
     val list = entries.filter { it.category == category }
     if (list.isEmpty()) return
     item { MuteSectionLabel(label, list.count { it.isPublic || it.isPrivate }) }
+    if (category == MuteCategory.USER) item { SectionCaption(stringResource(Res.string.mute_mode_desc)) }   // [#963]
     items(list, key = { "${category.tag}:${it.value}" }) { entry ->
-        MuteRow(entry, editable, onToggle)
+        MuteRow(entry, editable, onToggle, onMode)
         HorizontalDivider(color = DeckColors.Border)
     }
 }
+
+/** [#963] ユーザーの行の状態。MUTE = 非公開の p（相手に分からない）、BLOCK = 公開の p（相手にも分かる・通報あり）。 */
+private enum class MuteMode { MUTE, BLOCK }
 
 @Composable
 private fun SaveBar(saving: Boolean, onSave: () -> Unit) {
@@ -198,7 +219,12 @@ private fun SaveBar(saving: Boolean, onSave: () -> Unit) {
 }
 
 @Composable
-private fun MuteRow(entry: MuteEntry, editable: Boolean, onToggle: (MuteEntry, Boolean, Boolean) -> Unit) {
+private fun MuteRow(
+    entry: MuteEntry,
+    editable: Boolean,
+    onToggle: (MuteEntry, Boolean, Boolean) -> Unit,
+    onMode: (MuteEntry, MuteMode?) -> Unit,
+) {
     val removed = !entry.isPublic && !entry.isPrivate
     Row(
         Modifier.fillMaxWidth().height(DeckDimens.AvatarSize + DeckSpace.Sm * 2),
@@ -212,10 +238,28 @@ private fun MuteRow(entry: MuteEntry, editable: Boolean, onToggle: (MuteEntry, B
                 MuteCategory.WORD -> MuteText(entry.value, removed)
             }
         }
-        MuteCheck(entry.isPublic, editable) { onToggle(entry, true, it) }
-        Spacer(Modifier.width(DeckSpace.Sm))
-        MuteCheck(entry.isPrivate, editable) { onToggle(entry, false, it) }
+        if (entry.category == MuteCategory.USER) {
+            // [#963] ミュート / ブロックの切り替え。選んでいる方をもう一度押すと解除（保存で外れる）
+            val muting = entry.isPrivate && !entry.isPublic
+            ModeChip(stringResource(Res.string.mute_mode_mute), selected = muting, enabled = editable) {
+                onMode(entry, if (muting) null else MuteMode.MUTE)
+            }
+            Spacer(Modifier.width(DeckSpace.Xs))
+            ModeChip(stringResource(Res.string.mute_mode_block), selected = entry.isPublic, enabled = editable) {
+                onMode(entry, if (entry.isPublic) null else MuteMode.BLOCK)
+            }
+        } else {
+            MuteCheck(entry.isPublic, editable) { onToggle(entry, true, it) }
+            Spacer(Modifier.width(DeckSpace.Sm))
+            MuteCheck(entry.isPrivate, editable) { onToggle(entry, false, it) }
+        }
     }
+}
+
+/** ほかの設定画面の排他選択と同じ見た目（[ChoiceChip]）。ロック中は押しても変わらない。 */
+@Composable
+private fun ModeChip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    ChoiceChip(text, selected = selected, onClick = { if (enabled) onClick() })
 }
 
 @Composable
