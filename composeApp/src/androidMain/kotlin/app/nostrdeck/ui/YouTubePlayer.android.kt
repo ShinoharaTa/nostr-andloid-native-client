@@ -31,6 +31,12 @@ actual fun YouTubeInlinePlayer(videoId: String, autoplay: Boolean, modifier: Mod
                 settings.domStorageEnabled = true                  // YouTube 埋め込みは localStorage 必須
                 settings.mediaPlaybackRequiresUserGesture = false  // iframe 内の再生ボタンで即再生させる
                 webChromeClient = android.webkit.WebChromeClient() // <video> の再生 UI に必要
+                webViewClient = object : android.webkit.WebViewClient() {
+                    // [#948] アプリ内の WebView は 1 つの描画プロセスを共有する。読み上げのエンジン（約 190 MB）が
+                    // メモリ不足で落とされると、ここにも通知が来る。既定（false）だとアプリごと終了させられるので、
+                    // true を返して耐える（この埋め込みは黒いまま。画面から消えるときに捨てられる）
+                    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean = true
+                }
                 setBackgroundColor(android.graphics.Color.BLACK)
                 val auto = if (autoplay) 1 else 0
                 val html = """

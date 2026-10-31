@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -219,11 +220,16 @@ private fun ContentWithCompose(
         val onRoomPage = isCompact &&
             state.columns.firstOrNull { it.id == state.visibleColumnId }?.kind == ColumnKind.CHANNEL_ROOM
         if (state.navDest == NavDest.HOME && !state.hasDetail && !onRoomPage) {
-            FloatingActionButton(
-                onClick = { state.showCompose = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Lg),
+            // [#948] 投稿ボタンの上に読み上げの ON / OFF（声をダウンロード済みのときだけ出る）
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(DeckSpace.Lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DeckSpace.Md),
             ) {
-                Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                SpeechToggle()
+                FloatingActionButton(onClick = { state.showCompose = true }) {
+                    Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                }
             }
         }
     }

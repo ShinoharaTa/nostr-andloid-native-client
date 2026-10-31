@@ -107,6 +107,7 @@ private val repository: EventRepository by lazy {
     app.nostrdeck.wallet.NwcManager.restore()
     // [#879] 文字から作る絵文字のフォント（初回に取ってきたものを置く）。
     app.nostrdeck.data.EmojiFontFiles.dir = File(appDir, "emoji-fonts")
+    app.nostrdeck.data.TtsModelFiles.dir = File(appDir, "zen-tts-models")   // [#948] デスクトップは読み上げに対応しないが、置き場だけは決めておく
     val db = createDatabase(DriverFactory(File(appDir, "nostr.db")))
     val relays = defaultRelaysFor(Locale.getDefault().language)
     EventRepository(db, appScope, relays).apply { start() }

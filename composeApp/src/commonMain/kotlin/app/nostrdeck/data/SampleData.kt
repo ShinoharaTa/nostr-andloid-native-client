@@ -178,6 +178,6 @@ object SampleData {
     // 自分のアイコンのメニュー（AccountMenuItem.section）から開くので、ここには含めない。
     val settingsSectionIds = listOf(
         "account", "emoji", "hashtags", "relays", "dmrelays", "media", "wallet", "signer",
-        "appearance", "reaction", "data", "about",
+        "appearance", "reaction", "speech", "data", "about",
     )
 }

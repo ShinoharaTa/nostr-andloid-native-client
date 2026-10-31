@@ -449,6 +449,7 @@ class EventRepository(
         loadKansaiMode() // [#710]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
+        loadTtsVoice()   // [#948]
         loadDeveloperMode()   // [#351]
         loadShowReactionCounts()   // [#932]
         loadNoteAccentStyle()
@@ -574,6 +575,7 @@ class EventRepository(
     fun onForeground() {
         bgPauseJob?.cancel()
         bgPauseJob = null
+        readerInstance?.onAppForeground()   // [#948]
         scope.launch(relayDispatcher) {
             relays.values.forEach {
                 it.start()   // pause 済みなら再開（購読中の REQ は接続時に自動で張り直される）。未 pause なら no-op
@@ -593,6 +595,7 @@ class EventRepository(
      * 切らず、置きっぱなしだけを止める」ための猶予。
      */
     fun onBackground(delayMs: Long = BG_PAUSE_DELAY_MS) {
+        readerInstance?.onAppBackground()   // [#948] 読み上げのエンジンは読み上げ側の猶予で片付ける
         bgPauseJob?.cancel()
         bgPauseJob = scope.launch {
             delay(delayMs)
@@ -848,6 +851,7 @@ class EventRepository(
      * default/manual のリレー設定は残す。
      */
     fun reloadForNewIdentity() {
+        readerInstance?.stop()   // [#948] 前のアカウントのフィードを読み続けない
         scope.launch {
             val me = SignerProvider.current().publicKeyHex()
             myPubkey = me; myPubkeyFlow.value = me
@@ -4922,6 +4926,37 @@ class EventRepository(
     /** [#879] 文字から作る絵文字のフォント（作成フォームのプレビューを端末で描く。初回だけ取ってくる）。 */
     val emojiFonts = EmojiFonts(uploadHttp, scope)
 
+    // ---- [#948] フォロー中フィードの読み上げ（ZEN-TTS）----
+    /** 声のモデル（設定画面からダウンロードする）。 */
+    val ttsModels: TtsModels by lazy { TtsModels(uploadHttp, scope) }
+
+    /** 読み上げに使う声（端末ローカル設定）。 */
+    private val ttsVoiceState = MutableStateFlow(app.nostrdeck.model.TtsVoice.DEFAULT)
+    fun ttsVoiceFlow(): StateFlow<app.nostrdeck.model.TtsVoice> = ttsVoiceState
+    fun setTtsVoice(voice: app.nostrdeck.model.TtsVoice) {
+        ttsVoiceState.value = voice
+        putSettingAsync(TTS_VOICE_KEY, voice.id)
+    }
+    private fun loadTtsVoice() {
+        ttsVoiceState.value = app.nostrdeck.model.TtsVoice.fromId(q.getSetting(TTS_VOICE_KEY).executeAsOneOrNull())
+    }
+
+    private var readerInstance: TimelineReader? = null
+    /** フォロー中フィードの読み上げ（ON / OFF は投稿ボタンの上から。読む投稿はカラムの描画から [TimelineReader.onFeedRendered] で受け取る）。 */
+    val timelineReader: TimelineReader
+        get() = readerInstance ?: TimelineReader(
+            scope = scope,
+            ready = { ttsModels.isReady(it) },
+            voice = { ttsVoiceState.value },
+            // 読む投稿はフォロー中のカラムが描く一覧から受け取る（DeckScreen → TimelineReader.onFeedRendered）。
+            // フィードを別に組み立てて見張らない（画面に出たものと読むものを一致させる・重い変換を二重に走らせない）
+            mutes = muteListFlow(),
+            personName = { pubkey ->
+                withContext(Dispatchers.Default) { q.profileByPubkey(pubkey).executeAsOneOrNull()?.name?.takeIf { it.isNotBlank() } }
+            },
+            me = { myPubkey },
+        ).also { readerInstance = it }
+
     /** [M11] DB のメディアサーバ一覧（Settings 用）。enabled/順序つき。 */
     fun mediaServersFlow(): Flow<List<app.nostrdeck.db.Media_server>> =
         q.allMediaServers().asFlow().mapToList(Dispatchers.Default)
@@ -6476,6 +6511,7 @@ class EventRepository(
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
+        const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
         const val DENSITY_KEY = "ui:density"       // [#675] 廃人モード（normal/dense）
         const val KANSAI_MODE_KEY = "ui:kansai_mode" // [#710] うにゅうと握手（on/off）
         const val NOTE_ACCENT_STYLE_KEY = "ui:note_accent"  // [#256][#257] 種別の視覚表示（none/line/bg）
