@@ -170,8 +170,8 @@ How to try the app:
 User-generated content:
 - Terms of Use: shown before choosing a login method. Users must tap "Agree and continue". Full text: https://nostrism.shino3.net/terms.html
 - Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile.
-- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. A report is sent to the developer's relay (relay-jp.shino3.net); if it can't be delivered, the app keeps it and sends it again until the relay accepts it. The developer reviews the reports.
-- Users can also mute words and hashtags in Settings > Mute & block.
+- Block: "..." menu on every post > "Block this user", or "..." menu on a profile > "Block". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. A report is sent to the developer's relay (relay-jp.shino3.net); if it can't be delivered, the app keeps it and sends it again until the relay accepts it. The developer reviews the reports.
+- Users can review blocks and also mute words and hashtags in the account menu (tap your own icon) > "Mute & block".
 - Posts marked with a content warning are collapsed until tapped.
 - Contact: tshinoharawork@gmail.com
 - Screen recording on a physical device: (Terms of Use → Report → Block の録画を添付する)

@@ -875,14 +875,22 @@ class EventRepository(
      * カラムは [defaultColumns]（初回と同じ既定）に戻し、画面にも反映する（[remoteDeckColumnsFlow]）。
      */
     suspend fun wipeLocalData(defaultColumns: List<ColumnSpec>) {
+        wiping = true          // 鍵を捨てるのは呼ぶ側がこのあと。その間に届く DM を復号して、消した DB に書かないように
         identityGeneration++   // 復号中の DM を、消したあとに書かないように（[storeDm] の前で比べる）
+        readerInstance?.stop()   // [#948] 消したアカウントのフィードを読み続けない（エンジンも捨てる）
         resetReactionFetches()
         IDENTITY_SUBS.forEach { unsubscribeAll(it) }
+        // ブックマーク・固定投稿の中身の購読（id は動的）も閉じる。開けたままだと消したアカウントの投稿を取り直してしまう
+        withContext(relayDispatcher) { activeSubs.keys.filter { it == "bookmark_items" || it.startsWith("pins_") || it.startsWith("pinitems_") } }
+            .forEach { unsubscribeAll(it) }
         ownLists.forEach { unsubscribeAll(it.subId) }
         unsubscribeAll("mute_global")
         myPubkey = null; myPubkeyFlow.value = null
         follows.value = emptyList(); followsAt = 0L; ownContacts = null; myProfileAt = 0L
         resetOwnLists()
+        // ブックマーク・固定投稿も空に戻す（残すと、次のアカウントで最初に足したときに前のアカウントの分ごと発行してしまう）
+        bookmarkList.reset(); pinnedList.reset(); pinsAtByAuthor.clear()
+        pendingBlocks.value = emptySet()   // [#951] KV は下で消す。手元の分も捨てる
         syncEventByD.value = emptyMap()
         muteListAt = 0L; muteFlow.value = null
         muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
@@ -926,6 +934,12 @@ class EventRepository(
             follows.value = emptyList(); followsAt = 0L; ownContacts = null; myProfileAt = 0L
             // [#396] 自分のリスト（10002/10030/30015）は State・at・KV ごと空に戻す（旧アカウントの版を見せない）。
             resetOwnLists()
+            wiping = false
+            // [#951] 前のアカウントで保存できていなかったブロックを、新しいアカウントのミュートリストに入れない。
+            // 前のアカウントのミュートリストも捨てる（新しい鍵の分は mute_global の張り直しで届く）。
+            updatePendingBlocks { emptySet() }
+            muteListAt = 0L; muteFlow.value = null
+            muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
             // [#374] 旧アカウントの 30078 スナップショットを新アカウントで見せないように。
             syncEventByD.value = emptyMap()
 
@@ -4135,8 +4149,8 @@ class EventRepository(
     }
 
     /** [#478] ミュートリストを取り直し、手元（[muteFlow]）に反映されるまで待つ。発行してはいけなければ null。 */
-    private suspend fun refreshMute(): OwnRefetch.Result.Reached? =
-        refreshOwn(10000) { muteFlow.value?.updatedAt ?: 0L } as? OwnRefetch.Result.Reached
+    private suspend fun refreshMute(notify: Boolean = true): OwnRefetch.Result.Reached? =
+        refreshOwn(10000, notify = notify) { muteFlow.value?.updatedAt ?: 0L } as? OwnRefetch.Result.Reached
 
     private suspend fun publishMuteListNow(entries: List<MuteEntry>): Boolean = runCatching {
         val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
@@ -4158,8 +4172,8 @@ class EventRepository(
      * 復号できない非公開項目がある（[MuteList.nip44Locked]）と再発行で失う恐れがあるため中止する。
      * 戻り値: 発行できたか（既にミュート済み/ロック中/失敗は false）。
      */
-    suspend fun muteUserPrivate(pubkey: String): Boolean {
-        refreshMute() ?: return false   // [#478] 受信前の空のリストで上書きしない
+    suspend fun muteUserPrivate(pubkey: String, notify: Boolean = true): Boolean {
+        refreshMute(notify) ?: return false   // [#478] 受信前の空のリストで上書きしない
         val current = muteFlow.value
         if (current?.nip44Locked == true) return false          // 編集不可（NIP-44 ロック中）
         val entries = current?.entries ?: emptyList()
@@ -4213,7 +4227,9 @@ class EventRepository(
 
     /** [pubkey] をミュートリストに保存する。保存できた（すでに入っていた）ら保存待ちから外す。 */
     private suspend fun saveBlock(pubkey: String): Boolean = blockSaveLock.withLock {
-        val saved = runCatching { muteUserPrivate(pubkey) }.getOrDefault(false) ||
+        // 取り直せなかったときのトースト（「最新のリストを取れませんでした」）は出さない。ブロックの結果は
+        // [blockResultFlow] で伝えるし、保存待ちのやり直しは 1 分おきに裏で走る（毎回出すと画面がトーストだらけになる）
+        val saved = runCatching { muteUserPrivate(pubkey, notify = false) }.getOrDefault(false) ||
             muteFlow.value?.entries?.any { it.category == MuteCategory.USER && it.value == pubkey } == true
         if (saved) updatePendingBlocks { it - pubkey }
         saved
@@ -4282,6 +4298,11 @@ class EventRepository(
         var content: String = ""
         var other: List<List<String>> = emptyList()
         val ids = MutableStateFlow<List<String>>(emptyList())  // 追加順を保持
+
+        /** アカウントを消したとき（[wipeLocalData]）に空へ戻す。 */
+        fun reset() {
+            at = 0L; content = ""; other = emptyList(); ids.value = emptyList()
+        }
     }
     private val bookmarkList = EIdList()
     private val pinnedList = EIdList()
@@ -5154,7 +5175,7 @@ class EventRepository(
             voice = { ttsVoiceState.value },
             // 読む投稿はフォロー中のカラムが描く一覧から受け取る（DeckScreen → TimelineReader.onFeedRendered）。
             // フィードを別に組み立てて見張らない（画面に出たものと読むものを一致させる・重い変換を二重に走らせない）
-            mutes = muteListFlow(),
+            mutes = muteFilterFlow(),   // [#951] 保存待ちのブロックも含めて読まない（画面で隠す判定と同じ）
             personName = { pubkey ->
                 withContext(Dispatchers.Default) { q.profileByPubkey(pubkey).executeAsOneOrNull()?.name?.takeIf { it.isNotBlank() } }
             },
@@ -6129,10 +6150,16 @@ class EventRepository(
 
     /** [#953] アカウントを消すたびに進める。復号を待つ間に消されたら、その DM は保存しない。 */
     @kotlin.concurrent.Volatile private var identityGeneration = 0
+    /**
+     * [#953] アカウントを消している（[wipeLocalData] から、次にログインする [reloadForNewIdentity] まで）。
+     * 鍵はこのあと呼ぶ側が捨てるので、その間は [SignerProvider.hasSession] がまだ true。届いた DM を復号して
+     * 消した DB に書き戻したり、[myPubkey] を立て直して購読を張り直したりしないよう、ここで止める。
+     */
+    @kotlin.concurrent.Volatile private var wiping = false
 
     /** 受信 gift wrap(1059) を復号し、DM本体(kind:14)としてローカル保存。重複/失敗は無視。 */
     private fun ingestGiftWrap(e: NostrEvent) {
-        if (!SignerProvider.hasSession()) return   // [#953] 未ログイン（消した直後など）は復号できない
+        if (wiping || !SignerProvider.hasSession()) return   // [#953] 未ログイン（消した直後など）は復号できない
         if (!processedWraps.add(e.id)) return
         val generation = identityGeneration
         scope.launch {
@@ -6153,7 +6180,7 @@ class EventRepository(
      * 自分が送信者なら p タグ(受信者)、そうでなければ送信者。復号失敗は無視。
      */
     private fun ingestLegacyDm(e: NostrEvent) {
-        if (!SignerProvider.hasSession()) return   // [#953]
+        if (wiping || !SignerProvider.hasSession()) return   // [#953]
         if (!processedLegacyDm.add(e.id)) return
         val generation = identityGeneration
         scope.launch {

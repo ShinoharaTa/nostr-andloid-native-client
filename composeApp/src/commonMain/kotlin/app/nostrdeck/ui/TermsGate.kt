@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,6 +47,7 @@ fun TermsGate(onAgree: () -> Unit) {
     val uri = LocalUriHandler.current
     Column(
         Modifier.fillMaxSize().background(DeckColors.Bg)
+            .safeDrawingPadding()   // iOS はホストが safe area を無視して描くので、ロゴと見出しをノッチの下に置かない
             .verticalScroll(rememberScrollState())
             .padding(DeckSpace.Lg),
     ) {
