@@ -417,17 +417,75 @@ export function muteVisibleFilter(
 // ---- 自分のミュートリスト ----
 
 type MuteState = {
-  /** 自分のミュートリスト。null = まだ分からない（未ログイン・読み込み中） */
+  /** 自分のミュートリスト。null = まだ分からない（未ログイン・読み込み中）。設定のミュート編集はこれを使う */
   list: MuteList | null;
-  /** list から作った判定器（list が変わったときだけ作り直す） */
+  /** [#957] ブロックしたが、まだミュートリストに保存できていない人（block.ts。ネイティブ pendingBlocks） */
+  pending: ReadonlySet<string>;
+  /** list ＋ pending から作った判定器（どちらかが変わったときだけ作り直す。ネイティブ muteFilterFlow） */
   matcher: MuteMatcher;
 };
 
-export const useMute = create<MuteState>()(() => ({ list: null, matcher: EMPTY_MUTE_MATCHER }));
+export const useMute = create<MuteState>()(() => ({
+  list: null,
+  pending: new Set<string>(),
+  matcher: EMPTY_MUTE_MATCHER,
+}));
+
+/**
+ * 画面で隠す判定に使うミュート（list ＋ 保存待ちのブロック。ネイティブ muteFilterFlow）。
+ * 保存待ちの人は、まだ list に入っていなければ公開のユーザー（＝ブロック）として足す。
+ */
+export function withPendingBlocks(list: MuteList | null, pending: ReadonlySet<string>): MuteList | null {
+  const extra = [...pending].filter(
+    (pk) => !(list?.entries.some((e) => e.category === "p" && e.value === pk) ?? false),
+  );
+  if (extra.length === 0) return list;
+  const base = list ?? EMPTY_MUTE_LIST;
+  return {
+    ...base,
+    entries: [
+      ...base.entries,
+      ...extra.map((pk): MuteEntry => ({ category: "p", value: pk, isPublic: true, isPrivate: false })),
+    ],
+  };
+}
 
 /** ストアのミュートリストを置き換える */
 export function setMuteList(list: MuteList | null): void {
-  useMute.setState({ list, matcher: muteMatcherFrom(list) });
+  useMute.setState((s) => ({ list, matcher: muteMatcherFrom(withPendingBlocks(list, s.pending)) }));
+}
+
+/** [#957] 保存待ちのブロックを置き換える（block.ts から） */
+export function setPendingBlocks(pending: ReadonlySet<string>): void {
+  useMute.setState((s) => ({ pending, matcher: muteMatcherFrom(withPendingBlocks(s.list, pending)) }));
+}
+
+/**
+ * [#963] ユーザーのミュートの状態。公開の p = ブロック、非公開（暗号化）の p だけ = ミュート。
+ * 両方に入っていればブロック。保存待ちのブロックもブロックとする。
+ */
+export type UserMuteState = "none" | "muted" | "blocked";
+
+/** ブロック中か（ミュートリストの公開の p、または保存待ちのブロック） */
+export function isBlocked(s: Pick<MuteState, "list" | "pending">, pubkey: string): boolean {
+  if (s.pending.has(pubkey)) return true;
+  return s.list?.entries.some((e) => e.category === "p" && e.value === pubkey && e.isPublic) ?? false;
+}
+
+/** ミュートだけしているか（非公開の p だけ。ブロック中なら false） */
+export function isMutedOnly(s: Pick<MuteState, "list" | "pending">, pubkey: string): boolean {
+  if (isBlocked(s, pubkey)) return false;
+  return s.list?.entries.some((e) => e.category === "p" && e.value === pubkey && e.isPrivate) ?? false;
+}
+
+export function userMuteStateOf(s: Pick<MuteState, "list" | "pending">, pubkey: string): UserMuteState {
+  if (isBlocked(s, pubkey)) return "blocked";
+  return isMutedOnly(s, pubkey) ? "muted" : "none";
+}
+
+/** いまのユーザーのミュートの状態（ミュートリスト・保存待ちが変わったら描き直す） */
+export function useUserMuteState(pubkey: string): UserMuteState {
+  return useMute((s) => userMuteStateOf(s, pubkey));
 }
 
 /** いまの判定器（ミュートリストが変わったら描き直す） */

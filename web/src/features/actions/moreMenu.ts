@@ -1,5 +1,6 @@
 import { t } from "../../i18n";
 import type { MenuEntry } from "../../ui/MenuButton";
+import type { UserMuteState } from "../mute/muteList";
 
 export type MoreMenuActions = {
   follow(): void;
@@ -11,6 +12,8 @@ export type MoreMenuActions = {
   requestDelete(): void;
   mute(): void;
   unmute(): void;
+  block(): void;
+  unblock(): void;
   report(): void;
   copyText(): void;
   copyLink(): void;
@@ -27,7 +30,8 @@ export type MoreMenuActions = {
  * isFollowing が null（自分の kind:3 が未取得）ならフォロー項目を出さない。
  * isBookmarked が null（自分の kind:10003 が未取得）ならブックマーク項目を出さない（#531）。
  * 自分の投稿は isPinned が null（自分の kind:10001 が未取得）でなければ「プロフィールに固定」。
- * 他人の投稿は「通報」の前に「このユーザーをミュート」（ミュート中なら「ミュートを解除」）。
+ * 他人の投稿は「通報」の前にミュート・ブロックの項目（#963。muteState: none = 「このユーザーをミュート」
+ * 「このユーザーをブロック」、muted = 「ミュートを解除」「このユーザーをブロック」、blocked = 「ブロックを解除」）。
  * translationVisible が undefined / null（Translator 非対応・本文が空）なら「翻訳」は出さない。
  * false なら「翻訳」、true なら「翻訳を隠す」（操作系との区切りの後、コピー系の前。#541）。
  * 開発者モード（developerMode）の間は末尾に区切り＋「イベントJSONを表示」。
@@ -38,7 +42,7 @@ export function moreMenuEntries(a: {
   isFollowing: boolean | null;
   isBookmarked: boolean | null;
   isPinned: boolean | null;
-  isMuted: boolean;
+  muteState: UserMuteState;
   note1: string;
   nevent: string;
   developerMode?: boolean;
@@ -72,11 +76,7 @@ export function moreMenuEntries(a: {
       );
     }
   } else {
-    entries.push(
-      a.isMuted
-        ? { type: "item", label: t("note_unmute_user"), onSelect: a.on.unmute }
-        : { type: "item", label: t("note_mute_user"), onSelect: a.on.mute },
-    );
+    entries.push(...muteMenuEntries(a.muteState, a.on));
   }
   entries.push(
     a.isMine
@@ -105,4 +105,25 @@ export function moreMenuEntries(a: {
     );
   }
   return entries;
+}
+
+/** [#963] ミュート・ブロックの項目（投稿・チャットの発言の ⋯ で共通。ネイティブ NoteItem.kt） */
+export function muteMenuEntries(
+  state: UserMuteState,
+  on: Pick<MoreMenuActions, "mute" | "unmute" | "block" | "unblock">,
+): MenuEntry[] {
+  switch (state) {
+    case "none":
+      return [
+        { type: "item", label: t("note_mute_user"), onSelect: on.mute },
+        { type: "item", label: t("note_block_user"), onSelect: on.block },
+      ];
+    case "muted":
+      return [
+        { type: "item", label: t("note_unmute_user"), onSelect: on.unmute },
+        { type: "item", label: t("note_block_user"), onSelect: on.block },
+      ];
+    case "blocked":
+      return [{ type: "item", label: t("note_unblock_user"), onSelect: on.unblock }];
+  }
 }

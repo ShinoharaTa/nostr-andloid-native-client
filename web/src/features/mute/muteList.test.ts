@@ -7,6 +7,8 @@ import {
   buildMuteListTemplate,
   clearMuteDecryptCacheForTest,
   EMPTY_MUTE_LIST,
+  isBlocked,
+  isMutedOnly,
   isNoteMuted,
   isNotificationMuted,
   isReactionTargetMuted,
@@ -16,6 +18,10 @@ import {
   muteVisibleFilter,
   readMuteList,
   rebuildMuteTags,
+  setMuteList,
+  setPendingBlocks,
+  useMute,
+  userMuteStateOf,
 } from "./muteList";
 
 beforeEach(() => {
@@ -339,5 +345,72 @@ describe("再発行の中身", () => {
     expect(template.content).toBe(`enc:${JSON.stringify([["y", "secret"]])}`);
     const onlyKnown = { ...base, privateTags: [["p", BOB]] };
     expect((await buildMuteListTemplate(onlyKnown, [], encrypt, 1)).template.content).toBe("");
+  });
+});
+
+describe("[#957] 保存待ちのブロック（ネイティブ muteFilterFlow）", () => {
+  it("判定器は list ＋ 保存待ちのユーザーから作る。list（設定の編集用）は変えない", () => {
+    const list = { ...EMPTY_MUTE_LIST, entries: [entry("p", ALICE, true)] };
+    setMuteList(list);
+    setPendingBlocks(new Set([BOB]));
+    let state = useMute.getState();
+    expect(state.matcher.users).toEqual(new Set([ALICE, BOB]));
+    expect(state.list).toBe(list);
+    const bobKey = generateSecretKey();
+    setPendingBlocks(new Set([getPublicKey(bobKey)]));
+    expect(isNoteMuted(useMute.getState().matcher, note({ key: bobKey }), null)).toBe(true);
+    setPendingBlocks(new Set([BOB]));
+
+    // 保存待ちのまま list が変わっても含める。list に入った人は重ねない
+    setMuteList({ ...EMPTY_MUTE_LIST, entries: [entry("p", BOB, true)] });
+    state = useMute.getState();
+    expect(state.matcher.users).toEqual(new Set([BOB]));
+
+    setPendingBlocks(new Set());
+    setMuteList(list);
+    expect(useMute.getState().matcher.users).toEqual(new Set([ALICE]));
+    setMuteList(null);
+  });
+
+  it("list がまだ無い（null）ときも保存待ちの人は隠す", () => {
+    setMuteList(null);
+    setPendingBlocks(new Set([BOB]));
+    expect(useMute.getState().list).toBeNull();
+    expect(useMute.getState().matcher.users.has(BOB)).toBe(true);
+    setPendingBlocks(new Set());
+    expect(useMute.getState().matcher.isEmpty).toBe(true);
+  });
+});
+
+describe("[#963] ユーザーのミュートの状態（公開の p = ブロック、非公開の p だけ = ミュート）", () => {
+  const CAROL = getPublicKey(generateSecretKey());
+  const DAVE = getPublicKey(generateSecretKey());
+  const both: MuteEntry = { category: "p", value: CAROL, isPublic: true, isPrivate: true };
+  const list = { ...EMPTY_MUTE_LIST, entries: [entry("p", ALICE), entry("p", BOB, true), both] };
+
+  it("公開 = blocked、非公開だけ = muted、両方 = blocked、無し = none", () => {
+    const s = { list, pending: new Set<string>() };
+    expect(userMuteStateOf(s, ALICE)).toBe("blocked");
+    expect(userMuteStateOf(s, BOB)).toBe("muted");
+    expect(userMuteStateOf(s, CAROL)).toBe("blocked");
+    expect(userMuteStateOf(s, DAVE)).toBe("none");
+    expect(isBlocked(s, ALICE)).toBe(true);
+    expect(isMutedOnly(s, ALICE)).toBe(false);
+    expect(isMutedOnly(s, BOB)).toBe(true);
+    expect(isMutedOnly(s, CAROL)).toBe(false);
+  });
+
+  it("保存待ちのブロックは blocked（ミュート中でも・list が null でも）", () => {
+    expect(userMuteStateOf({ list, pending: new Set([BOB]) }, BOB)).toBe("blocked");
+    expect(userMuteStateOf({ list: null, pending: new Set([DAVE]) }, DAVE)).toBe("blocked");
+    expect(userMuteStateOf({ list: null, pending: new Set() }, DAVE)).toBe("none");
+  });
+
+  it("判定器の users はミュート・ブロック・保存待ちの全員（隠す対象は同じ）", () => {
+    setMuteList(list);
+    setPendingBlocks(new Set([DAVE]));
+    expect(useMute.getState().matcher.users).toEqual(new Set([ALICE, BOB, CAROL, DAVE]));
+    setPendingBlocks(new Set());
+    setMuteList(null);
   });
 });

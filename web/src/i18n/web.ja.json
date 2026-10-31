@@ -264,6 +264,7 @@
   "web_settings_media_url_label": "アップロード先サーバーの URL",
   "web_settings_mute_private_label": "%1$s を非公開でミュート",
   "web_settings_mute_public_label": "%1$s を公開でミュート",
+  "web_settings_mute_remove_label": "%1$s を外す",
   "web_settings_mute_word_already_added": "このワードは追加済みです",
   "web_settings_mute_word_label": "ミュートするワード",
   "web_settings_nav_label": "設定の項目",

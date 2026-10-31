@@ -103,7 +103,7 @@ function warn(message: string, e: unknown): void {
  * 既定の発行先: write リレー ∪ 接続中の全リレー（ネイティブ EventRepository.publishTo と同じ規則、#582）。
  * 検索専用リレーと、AUTH を要求していてまだ認証できていないリレーは除く。重複は除く。
  */
-function defaultPublishTargets(): string[] {
+export function defaultPublishTargets(): string[] {
   const excluded = new Set(SEARCH_RELAYS.map(normalizeURL));
   const seen = new Set<string>();
   const targets: string[] = [];

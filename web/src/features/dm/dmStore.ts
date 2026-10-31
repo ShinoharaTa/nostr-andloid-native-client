@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import type { DmMessageRow } from "../../db/schema";
+import { useMuteMatcher } from "../mute/muteList";
 import { useDmSeen } from "./dmSeen";
 
 type DmState = {
@@ -112,15 +113,19 @@ export function messagesWith(messages: Iterable<DmMessageRow>, peer: string): Dm
   return result.sort(byTimeAsc);
 }
 
-/** 会話の一覧（messages か既読が変わったときだけ計算し直す） */
+/**
+ * 会話の一覧（messages か既読かミュートが変わったときだけ計算し直す）。
+ * [#957] ブロック（ミュート）中の相手（保存待ちを含む）の会話は出さない（未読数にも数えない。ネイティブ #951）
+ */
 export function useConversations(): DmConversation[] {
   const messages = useDm((s) => s.messages);
   const me = useDm((s) => s.owner);
   const first = useDmSeen((s) => s.first);
   const peers = useDmSeen((s) => s.peers);
+  const blocked = useMuteMatcher().users;
   return useMemo(
-    () => conversationsOf(Object.values(messages), me, { first, peers }),
-    [messages, me, first, peers],
+    () => conversationsOf(Object.values(messages), me, { first, peers }).filter((c) => !blocked.has(c.peer)),
+    [messages, me, first, peers, blocked],
   );
 }
 

@@ -153,7 +153,7 @@ describe("並びと区切り線（ネイティブ menu_order_and_dividers）", (
       "DM",
       "ふぁぼ",
       "ブックマーク",
-      "ミュート",
+      "ミュート・ブロック",
       "カスタム絵文字",
       "ハッシュタグ",
       "リレーN / M 接続中",
@@ -163,7 +163,11 @@ describe("並びと区切り線（ネイティブ menu_order_and_dividers）", (
     // 区切り線は項目の間に 3 本（DOM の順で ミュート・リレー・設定 の直後）
     const children = [...menu.children];
     const separators = children.flatMap((el, i) => (el.tagName === "HR" ? [i] : []));
-    expect(separators.map((i) => text(children[i - 1]))).toEqual(["ミュート", "リレーN / M 接続中", "設定"]);
+    expect(separators.map((i) => text(children[i - 1]))).toEqual([
+      "ミュート・ブロック",
+      "リレーN / M 接続中",
+      "設定",
+    ]);
   });
 
   it("各項目にモノクロのアイコン（文字色）。ログアウトだけ Warn 色の印", async () => {
@@ -229,7 +233,7 @@ describe("各項目の行き先", () => {
     const expected: [string | RegExp, string][] = [
       ["ふぁぼ", "favs"],
       ["ブックマーク", "bookmarks"],
-      ["ミュート", "mute"],
+      ["ミュート・ブロック", "mute"],
       ["カスタム絵文字", "emoji"],
       ["ハッシュタグ", "hashtags"],
       [/^リレー/, "relays"],
@@ -283,7 +287,7 @@ describe("戻り先（ネイティブ closing_menu_section_returns_to_previous_s
   it("メニューから開いた項目の「←」は、メニューを開く前の画面（パブリックチャットに重ねていたスレッド）へ戻る", async () => {
     const router = renderAt(["/channels"]);
     await act(() => router.navigate(`/e/${NOTE}`));
-    await choose("ミュート", "/settings/mute");
+    await choose("ミュート・ブロック", "/settings/mute");
     await userEvent.click(screen.getByRole("button", { name: "戻る" }));
     expect(router.state.location.pathname).toBe(`/e/${NOTE}`);
     expect(screen.getByRole("region", { name: "スレッド" })).toBeInTheDocument();
@@ -311,7 +315,7 @@ describe("戻り先（ネイティブ closing_menu_section_returns_to_previous_s
 
   it("設定の項目を開いたままメニューから別の項目へ移っても、戻り先は最初にメニューを開く前の画面", async () => {
     const router = renderAt(["/messages"]);
-    await choose("ミュート", "/settings/mute");
+    await choose("ミュート・ブロック", "/settings/mute");
     await choose(/^リレー/, "/settings/relays");
     expect(router.state.historyAction).toBe("REPLACE");
     await userEvent.click(screen.getByRole("button", { name: "戻る" }));
@@ -329,7 +333,7 @@ describe("戻り先（ネイティブ closing_menu_section_returns_to_previous_s
     cleanup();
 
     const t = renderAt(["/"]);
-    await choose("ミュート", "/settings/mute");
+    await choose("ミュート・ブロック", "/settings/mute");
     await choose("設定", "/settings");
     await userEvent.click(
       within(screen.getByRole("navigation", { name: "設定の項目" })).getByRole("button", {

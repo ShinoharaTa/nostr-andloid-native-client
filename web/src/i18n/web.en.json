@@ -264,6 +264,7 @@
   "web_settings_media_url_label": "Upload server URL",
   "web_settings_mute_private_label": "Mute %1$s privately",
   "web_settings_mute_public_label": "Mute %1$s publicly",
+  "web_settings_mute_remove_label": "Remove %1$s",
   "web_settings_mute_word_already_added": "This word is already added",
   "web_settings_mute_word_label": "Word to mute",
   "web_settings_nav_label": "Settings sections",

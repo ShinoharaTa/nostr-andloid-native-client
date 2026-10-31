@@ -8,6 +8,8 @@ import { Icon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
 import { ReportDialog } from "../actions/ReportDialog";
 import { reportUser } from "../actions/reactions";
+import { blockUser, unblockUser } from "../mute/block";
+import type { UserMuteState } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import styles from "./ProfileHeaderCard.module.css";
 
@@ -25,23 +27,24 @@ function muteFailureMessage(e: unknown): string {
 /**
  * プロフィールの ⋯ メニュー。nprofile（相手の kind:10002 の先頭 3 件をリレーヒントに）と njump のリンクをコピーする。
  * 開閉は ColumnMenu と同じ（外側のクリック・Escape・戻るで閉じる。#540）。
- * me が非 null（他人のプロフィール）なら、ミュート / 解除（確認ダイアログ）とユーザーの通報も出す。
+ * me が非 null（他人のプロフィール）なら、ミュート・ブロック / 解除（確認ダイアログ）とユーザーの通報も出す。
+ * [#963] muteState: none = 「ミュート」「ブロック」、muted = 「ミュートを解除」「ブロック」、blocked = 「ブロックを解除」。
  */
 export function ProfileMenu({
   pubkey,
   me,
-  muted,
+  muteState,
   onCopied,
 }: {
   pubkey: string;
   /** 自分の pubkey（自分のプロフィールを見ているときは null。ミュート・通報の項目を出さない） */
   me: string | null;
-  muted: boolean;
+  muteState: UserMuteState;
   onCopied: (message: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<"mute" | "report" | null>(null);
+  const [dialog, setDialog] = useState<"mute" | "unmute" | "block" | "unblock" | "report" | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
@@ -79,13 +82,39 @@ export function ProfileMenu({
     onCopied(message);
   }
 
-  function mute(action: "mute" | "unmute") {
+  function mute(action: "mute" | "unmute" | "block" | "unblock") {
     if (!me) return;
-    const run = action === "mute" ? muteUser(me, pubkey) : unmuteUser(me, pubkey);
-    run.then(
-      () => showToast(action === "mute" ? t("muted_toast") : t("note_unmuted_toast")),
-      (e) => showToast(muteFailureMessage(e)),
-    );
+    switch (action) {
+      case "block":
+        // [#963] ブロック（すぐ隠し、通報し、ミュートリストに公開で保存する。保存できなくても失敗にはしない）
+        void blockUser(me, pubkey).then((result) =>
+          showToast(result === "saved" ? t("blocked_toast") : t("block_pending_toast")),
+        );
+        return;
+      case "mute":
+        muteUser(me, pubkey).then(
+          () => showToast(t("muted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unmute":
+        unmuteUser(me, pubkey).then(
+          () => showToast(t("note_unmuted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unblock":
+        unblockUser(me, pubkey).then(
+          () => showToast(t("note_unblocked_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+    }
+  }
+
+  function openDialog(next: "mute" | "unmute" | "block" | "unblock") {
+    setOpen(false);
+    setDialog(next);
   }
 
   function report(type: string) {
@@ -129,17 +158,35 @@ export function ProfileMenu({
           </button>
           {me !== null && (
             <>
-              <button
-                type="button"
-                role="menuitem"
-                className={styles.menuItem}
-                onClick={() => {
-                  setOpen(false);
-                  setDialog("mute");
-                }}
-              >
-                {muted ? t("note_unmute_user") : t("mute_confirm")}
-              </button>
+              {muteState === "blocked" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.menuItem}
+                  onClick={() => openDialog("unblock")}
+                >
+                  {t("note_unblock_user")}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.menuItem}
+                    onClick={() => openDialog(muteState === "muted" ? "unmute" : "mute")}
+                  >
+                    {muteState === "muted" ? t("note_unmute_user") : t("mute_confirm")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.menuItem}
+                    onClick={() => openDialog("block")}
+                  >
+                    {t("block_confirm")}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 role="menuitem"
@@ -155,31 +202,56 @@ export function ProfileMenu({
           )}
         </div>
       )}
-      {dialog === "mute" &&
-        (muted ? (
-          <ConfirmDialog
-            title={t("unmute_confirm_title")}
-            text={t("web_profile_unmute_text")}
-            confirmLabel={t("lift_confirm")}
-            onConfirm={() => {
-              setDialog(null);
-              mute("unmute");
-            }}
-            onDismiss={() => setDialog(null)}
-          />
-        ) : (
-          <ConfirmDialog
-            title={t("mute_confirm_title")}
-            text={t("mute_confirm_text2")}
-            confirmLabel={t("mute_confirm")}
-            destructive
-            onConfirm={() => {
-              setDialog(null);
-              mute("mute");
-            }}
-            onDismiss={() => setDialog(null)}
-          />
-        ))}
+      {dialog === "unmute" && (
+        <ConfirmDialog
+          title={t("unmute_confirm_title")}
+          text={t("web_profile_unmute_text")}
+          confirmLabel={t("lift_confirm")}
+          onConfirm={() => {
+            setDialog(null);
+            mute("unmute");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "mute" && (
+        <ConfirmDialog
+          title={t("mute_confirm_title")}
+          text={t("mute_confirm_text2")}
+          confirmLabel={t("mute_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            mute("mute");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "unblock" && (
+        <ConfirmDialog
+          title={t("unblock_confirm_title")}
+          text={t("unblock_confirm_text")}
+          confirmLabel={t("lift_confirm")}
+          onConfirm={() => {
+            setDialog(null);
+            mute("unblock");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "block" && (
+        <ConfirmDialog
+          title={t("block_confirm_title")}
+          text={t("block_confirm_text")}
+          confirmLabel={t("block_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            mute("block");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
       {dialog === "report" && (
         <ReportDialog title={t("report_user_title")} onPick={report} onDismiss={() => setDialog(null)} />
       )}

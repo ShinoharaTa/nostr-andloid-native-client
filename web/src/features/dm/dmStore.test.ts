@@ -1,12 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import type { DmMessageRow } from "../../db/schema";
+import { EMPTY_MUTE_LIST, setMuteList, setPendingBlocks } from "../mute/muteList";
 import { useDmSeen } from "./dmSeen";
-import { conversationsOf, messagesWith, useDm, useDmUnreadTotal } from "./dmStore";
+import { conversationsOf, messagesWith, useConversations, useDm, useDmUnreadTotal } from "./dmStore";
 
 afterEach(() => {
   useDm.getState().reset(null);
   useDmSeen.setState({ me: null, first: 0, peers: {} });
+  setMuteList(null);
+  setPendingBlocks(new Set());
 });
 
 function row(id: string, peer: string, createdAt: number, content = id, sender = peer): DmMessageRow {
@@ -101,4 +104,27 @@ it("useDmUnreadTotal: 全会話の未読の合計（既読が進むと減る）"
   expect(result.current).toBe(3);
   act(() => useDmSeen.setState({ peers: { alice: 12 } }));
   expect(result.current).toBe(1);
+});
+
+it("[#957] ブロック中の相手（保存待ちを含む）の会話は一覧に出さず、未読の合計にも数えない", () => {
+  useDm.getState().reset("me");
+  useDmSeen.setState({ me: "me", first: 10, peers: {} });
+  useDm.getState().upsertMessages([row("a1", "alice", 11), row("b1", "bob", 13), row("c1", "carol", 14)]);
+  const { result } = renderHook(() => ({
+    peers: useConversations().map((c) => c.peer),
+    unread: useDmUnreadTotal(),
+  }));
+  expect(result.current).toEqual({ peers: ["carol", "bob", "alice"], unread: 3 });
+
+  act(() =>
+    setMuteList({
+      ...EMPTY_MUTE_LIST,
+      entries: [{ category: "p", value: "bob", isPublic: false, isPrivate: true }],
+    }),
+  );
+  expect(result.current).toEqual({ peers: ["carol", "alice"], unread: 2 });
+  act(() => setPendingBlocks(new Set(["carol"])));
+  expect(result.current).toEqual({ peers: ["alice"], unread: 1 });
+  act(() => setPendingBlocks(new Set()));
+  expect(result.current).toEqual({ peers: ["carol", "alice"], unread: 2 });
 });

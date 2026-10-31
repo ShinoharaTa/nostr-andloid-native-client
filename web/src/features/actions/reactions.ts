@@ -1,13 +1,15 @@
 import { getReplaceableAddress } from "applesauce-core/helpers/event";
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { use$ } from "applesauce-react/hooks/use-$";
 import type { NostrEvent } from "nostr-tools/pure";
 import { distinctUntilChanged, map, type Observable, type Subscription, shareReplay } from "rxjs";
 import { subscribe } from "../../nostr/pool";
-import { publishEvent } from "../../nostr/publish";
+import { defaultPublishTargets, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { type RelayHintLookup, storeRelayHints } from "../compose/relayHints";
 import { fillRelayHints } from "../compose/tags";
+import { MODERATION_RELAY } from "../mute/block";
 import { normalizeReaction } from "../thread/engagement";
 import { recordUsedEmoji, useDefaultReaction } from "./reactionPrefs";
 
@@ -143,25 +145,38 @@ export async function requestDelete(event: NostrEvent, reason = ""): Promise<boo
   }
 }
 
+/** [#957] 通報の送り先: いつもの送り先に加えて開発者のリレー（ネイティブ publishReport）。重複は除く */
+export function reportTargets(): string[] {
+  const targets = defaultPublishTargets();
+  const moderation = normalizeURL(MODERATION_RELAY);
+  return targets.some((url) => normalizeURL(url) === moderation) ? targets : [...targets, MODERATION_RELAY];
+}
+
 /** 通報（NIP-56 kind:1984）。type = illegal / nudity / spam / impersonation / profanity / other */
 export async function reportNote(event: NostrEvent, type: string): Promise<void> {
-  await publishEvent({
-    kind: 1984,
-    content: "",
-    tags: [
-      ["e", event.id, type],
-      ["p", event.pubkey],
-    ],
-  });
+  await publishEvent(
+    {
+      kind: 1984,
+      content: "",
+      tags: [
+        ["e", event.id, type],
+        ["p", event.pubkey],
+      ],
+    },
+    { relays: reportTargets() },
+  );
 }
 
 /** ユーザーの通報（NIP-56 kind:1984。ネイティブ reportUser）。e タグは付けない（投稿ではなく人への通報） */
 export async function reportUser(pubkey: string, type: string): Promise<void> {
-  await publishEvent({
-    kind: 1984,
-    content: "",
-    tags: [["p", pubkey, type]],
-  });
+  await publishEvent(
+    {
+      kind: 1984,
+      content: "",
+      tags: [["p", pubkey, type]],
+    },
+    { relays: reportTargets() },
+  );
 }
 
 // ---- 押下状態（ストアにある自分の kind:7 / kind:6 から。ベストエフォート） ----

@@ -3,11 +3,12 @@ import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from 
 import { Observable } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { unixNow } from "../../lib/time";
-import { subscribe } from "../../nostr/pool";
-import { type EventDraft, PublishError, publishEvent } from "../../nostr/publish";
+import { resetRelays, subscribe, useRelays } from "../../nostr/pool";
+import { defaultPublishTargets, type EventDraft, PublishError, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { createTestSigner } from "../../test/fakeSigner";
+import { MODERATION_RELAY } from "../mute/block";
 import { loadRecentEmojis, setDefaultReaction, useDefaultReaction } from "./reactionPrefs";
 import {
   ensureMyReactionsSubscribed,
@@ -278,6 +279,29 @@ it("reportUser（プロフィールの ⋯）は kind:1984 で p だけ、e タ�
   const target = getPublicKey(generateSecretKey());
   await reportUser(target, "spam");
   expect(drafts()).toEqual([{ kind: 1984, content: "", tags: [["p", target, "spam"]] }]);
+});
+
+describe("[#957] 通報の送り先", () => {
+  afterEach(() => resetRelays());
+
+  it("通報（投稿・ユーザー）はいつもの送り先に加えて開発者のリレーにも送る", async () => {
+    useRelays.setState({ read: [], write: ["wss://write.example"], source: "manual" });
+    await reportNote(note(), "spam");
+    await reportUser(getPublicKey(generateSecretKey()), "spam");
+    const calls = vi.mocked(publishEvent).mock.calls;
+    expect(calls).toHaveLength(2);
+    for (const [, opts] of calls) {
+      expect(opts?.relays).toEqual([...defaultPublishTargets(), MODERATION_RELAY]);
+      expect(opts?.relays).toContain("wss://write.example");
+    }
+  });
+
+  it("開発者のリレーがいつもの送り先に入っていれば重ねない", async () => {
+    useRelays.setState({ read: [], write: [`${MODERATION_RELAY}/`], source: "manual" });
+    await reportUser(getPublicKey(generateSecretKey()), "spam");
+    const relays = vi.mocked(publishEvent).mock.calls[0][1]?.relays ?? [];
+    expect(relays.filter((url) => url.startsWith(MODERATION_RELAY))).toHaveLength(1);
+  });
 });
 
 describe("押下状態", () => {

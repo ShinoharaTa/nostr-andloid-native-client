@@ -487,6 +487,82 @@
   opacity: 0.5;
 }
 
+/* [#963] ユーザーの行の ミュート | ブロック（セグメント）と外す（✕）。スマホ幅でも 1 行に収め、名前の側を縮める */
+.muteUserRow {
+  flex-wrap: nowrap;
+}
+
+.muteUserRow .relayUrl {
+  flex: 1 1 0;
+}
+
+.muteUserControls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.muteModes {
+  display: inline-flex;
+  flex: none;
+  min-width: 0;
+  margin: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.muteMode {
+  min-height: var(--touch-xs);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--type-caption);
+  cursor: pointer;
+}
+
+.muteMode[aria-pressed="true"] {
+  background: var(--accent-weak);
+  color: var(--text);
+  font-weight: var(--w-strong);
+}
+
+.muteMode:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.muteRemove {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-xs);
+  height: var(--touch-xs);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.muteRemove:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+@media (hover: hover) {
+  .muteRemove:not(:disabled):hover {
+    background: var(--surface-3);
+  }
+}
+
 /* 両方のチェックを外した項目（保存すると解除。保存前は残して戻せるようにする） */
 .relayUrl.dimmed,
 .dimmed .name {
