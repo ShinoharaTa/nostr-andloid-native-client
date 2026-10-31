@@ -60,6 +60,8 @@ class BlockUserTest {
             // 保存する前（取り直しを待っている間）からもう隠れている
             withTimeout(1_000) { repo.muteFilterFlow().first { it.hides(target) } }
             assertTrue(repo.mutedUsersFlow().first().contains(target))
+            // [#963] ブロックは公開の p。保存待ちの間も「ブロック中」として見せる（ミュートとは区別する）
+            assertTrue(repo.blockedUsersFlow().first().contains(target))
             // 編集の画面が見るミュートリストには入れない（保存待ちの人を編集のついでに保存しないように）
             assertFalse(repo.muteListFlow().value.hides(target))
 

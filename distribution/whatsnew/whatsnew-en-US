@@ -1,6 +1,6 @@
-- Read aloud new posts from people you follow (Android / iOS). Download a voice in Settings > Read aloud. Speech synthesis: ZEN-TTS
-- Block people from ⋯ on posts and profiles. Their posts, notifications and DMs are hidden at once (blocks are reported only to the developer)
+- Read aloud new posts from people you follow (Android / iOS). Voices: Settings > Read aloud. Speech: ZEN-TTS
+- Block people from ⋯ on posts and profiles: hides their posts, notifications and DMs at once and reports them to your relays and the developer. Blocks are public; Mute stays private
 - Reports now show "Reported"
-- Delete your account in Settings > Account (erases keys and data on this device)
+- Delete your account from Settings > Account (wipes this device)
 - Added a Terms of Use screen
-- Fixed missing posts when scrolling back. Following loads more at the bottom
+- Fixed gaps when scrolling back; Following now loads more at the bottom

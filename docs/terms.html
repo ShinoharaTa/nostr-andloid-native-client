@@ -52,9 +52,10 @@
 <p>Android / iOS / macOS 版では、次のことができます。</p>
 <ul>
   <li><strong>通報</strong>: 不快な投稿は、投稿の「⋯」から通報できます。利用者は、プロフィールの「⋯」から通報できます。</li>
-  <li><strong>ブロック</strong>: 不快な利用者は、投稿やプロフィールの「⋯」からブロックできます。ブロックした利用者の投稿・通知・DM は、すぐに表示されなくなります。ブロックは、あなたの非公開のミュートリスト（NIP-51）に保存します（リレーにつながらないときは端末に覚えておき、つながったら保存します）。解除は、自分のアイコンのメニューの「ミュート・ブロック」からできます。</li>
-  <li><strong>開発者への知らせ</strong>: 通報とブロックは、Nostr の通報（NIP-56）として開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。届かなかったときは、本アプリが送り直します。</li>
-  <li><strong>通報の公開</strong>: 通報は Nostr の公開イベントです。「⋯」からの通報は、あなたのリレーにも送られます。ブロックの通報は、開発者のリレーにだけ送ります。</li>
+  <li><strong>ブロック</strong>: 不快な利用者は、投稿やプロフィールの「⋯」からブロックできます。ブロックした利用者の投稿・通知・DM は、すぐに表示されなくなります。ブロックは、あなたの公開のミュートリスト（NIP-51）に保存され、相手や他の人にも分かります（リレーにつながらないときは端末に覚えておき、つながったら保存します）。解除は、自分のアイコンのメニューの「ミュート・ブロック」からできます。</li>
+  <li><strong>ミュート</strong>: 相手に知られずに表示しないようにしたいときは、同じ「⋯」の「ミュート」を使えます。ミュートは非公開のミュートリストに保存され、通報は送りません。「ミュート・ブロック」で、ミュートとブロックを切り替えられます。</li>
+  <li><strong>開発者への知らせ</strong>: 通報とブロックは、Nostr の通報（NIP-56）として、あなたのリレーと開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。届かなかったときは、本アプリが送り直します。</li>
+  <li><strong>通報の公開</strong>: 通報は Nostr の公開イベントです。「⋯」からの通報も、ブロックの通報も、あなたのリレーと開発者のリレーに送られます。</li>
 </ul>
 
 <h3>4. 通報への対応</h3>
@@ -119,9 +120,10 @@
 <p>In the Android, iOS and macOS versions, you can:</p>
 <ul>
   <li><strong>Report</strong>: Report objectionable posts from the "⋯" menu on each post, and report users from the "⋯" menu on their profile.</li>
-  <li><strong>Block</strong>: Block abusive users from the "⋯" menu on their posts or profile. Their posts, notifications and direct messages are hidden right away. The block is saved in your private mute list (NIP-51); if the relays can't be reached, the App keeps it on your device and saves it once they can. You can undo a block from "Mute &amp; block" in your icon menu.</li>
-  <li><strong>Notifying the developer</strong>: Reports and blocks are sent as Nostr reports (NIP-56) to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. If one can't be delivered, the App sends it again later.</li>
-  <li><strong>Reports are public</strong>: A report is a public Nostr event. Reports from the "⋯" menu are also sent to your relays. Reports for blocks are sent only to the developer's relay.</li>
+  <li><strong>Block</strong>: Block abusive users from the "⋯" menu on their posts or profile. Their posts, notifications and direct messages are hidden right away. The block is saved in your public mute list (NIP-51), so they and others can see it; if the relays can't be reached, the App keeps it on your device and saves it once they can. You can undo a block from "Mute &amp; block" in your icon menu.</li>
+  <li><strong>Mute</strong>: To hide someone without them knowing, use "Mute" in the same "⋯" menu. Mutes are saved in your private mute list and no report is sent. You can switch between mute and block in "Mute &amp; block".</li>
+  <li><strong>Notifying the developer</strong>: Reports and blocks are sent as Nostr reports (NIP-56) to your relays and to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. If one can't be delivered, the App sends it again later.</li>
+  <li><strong>Reports are public</strong>: A report is a public Nostr event. Reports from the "⋯" menu and reports for blocks are sent to your relays and to the developer's relay.</li>
 </ul>
 
 <h3>4. How reports are handled</h3>
