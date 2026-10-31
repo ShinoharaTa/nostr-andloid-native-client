@@ -23,9 +23,9 @@ import { showToast } from "../../ui/toast";
 import { openCompose } from "../compose/composeStore";
 import { ACTION_BUTTON_CLASS, ActionButton } from "../compose/NoteFooter";
 import { OwnListError, toggleBookmark, togglePinned, useIsBookmarked, useIsPinned } from "../lists/ownLists";
-import { blockUser } from "../mute/block";
-import { useMuteMatcher } from "../mute/muteList";
-import { MuteListError, unmuteUser } from "../mute/muteSync";
+import { blockUser, unblockUser } from "../mute/block";
+import { useUserMuteState } from "../mute/muteList";
+import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { followsFromContacts } from "../profile/contacts";
 import { FollowError, toggleFollow } from "../profile/follow";
 import { acquireReactionCount, releaseReactionCount, useReactionCount } from "../reactions/reactionCounts";
@@ -333,13 +333,15 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
   // 自分の kind:3 が未取得の間は null（フォロー項目を出さない。空のリストで上書きしないため）
   const isFollowing = contacts ? followsFromContacts(contacts).includes(event.pubkey) : null;
   const links = useMemo(() => noteLinksOf(event), [event]);
-  const isMuted = useMuteMatcher().users.has(event.pubkey);
+  const muteState = useUserMuteState(event.pubkey);
   const isBookmarked = useIsBookmarked(event.id);
   const isPinned = useIsPinned(event.id);
   const developerMode = useDeveloperMode((s) => s.enabled);
   const canTranslate = translateAvailable() && hasBodyText(event);
   const translation = useTranslation(event.id);
-  const [dialog, setDialog] = useState<"unfollow" | "mute" | "delete" | "report" | "json" | null>(null);
+  const [dialog, setDialog] = useState<"unfollow" | "mute" | "block" | "delete" | "report" | "json" | null>(
+    null,
+  );
 
   function follow(action: "follow" | "unfollow") {
     if (!me) return;
@@ -352,19 +354,35 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
     });
   }
 
-  function mute(action: "mute" | "unmute") {
+  function mute(action: "mute" | "unmute" | "block" | "unblock") {
     if (!me) return;
-    if (action === "mute") {
-      // [#957] ブロック（すぐ隠し、開発者へ通報し、ミュートリストに保存する。保存できなくても失敗にはしない）
-      void blockUser(me, event.pubkey, event).then((result) =>
-        showToast(result === "saved" ? t("muted_toast") : t("block_pending_toast")),
-      );
-      return;
+    const pk = event.pubkey;
+    switch (action) {
+      case "block":
+        // [#963] ブロック（すぐ隠し、通報し、ミュートリストに公開で保存する。保存できなくても失敗にはしない）
+        void blockUser(me, pk, event).then((result) =>
+          showToast(result === "saved" ? t("blocked_toast") : t("block_pending_toast")),
+        );
+        return;
+      case "mute":
+        muteUser(me, pk).then(
+          () => showToast(t("muted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unmute":
+        unmuteUser(me, pk).then(
+          () => showToast(t("note_unmuted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unblock":
+        unblockUser(me, pk).then(
+          () => showToast(t("note_unblocked_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
     }
-    unmuteUser(me, event.pubkey).then(
-      () => showToast(t("note_unmuted_toast")),
-      (e) => showToast(muteFailureMessage(e)),
-    );
   }
 
   function bookmark(action: "bookmark" | "unbookmark") {
@@ -389,7 +407,7 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
     isFollowing,
     isBookmarked,
     isPinned,
-    isMuted,
+    muteState,
     note1: links.note1,
     nevent: links.nevent,
     developerMode,
@@ -404,6 +422,8 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
       requestDelete: () => setDialog("delete"),
       mute: () => setDialog("mute"),
       unmute: () => mute("unmute"),
+      block: () => setDialog("block"),
+      unblock: () => mute("unblock"),
       report: () => setDialog("report"),
       copyText: () => void copyText(plainTextOf(event)),
       copyLink: () => void copyText(links.njump),
@@ -447,6 +467,19 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
           onConfirm={() => {
             setDialog(null);
             mute("mute");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "block" && (
+        <ConfirmDialog
+          title={t("block_confirm_title")}
+          text={t("block_confirm_text")}
+          confirmLabel={t("block_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            mute("block");
           }}
           onDismiss={() => setDialog(null)}
         />

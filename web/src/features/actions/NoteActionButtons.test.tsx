@@ -16,9 +16,9 @@ import { useCompose } from "../compose/composeStore";
 import { appendToEmojiList, EmojiListError } from "../compose/customEmojis";
 import { NoteFooter } from "../compose/NoteFooter";
 import { toggleBookmark, togglePinned, useOwnLists } from "../lists/ownLists";
-import { blockUser } from "../mute/block";
+import { blockUser, unblockUser } from "../mute/block";
 import { EMPTY_MUTE_LIST, setMuteList } from "../mute/muteList";
-import { MuteListError, unmuteUser } from "../mute/muteSync";
+import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { toggleFollow } from "../profile/follow";
 import { resetReactionCountsForTest } from "../reactions/reactionCounts";
 import { setShowReactionCounts } from "../reactions/reactionCountsPref";
@@ -49,10 +49,14 @@ vi.mock("../mute/muteSync", async (importOriginal) => {
   };
 });
 
-// [#957] ブロックは block の関数を呼ぶところまで（隠す・通報・保存は block.test.ts）
+// [#957] ブロック / 解除は block の関数を呼ぶところまで（隠す・通報・保存は block.test.ts）
 vi.mock("../mute/block", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../mute/block")>();
-  return { ...actual, blockUser: vi.fn(async () => "saved" as const) };
+  return {
+    ...actual,
+    blockUser: vi.fn(async () => "saved" as const),
+    unblockUser: vi.fn(async () => "done" as const),
+  };
 });
 
 // Zap の invoice は取りに行かない（呼ばれ方だけ見る。LNURL は lnurl.test.ts）
@@ -567,16 +571,19 @@ describe("⋯ メニュー", () => {
     expect(toggleFollow).toHaveBeenCalledWith(me, event.pubkey, "follow");
   });
 
-  it("「このユーザーをブロック」→ 確認 →「ブロック」で blockUser（その投稿を渡す）とトースト。ブロック中は「ブロックを解除」", async () => {
+  it("「このユーザーをミュート」→ 確認 →「ミュート」で muteUser とトースト。ミュート中は「ミュートを解除」", async () => {
+    vi.mocked(muteUser).mockClear();
+    vi.mocked(blockUser).mockClear();
     const user = userEvent.setup();
     const event = post();
     renderRow(event);
     await user.click(button("その他の操作"));
-    await user.click(screen.getByRole("menuitem", { name: "このユーザーをブロック" }));
-    const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
-    await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
-    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event);
-    await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
+    await user.click(screen.getByRole("menuitem", { name: "このユーザーをミュート" }));
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをミュートしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "ミュート" }));
+    expect(muteUser).toHaveBeenCalledWith(me, event.pubkey);
+    expect(blockUser).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ミュートしました"]));
 
     act(() =>
       setMuteList({
@@ -586,13 +593,47 @@ describe("⋯ メニュー", () => {
     );
     vi.mocked(unmuteUser).mockRejectedValueOnce(new MuteListError("locked"));
     await user.click(button("その他の操作"));
-    await user.click(screen.getByRole("menuitem", { name: "ブロックを解除" }));
+    // [#963] ミュート中でもブロックはできる
+    expect(screen.getByRole("menuitem", { name: "このユーザーをブロック" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "ミュートを解除" }));
     expect(unmuteUser).toHaveBeenCalledWith(me, event.pubkey);
     await waitFor(() =>
       expect(useToast.getState().queue).toEqual([
-        "ブロックしました",
-        "ブロックを解除できませんでした（ミュートリストを読み込めないか、ロック中です）",
+        "ミュートしました",
+        "ミュートリストが変更できません（ロック中の可能性）",
       ]),
+    );
+    act(() => setMuteList(null));
+  });
+
+  it("[#963]「このユーザーをブロック」→ 確認 →「ブロック」で blockUser（その投稿を渡す）とトースト。ブロック中は「ブロックを解除」だけ", async () => {
+    vi.mocked(muteUser).mockClear();
+    vi.mocked(blockUser).mockClear();
+    const user = userEvent.setup();
+    const event = post();
+    renderRow(event);
+    await user.click(button("その他の操作"));
+    await user.click(screen.getByRole("menuitem", { name: "このユーザーをブロック" }));
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
+    expect(dialog).toHaveTextContent("公開のミュートリスト（NIP-51）");
+    await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
+    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event);
+    expect(muteUser).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
+
+    act(() =>
+      setMuteList({
+        ...EMPTY_MUTE_LIST,
+        entries: [{ category: "p", value: event.pubkey, isPublic: true, isPrivate: false }],
+      }),
+    );
+    await user.click(button("その他の操作"));
+    expect(screen.queryByRole("menuitem", { name: "このユーザーをミュート" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "このユーザーをブロック" })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: "ブロックを解除" }));
+    expect(unblockUser).toHaveBeenCalledWith(me, event.pubkey);
+    await waitFor(() =>
+      expect(useToast.getState().queue).toEqual(["ブロックしました", "ブロックを解除しました"]),
     );
     act(() => setMuteList(null));
   });

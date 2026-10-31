@@ -7,6 +7,8 @@ import {
   buildMuteListTemplate,
   clearMuteDecryptCacheForTest,
   EMPTY_MUTE_LIST,
+  isBlocked,
+  isMutedOnly,
   isNoteMuted,
   isNotificationMuted,
   isReactionTargetMuted,
@@ -19,6 +21,7 @@ import {
   setMuteList,
   setPendingBlocks,
   useMute,
+  userMuteStateOf,
 } from "./muteList";
 
 beforeEach(() => {
@@ -376,5 +379,38 @@ describe("[#957] 保存待ちのブロック（ネイティブ muteFilterFlow）
     expect(useMute.getState().matcher.users.has(BOB)).toBe(true);
     setPendingBlocks(new Set());
     expect(useMute.getState().matcher.isEmpty).toBe(true);
+  });
+});
+
+describe("[#963] ユーザーのミュートの状態（公開の p = ブロック、非公開の p だけ = ミュート）", () => {
+  const CAROL = getPublicKey(generateSecretKey());
+  const DAVE = getPublicKey(generateSecretKey());
+  const both: MuteEntry = { category: "p", value: CAROL, isPublic: true, isPrivate: true };
+  const list = { ...EMPTY_MUTE_LIST, entries: [entry("p", ALICE), entry("p", BOB, true), both] };
+
+  it("公開 = blocked、非公開だけ = muted、両方 = blocked、無し = none", () => {
+    const s = { list, pending: new Set<string>() };
+    expect(userMuteStateOf(s, ALICE)).toBe("blocked");
+    expect(userMuteStateOf(s, BOB)).toBe("muted");
+    expect(userMuteStateOf(s, CAROL)).toBe("blocked");
+    expect(userMuteStateOf(s, DAVE)).toBe("none");
+    expect(isBlocked(s, ALICE)).toBe(true);
+    expect(isMutedOnly(s, ALICE)).toBe(false);
+    expect(isMutedOnly(s, BOB)).toBe(true);
+    expect(isMutedOnly(s, CAROL)).toBe(false);
+  });
+
+  it("保存待ちのブロックは blocked（ミュート中でも・list が null でも）", () => {
+    expect(userMuteStateOf({ list, pending: new Set([BOB]) }, BOB)).toBe("blocked");
+    expect(userMuteStateOf({ list: null, pending: new Set([DAVE]) }, DAVE)).toBe("blocked");
+    expect(userMuteStateOf({ list: null, pending: new Set() }, DAVE)).toBe("none");
+  });
+
+  it("判定器の users はミュート・ブロック・保存待ちの全員（隠す対象は同じ）", () => {
+    setMuteList(list);
+    setPendingBlocks(new Set([DAVE]));
+    expect(useMute.getState().matcher.users).toEqual(new Set([ALICE, BOB, CAROL, DAVE]));
+    setPendingBlocks(new Set());
+    setMuteList(null);
   });
 });

@@ -7,7 +7,7 @@ import { PublishError, type PublishFailure, publishEvent } from "../../nostr/pub
 import type { Signer } from "../../nostr/signer";
 import { eventStore } from "../../nostr/store";
 import { currentSigner, useSession } from "../../signer/session";
-import { loadPendingBlocks, removePendingBlock, retryPendingBlocks } from "./block";
+import { loadPendingBlocks, retryPendingBlocks } from "./block";
 import {
   buildMuteListTemplate,
   type MuteCategory,
@@ -15,7 +15,6 @@ import {
   readMuteList,
   rememberPrivateTags,
   setMuteList,
-  useMute,
 } from "./muteList";
 
 /** 変更の直前に自分の kind:10000 を取り直す待ち時間（フォローの kind:3 と同じ） */
@@ -203,33 +202,46 @@ export async function editMuteList(
 
 /**
  * ユーザーをミュートする（⋯ メニュー。ネイティブ muteUserPrivate）。非公開で足す（署名者が暗号を使えなければ
- * 公開にはせず MuteListError("no-cipher")）。
- * 公開だけでミュート済みなら非公開も立てる。取り直した最新版に足すので版の照合はしない。
+ * 公開にはせず MuteListError("no-cipher")）。取り直した最新版に足すので版の照合はしない。
+ * [#963] 公開の p（＝ブロック）に入っていれば何もしない（"noop"。ブロックはミュートより強い）。
  */
 export function muteUser(me: string, pubkey: string): Promise<"done" | "noop"> {
   return editMuteList(me, (entries, canPrivate) => {
     const existing = entries.find((e) => e.category === "p" && e.value === pubkey);
-    if (existing?.isPrivate) return null;
+    if (existing?.isPublic || existing?.isPrivate) return null;
     if (!canPrivate) throw new MuteListError("no-cipher");
-    if (!existing) return [...entries, { category: "p", value: pubkey, isPublic: false, isPrivate: true }];
-    return entries.map((e) => (e === existing ? { ...e, isPrivate: true } : e));
+    return [...entries, { category: "p", value: pubkey, isPublic: false, isPrivate: true }];
   });
 }
 
 /**
- * ユーザーのミュートを解除する（公開・非公開の両方。ネイティブ unmuteUser）。basedOnId は設定画面から。
- * [#957] 保存待ちのブロックは手元で外す。ミュートリストに入っていなければそれで終わり（リレーに届かなくても外せる）。
+ * ユーザーのミュートを解除する（非公開の p だけを外す。ネイティブ unmuteUser）。basedOnId は設定画面から。
+ * [#963] 公開の p（＝ブロック）は触らない（ブロックの解除は block.ts の unblockUser）。
  */
-export async function unmuteUser(
-  me: string,
-  pubkey: string,
-  basedOnId?: string | null,
-): Promise<"done" | "noop"> {
-  if (removePendingBlock(me, pubkey)) {
-    const listed = useMute.getState().list?.entries.some((e) => e.category === "p" && e.value === pubkey);
-    if (!listed) return "done";
-  }
-  return removeMuteEntry(me, "p", pubkey, basedOnId);
+export function unmuteUser(me: string, pubkey: string, basedOnId?: string | null): Promise<"done" | "noop"> {
+  return editMuteList(
+    me,
+    (entries) => {
+      const existing = entries.find((e) => e.category === "p" && e.value === pubkey);
+      if (!existing?.isPrivate) return null;
+      if (!existing.isPublic) return entries.filter((e) => e !== existing);
+      return entries.map((e) => (e === existing ? { ...e, isPrivate: false } : e));
+    },
+    basedOnId,
+  );
+}
+
+/**
+ * [#963] ユーザーをブロックとして保存する（公開の p だけにする。非公開の p があれば外す）。
+ * すでに公開の p だけなら "noop"。block.ts の blockUser から呼ぶ（保存待ち・通報はそちら）。
+ */
+export function saveBlockedUser(me: string, pubkey: string): Promise<"done" | "noop"> {
+  return editMuteList(me, (entries) => {
+    const existing = entries.find((e) => e.category === "p" && e.value === pubkey);
+    if (existing?.isPublic && !existing.isPrivate) return null;
+    if (!existing) return [...entries, { category: "p", value: pubkey, isPublic: true, isPrivate: false }];
+    return entries.map((e) => (e === existing ? { ...e, isPublic: true, isPrivate: false } : e));
+  });
 }
 
 /** 1 件を外す（公開・非公開の両方）。basedOnId は設定画面で見ていた版 */

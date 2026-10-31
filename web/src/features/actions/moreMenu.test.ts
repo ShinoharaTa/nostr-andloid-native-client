@@ -16,6 +16,8 @@ function actions(): MoreMenuActions {
     requestDelete: vi.fn(),
     mute: vi.fn(),
     unmute: vi.fn(),
+    block: vi.fn(),
+    unblock: vi.fn(),
     report: vi.fn(),
     copyText: vi.fn(),
     copyLink: vi.fn(),
@@ -55,7 +57,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
     isFollowing: true,
     isBookmarked: true,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on,
@@ -65,6 +67,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
     "---",
     "フォロー解除",
     "ブックマークを解除",
+    "このユーザーをミュート",
     "このユーザーをブロック",
     "通報 (danger)",
     "---",
@@ -78,6 +81,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
   };
   select("フォロー解除");
   select("ブックマークを解除");
+  select("このユーザーをミュート");
   select("このユーザーをブロック");
   select("通報");
   select("リンクをコピー（njump）");
@@ -85,6 +89,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
   expect(on.unfollow).toHaveBeenCalledTimes(1);
   expect(on.unbookmark).toHaveBeenCalledTimes(1);
   expect(on.mute).toHaveBeenCalledTimes(1);
+  expect(on.block).toHaveBeenCalledTimes(1);
   expect(on.report).toHaveBeenCalledTimes(1);
   expect(on.copyLink).toHaveBeenCalledTimes(1);
   expect(on.copyNote1).toHaveBeenCalledTimes(1);
@@ -98,19 +103,21 @@ it("未フォローは「フォロー」、自分の kind:3 が未取得（null�
     isMine: false,
     isBookmarked: null,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on: actions(),
   };
   expect(shape(moreMenuEntries({ ...base, isFollowing: false }))).toEqual([
     "フォロー",
+    "このユーザーをミュート",
     "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
   ]);
   expect(shape(moreMenuEntries({ ...base, isFollowing: null }))).toEqual([
+    "このユーザーをミュート",
     "このユーザーをブロック",
     "通報 (danger)",
     "---",
@@ -124,19 +131,21 @@ it("未ブックマークは「ブックマーク」、自分の kind:10003 が�
     isMine: false,
     isFollowing: null,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on: actions(),
   };
   expect(shape(moreMenuEntries({ ...base, isBookmarked: false }))).toEqual([
     "ブックマーク",
+    "このユーザーをミュート",
     "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
   ]);
   expect(shape(moreMenuEntries({ ...base, isBookmarked: null }))).toEqual([
+    "このユーザーをミュート",
     "このユーザーをブロック",
     "通報 (danger)",
     "---",
@@ -144,7 +153,7 @@ it("未ブックマークは「ブックマーク」、自分の kind:10003 が�
   ]);
 });
 
-it("ミュート中の人は「ブロックを解除」", () => {
+it("[#963] ミュート中の人は「ミュートを解除」「このユーザーをブロック」", () => {
   const on = actions();
   const entries = moreMenuEntries({
     clientName: null,
@@ -152,7 +161,38 @@ it("ミュート中の人は「ブロックを解除」", () => {
     isFollowing: null,
     isBookmarked: null,
     isPinned: null,
-    isMuted: true,
+    muteState: "muted",
+    note1: NOTE1,
+    nevent: NEVENT,
+    on,
+  });
+  expect(shape(entries)).toEqual([
+    "ミュートを解除",
+    "このユーザーをブロック",
+    "通報 (danger)",
+    "---",
+    ...COPIES,
+  ]);
+  const select = (label: string) => {
+    const entry = entries.find((e) => e.type === "item" && e.label === label);
+    if (entry?.type === "item") entry.onSelect();
+  };
+  select("ミュートを解除");
+  select("このユーザーをブロック");
+  expect(on.unmute).toHaveBeenCalledTimes(1);
+  expect(on.block).toHaveBeenCalledTimes(1);
+  expect(on.mute).not.toHaveBeenCalled();
+});
+
+it("[#963] ブロック中の人は「ブロックを解除」だけ", () => {
+  const on = actions();
+  const entries = moreMenuEntries({
+    clientName: null,
+    isMine: false,
+    isFollowing: null,
+    isBookmarked: null,
+    isPinned: null,
+    muteState: "blocked",
     note1: NOTE1,
     nevent: NEVENT,
     on,
@@ -160,8 +200,10 @@ it("ミュート中の人は「ブロックを解除」", () => {
   expect(shape(entries)).toEqual(["ブロックを解除", "通報 (danger)", "---", ...COPIES]);
   const entry = entries[0];
   if (entry.type === "item") entry.onSelect();
-  expect(on.unmute).toHaveBeenCalledTimes(1);
+  expect(on.unblock).toHaveBeenCalledTimes(1);
+  expect(on.unmute).not.toHaveBeenCalled();
   expect(on.mute).not.toHaveBeenCalled();
+  expect(on.block).not.toHaveBeenCalled();
 });
 
 it("自分の投稿はフォロー項目・ミュート項目なしで「削除をリクエスト」、代わりに固定の項目", () => {
@@ -172,7 +214,7 @@ it("自分の投稿はフォロー項目・ミュート項目なしで「削除�
     isFollowing: true,
     isBookmarked: false,
     isPinned: false,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on,
@@ -201,7 +243,7 @@ it("自分の投稿で固定済みなら「プロフィールの固定を解除�
     isMine: true,
     isFollowing: null,
     isBookmarked: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
   };
@@ -226,7 +268,7 @@ it("client タグが無ければ見出しと最初の区切りを出さない", 
     isFollowing: null,
     isBookmarked: null,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on: actions(),
@@ -241,7 +283,7 @@ it("translationVisible が undefined / null なら「翻訳」を出さない。
     isFollowing: null,
     isBookmarked: null,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
   };
@@ -275,7 +317,7 @@ it("開発者モードの間は末尾に「イベントJSONを表示」", () => 
     isFollowing: null,
     isBookmarked: null,
     isPinned: null,
-    isMuted: false,
+    muteState: "none" as const,
     note1: NOTE1,
     nevent: NEVENT,
     on,

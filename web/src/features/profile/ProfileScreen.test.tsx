@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { decode, npubEncode } from "nostr-tools/nip19";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
@@ -12,9 +12,9 @@ import { useDeck } from "../../store/deck";
 import { clearViewport, mockViewport } from "../../test/viewport";
 import { useToast } from "../../ui/toast";
 import { reportUser } from "../actions/reactions";
-import { blockUser } from "../mute/block";
-import { EMPTY_MUTE_MATCHER, useMute } from "../mute/muteList";
-import { unmuteUser } from "../mute/muteSync";
+import { blockUser, unblockUser } from "../mute/block";
+import { EMPTY_MUTE_LIST, EMPTY_MUTE_MATCHER, setMuteList, useMute } from "../mute/muteList";
+import { muteUser, unmuteUser } from "../mute/muteSync";
 import { FollowError, toggleFollow } from "./follow";
 import type { FollowersState } from "./followers";
 import { useFollowers } from "./followers";
@@ -57,10 +57,11 @@ vi.mock("../mute/muteSync", async (importOriginal) => ({
   muteUser: vi.fn(async () => "done"),
   unmuteUser: vi.fn(async () => "done"),
 }));
-// [#957] ブロック（隠す・通報・保存）は block.test.ts。ここでは呼ぶところまで
+// [#957] ブロック / 解除（隠す・通報・保存）は block.test.ts。ここでは呼ぶところまで
 vi.mock("../mute/block", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mute/block")>()),
   blockUser: vi.fn(async () => "saved"),
+  unblockUser: vi.fn(async () => "done"),
 }));
 vi.mock("../actions/reactions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../actions/reactions")>()),
@@ -123,8 +124,12 @@ beforeEach(() => {
     loadMore: vi.fn(),
   });
   vi.mocked(useProfileLists).mockReturnValue({ loading: false, sets: [] });
+  vi.mocked(muteUser).mockReset();
+  vi.mocked(muteUser).mockResolvedValue("done");
   vi.mocked(blockUser).mockReset();
   vi.mocked(blockUser).mockResolvedValue("saved");
+  vi.mocked(unblockUser).mockReset();
+  vi.mocked(unblockUser).mockResolvedValue("done");
   vi.mocked(unmuteUser).mockReset();
   vi.mocked(unmuteUser).mockResolvedValue("done");
   vi.mocked(reportUser).mockReset();
@@ -145,10 +150,11 @@ afterEach(() => {
 });
 
 /** them をミュート中にする（他は空のミュートリスト） */
-function muteThem() {
-  useMute.setState({
-    matcher: { ...EMPTY_MUTE_MATCHER, isEmpty: false, users: new Set([them]) },
-    list: null,
+/** [#963] blocked = 公開の p、muted = 非公開の p だけ */
+function muteThem(mode: "muted" | "blocked") {
+  setMuteList({
+    ...EMPTY_MUTE_LIST,
+    entries: [{ category: "p", value: them, isPublic: mode === "blocked", isPrivate: mode === "muted" }],
   });
 }
 
@@ -700,18 +706,46 @@ describe("フォロワー", () => {
 });
 
 describe("ミュート / 通報", () => {
-  it("ブロック中は名前の横に「ブロック中」、⋯ には「ブロックを解除」だけ出る", async () => {
+  it("ミュート中は名前の横に「ミュート中」、⋯ には「ミュートを解除」と「ブロック」", async () => {
     const user = userEvent.setup();
     alice();
-    muteThem();
+    muteThem("muted");
+    renderScreen();
+    expect(screen.getByText("ミュート中")).toBeInTheDocument();
+    expect(screen.queryByText("ブロック中")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(screen.getByRole("menuitem", { name: "ミュートを解除" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "ブロック" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "ミュート" })).not.toBeInTheDocument();
+  });
+
+  it("[#963] ブロック中は名前の横に「ブロック中」、⋯ には「ブロックを解除」だけ出る", async () => {
+    const user = userEvent.setup();
+    alice();
+    muteThem("blocked");
     renderScreen();
     expect(screen.getByText("ブロック中")).toBeInTheDocument();
+    expect(screen.queryByText("ミュート中")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     expect(screen.getByRole("menuitem", { name: "ブロックを解除" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "ブロック" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /ミュート/ })).not.toBeInTheDocument();
   });
 
-  it("「ブロック」は確認してから blockUser を呼ぶ（投稿は渡さない。ネイティブと同じ文言。P3）", async () => {
+  it("「ミュート」は確認してから muteUser を呼ぶ（ネイティブと同じ文言。P3）", async () => {
+    const user = userEvent.setup();
+    alice();
+    renderScreen();
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "ミュート" }));
+    expect(vi.mocked(muteUser)).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをミュートしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "ミュート" }));
+    expect(vi.mocked(muteUser)).toHaveBeenCalledWith(me, them);
+    expect(vi.mocked(blockUser)).not.toHaveBeenCalled();
+  });
+
+  it("[#963]「ブロック」は確認してから blockUser を呼ぶ（投稿は渡さない）", async () => {
     const user = userEvent.setup();
     alice();
     renderScreen();
@@ -721,18 +755,35 @@ describe("ミュート / 通報", () => {
     const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
     await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
     expect(vi.mocked(blockUser)).toHaveBeenCalledWith(me, them);
+    expect(vi.mocked(muteUser)).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
   });
 
-  it("ブロック中の「ブロックを解除」は確認してから unmuteUser を呼ぶ", async () => {
+  it("ミュート中の「ミュートを解除」は確認してから unmuteUser を呼ぶ", async () => {
     const user = userEvent.setup();
     alice();
-    muteThem();
+    muteThem("muted");
+    renderScreen();
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "ミュートを解除" }));
+    const dialog = screen.getByRole("dialog", { name: "ミュートを解除しますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "解除する" }));
+    expect(vi.mocked(unmuteUser)).toHaveBeenCalledWith(me, them);
+  });
+
+  it("[#963] ブロック中の「ブロックを解除」は確認してから unblockUser を呼ぶ", async () => {
+    const user = userEvent.setup();
+    alice();
+    muteThem("blocked");
     renderScreen();
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     await user.click(screen.getByRole("menuitem", { name: "ブロックを解除" }));
     const dialog = screen.getByRole("dialog", { name: "ブロックを解除しますか？" });
+    expect(dialog).toHaveTextContent("この人の投稿・通知・DM がまた表示されます。");
     await user.click(within(dialog).getByRole("button", { name: "解除する" }));
-    expect(vi.mocked(unmuteUser)).toHaveBeenCalledWith(me, them);
+    expect(vi.mocked(unblockUser)).toHaveBeenCalledWith(me, them);
+    expect(vi.mocked(unmuteUser)).not.toHaveBeenCalled();
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックを解除しました"]));
   });
 
   it("「通報」は理由を選ぶと reportUser を呼ぶ（e タグの無い通報。中身は reactions.test.ts。ネイティブと同じ文言。P3）", async () => {
@@ -746,11 +797,12 @@ describe("ミュート / 通報", () => {
     expect(vi.mocked(reportUser)).toHaveBeenCalledWith(them, "spam");
   });
 
-  it("自分のプロフィールにはブロック・通報の項目が無い", async () => {
+  it("自分のプロフィールにはミュート・ブロック・通報の項目が無い", async () => {
     const user = userEvent.setup();
     addProfile(meKey, { name: "Me" });
     renderScreen(me);
     await user.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(screen.queryByRole("menuitem", { name: /ミュート/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /ブロック/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "通報" })).not.toBeInTheDocument();
   });

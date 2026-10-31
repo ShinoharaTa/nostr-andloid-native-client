@@ -9,7 +9,7 @@ import { eventStore } from "../../nostr/store";
 import { BoltIcon, ContentCopyIcon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
 import { Lightbox } from "../media/Lightbox";
-import { useMuteMatcher } from "../mute/muteList";
+import { useUserMuteState } from "../mute/muteList";
 import { useOpenSettingsSection } from "../settings/useOpenSettingsSection";
 import { StatusBody } from "../status/StatusCard";
 import { isStatusVisible, STATUS_KIND, type StatusType } from "../status/statusModel";
@@ -108,7 +108,7 @@ export function ProfileHeaderCard({
   const lud16 = textOf(profile?.lud16);
   const website = useMemo(() => rawWebsite(profileEvent), [profileEvent]);
   const npub = useMemo(() => npubEncode(pubkey), [pubkey]);
-  const muted = useMuteMatcher().users.has(pubkey);
+  const muteState = useUserMuteState(pubkey);
   // kind:0 のイベントが手元に来るまでは about を出さない（カスタム絵文字は kind:0 のタグから引く）
   const aboutRoot = useMemo(
     () => (profileEvent && about ? parseAbout(profileEvent, about) : null),
@@ -161,7 +161,7 @@ export function ProfileHeaderCard({
               <BoltIcon className={`${styles.icon} ${styles.zap}`} />
             </button>
           )}
-          <ProfileMenu pubkey={pubkey} me={isMe ? null : me} muted={muted} onCopied={showToast} />
+          <ProfileMenu pubkey={pubkey} me={isMe ? null : me} muteState={muteState} onCopied={showToast} />
           {isMe ? (
             <button
               type="button"
@@ -184,7 +184,9 @@ export function ProfileHeaderCard({
         <div className={styles.nameRow}>
           <h2 className={styles.name}>{name}</h2>
           {followsMe && <span className={styles.badge}>{t("follows_you")}</span>}
-          {muted && <span className={styles.badge}>{t("muted_badge")}</span>}
+          {/* [#963] ブロック中 / ミュート中を分ける */}
+          {muteState === "blocked" && <span className={styles.badge}>{t("blocked_badge")}</span>}
+          {muteState === "muted" && <span className={styles.badge}>{t("muted_badge")}</span>}
         </div>
         {nip05 && (
           <div className={styles.line}>

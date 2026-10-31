@@ -33,6 +33,7 @@ import {
 } from "../../ui/icons";
 import { MenuButton, type MenuEntry } from "../../ui/MenuButton";
 import { showToast } from "../../ui/toast";
+import { muteMenuEntries } from "../actions/moreMenu";
 import { copyText, plainTextOf } from "../actions/noteLinks";
 import { reactionSentMessage, saveMadeEmoji } from "../actions/pickedReaction";
 import { ReactionPickerDialog } from "../actions/ReactionPickerDialog";
@@ -48,9 +49,9 @@ import {
 import { registerColumnScroll } from "../deck/columnScroll";
 import { useKbColumnId } from "../keyboard/KbList";
 import { NoteMedia } from "../media/NoteMedia";
-import { blockUser } from "../mute/block";
-import { useMuteMatcher } from "../mute/muteList";
-import { MuteListError, unmuteUser } from "../mute/muteSync";
+import { blockUser, unblockUser } from "../mute/block";
+import { useUserMuteState } from "../mute/muteList";
+import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
 import { useDeveloperMode } from "../settings/devMode";
 import { useTimeDisplay } from "../settings/timeDisplay";
 import type { ReactionGroup } from "../thread/engagement";
@@ -458,7 +459,7 @@ function warn(message: string) {
 
 /**
  * 吹き出しの横の常設アクション（ネイティブ MessageActions）: リプライ → 既定リアクション → 絵文字 → ⚡ → ⋯
- * （テキストをコピー・このユーザーをミュート・通報、開発者モード中は末尾に「イベントJSONを表示」。CH3）。
+ * （テキストをコピー・このユーザーをミュート / ブロック（#963）・通報、開発者モード中は末尾に「イベントJSONを表示」。CH3）。
  * [#538] ⚡ は発言者の kind:0 に lud16 があるときだけ。
  */
 function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine: boolean; onReply(): void }) {
@@ -469,28 +470,44 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
   const content = useDefaultReaction((s) => s.content);
   const isStar = content === "⭐" || content === "★";
   const reacted = useIsReacted(message.id);
-  const isMuted = useMuteMatcher().users.has(message.pubkey);
+  const muteState = useUserMuteState(message.pubkey);
   const developerMode = useDeveloperMode((s) => s.enabled);
-  const [dialog, setDialog] = useState<"picker" | "unreact" | "mute" | "report" | "zap" | "json" | null>(
-    null,
-  );
+  const [dialog, setDialog] = useState<
+    "picker" | "unreact" | "mute" | "block" | "report" | "zap" | "json" | null
+  >(null);
   // [#537] ウォレット接続（NWC）済みなら Zap ダイアログの受け口へアプリ内送金を渡す
   const walletConnected = useNwc((s) => s.connection !== null);
   const Glyph = isStar ? (reacted ? StarIcon : StarBorderIcon) : reacted ? FavoriteIcon : FavoriteBorderIcon;
 
-  function mute(action: "mute" | "unmute") {
+  function mute(action: "mute" | "unmute" | "block" | "unblock") {
     if (!me) return;
-    if (action === "mute") {
-      // [#957] ブロック（すぐ隠し、開発者へ通報し、ミュートリストに保存する。保存できなくても失敗にはしない）
-      void blockUser(me, message.pubkey, message).then((result) =>
-        showToast(result === "saved" ? t("muted_toast") : t("block_pending_toast")),
-      );
-      return;
+    const pk = message.pubkey;
+    switch (action) {
+      case "block":
+        // [#963] ブロック（すぐ隠し、通報し、ミュートリストに公開で保存する。保存できなくても失敗にはしない）
+        void blockUser(me, pk, message).then((result) =>
+          showToast(result === "saved" ? t("blocked_toast") : t("block_pending_toast")),
+        );
+        return;
+      case "mute":
+        muteUser(me, pk).then(
+          () => showToast(t("muted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unmute":
+        unmuteUser(me, pk).then(
+          () => showToast(t("note_unmuted_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
+      case "unblock":
+        unblockUser(me, pk).then(
+          () => showToast(t("note_unblocked_toast")),
+          (e) => showToast(muteFailureMessage(e)),
+        );
+        return;
     }
-    unmuteUser(me, message.pubkey).then(
-      () => showToast(t("note_unmuted_toast")),
-      (e) => showToast(muteFailureMessage(e)),
-    );
   }
 
   const entries: MenuEntry[] = [
@@ -498,9 +515,12 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
   ];
   if (!mine) {
     entries.push(
-      isMuted
-        ? { type: "item", label: t("note_unmute_user"), onSelect: () => mute("unmute") }
-        : { type: "item", label: t("note_mute_user"), onSelect: () => setDialog("mute") },
+      ...muteMenuEntries(muteState, {
+        mute: () => setDialog("mute"),
+        unmute: () => mute("unmute"),
+        block: () => setDialog("block"),
+        unblock: () => mute("unblock"),
+      }),
       { type: "item", label: t("note_report"), onSelect: () => setDialog("report"), tone: "danger" },
     );
   }
@@ -602,6 +622,19 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           onConfirm={() => {
             setDialog(null);
             mute("mute");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "block" && (
+        <ConfirmDialog
+          title={t("block_confirm_title")}
+          text={t("block_confirm_text")}
+          confirmLabel={t("block_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            mute("block");
           }}
           onDismiss={() => setDialog(null)}
         />
