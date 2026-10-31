@@ -40,7 +40,14 @@ function resolveAppVersion(): string | null {
  * Pages は /privacy-policy.html を /privacy-policy へ 308 で飛ばすため、拡張子付きの URL を外すだけでは
  * 飛んだ先で SW が index.html を返す。ページを足したらここにも足す（staticConfig.test.ts が dist の構成と突き合わせる）
  */
-export const STATIC_PAGES = ["/privacy-policy", "/child-safety", "/themes", "/licenses"] as const;
+export const STATIC_PAGES = [
+  "/privacy-policy",
+  "/terms",
+  "/account-deletion",
+  "/child-safety",
+  "/themes",
+  "/licenses",
+] as const;
 
 /** SW のフォールバック（index.html）にしない URL: /api/*、拡張子付きの URL、STATIC_PAGES */
 export const NAVIGATE_FALLBACK_DENYLIST: RegExp[] = [
