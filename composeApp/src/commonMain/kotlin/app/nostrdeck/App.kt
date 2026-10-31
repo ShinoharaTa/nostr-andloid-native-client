@@ -9,7 +9,7 @@ import nostr_deck_client.composeapp.generated.resources.emoji_saved
 import nostr_deck_client.composeapp.generated.resources.emoji_no_base
 import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplicate
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
-import nostr_deck_client.composeapp.generated.resources.muted_toast
+import nostr_deck_client.composeapp.generated.resources.blocked_toast
 import nostr_deck_client.composeapp.generated.resources.block_pending_toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -147,7 +147,7 @@ fun App(
             repository?.blockResultFlow()?.collect { result ->
                 val r = nostr_deck_client.composeapp.generated.resources.Res.string
                 toast(app.nostrdeck.i18n.getString(
-                    if (result == app.nostrdeck.data.EventRepository.BlockResult.SAVED) r.muted_toast else r.block_pending_toast,
+                    if (result == app.nostrdeck.data.EventRepository.BlockResult.SAVED) r.blocked_toast else r.block_pending_toast,
                 ))
             }
         }
