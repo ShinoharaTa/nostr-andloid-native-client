@@ -8,9 +8,10 @@ import {
   applyOwnRelayList,
   defaultRelays,
   loadRelayTable,
+  type RelayProgress,
   readRelays,
   requestOnce,
-  subscribeTo,
+  subscribeProgress,
   unloadRelayTable,
 } from "./pool";
 import { eventStore } from "./store";
@@ -118,8 +119,9 @@ export function displayRelayUrl(url: string): string {
  * （ネイティブ subscribeAuthorOutbox）。書き込みリレーが分からない著者がいれば、先に kind:10002 を
  * インデクサと自分のリレーへ取りに行き（最大 10 秒）、届いた分で決める。
  * 購読をやめると、待機中の kind:10002 の取得も追加の REQ も CLOSE する。
+ * 戻り値は追加の REQ のリレーごとの受信と EOSE（カラムの取得範囲にも数える。#955）。
  */
-export function authorOutbox$(authors: readonly string[], filters: Filter[]): Observable<"EOSE"> {
+export function authorOutbox$(authors: readonly string[], filters: Filter[]): Observable<RelayProgress> {
   return defer(() => {
     if (authors.length === 0 || authors.length > OUTBOX_MAX_AUTHORS) return EMPTY;
     const needs = authors.filter((a) => writeRelaysOf(a).length === 0);
@@ -138,7 +140,7 @@ export function authorOutbox$(authors: readonly string[], filters: Filter[]): Ob
     const outbox$ = defer(() => {
       const own = new Set(readRelays().map((url) => normalizeURL(url)));
       const targets = [...new Set(authors.flatMap(writeRelaysOf))].filter((url) => !own.has(url));
-      return targets.length === 0 ? EMPTY : subscribeTo(targets, filters);
+      return targets.length === 0 ? EMPTY : subscribeProgress(targets, filters);
     });
     return concat(relayList$, outbox$);
   });

@@ -18,6 +18,7 @@ import {
   of,
   skip,
   switchMap,
+  takeWhile,
   tap,
   timer,
 } from "rxjs";
@@ -479,12 +480,30 @@ export function subscribe(filters: Filter | Filter[]): Observable<"EOSE"> {
  * 戻り値はリレーごとの EOSE を流す（購読をやめると CLOSE を送る）。
  */
 export function subscribeTo(relays: readonly string[], filters: Filter[]): Observable<"EOSE"> {
+  return subscribeProgress(relays, filters).pipe(
+    filter((progress) => progress.type === "EOSE"),
+    map(() => "EOSE" as const),
+  );
+}
+
+/** リレーごとの受信と EOSE（カラムの取得範囲を数える。#955 lib/timelineCoverage.ts）。from は正規化した URL */
+export type RelayProgress =
+  | { type: "EVENT"; from: string; createdAt: number }
+  | { type: "EOSE"; from: string };
+
+/** subscribeTo と同じ購読で、受信と EOSE をどのリレーからかと一緒に流す（#955） */
+export function subscribeProgress(relays: readonly string[], filters: Filter[]): Observable<RelayProgress> {
   return liveReq([...relays], filters).pipe(
     tap((message) => {
       if (message.type === "EVENT") addVerified(message.event, message.from);
     }),
-    filter((message) => message.type === "EOSE"),
-    map(() => "EOSE" as const),
+    filter((message) => message.type === "EVENT" || message.type === "EOSE"),
+    map(
+      (message): RelayProgress =>
+        message.type === "EVENT"
+          ? { type: "EVENT", from: message.from, createdAt: message.event.created_at }
+          : { type: "EOSE", from: message.from },
+    ),
   );
 }
 
@@ -510,6 +529,31 @@ export function requestOnce(
   timeoutMs: number,
 ): Observable<NostrEvent> {
   return pool.request([...relays], filters, { timeout: timeoutMs }).pipe(tap((e) => addVerified(e)));
+}
+
+/**
+ * 1 リレーへ 1 回だけ取りに行く（#955 の遡り。リレーごとに until を変えるので 1 リレーずつ）。
+ * 受けたイベントは EventStore へ入れ、その created_at を流す。EOSE なら "EOSE"、timeoutMs までに来ない・
+ * つながらないなら "TIMEOUT" を流して終わる（購読をやめると CLOSE を送る）
+ */
+export function requestFrom(
+  relay: string,
+  filters: Filter[],
+  timeoutMs: number,
+): Observable<number | "EOSE" | "TIMEOUT"> {
+  return merge(
+    pool.req([relay], filters),
+    timer(timeoutMs).pipe(map(() => ({ type: "TIMEOUT" }) as const)),
+  ).pipe(
+    filter((message) => message.type !== "OPEN"),
+    takeWhile((message) => message.type === "EVENT", true),
+    tap((message) => {
+      if (message.type === "EVENT") addVerified(message.event, message.from);
+    }),
+    map((message) =>
+      message.type === "EVENT" ? message.event.created_at : message.type === "EOSE" ? "EOSE" : "TIMEOUT",
+    ),
+  );
 }
 
 /**

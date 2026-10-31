@@ -192,6 +192,8 @@ fun FollowingFeedColumn(
     selectedIndex: Int = -1,           // [#14] キーボード選択中のインデックス（-1=なし）
     /** [#793] パブリックチャットの発言の行き先（そのチャンネルのルームを開く）。チャンネル id を渡す。 */
     onChannelClick: (channelId: String) -> Unit = {},
+    /** [#955] 末尾付近まで来たら遡る（非null で有効）。 */
+    onLoadOlder: (() -> Unit)? = null,
 ) {
     LaunchedEffect(entries.firstOrNull()?.sortAt) {
         if (listState.firstVisibleItemIndex <= 2 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
@@ -199,6 +201,24 @@ fun FollowingFeedColumn(
     val scope = rememberCoroutineScope()
     val keys = remember(entries) { entries.map { feedEntryKey(it) } }
     val loaded by (LocalRepository.current?.columnLoadedFlow()?.collectAsState() ?: remember { mutableStateOf(emptySet<String>()) })
+    // [#955] 無限スクロール（[FeedColumn] と同じ）: 末尾付近まで来たら遡る。いちばん古い行が変わったときだけ聞き直す。
+    var loadingOlder by remember(spec.id) { mutableStateOf(false) }
+    var lastOlderAt by remember(spec.id) { mutableStateOf(0L) }
+    val nearBottom by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+        }
+    }
+    LaunchedEffect(nearBottom, entries.size) {
+        val oldest = entries.lastOrNull()?.sortAt ?: return@LaunchedEffect
+        if (nearBottom && onLoadOlder != null && oldest != lastOlderAt) {
+            lastOlderAt = oldest; loadingOlder = true
+            onLoadOlder()
+        }
+    }
+    LaunchedEffect(lastOlderAt) { if (lastOlderAt != 0L) { delay(4000); loadingOlder = false } }
     Column(modifier.background(DeckColors.Surface)) {
         ColumnHeader(
             title = spec.title, subtitle = columnSubtitleFor(spec),
@@ -239,6 +259,7 @@ fun FollowingFeedColumn(
                         )
                     }
                 }
+                if (loadingOlder && entries.isNotEmpty()) item("load_older") { LoadMoreFooter() }
             }
             // [#52] 新着あり→件数ピル / 新着なしでもスクロール中→「最新へ戻る」。タップで最上部へ。
             FeedTopPill(rememberNewItemsCount(keys, listState), listState) {
