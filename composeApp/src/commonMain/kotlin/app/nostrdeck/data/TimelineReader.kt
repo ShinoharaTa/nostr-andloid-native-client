@@ -154,6 +154,7 @@ class TimelineReader(
                 slot = null
                 sleeping = false
                 releaseEngine()
+                statsState.update { it.copy(waiting = 0) }   // 捨てたスロットの分を「待っている」に残さない
                 statusState.value = Status.OFF
             }
         }
@@ -189,7 +190,10 @@ class TimelineReader(
                         engineLock.withLock { releaseEngine() }
                         clear(queue)
                         released = true
-                    } else if (released) {
+                    } else if (released || sleeping) {
+                        // sleeping だけ立っているのは、捨てている途中（ロック待ち）で前に戻ってここが打ち切られたとき。
+                        // そのまま放っておくと、ボタンは ON のまま何も読まなくなる
+
                         clear(queue)
                         picker.restart(now())
                         sleeping = false
@@ -297,8 +301,10 @@ class TimelineReader(
         val names = SpeechText.personRefs(body).associateWith { bech32 ->
             runCatching { Nip19.mentionBechToHex(bech32) }.getOrNull()?.let { personName(it) }
         }
+        // プロフィールが未取得だと author.name は公開鍵の先頭 10 文字になる。16 進を読み上げないよう、DB を引き直してだめなら名前は省く
+        val author = note.author.name.takeUnless { it == note.event.pubkey.take(10) } ?: personName(note.event.pubkey) ?: ""
         return SpeechText.of(
-            name = note.author.name,
+            name = author,
             body = body,
             hasMedia = note.images.isNotEmpty(),
             contentWarning = note.contentWarning,
@@ -330,6 +336,11 @@ class NewPostPicker(private val now: () -> Long) {
     private val seen = LinkedHashSet<String>()
     /** 次に渡された空でない一覧を「前からある投稿」として覚える（まだ何も覚えていない・[rebase] の後）。 */
     @Volatile private var rebasing = true
+    /**
+     * [rebase] の後の覚え直しか。そのときは猶予を付けない: カラムが消えている間の投稿は、描き直した直後に
+     * まとめて届く（最初の一覧は手元の古い分で、続きがリレーから来る）。画面で見られるので読まない。
+     */
+    @Volatile private var rebased = false
 
     fun pick(feed: List<NoteUi>): List<NoteUi> {
         if (rebasing) {
@@ -337,8 +348,9 @@ class NewPostPicker(private val now: () -> Long) {
             if (feed.isEmpty()) return emptyList()
             seen.clear()
             feed.forEach { seen.add(keyOf(it)) }
-            from = now() - GRACE_SEC
+            from = if (rebased) now() else now() - GRACE_SEC
             rebasing = false
+            rebased = false
             return emptyList()
         }
         val fresh = feed.filter { keyOf(it) !in seen }
@@ -353,6 +365,7 @@ class NewPostPicker(private val now: () -> Long) {
     /** 次に渡された一覧を「前からある投稿」として覚え直す（カラムが画面から消えて、また描かれるとき）。 */
     fun rebase() {
         rebasing = true
+        rebased = true
     }
 
     /**

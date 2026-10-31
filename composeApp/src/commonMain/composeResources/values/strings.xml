@@ -886,7 +886,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <!-- [#948] Read aloud (ZEN-TTS) -->
     <string name="section_speech">Read aloud</string>
     <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Turn it on or off with the button above the post button. You need to download a voice first (about 31 MB each). Voices are downloaded from ZEN-TTS’s official source (GitHub).</string>
-    <string name="speech_unsupported">Read aloud is not available on this device (Android and iOS only).</string>
+    <string name="speech_unsupported">Read aloud is not available on this device (Android, and iOS 16.4 or later).</string>
     <string name="speech_no_runtime">This build does not include the speech engine.</string>
     <string name="speech_voices">Voice</string>
     <string name="speech_download_fmt">Download (%1$d MB)</string>

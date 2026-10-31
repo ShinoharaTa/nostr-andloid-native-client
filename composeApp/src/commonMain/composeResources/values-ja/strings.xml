@@ -882,7 +882,7 @@
     <!-- [#948] 読み上げ（ZEN-TTS） -->
     <string name="section_speech">読み上げ</string>
     <string name="speech_desc">ホーム（フォロー中）を開いている間に新しく届いた投稿を、音声で読み上げます。ON / OFF は投稿ボタンの上のボタンで切り替えます。読み上げには声のデータのダウンロードが必要です（1 つ約 31 MB）。声のデータは ZEN-TTS の公式の配布元（GitHub）から取ってきます。</string>
-    <string name="speech_unsupported">この端末では読み上げを使えません（Android / iOS のみ）。</string>
+    <string name="speech_unsupported">この端末では読み上げを使えません（Android と、iOS 16.4 以降）。</string>
     <string name="speech_no_runtime">このビルドには読み上げのエンジンが入っていません。</string>
     <string name="speech_voices">声</string>
     <string name="speech_download_fmt">ダウンロード（%1$d MB）</string>

@@ -70,8 +70,10 @@ class NewPostPickerTest {
         now = since + 600
         // 戻ったときの一覧（消えている間に届いた投稿を含む）は読まない
         assertEquals(emptyList(), p.pick(listOf(note("while-away", since + 300), note("a", since))))
+        // 戻った直後にリレーから届く、消えている間の投稿も読まない（猶予は付けない。画面で見られる）
+        assertEquals(emptyList(), p.pick(listOf(note("backfill", since + 500), note("while-away", since + 300), note("a", since))))
         // その後に出た投稿は読む
-        assertEquals(listOf("after"), p.pick(listOf(note("after", since + 601), note("while-away", since + 300), note("a", since))).map { it.event.id })
+        assertEquals(listOf("after"), p.pick(listOf(note("after", since + 601), note("backfill", since + 500), note("while-away", since + 300), note("a", since))).map { it.event.id })
     }
 
     @Test

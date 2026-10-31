@@ -27,6 +27,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Foundation.create
 import platform.UIKit.UIApplication
+import platform.UIKit.UIDevice
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
@@ -39,7 +40,13 @@ import platform.darwin.NSObject
 
 actual fun createSpeechEngine(): SpeechEngine? = WKSpeechEngine()
 
-actual val speechSupported: Boolean = true
+/** ZEN-TTS の CPU 版は WebAssembly SIMD を使う。WebKit が対応したのは iOS 16.4 からなので、それより前の端末では出さない。 */
+actual val speechSupported: Boolean = run {
+    val v = UIDevice.currentDevice.systemVersion.split(".").map { it.toIntOrNull() ?: 0 }
+    val major = v.getOrElse(0) { 0 }
+    val minor = v.getOrElse(1) { 0 }
+    major > 16 || (major == 16 && minor >= 4)
+}
 
 /** 仲介ページのスキーム（アプリ内だけ。外へは出ない）。 */
 private const val SCHEME = "nostrism-tts"
