@@ -78,9 +78,14 @@ function lastPaged() {
   return { relays: call?.[0], filters: call?.[1], progress: results.at(-1)?.value as Subject<RelayProgress> };
 }
 
-/** relay から created_at の並びが届いて EOSE（数える REQ への返事） */
+/**
+ * relay から created_at の並びが届いて EOSE（数える REQ への返事）。
+ * 聞いた件数（limit=100）ぶん届いたことにする（最後の時刻を繰り返して埋める。件数が少ないと「もう先が無い」扱いになって遡らない）
+ */
 function arrive(progress: Subject<RelayProgress>, relay: string, createdAts: number[]) {
-  for (const createdAt of createdAts) progress.next({ type: "EVENT", from: relay, createdAt });
+  const last = createdAts.at(-1);
+  const full = last === undefined ? [] : [...createdAts, ...Array(100 - createdAts.length).fill(last)];
+  for (const createdAt of full) progress.next({ type: "EVENT", from: relay, createdAt });
   progress.next({ type: "EOSE", from: relay });
 }
 

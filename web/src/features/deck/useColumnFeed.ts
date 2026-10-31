@@ -77,7 +77,11 @@ const NO_IDS: ReadonlySet<string> = new Set();
 /**
  * 1 カラムの購読と表示。カラムの REQ を張ったままにし（アンマウントで CLOSE）、EventStore から条件に合う投稿を読む。
  */
-export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
+/**
+ * @param options.paging false なら遡らないカラム（検索画面の結果など）。リレーごとの取得範囲を数えず、下限も掛けない
+ *   （数えると、続きを取りに行かないのに下限より古い結果が隠れたままになる）
+ */
+export function useColumnFeed(spec: ColumnSpec, options: { paging?: boolean } = {}): ColumnFeed {
   const t = useT();
   const me = useSession((s) => s.pubkey);
   // フック呼び出しの順を変えないよう常に呼ぶ（フォロー中・ステータス以外は me を渡さず購読しない）
@@ -87,12 +91,13 @@ export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
   // フィルター・フォロー・read リレーの中身が変わったときだけ張り直す（同じ中身で配列が作り直されても据え置く）
   const filterKey = encodeReqFilter(spec.filter);
   const followKey = follows?.join(",");
+  const paging = options.paging !== false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: spec と follows は中身のキー（id・filterKey・followKey）で比べる
   const { plan, view, paged } = useMemo(() => {
     const ctx: Ctx = { me, follows, relays };
     const plan = requestFor(spec, ctx);
-    return { plan, view: viewFor(spec, ctx), paged: pagedFilterFor(spec, plan) };
-  }, [spec.id, filterKey, me, followKey, relays]);
+    return { plan, view: viewFor(spec, ctx), paged: paging ? pagedFilterFor(spec, plan) : null };
+  }, [spec.id, filterKey, me, followKey, relays, paging]);
 
   // 著者 1〜3 人のカラムは、その人たちの書き込みリレーへも張る（アウトボックス購読）
   const outboxKey = outboxAuthorsFor(spec)?.join(",") ?? "";
@@ -111,7 +116,8 @@ export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
       setFloor(null);
       return;
     }
-    if (coverage.current?.plan !== plan) coverage.current = { plan, coverage: new TimelineCoverage() };
+    if (coverage.current?.plan !== plan)
+      coverage.current = { plan, coverage: new TimelineCoverage(paged?.limit ?? 0) };
     const counted = coverage.current.coverage;
     setFloor(counted.floor());
     setLoading(true);
@@ -166,9 +172,13 @@ export function useColumnFeed(spec: ColumnSpec): ColumnFeed {
   }, [events, matcher, revealed, spec.kind, me, floor]);
 
   const mixed = useFollowingRows(spec, me, follows, visible, revealed);
-  // 混ぜた通知なども、下限より古いものは出さない（投稿が抜けているかもしれない時間帯に並べない）
+  // 混ぜた通知なども、下限より古いものは出さない（投稿が抜けているかもしれない時間帯に並べない）。
+  // DM の行は別の購読で来ていて見逃すと困るので、下限を掛けない
   const rows = useMemo(
-    () => (mixed === null || floor === null ? mixed : mixed.filter((r) => r.at >= floor)),
+    () =>
+      mixed === null || floor === null
+        ? mixed
+        : mixed.filter((r) => r.at >= floor || (r.type === "notice" && r.item.kind === "dm")),
     [mixed, floor],
   );
 

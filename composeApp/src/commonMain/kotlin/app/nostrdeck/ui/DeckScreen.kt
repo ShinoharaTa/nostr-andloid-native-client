@@ -78,6 +78,8 @@ import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 import app.nostrdeck.theme.DeckDimens
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -503,7 +505,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
     val matcher = rememberMuteMatcher()
     val revealed = rememberColumnRevealMuted(spec.id)
     // [#955] 画面に並べてよい下限（これより古い投稿は、どこかのリレーの分が抜けているかもしれないので出さない）。
-    val floor = repoForMenu?.timelineFloorFlow()?.collectAsState()?.value?.get(spec.id)
+    // このカラムの分だけ見る（ほかのカラムの下限が動いても描き直さない）。
+    val floor = repoForMenu?.let { r ->
+        remember(spec.id) { r.timelineFloorFlow().map { it[spec.id] }.distinctUntilChanged() }.collectAsState(null).value
+    }
     val isFollowing = spec.kind == ColumnKind.FOLLOWING
     val hiddenCategories = if (isFollowing && repoForMenu != null)
         repoForMenu.columnHiddenCategoriesFlow().collectAsState().value[spec.id].orEmpty() else emptySet()
@@ -566,7 +571,9 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [M10] 投稿＋自分宛のリアクション/リポスト通知を混在表示。
                     val all = remember(spec.id) { repo!!.followingFeedMixed() }.collectAsState().value
                     val entries = all.filterNot {
-                        if (floor != null && it.sortAt < floor) return@filterNot true   // [#955]
+                        // [#955] 下限より古い行は出さない。DM の通知は別の購読で来ていて見逃すと困るので（[#419]）、下限を掛けない
+                        val dm = it is app.nostrdeck.model.FeedEntry.Notice && it.notif.kind == app.nostrdeck.model.NotificationKind.DM
+                        if (floor != null && it.sortAt < floor && !dm) return@filterNot true
                         // メニューで非表示にした通知系カテゴリを除外。
                         // [#793] 対応表は feedNoticeCategoryOf（パブリックチャットの発言 → CHAT を足した）。
                         val cat = app.nostrdeck.model.feedNoticeCategoryOf(it)
@@ -651,7 +658,8 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     val raw = if (live) remember(spec.id, spec.filter) { repo!!.columnFeed(spec.filter) }.collectAsState().value
                     else SampleData.feedFor(spec)
                     val notes = (if (revealed) raw else raw.filterNot { matcher.muted(it) })
-                        .let { list -> if (live && floor != null) list.filter { it.event.createdAt >= floor } else list }   // [#955]
+                        // [#955] 下限より古い行は出さない。リポストは（並び順と同じく）リポストした時刻で見る
+                        .let { list -> if (live && floor != null) list.filter { (it.repostAt ?: it.event.createdAt) >= floor } else list }
                     if (live) SubscribeZaps(repo, spec.id, notes.map { it.event.id })
                     val selIdx = kbColumnSelection(
                         state, spec.id, notes.size, listState,

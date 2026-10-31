@@ -6,6 +6,7 @@ import { TimelineCoverage } from "./timelineCoverage";
 
 const NOW = 1_800_000_000;
 const HOUR = 3_600;
+const LIMIT = 100;
 
 /** relay から、from 〜 to（秒前）の間に count 件、新しい順に届いて EOSE。seq は遡りの要求の番号（購読そのものなら null） */
 function receive(
@@ -27,9 +28,9 @@ function untils(c: TimelineCoverage): Record<string, number> {
 }
 
 function twoRelays(): TimelineCoverage {
-  const c = new TimelineCoverage();
-  receive(c, "A", 0, 1 * HOUR, 100);
-  receive(c, "B", 0, 5 * HOUR, 100);
+  const c = new TimelineCoverage(LIMIT);
+  receive(c, "A", 0, 1 * HOUR, LIMIT);
+  receive(c, "B", 0, 5 * HOUR, LIMIT);
   return c;
 }
 
@@ -56,12 +57,12 @@ describe("TimelineCoverage", () => {
 
   it("浅いリレーを遡ると下限が下がり、深いリレーにも追いついたら聞く", () => {
     const c = twoRelays();
-    receive(c, "A", 1 * HOUR, 2 * HOUR, 100, requestOf(c, "A").seq);
+    receive(c, "A", 1 * HOUR, 2 * HOUR, LIMIT, requestOf(c, "A").seq);
     expect(c.floor()).toBe(NOW - 2 * HOUR);
     // 下限 2 時間前 → 4 時間前までに境界があるリレーに聞く。B（5 時間前）はまだ
     const second = c.olderRequests(NOW);
     expect([...second.keys()]).toEqual(["A"]);
-    receive(c, "A", 2 * HOUR, 3 * HOUR, 100, second.get("A")?.seq ?? null);
+    receive(c, "A", 2 * HOUR, 3 * HOUR, LIMIT, second.get("A")?.seq ?? null);
     // 下限 3 時間前 → 6 時間前まで。B も聞く（それぞれ自分の境界から）
     expect(untils(c)).toEqual({ A: NOW - 3 * HOUR, B: NOW - 5 * HOUR });
   });
@@ -69,6 +70,14 @@ describe("TimelineCoverage", () => {
   it("何も無いリレーは数えない", () => {
     const c = twoRelays();
     receive(c, "C", 0, 0, 0);
+    expect(c.floor()).toBe(NOW - 1 * HOUR);
+    expect(untils(c)).not.toHaveProperty("C");
+  });
+
+  it("聞いた件数より少なく返したリレーは、もう先が無いので下限を持ち上げない", () => {
+    const c = twoRelays();
+    // 投稿の少ないリレー: 直近 5 分の 3 件しか無い。ここを下限にすると、開くたびに 5 分ぶんしか出なくなる
+    receive(c, "C", 0, 5 * 60, 3);
     expect(c.floor()).toBe(NOW - 1 * HOUR);
     expect(untils(c)).not.toHaveProperty("C");
   });
@@ -95,6 +104,33 @@ describe("TimelineCoverage", () => {
     expect(c.floor()).toBe(NOW - 90 * 60);
   });
 
+  it("下限を決めるリレーが無くなっても、応えなかったリレーにはもう一度聞く", () => {
+    const c = twoRelays();
+    c.onOlderTimeout("A", requestOf(c, "A").seq);
+    // 下限は B の境界へ。次に遡るときは B と、応えなかった A にもまた聞く
+    const second = c.olderRequests(NOW);
+    expect([...second.keys()].sort()).toEqual(["A", "B"]);
+    // B は遡っても何も無かった。A はまた応えない → 下限を決めるリレーが無くなる
+    receive(c, "B", 5 * HOUR, 5 * HOUR, 0, second.get("B")?.seq ?? null);
+    c.onOlderTimeout("A", second.get("A")?.seq ?? 0);
+    expect(c.floor()).toBeNull();
+    // それでも A にはもう一度聞く（ここで止まると、二度と遡れなくなる）
+    expect(untils(c)).toEqual({ A: NOW - 1 * HOUR });
+  });
+
+  it("出している要求を取り下げても、そのリレーを「応えない」扱いにしない", () => {
+    const c = twoRelays();
+    const a = requestOf(c, "A");
+    // カラムを閉じた（張り直した）。返事はもう数えない
+    c.cancelOlder();
+    expect(c.loadingOlder()).toBe(false);
+    c.onOlderTimeout("A", a.seq);
+    c.onEose("A", a.seq);
+    // A は下限に残り、次に遡るときにまた聞く
+    expect(c.floor()).toBe(NOW - 1 * HOUR);
+    expect(untils(c)).toEqual({ A: NOW - 1 * HOUR });
+  });
+
   it("前の要求への遅れた返事を、今の要求のものと取り違えない", () => {
     const c = twoRelays();
     const first = requestOf(c, "A");
@@ -117,10 +153,14 @@ describe("TimelineCoverage", () => {
     expect(c.floor()).toBe(NOW - 1 * HOUR);
   });
 
-  it("最初の取得の途中でも、届いた分で数える", () => {
-    const c = new TimelineCoverage();
+  it("最初の取得が終わるまでは下限を置かず、遡りもしない", () => {
+    const c = new TimelineCoverage(LIMIT);
     c.onEvent("A", NOW - 10 * 60, false);
     c.onEvent("A", NOW - 20 * 60, false);
-    expect(c.floor()).toBe(NOW - 20 * 60);
+    // 届いた分で境界を置くと、手元の投稿がいったん全部隠れて、届くたびに戻ってくる（ちらつく）
+    expect(c.floor()).toBeNull();
+    expect(untils(c)).toEqual({});
+    receive(c, "A", 20 * 60, 1 * HOUR, LIMIT);
+    expect(c.floor()).toBe(NOW - 1 * HOUR);
   });
 });

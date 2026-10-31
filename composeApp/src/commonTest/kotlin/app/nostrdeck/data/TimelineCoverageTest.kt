@@ -14,6 +14,7 @@ class TimelineCoverageTest {
 
     private val now = 1_800_000_000L
     private val hour = 3_600L
+    private val limit = 100
 
     /** [relay] から、[from] 〜 [to]（秒前）の間に [count] 件、新しい順に届いて EOSE。[seq] は遡りの要求の番号（購読そのものなら null）。 */
     private fun TimelineCoverage.receive(relay: String, from: Long, to: Long, count: Int, seq: Int? = null) {
@@ -23,9 +24,9 @@ class TimelineCoverageTest {
 
     private fun TimelineCoverage.untils(): Map<String, Long> = olderRequests(now).mapValues { it.value.until }
 
-    private fun twoRelays() = TimelineCoverage().apply {
-        receive("A", from = 0, to = 1 * hour, count = 100)
-        receive("B", from = 0, to = 5 * hour, count = 100)
+    private fun twoRelays() = TimelineCoverage(limit).apply {
+        receive("A", from = 0, to = 1 * hour, count = limit)
+        receive("B", from = 0, to = 5 * hour, count = limit)
     }
 
     @Test
@@ -49,12 +50,12 @@ class TimelineCoverageTest {
     fun paging_the_shallow_relay_moves_the_floor_and_the_deeper_relay_is_asked_when_reached() {
         val c = twoRelays()
         val first = c.olderRequests(now).getValue("A")
-        c.receive("A", from = 1 * hour, to = 2 * hour, count = 100, seq = first.seq)
+        c.receive("A", from = 1 * hour, to = 2 * hour, count = limit, seq = first.seq)
         assertEquals(now - 2 * hour, c.floor())
         // 下限 2 時間前 → 4 時間前までに境界があるリレーに聞く。B（5 時間前）はまだ
         val second = c.olderRequests(now)
         assertEquals(setOf("A"), second.keys)
-        c.receive("A", from = 2 * hour, to = 3 * hour, count = 100, seq = second.getValue("A").seq)
+        c.receive("A", from = 2 * hour, to = 3 * hour, count = limit, seq = second.getValue("A").seq)
         // 下限 3 時間前 → 6 時間前まで。B も聞く（それぞれ自分の境界から）
         assertEquals(mapOf("A" to now - 3 * hour, "B" to now - 5 * hour), c.untils())
     }
@@ -63,6 +64,15 @@ class TimelineCoverageTest {
     fun a_relay_with_nothing_is_left_out() {
         val c = twoRelays()
         c.receive("C", from = 0, to = 0, count = 0)
+        assertEquals(now - 1 * hour, c.floor())
+        assertFalse("C" in c.untils())
+    }
+
+    @Test
+    fun a_relay_that_returned_fewer_than_asked_has_nothing_older_and_does_not_hold_the_floor() {
+        val c = twoRelays()
+        // 投稿の少ないリレー: 直近 5 分の 3 件しか無い。ここを下限にすると、開くたびに 5 分ぶんしか出なくなる
+        c.receive("C", from = 0, to = 5 * 60, count = 3)
         assertEquals(now - 1 * hour, c.floor())
         assertFalse("C" in c.untils())
     }
@@ -92,6 +102,39 @@ class TimelineCoverageTest {
         // 遅れて A から届いたら戻す
         c.onEvent("A", now - 90 * 60, older = true)
         assertEquals(now - 90 * 60, c.floor())
+    }
+
+    @Test
+    fun relays_that_did_not_answer_are_asked_again_even_when_no_relay_is_left_for_the_floor() {
+        val c = twoRelays()
+        c.onOlderTimeout("A", c.olderRequests(now).getValue("A").seq)
+        // 下限は B の境界へ。次に遡るときは B と、応えなかった A にもまた聞く
+        val second = c.olderRequests(now)
+        assertEquals(setOf("A", "B"), second.keys)
+        // B は遡っても何も無かった。A はまた応えない → 下限を決めるリレーが無くなる
+        c.receive("B", from = 5 * hour, to = 5 * hour, count = 0, seq = second.getValue("B").seq)
+        c.onOlderTimeout("A", second.getValue("A").seq)
+        assertNull(c.floor())
+        // それでも A にはもう一度聞く（ここで止まると、二度と遡れなくなる）
+        val third = c.olderRequests(now)
+        assertEquals(mapOf("A" to now - 1 * hour), third.mapValues { it.value.until })
+        // 応えたら下限に戻る
+        c.receive("A", from = 1 * hour, to = 2 * hour, count = limit, seq = third.getValue("A").seq)
+        assertEquals(now - 2 * hour, c.floor())
+    }
+
+    @Test
+    fun cancelling_the_pending_requests_does_not_mark_the_relay_as_not_answering() {
+        val c = twoRelays()
+        val a = c.olderRequests(now).getValue("A")
+        // カラムを閉じた（張り直した）。返事はもう数えない
+        c.cancelOlder()
+        assertFalse(c.loadingOlder())
+        c.onOlderTimeout("A", a.seq)
+        c.onEose("A", a.seq)
+        // A は下限に残り、次に遡るときにまた聞く
+        assertEquals(now - 1 * hour, c.floor())
+        assertEquals(mapOf("A" to now - 1 * hour), c.untils())
     }
 
     @Test
@@ -126,10 +169,14 @@ class TimelineCoverageTest {
     }
 
     @Test
-    fun a_relay_still_sending_its_first_page_counts_with_what_has_arrived() {
-        val c = TimelineCoverage()
+    fun a_relay_still_sending_its_first_page_sets_no_floor_and_is_not_asked_yet() {
+        val c = TimelineCoverage(limit)
         c.onEvent("A", now - 10 * 60, older = false)
         c.onEvent("A", now - 20 * 60, older = false)
-        assertEquals(now - 20 * 60, c.floor())
+        // 届いた分で境界を置くと、手元の投稿がいったん全部隠れて、届くたびに戻ってくる（ちらつく）
+        assertNull(c.floor())
+        assertEquals(emptyMap(), c.untils())
+        c.receive("A", from = 20 * 60, to = 1 * hour, count = limit)
+        assertEquals(now - 1 * hour, c.floor())
     }
 }

@@ -1164,11 +1164,12 @@ class EventRepository(
         // [#135] 複合検索: 条件ごとの複数フィルタ（同一 REQ 内の複数フィルタ = OR）。
         // 単語条件を含むため NIP-50 対応リレーへ投げる（タグ/著者フィルタも同リレーで解決できる）。
         if (filter.words.isNotEmpty()) {
+            clearCoverage(columnId)   // [#955]
             subscribeTargeted(columnId, SEARCH_RELAYS.toSet(), *filter.toSearchProtocols(limit = SEARCH_FETCH_LIMIT))
             return
         }
         val proto = filter.toProtocol(limit = COLUMN_FETCH_LIMIT)
-        if (filter.search.isNullOrBlank()) startCoverage(columnId, key = filter)   // [#955]
+        if (filter.search.isNullOrBlank()) startCoverage(columnId, key = filter) else clearCoverage(columnId)   // [#955]
         when {
             // [#8] 検索カラムは NIP-50 対応リレーへ（接続中リレーが未対応でも結果を取れるように）。
             // [#210] 検索は取りこぼしが多いので取得上限を増やす（表示は feedBySearch 側で LIMIT）。
@@ -1296,8 +1297,13 @@ class EventRepository(
         data object ForgetAll : CoverageSignal { override val columnId: String = "" }
         data class Received(override val columnId: String, val relay: String, val createdAt: Long, val older: Boolean) : CoverageSignal
         data class Eose(override val columnId: String, val relay: String, val olderSeq: Int?) : CoverageSignal
-        data class OlderTimeout(override val columnId: String, val relay: String, val seq: Int) : CoverageSignal
+        /** 遡りの要求の時間切れ。[coverage] はその要求を出した数え手（張り直して別の数え手になっていたら無視する）。 */
+        data class OlderTimeout(override val columnId: String, val relay: String, val seq: Int, val coverage: TimelineCoverage) : CoverageSignal
         data class DropRelay(override val columnId: String, val relay: String) : CoverageSignal
+        /** 出している遡りの要求を取り下げる（カラムを閉じた・張り直した。返事はもう数えないので、時間切れで「応えない」扱いにしない）。 */
+        data class CancelOlder(override val columnId: String) : CoverageSignal
+        /** 数えるのをやめて境界も捨てる（単語・全文検索のカラムになった。検索は遡り方を変えないので下限を掛けない）。 */
+        data class Clear(override val columnId: String) : CoverageSignal
     }
 
     /** 受信・EOSE・購読の開始と終わりを、届いた順に 1 本で数える（[coverages] は [coverageDispatcher] 上でだけ触る）。 */
@@ -1318,7 +1324,14 @@ class EventRepository(
      */
     private fun startCoverage(columnId: String, key: Any) {
         coverageSubs.update { m -> m.filterValues { it.columnId != columnId } + (columnId to CoverageSub(columnId)) }
+        coverageSignals.trySend(CoverageSignal.CancelOlder(columnId))
         coverageSignals.trySend(CoverageSignal.Start(columnId, key))
+    }
+
+    /** 単語・全文検索のカラムになった（検索の購読は数えない。前の条件の下限が残らないよう捨てる）。 */
+    private fun clearCoverage(columnId: String) {
+        coverageSubs.update { m -> m.filterValues { it.columnId != columnId } }
+        coverageSignals.trySend(CoverageSignal.Clear(columnId))
     }
 
     /** カラムに付随する購読（アウトボックスなど）も、そのカラムの取得範囲として数える。 */
@@ -1329,6 +1342,7 @@ class EventRepository(
     /** カラムを閉じた（境界は残す。同じ条件で開き直したら引き継ぐ）。 */
     private fun stopCoverage(columnId: String) {
         coverageSubs.update { m -> m.filterValues { it.columnId != columnId } }
+        coverageSignals.trySend(CoverageSignal.CancelOlder(columnId))
     }
 
     /** キャッシュを消して購読を張り直すとき（[purgeCache] / [reloadForNewIdentity]）。DB の投稿が消えるので、最初の取得から数え直す。 */
@@ -1350,13 +1364,15 @@ class EventRepository(
             when (signal) {
                 is CoverageSignal.ForgetAll -> Unit
                 is CoverageSignal.Start -> if (signal.force || coverages[id] == null || coverageKeys[id] != signal.key) {
-                    coverages[id] = TimelineCoverage()
+                    coverages[id] = TimelineCoverage(COLUMN_FETCH_LIMIT)
                     if (!signal.force) coverageKeys[id] = signal.key
                 }
                 is CoverageSignal.Received -> coverages[id]?.onEvent(signal.relay, signal.createdAt, signal.older)
                 is CoverageSignal.Eose -> coverages[id]?.onEose(signal.relay, signal.olderSeq)
-                is CoverageSignal.OlderTimeout -> coverages[id]?.onOlderTimeout(signal.relay, signal.seq)
+                is CoverageSignal.OlderTimeout -> if (coverages[id] === signal.coverage) signal.coverage.onOlderTimeout(signal.relay, signal.seq)
                 is CoverageSignal.DropRelay -> coverages[id]?.dropRelay(signal.relay)
+                is CoverageSignal.CancelOlder -> coverages[id]?.cancelOlder()
+                is CoverageSignal.Clear -> { coverages.remove(id); coverageKeys.remove(id) }
             }
             val floor = coverages[id]?.floor()
             floorsState.update { m ->
@@ -1371,18 +1387,18 @@ class EventRepository(
 
     /**
      * 遡る。下限の近くで止まっているリレーにだけ、それぞれの境界を until にして 1 リレーずつ聞く（[TimelineCoverage.olderRequests]）。
-     * 返事（EOSE）か [OLDER_TIMEOUT_MS] で閉じる。
+     * EOSE は数えるだけで、購読は [OLDER_TIMEOUT_MS] たってから閉じる。
      */
     private fun pageOlder(columnId: String, filterAt: (until: Long) -> Filter) {
         scope.launch(coverageDispatcher) {
-            val requests = coverages[columnId]?.olderRequests(currentUnixTime()).orEmpty()
-            requests.forEach { (relay, request) ->
+            val counted = coverages[columnId] ?: return@launch
+            counted.olderRequests(currentUnixTime()).forEach { (relay, request) ->
                 val subId = "older-$columnId-${olderReqSeq++}"
                 coverageSubs.update { it + (subId to CoverageSub(columnId, olderSeq = request.seq)) }
                 subscribeTargeted(subId, setOf(relay), filterAt(request.until))
                 scope.launch {
                     delay(OLDER_TIMEOUT_MS)
-                    coverageSignals.trySend(CoverageSignal.OlderTimeout(columnId, relay, request.seq))
+                    coverageSignals.trySend(CoverageSignal.OlderTimeout(columnId, relay, request.seq, counted))
                     coverageSubs.update { it - subId }
                     unsubscribeAll(subId)
                 }

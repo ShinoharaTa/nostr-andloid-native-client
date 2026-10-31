@@ -155,13 +155,13 @@ describe("compact", () => {
     const user = userEvent.setup();
     renderScreen(400);
     await user.type(input(), "#nostr{Enter}");
-    // タグのカラムはリレーごとの取得範囲を数える REQ（#955）
-    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledWith(
+    // 検索画面の結果は続きを取りに行かないので、リレーごとの取得範囲は数えない（#955）
+    expect(vi.mocked(subscribeTo)).toHaveBeenCalledWith(
       ["wss://relay.example"],
       [{ kinds: [1], "#t": ["nostr"], limit: 100 }],
     );
-    expect(vi.mocked(subscribeProgress)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(subscribeTo)).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeTo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(subscribeProgress)).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("tab", { name: /^ユーザー/ }));
     expect(screen.getByText("条件に合うユーザーがいません。")).toBeInTheDocument();
