@@ -11,6 +11,7 @@ import { ChannelRoom, RoomHeader } from "../chat/ChannelRoom";
 import { type Channel, ensureChannels, useChannel, useChannels } from "../chat/channels";
 import { channelHref } from "../chat/chatMessage";
 import { pinRoom, usePinnedRoomIds } from "../chat/pin";
+import { useMuteMatcher } from "../mute/muteList";
 import { ConversationList } from "./ConversationList";
 import { ConversationView } from "./ConversationView";
 import { startDecrypting } from "./dmService";
@@ -73,6 +74,16 @@ function DmPanes({ mode }: { mode: LayoutMode }) {
   function close() {
     void navigate("/messages", { replace: true });
   }
+
+  // [#957] ブロックした相手の会話は開いたままにしない（一覧から外れるのに、開いていた画面だけ残らないように。ネイティブ #951）
+  // Compact / Rail は「←」と同じく一覧へ、Expanded は ✕ と同じく未選択へ
+  const blocked = useMuteMatcher().users;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 相手かブロックが変わったときだけ見る（back / close は毎回作り直す）
+  useEffect(() => {
+    if (typeof peer !== "string" || !blocked.has(peer)) return;
+    if (mode !== "expanded") back();
+    else close();
+  }, [peer, blocked]);
 
   if (mode !== "expanded") {
     return (

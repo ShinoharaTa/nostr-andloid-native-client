@@ -8,6 +8,7 @@ import type { DmMessageRow } from "../../db/schema";
 import { installDialogPolyfill } from "../../test/dialog";
 import { OTHER_PUBKEY, PUBKEY } from "../../test/fakeNostr";
 import { clearViewport, mockViewport } from "../../test/viewport";
+import { setMuteList, setPendingBlocks } from "../mute/muteList";
 import { useDmSeen } from "./dmSeen";
 import { resumeDecrypting, startDecrypting } from "./dmService";
 import { useDm } from "./dmStore";
@@ -34,6 +35,8 @@ afterEach(() => {
   clearViewport();
   useDm.getState().reset(null);
   useDmSeen.setState({ me: null, first: 0, peers: {} });
+  setMuteList(null);
+  setPendingBlocks(new Set());
   localStorage.clear();
 });
 
@@ -200,6 +203,42 @@ describe("Expanded", () => {
     expect(router.state.historyAction).toBe("REPLACE");
     expect(screen.getByText("会話を選択")).toBeInTheDocument();
     expect(rowButtons()).toHaveLength(2);
+  });
+});
+
+describe("[#957] ブロック", () => {
+  it("ブロック中の相手の会話は一覧に出さない", () => {
+    seed();
+    setPendingBlocks(new Set([BOB]));
+    renderAt("/messages", 400);
+    const rows = rowButtons();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("元気？");
+    expect(screen.queryByText("bob です")).not.toBeInTheDocument();
+  });
+
+  it("Compact: 開いている会話の相手をブロックしたら閉じて一覧へ戻る", async () => {
+    seed();
+    const router = renderAt("/messages", 400);
+    await userEvent.click(rowButtons()[1]);
+    expect(router.state.location.pathname).toBe(`/messages/${npubEncode(BOB)}`);
+
+    act(() => setPendingBlocks(new Set([BOB])));
+    expect(router.state.location.pathname).toBe("/messages");
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(rowButtons()).toHaveLength(1);
+  });
+
+  it("Expanded: 開いている会話の相手をブロックしたら未選択（「会話を選択」）に戻る", () => {
+    seed();
+    const router = renderAt(`/messages/${npubEncode(ALICE)}`, 1400);
+    expect(within(screen.getByRole("region")).getByText("こんにちは")).toBeInTheDocument();
+
+    act(() => setPendingBlocks(new Set([ALICE])));
+    expect(router.state.location.pathname).toBe("/messages");
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(screen.getByText("会話を選択")).toBeInTheDocument();
+    expect(rowButtons()).toHaveLength(1);
   });
 });
 
