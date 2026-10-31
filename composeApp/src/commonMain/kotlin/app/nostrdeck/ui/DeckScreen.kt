@@ -580,6 +580,13 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // 「パブリックチャット」の画面へ移ってルームを選ぶ。
                     // [#793] 「#チャンネル名 で発言」の行・本文・返信のタップ: ルームを詳細オーバーレイで重ねる（#791 と同じ経路）。
                     val openChannel: (String) -> Unit = { channelId -> state.openChannelRoom(channelId) }
+                    // [#948] 読み上げ: このカラムが描く投稿を、一覧に加わったときに再生用のスロットへ入れる
+                    //（読むものと画面に出るものを一致させる）。カラムが消えたら、次に描く一覧は「前からある投稿」。
+                    val reader = repo!!.timelineReader
+                    LaunchedEffect(all, hiddenCategories, revealed) {
+                        reader.onFeedRendered(entries.mapNotNull { (it as? FeedEntry.Post)?.note })
+                    }
+                    DisposableEffect(spec.id) { onDispose { reader.onFeedDetached() } }
                     SubscribeZaps(repo, spec.id, entries.filterIsInstance<FeedEntry.Post>().map { it.note.event.id })
                     val selIdx = kbColumnSelection(
                         state, spec.id, entries.size, listState,

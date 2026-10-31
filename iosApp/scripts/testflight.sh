@@ -19,6 +19,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."   # iosApp/
 ROOT="$(cd .. && pwd)"
 
+# [#948] 読み上げの ZEN-TTS ランタイム（ライセンス上リポジトリに入れられないので、ビルドのたびに取ってきて同梱する）
+"$ROOT/scripts/fetch-zen-tts.sh"
+
 : "${TEAM_ID:?TEAM_ID を設定してください（Apple Developer チームID・10桁）}"
 : "${ASC_KEY_ID:?ASC_KEY_ID を設定してください（App Store Connect APIキーID）}"
 : "${ASC_ISSUER_ID:?ASC_ISSUER_ID を設定してください（APIキーの Issuer ID）}"
