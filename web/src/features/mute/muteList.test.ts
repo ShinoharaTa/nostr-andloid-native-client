@@ -16,6 +16,9 @@ import {
   muteVisibleFilter,
   readMuteList,
   rebuildMuteTags,
+  setMuteList,
+  setPendingBlocks,
+  useMute,
 } from "./muteList";
 
 beforeEach(() => {
@@ -339,5 +342,39 @@ describe("再発行の中身", () => {
     expect(template.content).toBe(`enc:${JSON.stringify([["y", "secret"]])}`);
     const onlyKnown = { ...base, privateTags: [["p", BOB]] };
     expect((await buildMuteListTemplate(onlyKnown, [], encrypt, 1)).template.content).toBe("");
+  });
+});
+
+describe("[#957] 保存待ちのブロック（ネイティブ muteFilterFlow）", () => {
+  it("判定器は list ＋ 保存待ちのユーザーから作る。list（設定の編集用）は変えない", () => {
+    const list = { ...EMPTY_MUTE_LIST, entries: [entry("p", ALICE, true)] };
+    setMuteList(list);
+    setPendingBlocks(new Set([BOB]));
+    let state = useMute.getState();
+    expect(state.matcher.users).toEqual(new Set([ALICE, BOB]));
+    expect(state.list).toBe(list);
+    const bobKey = generateSecretKey();
+    setPendingBlocks(new Set([getPublicKey(bobKey)]));
+    expect(isNoteMuted(useMute.getState().matcher, note({ key: bobKey }), null)).toBe(true);
+    setPendingBlocks(new Set([BOB]));
+
+    // 保存待ちのまま list が変わっても含める。list に入った人は重ねない
+    setMuteList({ ...EMPTY_MUTE_LIST, entries: [entry("p", BOB, true)] });
+    state = useMute.getState();
+    expect(state.matcher.users).toEqual(new Set([BOB]));
+
+    setPendingBlocks(new Set());
+    setMuteList(list);
+    expect(useMute.getState().matcher.users).toEqual(new Set([ALICE]));
+    setMuteList(null);
+  });
+
+  it("list がまだ無い（null）ときも保存待ちの人は隠す", () => {
+    setMuteList(null);
+    setPendingBlocks(new Set([BOB]));
+    expect(useMute.getState().list).toBeNull();
+    expect(useMute.getState().matcher.users.has(BOB)).toBe(true);
+    setPendingBlocks(new Set());
+    expect(useMute.getState().matcher.isEmpty).toBe(true);
   });
 });

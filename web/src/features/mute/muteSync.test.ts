@@ -9,7 +9,8 @@ import type { Signer } from "../../nostr/signer";
 import { addVerified } from "../../nostr/store";
 import { currentSigner, useSession } from "../../signer/session";
 import { createCipherSigner } from "../../test/cipherSigner";
-import { clearMuteDecryptCacheForTest, setMuteList, useMute } from "./muteList";
+import { resetBlocksForTest } from "./block";
+import { clearMuteDecryptCacheForTest, setMuteList, setPendingBlocks, useMute } from "./muteList";
 import {
   addMuteWord,
   followOwnMuteList,
@@ -18,6 +19,7 @@ import {
   OWN_MUTELIST_REFETCH_MS,
   removeMuteEntry,
   saveMuteList,
+  startMuteList,
   unmuteUser,
 } from "./muteSync";
 
@@ -60,6 +62,9 @@ beforeEach(() => {
 
 afterEach(() => {
   setMuteList(null);
+  resetBlocksForTest();
+  setPendingBlocks(new Set());
+  localStorage.clear();
 });
 
 function encrypt44(tags: string[][]): string {
@@ -390,5 +395,89 @@ describe("followOwnMuteList（読む）", () => {
     await vi.waitFor(() => expect(useMute.getState().matcher.users.has(BOB)).toBe(true));
     expect(decrypt).not.toHaveBeenCalled();
     sub.unsubscribe();
+  });
+});
+
+describe("[#957] 保存待ちのブロック", () => {
+  const pendingKey = () => `nostrism.block.pending.${me}`;
+
+  it("unmuteUser: 保存待ちでミュートリストに無ければ、手元で外すだけで done（取り直し・発行しない）", async () => {
+    localStorage.setItem(pendingKey(), BOB);
+    vi.mocked(subscribe).mockReturnValue(new Subject<"EOSE">());
+    const stop = startMuteList();
+    expect(useMute.getState().matcher.users.has(BOB)).toBe(true);
+
+    expect(await unmuteUser(me, BOB)).toBe("done");
+    expect(useMute.getState().pending.has(BOB)).toBe(false);
+    expect(useMute.getState().matcher.users.has(BOB)).toBe(false);
+    expect(localStorage.getItem(pendingKey())).toBeNull();
+    expect(vi.mocked(requestOnce)).not.toHaveBeenCalled();
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("unmuteUser: 保存待ちでもミュートリストに入っていれば、今までどおり外して発行する", async () => {
+    localStorage.setItem(pendingKey(), BOB);
+    vi.mocked(subscribe).mockReturnValue(new Subject<"EOSE">());
+    const stop = startMuteList();
+    setMuteList({
+      eventId: null,
+      createdAt: 0,
+      entries: [{ category: "p", value: BOB, isPublic: true, isPrivate: false }],
+      locked: false,
+      publicTags: [["p", BOB]],
+      privateTags: [],
+      content: "",
+    });
+    refetchReturns(muteList([["p", BOB]], 2_000));
+
+    expect(await unmuteUser(me, BOB)).toBe("done");
+    expect(useMute.getState().pending.has(BOB)).toBe(false);
+    expect(published().tags).toEqual([]);
+    stop();
+  });
+
+  it("startMuteList: 保存待ちを読み込んで隠し、最初にミュートリストを取り直した後とオンラインに戻ったときに保存し直す", async () => {
+    localStorage.setItem(pendingKey(), BOB);
+    const eose = new Subject<"EOSE">();
+    vi.mocked(subscribe).mockReturnValue(eose);
+    // 1 回目の保存は届かない（どのリレーからも応答が無い）
+    vi.mocked(requestOnce).mockImplementation(() => throwError(() => new Error("unreachable")));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stop = startMuteList();
+    expect(useMute.getState().pending).toEqual(new Set([BOB]));
+    expect(useMute.getState().matcher.users.has(BOB)).toBe(true);
+    expect(vi.mocked(requestOnce)).not.toHaveBeenCalled();
+
+    eose.next("EOSE");
+    await vi.waitFor(() => expect(vi.mocked(requestOnce)).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(useMute.getState().pending).toEqual(new Set([BOB]));
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+
+    // オンラインに戻った: 今度は届く
+    refetchReturns(null);
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() => expect(useMute.getState().pending.size).toBe(0));
+    expect(decrypt44(published().content)).toEqual([["p", BOB]]);
+    expect(localStorage.getItem(pendingKey())).toBeNull();
+
+    stop();
+    warn.mockRestore();
+  });
+
+  it("startMuteList: アカウントが変わったら、そのアカウントの保存待ちを読み直す", () => {
+    const other = getPublicKey(generateSecretKey());
+    localStorage.setItem(pendingKey(), BOB);
+    localStorage.setItem(`nostrism.block.pending.${other}`, CAROL);
+    vi.mocked(subscribe).mockReturnValue(new Subject<"EOSE">());
+    const stop = startMuteList();
+    expect(useMute.getState().pending).toEqual(new Set([BOB]));
+
+    useSession.setState({ status: "in", method: "local", pubkey: other });
+    expect(useMute.getState().pending).toEqual(new Set([CAROL]));
+    useSession.setState({ status: "loading", method: null, pubkey: null });
+    expect(useMute.getState().pending.size).toBe(0);
+    stop();
   });
 });

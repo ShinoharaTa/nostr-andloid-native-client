@@ -16,8 +16,9 @@ import { useCompose } from "../compose/composeStore";
 import { appendToEmojiList, EmojiListError } from "../compose/customEmojis";
 import { NoteFooter } from "../compose/NoteFooter";
 import { toggleBookmark, togglePinned, useOwnLists } from "../lists/ownLists";
+import { blockUser } from "../mute/block";
 import { EMPTY_MUTE_LIST, setMuteList } from "../mute/muteList";
-import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
+import { MuteListError, unmuteUser } from "../mute/muteSync";
 import { toggleFollow } from "../profile/follow";
 import { resetReactionCountsForTest } from "../reactions/reactionCounts";
 import { setShowReactionCounts } from "../reactions/reactionCountsPref";
@@ -46,6 +47,12 @@ vi.mock("../mute/muteSync", async (importOriginal) => {
     muteUser: vi.fn(async () => "done" as const),
     unmuteUser: vi.fn(async () => "done" as const),
   };
+});
+
+// [#957] ブロックは block の関数を呼ぶところまで（隠す・通報・保存は block.test.ts）
+vi.mock("../mute/block", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../mute/block")>();
+  return { ...actual, blockUser: vi.fn(async () => "saved" as const) };
 });
 
 // Zap の invoice は取りに行かない（呼ばれ方だけ見る。LNURL は lnurl.test.ts）
@@ -560,16 +567,16 @@ describe("⋯ メニュー", () => {
     expect(toggleFollow).toHaveBeenCalledWith(me, event.pubkey, "follow");
   });
 
-  it("「このユーザーをミュート」→ 確認 →「ミュート」で muteUser とトースト。ミュート中は「ミュートを解除」", async () => {
+  it("「このユーザーをブロック」→ 確認 →「ブロック」で blockUser（その投稿を渡す）とトースト。ブロック中は「ブロックを解除」", async () => {
     const user = userEvent.setup();
     const event = post();
     renderRow(event);
     await user.click(button("その他の操作"));
-    await user.click(screen.getByRole("menuitem", { name: "このユーザーをミュート" }));
-    const dialog = screen.getByRole("dialog", { name: "このユーザーをミュートしますか？" });
-    await user.click(within(dialog).getByRole("button", { name: "ミュート" }));
-    expect(muteUser).toHaveBeenCalledWith(me, event.pubkey);
-    await waitFor(() => expect(useToast.getState().queue).toEqual(["ミュートしました"]));
+    await user.click(screen.getByRole("menuitem", { name: "このユーザーをブロック" }));
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
+    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event);
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
 
     act(() =>
       setMuteList({
@@ -579,15 +586,31 @@ describe("⋯ メニュー", () => {
     );
     vi.mocked(unmuteUser).mockRejectedValueOnce(new MuteListError("locked"));
     await user.click(button("その他の操作"));
-    await user.click(screen.getByRole("menuitem", { name: "ミュートを解除" }));
+    await user.click(screen.getByRole("menuitem", { name: "ブロックを解除" }));
     expect(unmuteUser).toHaveBeenCalledWith(me, event.pubkey);
     await waitFor(() =>
       expect(useToast.getState().queue).toEqual([
-        "ミュートしました",
-        "ミュートリストが変更できません（ロック中の可能性）",
+        "ブロックしました",
+        "ブロックを解除できませんでした（ミュートリストを読み込めないか、ロック中です）",
       ]),
     );
     act(() => setMuteList(null));
+  });
+
+  it("[#957] ミュートリストに保存できなかったブロックは「保存はやり直します」のトースト", async () => {
+    const user = userEvent.setup();
+    const event = post();
+    vi.mocked(blockUser).mockResolvedValueOnce("pending");
+    renderRow(event);
+    await user.click(button("その他の操作"));
+    await user.click(screen.getByRole("menuitem", { name: "このユーザーをブロック" }));
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
+    await waitFor(() =>
+      expect(useToast.getState().queue).toEqual([
+        "ブロックしました（ミュートリストへの保存は、リレーにつながったらやり直します）",
+      ]),
+    );
   });
 
   it("「ブックマーク」→「ブックマークを解除」（#531。自分の kind:10003 が未取得の間は項目を出さない）", async () => {

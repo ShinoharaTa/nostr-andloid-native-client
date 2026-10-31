@@ -23,8 +23,9 @@ import { showToast } from "../../ui/toast";
 import { openCompose } from "../compose/composeStore";
 import { ACTION_BUTTON_CLASS, ActionButton } from "../compose/NoteFooter";
 import { OwnListError, toggleBookmark, togglePinned, useIsBookmarked, useIsPinned } from "../lists/ownLists";
+import { blockUser } from "../mute/block";
 import { useMuteMatcher } from "../mute/muteList";
-import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
+import { MuteListError, unmuteUser } from "../mute/muteSync";
 import { followsFromContacts } from "../profile/contacts";
 import { FollowError, toggleFollow } from "../profile/follow";
 import { acquireReactionCount, releaseReactionCount, useReactionCount } from "../reactions/reactionCounts";
@@ -353,9 +354,15 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
 
   function mute(action: "mute" | "unmute") {
     if (!me) return;
-    const run = action === "mute" ? muteUser(me, event.pubkey) : unmuteUser(me, event.pubkey);
-    run.then(
-      () => showToast(action === "mute" ? t("muted_toast") : t("note_unmuted_toast")),
+    if (action === "mute") {
+      // [#957] ブロック（すぐ隠し、開発者へ通報し、ミュートリストに保存する。保存できなくても失敗にはしない）
+      void blockUser(me, event.pubkey, event).then((result) =>
+        showToast(result === "saved" ? t("muted_toast") : t("block_pending_toast")),
+      );
+      return;
+    }
+    unmuteUser(me, event.pubkey).then(
+      () => showToast(t("note_unmuted_toast")),
       (e) => showToast(muteFailureMessage(e)),
     );
   }

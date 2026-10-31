@@ -12,8 +12,9 @@ import { useDeck } from "../../store/deck";
 import { clearViewport, mockViewport } from "../../test/viewport";
 import { useToast } from "../../ui/toast";
 import { reportUser } from "../actions/reactions";
+import { blockUser } from "../mute/block";
 import { EMPTY_MUTE_MATCHER, useMute } from "../mute/muteList";
-import { muteUser, unmuteUser } from "../mute/muteSync";
+import { unmuteUser } from "../mute/muteSync";
 import { FollowError, toggleFollow } from "./follow";
 import type { FollowersState } from "./followers";
 import { useFollowers } from "./followers";
@@ -55,6 +56,11 @@ vi.mock("../mute/muteSync", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mute/muteSync")>()),
   muteUser: vi.fn(async () => "done"),
   unmuteUser: vi.fn(async () => "done"),
+}));
+// [#957] ブロック（隠す・通報・保存）は block.test.ts。ここでは呼ぶところまで
+vi.mock("../mute/block", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mute/block")>()),
+  blockUser: vi.fn(async () => "saved"),
 }));
 vi.mock("../actions/reactions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../actions/reactions")>()),
@@ -117,8 +123,8 @@ beforeEach(() => {
     loadMore: vi.fn(),
   });
   vi.mocked(useProfileLists).mockReturnValue({ loading: false, sets: [] });
-  vi.mocked(muteUser).mockReset();
-  vi.mocked(muteUser).mockResolvedValue("done");
+  vi.mocked(blockUser).mockReset();
+  vi.mocked(blockUser).mockResolvedValue("saved");
   vi.mocked(unmuteUser).mockReset();
   vi.mocked(unmuteUser).mockResolvedValue("done");
   vi.mocked(reportUser).mockReset();
@@ -694,37 +700,37 @@ describe("フォロワー", () => {
 });
 
 describe("ミュート / 通報", () => {
-  it("ミュート中は名前の横に「ミュート中」、⋯ には「ミュートを解除」だけ出る", async () => {
+  it("ブロック中は名前の横に「ブロック中」、⋯ には「ブロックを解除」だけ出る", async () => {
     const user = userEvent.setup();
     alice();
     muteThem();
     renderScreen();
-    expect(screen.getByText("ミュート中")).toBeInTheDocument();
+    expect(screen.getByText("ブロック中")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    expect(screen.getByRole("menuitem", { name: "ミュートを解除" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "ミュート" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "ブロックを解除" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "ブロック" })).not.toBeInTheDocument();
   });
 
-  it("「ミュート」は確認してから muteUser を呼ぶ（ネイティブと同じ文言。P3）", async () => {
+  it("「ブロック」は確認してから blockUser を呼ぶ（投稿は渡さない。ネイティブと同じ文言。P3）", async () => {
     const user = userEvent.setup();
     alice();
     renderScreen();
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("menuitem", { name: "ミュート" }));
-    expect(vi.mocked(muteUser)).not.toHaveBeenCalled();
-    const dialog = screen.getByRole("dialog", { name: "このユーザーをミュートしますか？" });
-    await user.click(within(dialog).getByRole("button", { name: "ミュート" }));
-    expect(vi.mocked(muteUser)).toHaveBeenCalledWith(me, them);
+    await user.click(screen.getByRole("menuitem", { name: "ブロック" }));
+    expect(vi.mocked(blockUser)).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
+    expect(vi.mocked(blockUser)).toHaveBeenCalledWith(me, them);
   });
 
-  it("ミュート中の「ミュートを解除」は確認してから unmuteUser を呼ぶ", async () => {
+  it("ブロック中の「ブロックを解除」は確認してから unmuteUser を呼ぶ", async () => {
     const user = userEvent.setup();
     alice();
     muteThem();
     renderScreen();
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("menuitem", { name: "ミュートを解除" }));
-    const dialog = screen.getByRole("dialog", { name: "ミュートを解除しますか？" });
+    await user.click(screen.getByRole("menuitem", { name: "ブロックを解除" }));
+    const dialog = screen.getByRole("dialog", { name: "ブロックを解除しますか？" });
     await user.click(within(dialog).getByRole("button", { name: "解除する" }));
     expect(vi.mocked(unmuteUser)).toHaveBeenCalledWith(me, them);
   });
@@ -740,12 +746,12 @@ describe("ミュート / 通報", () => {
     expect(vi.mocked(reportUser)).toHaveBeenCalledWith(them, "spam");
   });
 
-  it("自分のプロフィールにはミュート・通報の項目が無い", async () => {
+  it("自分のプロフィールにはブロック・通報の項目が無い", async () => {
     const user = userEvent.setup();
     addProfile(meKey, { name: "Me" });
     renderScreen(me);
     await user.click(screen.getByRole("button", { name: "メニュー" }));
-    expect(screen.queryByRole("menuitem", { name: /ミュート/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /ブロック/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "通報" })).not.toBeInTheDocument();
   });
 });

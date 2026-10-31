@@ -48,8 +48,9 @@ import {
 import { registerColumnScroll } from "../deck/columnScroll";
 import { useKbColumnId } from "../keyboard/KbList";
 import { NoteMedia } from "../media/NoteMedia";
+import { blockUser } from "../mute/block";
 import { useMuteMatcher } from "../mute/muteList";
-import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
+import { MuteListError, unmuteUser } from "../mute/muteSync";
 import { useDeveloperMode } from "../settings/devMode";
 import { useTimeDisplay } from "../settings/timeDisplay";
 import type { ReactionGroup } from "../thread/engagement";
@@ -479,9 +480,15 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
 
   function mute(action: "mute" | "unmute") {
     if (!me) return;
-    const run = action === "mute" ? muteUser(me, message.pubkey) : unmuteUser(me, message.pubkey);
-    run.then(
-      () => showToast(action === "mute" ? t("muted_toast") : t("note_unmuted_toast")),
+    if (action === "mute") {
+      // [#957] ブロック（すぐ隠し、開発者へ通報し、ミュートリストに保存する。保存できなくても失敗にはしない）
+      void blockUser(me, message.pubkey, message).then((result) =>
+        showToast(result === "saved" ? t("muted_toast") : t("block_pending_toast")),
+      );
+      return;
+    }
+    unmuteUser(me, message.pubkey).then(
+      () => showToast(t("note_unmuted_toast")),
       (e) => showToast(muteFailureMessage(e)),
     );
   }

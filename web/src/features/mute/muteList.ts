@@ -417,17 +417,47 @@ export function muteVisibleFilter(
 // ---- 自分のミュートリスト ----
 
 type MuteState = {
-  /** 自分のミュートリスト。null = まだ分からない（未ログイン・読み込み中） */
+  /** 自分のミュートリスト。null = まだ分からない（未ログイン・読み込み中）。設定のミュート編集はこれを使う */
   list: MuteList | null;
-  /** list から作った判定器（list が変わったときだけ作り直す） */
+  /** [#957] ブロックしたが、まだミュートリストに保存できていない人（block.ts。ネイティブ pendingBlocks） */
+  pending: ReadonlySet<string>;
+  /** list ＋ pending から作った判定器（どちらかが変わったときだけ作り直す。ネイティブ muteFilterFlow） */
   matcher: MuteMatcher;
 };
 
-export const useMute = create<MuteState>()(() => ({ list: null, matcher: EMPTY_MUTE_MATCHER }));
+export const useMute = create<MuteState>()(() => ({
+  list: null,
+  pending: new Set<string>(),
+  matcher: EMPTY_MUTE_MATCHER,
+}));
+
+/**
+ * 画面で隠す判定に使うミュート（list ＋ 保存待ちのブロック。ネイティブ muteFilterFlow）。
+ * 保存待ちの人は、まだ list に入っていなければ非公開のユーザーとして足す。
+ */
+export function withPendingBlocks(list: MuteList | null, pending: ReadonlySet<string>): MuteList | null {
+  const extra = [...pending].filter(
+    (pk) => !(list?.entries.some((e) => e.category === "p" && e.value === pk) ?? false),
+  );
+  if (extra.length === 0) return list;
+  const base = list ?? EMPTY_MUTE_LIST;
+  return {
+    ...base,
+    entries: [
+      ...base.entries,
+      ...extra.map((pk): MuteEntry => ({ category: "p", value: pk, isPublic: false, isPrivate: true })),
+    ],
+  };
+}
 
 /** ストアのミュートリストを置き換える */
 export function setMuteList(list: MuteList | null): void {
-  useMute.setState({ list, matcher: muteMatcherFrom(list) });
+  useMute.setState((s) => ({ list, matcher: muteMatcherFrom(withPendingBlocks(list, s.pending)) }));
+}
+
+/** [#957] 保存待ちのブロックを置き換える（block.ts から） */
+export function setPendingBlocks(pending: ReadonlySet<string>): void {
+  useMute.setState((s) => ({ pending, matcher: muteMatcherFrom(withPendingBlocks(s.list, pending)) }));
 }
 
 /** いまの判定器（ミュートリストが変わったら描き直す） */

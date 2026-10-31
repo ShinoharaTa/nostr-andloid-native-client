@@ -8,7 +8,8 @@ import { Icon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
 import { ReportDialog } from "../actions/ReportDialog";
 import { reportUser } from "../actions/reactions";
-import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
+import { blockUser } from "../mute/block";
+import { MuteListError, unmuteUser } from "../mute/muteSync";
 import styles from "./ProfileHeaderCard.module.css";
 
 /** ミュート・解除の失敗の文言（ネイティブ note_mute_locked。NoteActionButtons と同じ） */
@@ -81,9 +82,15 @@ export function ProfileMenu({
 
   function mute(action: "mute" | "unmute") {
     if (!me) return;
-    const run = action === "mute" ? muteUser(me, pubkey) : unmuteUser(me, pubkey);
-    run.then(
-      () => showToast(action === "mute" ? t("muted_toast") : t("note_unmuted_toast")),
+    if (action === "mute") {
+      // [#957] ブロック（すぐ隠し、開発者へ通報し、ミュートリストに保存する。保存できなくても失敗にはしない）
+      void blockUser(me, pubkey).then((result) =>
+        showToast(result === "saved" ? t("muted_toast") : t("block_pending_toast")),
+      );
+      return;
+    }
+    unmuteUser(me, pubkey).then(
+      () => showToast(t("note_unmuted_toast")),
       (e) => showToast(muteFailureMessage(e)),
     );
   }

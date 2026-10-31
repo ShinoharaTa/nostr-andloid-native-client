@@ -65,7 +65,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
     "---",
     "フォロー解除",
     "ブックマークを解除",
-    "このユーザーをミュート",
+    "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
@@ -78,7 +78,7 @@ it("他人・client あり・フォロー中・ブックマーク済みの並び
   };
   select("フォロー解除");
   select("ブックマークを解除");
-  select("このユーザーをミュート");
+  select("このユーザーをブロック");
   select("通報");
   select("リンクをコピー（njump）");
   select("note1abcdefg… をコピー");
@@ -105,13 +105,13 @@ it("未フォローは「フォロー」、自分の kind:3 が未取得（null�
   };
   expect(shape(moreMenuEntries({ ...base, isFollowing: false }))).toEqual([
     "フォロー",
-    "このユーザーをミュート",
+    "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
   ]);
   expect(shape(moreMenuEntries({ ...base, isFollowing: null }))).toEqual([
-    "このユーザーをミュート",
+    "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
@@ -131,20 +131,20 @@ it("未ブックマークは「ブックマーク」、自分の kind:10003 が�
   };
   expect(shape(moreMenuEntries({ ...base, isBookmarked: false }))).toEqual([
     "ブックマーク",
-    "このユーザーをミュート",
+    "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
   ]);
   expect(shape(moreMenuEntries({ ...base, isBookmarked: null }))).toEqual([
-    "このユーザーをミュート",
+    "このユーザーをブロック",
     "通報 (danger)",
     "---",
     ...COPIES,
   ]);
 });
 
-it("ミュート中の人は「ミュートを解除」", () => {
+it("ミュート中の人は「ブロックを解除」", () => {
   const on = actions();
   const entries = moreMenuEntries({
     clientName: null,
@@ -157,7 +157,7 @@ it("ミュート中の人は「ミュートを解除」", () => {
     nevent: NEVENT,
     on,
   });
-  expect(shape(entries)).toEqual(["ミュートを解除", "通報 (danger)", "---", ...COPIES]);
+  expect(shape(entries)).toEqual(["ブロックを解除", "通報 (danger)", "---", ...COPIES]);
   const entry = entries[0];
   if (entry.type === "item") entry.onSelect();
   expect(on.unmute).toHaveBeenCalledTimes(1);

@@ -67,8 +67,8 @@ it("読み込み中 → 空 → 種別ごとの一覧（件数・公開 / 非公
   expect(screen.getByText("ミュートしている項目はありません")).toBeInTheDocument();
 
   act(() => setMuteList(LIST));
-  const users = screen.getByRole("region", { name: "ユーザー" });
-  expect(within(users).getByRole("heading", { name: "ユーザー (1)" })).toBeInTheDocument();
+  const users = screen.getByRole("region", { name: "ブロック中のユーザー" });
+  expect(within(users).getByRole("heading", { name: "ブロック中のユーザー (1)" })).toBeInTheDocument();
   expect(within(users).getAllByText(shortNpub(muted)).length).toBeGreaterThan(0);
   expect(publicCheck(shortNpub(muted))).not.toBeChecked();
   expect(privateCheck(shortNpub(muted))).toBeChecked();

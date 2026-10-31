@@ -7,6 +7,7 @@ import { PublishError, type PublishFailure, publishEvent } from "../../nostr/pub
 import type { Signer } from "../../nostr/signer";
 import { eventStore } from "../../nostr/store";
 import { currentSigner, useSession } from "../../signer/session";
+import { loadPendingBlocks, removePendingBlock, retryPendingBlocks } from "./block";
 import {
   buildMuteListTemplate,
   type MuteCategory,
@@ -14,6 +15,7 @@ import {
   readMuteList,
   rememberPrivateTags,
   setMuteList,
+  useMute,
 } from "./muteList";
 
 /** 変更の直前に自分の kind:10000 を取り直す待ち時間（フォローの kind:3 と同じ） */
@@ -58,13 +60,15 @@ export function signerCanPrivateMute(signer: Signer | null): boolean {
 /**
  * 自分の kind:10000 を購読し、最新版（DB から戻した分・後から届いた分・発行した分）を解析してストアへ入れる。
  * 最初の EOSE（または 8 秒）までに届かなければ「まだ無い」（空のリスト）とする。
+ * onLoaded は最初にストアへ入れた後に 1 回だけ呼ぶ。
  */
-export function followOwnMuteList(me: string): Subscription {
+export function followOwnMuteList(me: string, onLoaded?: () => void): Subscription {
   const subscription = new Subscription();
   let latest: NostrEvent | undefined;
   let settled = false;
   let shown: string | null | undefined;
   let seq = 0;
+  let loaded = false;
 
   const show = () => {
     if (!latest && !settled) return;
@@ -73,7 +77,12 @@ export function followOwnMuteList(me: string): Subscription {
     shown = id;
     const current = ++seq;
     void readMuteList(latest ?? null, currentSigner()).then((list) => {
-      if (current === seq && !subscription.closed) setMuteList(list);
+      if (current !== seq || subscription.closed) return;
+      setMuteList(list);
+      if (!loaded) {
+        loaded = true;
+        onLoaded?.();
+      }
     });
   };
   const settle = () => {
@@ -96,9 +105,14 @@ export function followOwnMuteList(me: string): Subscription {
 /**
  * ログイン中のアカウントに合わせて followOwnMuteList を張り替える（起動時に 1 度）。
  * ログアウト・アカウントの切り替えではストアを空（未取得）に戻す。戻り値は止める関数。
+ * [#957] 保存待ちのブロック（block.ts）も読み直し、最初にミュートリストを取り直した後とオンラインに戻ったときに
+ * ミュートリストへの保存をやり直す（ネイティブ retryPendingBlocks）。
  */
 export function startMuteList(): () => void {
   let current: { me: string; subscription: Subscription } | null = null;
+  const retry = (me: string) => {
+    retryPendingBlocks(me).catch((e) => console.warn("[mute] Failed to retry pending blocks", e));
+  };
   const follow = (me: string | null) => {
     if ((current?.me ?? null) === me) return;
     if (current) {
@@ -106,12 +120,18 @@ export function startMuteList(): () => void {
       current = null;
     }
     setMuteList(null);
-    if (me) current = { me, subscription: followOwnMuteList(me) };
+    loadPendingBlocks(me);
+    if (me) current = { me, subscription: followOwnMuteList(me, () => retry(me)) };
   };
   follow(useSession.getState().pubkey);
   const unsubscribe = useSession.subscribe((state) => follow(state.pubkey));
+  const onOnline = () => {
+    if (current) retry(current.me);
+  };
+  window.addEventListener("online", onOnline);
   return () => {
     unsubscribe();
+    window.removeEventListener("online", onOnline);
     current?.subscription.unsubscribe();
     current = null;
   };
@@ -196,8 +216,19 @@ export function muteUser(me: string, pubkey: string): Promise<"done" | "noop"> {
   });
 }
 
-/** ユーザーのミュートを解除する（公開・非公開の両方。ネイティブ unmuteUser）。basedOnId は設定画面から */
-export function unmuteUser(me: string, pubkey: string, basedOnId?: string | null): Promise<"done" | "noop"> {
+/**
+ * ユーザーのミュートを解除する（公開・非公開の両方。ネイティブ unmuteUser）。basedOnId は設定画面から。
+ * [#957] 保存待ちのブロックは手元で外す。ミュートリストに入っていなければそれで終わり（リレーに届かなくても外せる）。
+ */
+export async function unmuteUser(
+  me: string,
+  pubkey: string,
+  basedOnId?: string | null,
+): Promise<"done" | "noop"> {
+  if (removePendingBlock(me, pubkey)) {
+    const listed = useMute.getState().list?.entries.some((e) => e.category === "p" && e.value === pubkey);
+    if (!listed) return "done";
+  }
   return removeMuteEntry(me, "p", pubkey, basedOnId);
 }
 

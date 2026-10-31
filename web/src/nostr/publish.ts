@@ -33,6 +33,8 @@ export type PublishOptions = {
   signal?: AbortSignal;
   /** 署名者（省けばセッションの署名者） */
   signer?: Signer;
+  /** 受理を確認できなかったときに未送信のトーストを出すか（省けば出す。#957 のブロックの通報は出さない） */
+  notify?: boolean;
 };
 
 export type PublishFailure = "no-signer" | "sign-failed" | "aborted";
@@ -103,7 +105,7 @@ function warn(message: string, e: unknown): void {
  * 既定の発行先: write リレー ∪ 接続中の全リレー（ネイティブ EventRepository.publishTo と同じ規則、#582）。
  * 検索専用リレーと、AUTH を要求していてまだ認証できていないリレーは除く。重複は除く。
  */
-function defaultPublishTargets(): string[] {
+export function defaultPublishTargets(): string[] {
   const excluded = new Set(SEARCH_RELAYS.map(normalizeURL));
   const seen = new Set<string>();
   const targets: string[] = [];
@@ -156,7 +158,7 @@ export async function publishEvent(draft: EventDraft, opts?: PublishOptions): Pr
   } catch (e) {
     warn("Failed to save the unsent post", e);
   }
-  send(row, true);
+  send(row, opts?.notify ?? true);
   return signed;
 }
 

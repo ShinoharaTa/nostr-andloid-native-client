@@ -73,7 +73,7 @@ describe("Compact", () => {
 
   it("[#807] 「よく使う」（プロフィール・DM・ふぁぼ・ブックマーク・ミュート）は一覧に無い。ふぁぼ・ブックマーク・ミュートは URL で開ける", () => {
     renderAt("/settings", 400);
-    for (const name of ["プロフィール", "DM", "ふぁぼ", "ブックマーク", "ミュート"]) {
+    for (const name of ["プロフィール", "DM", "ふぁぼ", "ブックマーク", "ミュート・ブロック"]) {
       expect(within(items()).queryByRole("button", { name })).toBeNull();
     }
     expect(screen.queryByRole("heading", { name: "よく使う" })).toBeNull();
@@ -82,7 +82,7 @@ describe("Compact", () => {
     for (const [id, name] of [
       ["favs", "ふぁぼ"],
       ["bookmarks", "ブックマーク"],
-      ["mute", "ミュート"],
+      ["mute", "ミュート・ブロック"],
     ]) {
       renderAt(`/settings/${id}`, 400);
       expect(screen.getByRole("heading", { level: 1, name })).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("Expanded", () => {
 
   it("[#807] メニューから開いた項目（一覧に無いミュート）は右に出し、一覧はどれも選択中にしない", () => {
     renderAt("/settings/mute", 1400);
-    expect(screen.getByRole("region", { name: "ミュート" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "ミュート・ブロック" })).toBeInTheDocument();
     expect(
       within(items())
         .getAllByRole("button")
