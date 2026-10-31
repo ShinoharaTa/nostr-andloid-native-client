@@ -81,7 +81,9 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 1ノート。アクションはアイコンのみ（数値は出さない）:
@@ -491,11 +493,14 @@ fun NoteItem(
                                     text = { Text(stringResource(Res.string.note_unblock_user)) },
                                     onClick = {
                                         moreMenu = false
+                                        // 行がすぐ消えてもやりきる（この行のスコープは行と一緒に止まる）
                                         scope.launch {
-                                            toast(
-                                                if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unblocked_toast)
-                                                else getString(Res.string.note_mute_locked)
-                                            )
+                                            withContext(NonCancellable) {
+                                                toast(
+                                                    if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unblocked_toast)
+                                                    else getString(Res.string.note_mute_locked)
+                                                )
+                                            }
                                         }
                                     },
                                 )
@@ -505,10 +510,12 @@ fun NoteItem(
                                     onClick = {
                                         moreMenu = false
                                         if (isMuted) scope.launch {
-                                            toast(
-                                                if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unmuted_toast)
-                                                else getString(Res.string.note_mute_locked)
-                                            )
+                                            withContext(NonCancellable) {
+                                                toast(
+                                                    if (repo?.unmuteUser(note.event.pubkey) == true) getString(Res.string.note_unmuted_toast)
+                                                    else getString(Res.string.note_mute_locked)
+                                                )
+                                            }
                                         } else confirmMute = true
                                     },
                                 )
@@ -647,11 +654,14 @@ fun NoteItem(
           confirmLabel = stringResource(Res.string.mute_confirm), destructive = true,
           onConfirm = {
               confirmMute = false
+              // ミュートした行はすぐ消える。この行のスコープは行と一緒に止まるので、保存とトーストは最後までやりきる
               scope.launch {
-                  toast(
-                      if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
-                      else getString(Res.string.mute_change_failed)
-                  )
+                  withContext(NonCancellable) {
+                      toast(
+                          if (repo?.muteUserPrivate(note.event.pubkey) == true) getString(Res.string.muted_toast)
+                          else getString(Res.string.mute_change_failed)
+                      )
+                  }
               }
           },
           onDismiss = { confirmMute = false },

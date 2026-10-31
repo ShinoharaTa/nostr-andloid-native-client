@@ -170,8 +170,9 @@ fun ProfileScreen(state: DeckState, isCompact: Boolean, pubkey: String) {
     // [#95][#963] ミュート・ブロックの状態（NIP-51 kind:10000 の p。公開 = ブロック、非公開 = ミュート）。
     val blocked = repo?.let { remember(it) { it.blockedUsersFlow() } }
         ?.collectAsState(emptySet())?.value?.contains(pubkey) ?: false
-    val muted = !blocked && (repo?.let { remember(it) { it.mutedUsersFlow() } }
-        ?.collectAsState(emptySet())?.value?.contains(pubkey) ?: false)
+    // どちらの集合も常に集める（短絡で外すと、解除した直後に空から集め直して 1 フレームちらつく）
+    val mutedSet = repo?.let { remember(it) { it.mutedUsersFlow() } }?.collectAsState(emptySet())?.value ?: emptySet()
+    val muted = !blocked && pubkey in mutedSet
     // [#96/#97] フォロー中/フォロワーの一覧表示。null なら通常のプロフィール表示。
     var userList by remember(pubkey) { mutableStateOf<UserListMode?>(null) }
 
@@ -905,7 +906,7 @@ private fun ProfileHeaderCard(
         DeckConfirmDialog(
             title = if (blocked) stringResource(Res.string.unblock_confirm_title) else stringResource(Res.string.block_confirm_title),
             text = if (blocked) stringResource(Res.string.unblock_confirm_text) else stringResource(Res.string.block_confirm_text),
-            confirmLabel = if (blocked) stringResource(Res.string.lift_confirm) else stringResource(Res.string.block_confirm),
+            confirmLabel = if (blocked) stringResource(Res.string.note_unblock_user) else stringResource(Res.string.block_confirm),
             destructive = !blocked,
             onConfirm = {
                 confirmBlock = false

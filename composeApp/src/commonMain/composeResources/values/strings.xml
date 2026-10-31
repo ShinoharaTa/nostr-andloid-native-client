@@ -269,7 +269,7 @@
     <string name="mute_saved">Mute list saved</string>
     <string name="mute_save_failed">Save failed (check your key)</string>
     <string name="mute_list_title">Mute list (NIP-51 / kind:10000)</string>
-    <string name="mute_list_desc">Toggle public/private and press Save to republish. Unchecking both removes the entry.</string>
+    <string name="mute_list_desc">For users, choose Mute or Block (tap the selected one again to remove). For words, hashtags and threads, toggle public/private (unchecking both removes the entry). Press Save to republish.</string>
     <string name="mute_word_placeholder">Word to mute (/regex/ allowed)</string>
     <string name="mute_word_added">Mute word added</string>
     <string name="mute_add_failed">Could not add</string>
@@ -585,7 +585,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="unfollow_text_fmt">Unfollows %1$s.</string>
     <string name="unfollow_confirm">Unfollow</string>
     <string name="mute_confirm_title">Mute this user?</string>
-    <string name="mute_confirm_text">Their posts and notifications will be hidden. Mutes are private, so they won’t know. You can undo anytime from your icon menu → Mute &amp; block.</string>
+    <string name="mute_confirm_text">Their posts, notifications and direct messages will be hidden. Mutes are private, so they won’t know. You can undo anytime from your icon menu → Mute &amp; block.</string>
     <string name="mute_confirm">Mute</string>
     <string name="muted_toast">Muted</string>
     <string name="block_pending_toast">Blocked (saving to your mute list will be retried once the relays are reachable)</string>
@@ -602,7 +602,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_unblocked_toast">Unblocked</string>
     <string name="mute_mode_mute">Mute</string>
     <string name="mute_mode_block">Block</string>
-    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56).</string>
+    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56). Tap the selected one again to remove.</string>
     <string name="cw_sensitive">Sensitive content</string>
     <string name="report_title">Report this post</string>
     <string name="report_illegal">Illegal / child safety</string>
@@ -709,7 +709,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="followers_check">Check followers</string>
     <string name="unmute_confirm_title">Unmute this user?</string>
     <string name="unmute_confirm_text">Their posts will appear in your timeline again.</string>
-    <string name="mute_confirm_text2">Their posts will no longer appear in your timeline. Mutes are stored privately (NIP-51).</string>
+    <string name="mute_confirm_text2">Their posts, notifications and direct messages will be hidden. Mutes are stored privately (NIP-51), so they won’t know.</string>
     <string name="lift_confirm">Unmute</string>
     <string name="mute_confirm_action">Mute</string>
     <string name="mute_change_failed">Couldn’t change</string>

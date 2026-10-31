@@ -17,8 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -167,7 +165,7 @@ fun MuteSettings() {
                 if (mute?.editable == false) item { LockedBanner() }
                 // [#963] ユーザーはミュート / ブロックの切り替え。公開 / 非公開の列はそれ以外の種類に
                 muteSection(MuteCategory.USER, catUsers, entries, editable, ::toggle, ::setMode)
-                item { ColumnLegend() }
+                if (entries.any { it.category != MuteCategory.USER }) item { ColumnLegend() }
                 muteSection(MuteCategory.WORD, catWords, entries, editable, ::toggle, ::setMode)
                 muteSection(MuteCategory.HASHTAG, catHashtags, entries, editable, ::toggle, ::setMode)
                 muteSection(MuteCategory.THREAD, catThreads, entries, editable, ::toggle, ::setMode)
@@ -258,17 +256,10 @@ private fun MuteRow(
     }
 }
 
+/** ほかの設定画面の排他選択と同じ見た目（[ChoiceChip]）。ロック中は押しても変わらない。 */
 @Composable
 private fun ModeChip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected, onClick = onClick, enabled = enabled,
-        label = { Text(text, fontSize = DeckType.Micro) },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = DeckColors.Accent,
-            selectedLabelColor = DeckColors.Bg,
-            labelColor = DeckColors.Text2,
-        ),
-    )
+    ChoiceChip(text, selected = selected, onClick = { if (enabled) onClick() })
 }
 
 @Composable

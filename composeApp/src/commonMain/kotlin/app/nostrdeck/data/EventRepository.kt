@@ -2801,9 +2801,12 @@ class EventRepository(
         publishReport(UnsignedEvent(kind = 1984, content = reason, tags = listOf(listOf("p", pubkey, type))))
     }
 
-    /** [#951] 通報はいつもの送り先に加えて開発者のリレー（[MODERATION_RELAY]）にも送る（開発者が受け取れるように）。 */
-    private suspend fun publishReport(unsigned: UnsignedEvent) {
-        val signed = publishSigned(unsigned)
+    /**
+     * [#951] 通報はいつもの送り先に加えて開発者のリレー（[MODERATION_RELAY]）にも送る（開発者が受け取れるように）。
+     * [notify] = false なら、送信を確かめられなかったときのトーストを出さない（ブロックの通報。ブロックの結果は別に知らせる）。
+     */
+    private suspend fun publishReport(unsigned: UnsignedEvent, notify: Boolean = true) {
+        val signed = publishSigned(unsigned, notify)
         scope.launch { deliverToDeveloper(signed) }   // 受理を待つ間、通報した画面を待たせない
     }
 
@@ -3097,7 +3100,7 @@ class EventRepository(
         return unsigned.copy(tags = unsigned.tags + listOf(listOf("client", CLIENT_NAME)))
     }
 
-    private suspend fun publishSigned(unsigned: UnsignedEvent): NostrEvent {
+    private suspend fun publishSigned(unsigned: UnsignedEvent, notify: Boolean = true): NostrEvent {
         val signed = SignerProvider.current().sign(withClientTag(unsigned))
         val payload = RelayProtocol.event(signed)
         // kind:7 は ingest と同じ正規化("+"/空→❤️)でローカル保存し、集約表示と整合させる。
@@ -3115,7 +3118,7 @@ class EventRepository(
         // [#423] 送る前に受理待ちを登録する（先に OK が返ってきても取りこぼさない）。
         registerAck(signed.id)
         publishTo(payload)
-        scope.launch { confirmPublish(signed.id, notify = true) }
+        scope.launch { confirmPublish(signed.id, notify = notify) }
         return signed
     }
 
@@ -4331,7 +4334,10 @@ class EventRepository(
      * 復号できない非公開項目がある（[MuteList.nip44Locked]）と再発行で失う恐れがあるため中止する。
      * 戻り値: 発行できたか（既にミュート済み/ロック中/失敗は false）。
      */
-    suspend fun muteUserPrivate(pubkey: String, notify: Boolean = true): Boolean {
+    suspend fun muteUserPrivate(pubkey: String, notify: Boolean = true): Boolean =
+        muteListLock.withLock { muteUserPrivateLocked(pubkey, notify) }
+
+    private suspend fun muteUserPrivateLocked(pubkey: String, notify: Boolean): Boolean {
         refreshMute(notify) ?: return false   // [#478] 受信前の空のリストで上書きしない
         val current = muteFlow.value
         if (current?.nip44Locked == true) return false          // 編集不可（NIP-44 ロック中）
@@ -4352,7 +4358,10 @@ class EventRepository(
      * 復号できない非公開項目がある（[MuteList.nip44Locked]）と再発行で失う恐れがあるため中止する。
      * 戻り値: 発行できたか（既にブロック済み/ロック中/失敗は false）。
      */
-    suspend fun muteUserPublic(pubkey: String, notify: Boolean = true): Boolean {
+    suspend fun muteUserPublic(pubkey: String, notify: Boolean = true): Boolean =
+        muteListLock.withLock { muteUserPublicLocked(pubkey, notify) }
+
+    private suspend fun muteUserPublicLocked(pubkey: String, notify: Boolean): Boolean {
         refreshMute(notify) ?: return false   // [#478] 受信前の空のリストで上書きしない
         val current = muteFlow.value
         if (current?.nip44Locked == true) return false          // 編集不可（NIP-44 ロック中）
@@ -4397,7 +4406,7 @@ class EventRepository(
     fun blockUser(pubkey: String, note: NostrEvent? = null) {
         updatePendingBlocks { it + pubkey }
         // 通報（リレーの受理を待つ）とミュートリストの保存は別々に進める（片方の待ちで、もう片方とトーストを遅らせない）。
-        scope.launch { runCatching { publishReport(blockReport(pubkey, note)) } }
+        scope.launch { runCatching { publishReport(blockReport(pubkey, note), notify = false) } }
         scope.launch { blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING) }
     }
 
@@ -4409,20 +4418,23 @@ class EventRepository(
 
     /** [#963] 設定の「ミュート・ブロック」でミュートからブロックに変えた人たちの通報（⋯ のブロックと同じ中身）。 */
     fun reportBlocked(pubkeys: Collection<String>) {
-        pubkeys.forEach { pk -> scope.launch { runCatching { publishReport(blockReport(pk, null)) } } }
+        pubkeys.forEach { pk -> scope.launch { runCatching { publishReport(blockReport(pk, null), notify = false) } } }
     }
 
-    /** 保存を直列にする（並べて出し直すと、後から出したミュートリストが先の分を消してしまう）。 */
-    private val blockSaveLock = Mutex()
+    /**
+     * ミュートリストの「読んで → 変えて → 出し直す」を直列にする（[muteUserPublic] / [muteUserPrivate] / [unmuteUser]）。
+     * 並べて出し直すと、後から出したミュートリストが先の分を消してしまう（A をブロックした直後に B をミュート、など）。
+     */
+    private val muteListLock = Mutex()
 
     /** [pubkey] を公開 `p` としてミュートリストに保存する。保存できた（すでに入っていた）ら保存待ちから外す。 */
-    private suspend fun saveBlock(pubkey: String): Boolean = blockSaveLock.withLock {
+    private suspend fun saveBlock(pubkey: String): Boolean {
         // 取り直せなかったときのトースト（「最新のリストを取れませんでした」）は出さない。ブロックの結果は
         // [blockResultFlow] で伝えるし、保存待ちのやり直しは 1 分おきに裏で走る（毎回出すと画面がトーストだらけになる）
         val saved = runCatching { muteUserPublic(pubkey, notify = false) }.getOrDefault(false) ||
             muteFlow.value?.entries?.any { it.category == MuteCategory.USER && it.value == pubkey && it.isPublic } == true
         if (saved) updatePendingBlocks { it - pubkey }
-        saved
+        return saved
     }
 
     /** 保存待ちのブロックをやり直す（ログインしてしばらく後。リレーに繋がってから）。 */
@@ -4434,7 +4446,9 @@ class EventRepository(
      * [#94/#95] 指定ユーザーのミュートを解除する（公開/非公開の両方の USER エントリを除いて再発行）。
      * 戻り値: 発行できたか（未ミュート/NIP-44 ロック中/失敗は false）。
      */
-    suspend fun unmuteUser(pubkey: String): Boolean {
+    suspend fun unmuteUser(pubkey: String): Boolean = muteListLock.withLock { unmuteUserLocked(pubkey) }
+
+    private suspend fun unmuteUserLocked(pubkey: String): Boolean {
         // [#951] 保存待ちのブロックは手元で外す。ミュートリストに入っていなければそれで終わり（リレーに届かなくても外せる）。
         if (pubkey in pendingBlocks.value) {
             updatePendingBlocks { it - pubkey }
@@ -6959,7 +6973,7 @@ class EventRepository(
 
         /** [#951] 同意した利用規約の版の KV キー。規約を変えて同意を取り直すときは [TERMS_VERSION] を上げる。 */
         const val TERMS_ACCEPTED_KEY = "terms_accepted_version"
-        const val TERMS_VERSION = "2026-10-30"
+        const val TERMS_VERSION = "2026-10-31"   // [#963] ブロックが公開になった版。rc3 までの同意は取り直す
 
         /** [#13] 投稿の下書き（未送信テキスト）の KV キー。 */
         const val COMPOSE_DRAFT = "compose_draft"

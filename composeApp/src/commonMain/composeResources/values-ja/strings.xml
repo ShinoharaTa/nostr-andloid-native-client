@@ -265,7 +265,7 @@
     <string name="mute_saved">ミュートリストを保存しました</string>
     <string name="mute_save_failed">保存に失敗しました（鍵を確認してください）</string>
     <string name="mute_list_title">ミュートリスト（NIP-51 / kind:10000）</string>
-    <string name="mute_list_desc">公開／非公開を切り替えて「保存」で再発行します。両方のチェックを外すと解除です。</string>
+    <string name="mute_list_desc">ユーザーはミュート / ブロックを選びます（選んでいる方をもう一度押すと解除）。ワード・ハッシュタグ・スレッドは公開／非公開を切り替えます（両方のチェックを外すと解除）。「保存」で再発行します。</string>
     <string name="mute_word_placeholder">ミュートするワード（/正規表現/ 可）</string>
     <string name="mute_word_added">ミュートワードを追加しました</string>
     <string name="mute_add_failed">追加できませんでした</string>
@@ -581,7 +581,7 @@
     <string name="unfollow_text_fmt">%1$s のフォローを解除します。</string>
     <string name="unfollow_confirm">解除する</string>
     <string name="mute_confirm_title">このユーザーをミュートしますか？</string>
-    <string name="mute_confirm_text">この人の投稿と通知を表示しなくなります。ミュートは非公開で、相手には分かりません。自分のアイコンのメニュー →「ミュート・ブロック」でいつでも解除できます。</string>
+    <string name="mute_confirm_text">この人の投稿・通知・DM を表示しなくなります。ミュートは非公開で、相手には分かりません。自分のアイコンのメニュー →「ミュート・ブロック」でいつでも解除できます。</string>
     <string name="mute_confirm">ミュート</string>
     <string name="muted_toast">ミュートしました</string>
     <string name="block_pending_toast">ブロックしました（ミュートリストへの保存は、リレーにつながったらやり直します）</string>
@@ -598,7 +598,7 @@
     <string name="note_unblocked_toast">ブロックを解除しました</string>
     <string name="mute_mode_mute">ミュート</string>
     <string name="mute_mode_block">ブロック</string>
-    <string name="mute_mode_desc">ミュートは非公開（自分だけが分かる）、ブロックは公開（相手や他の人にも分かる）で保存します。ブロックに変えると通報（NIP-56）も送ります。</string>
+    <string name="mute_mode_desc">ミュートは非公開（自分だけが分かる）、ブロックは公開（相手や他の人にも分かる）で保存します。ブロックに変えると通報（NIP-56）も送ります。選んでいる方をもう一度押すと解除です。</string>
     <string name="cw_sensitive">センシティブな内容</string>
     <string name="report_title">この投稿を通報</string>
     <string name="report_illegal">違法・児童の安全に関わる</string>
@@ -705,7 +705,7 @@
     <string name="followers_check">フォロワーを確認</string>
     <string name="unmute_confirm_title">ミュートを解除しますか？</string>
     <string name="unmute_confirm_text">このユーザーの投稿が再びタイムラインに表示されるようになります。</string>
-    <string name="mute_confirm_text2">このユーザーの投稿がタイムラインに表示されなくなります。ミュートは非公開（NIP-51）で保存されます。</string>
+    <string name="mute_confirm_text2">この人の投稿・通知・DM を表示しなくなります。ミュートは非公開（NIP-51）で保存され、相手には分かりません。</string>
     <string name="lift_confirm">解除する</string>
     <string name="mute_confirm_action">ミュートする</string>
     <string name="mute_change_failed">変更できませんでした</string>
