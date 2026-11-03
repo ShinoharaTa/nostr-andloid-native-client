@@ -76,9 +76,24 @@ function isTags(value: unknown): value is string[][] {
   );
 }
 
-/** 署名の正しい kind:13（seal）。形が違う・署名が不正なら null */
+/**
+ * NIP-44 v2 の暗号文の形か（base64・先頭が版 2・99〜65603 バイト）。復号はしない（#967。ネイティブ Nip44.isPayload）。
+ * NIP-07 / NIP-46 の署名者に復号を頼む前に、中身の壊れた gift wrap を弾くのに使う
+ */
+export function isNip44Payload(payload: string): boolean {
+  let bytes: string;
+  try {
+    bytes = atob(payload);
+  } catch {
+    return false;
+  }
+  return bytes.length >= 99 && bytes.length <= 65603 && bytes.charCodeAt(0) === 2;
+}
+
+/** 署名の正しい kind:13（seal）。形が違う・tags が空でない（NIP-59。#967）・署名が不正なら null */
 function asSeal(value: unknown): NostrEvent | null {
   if (!isRecord(value) || value.kind !== 13) return null;
+  if (!Array.isArray(value.tags) || value.tags.length > 0) return null;
   try {
     return verifyEvent(value as NostrEvent) ? (value as NostrEvent) : null;
   } catch {
@@ -88,8 +103,9 @@ function asSeal(value: unknown): NostrEvent | null {
 }
 
 /**
- * gift wrap（kind:1059）を自分の鍵で 2 段復号して rumor（kind:14）を取り出す（ネイティブ Nip17.unwrap）。
- * ネイティブと違い seal の署名と rumor の id も検証する。読めなければ DmDecryptError。
+ * gift wrap（kind:1059）を自分の鍵で 2 段復号して rumor（kind:14）を取り出す（ネイティブ Nip17.unwrap と同じ規則。#967）。
+ * seal は tags が空で署名が正しいこと、rumor は署名が無く・作者が seal と同じで・id が中身と一致することを確かめる
+ * （自分が当事者かは dmFromRumor）。読めない・決まりに反するなら DmDecryptError。
  */
 export async function unwrapGiftWrap(
   signer: Signer,
@@ -108,6 +124,8 @@ export async function unwrapGiftWrap(
   if (
     !isRecord(value) ||
     value.kind !== 14 ||
+    // NIP-17: kind:14 は署名しない（付いていれば漏れたものか偽物。空文字は「無い」と同じ）
+    (value.sig !== undefined && value.sig !== null && value.sig !== "") ||
     value.pubkey !== seal.pubkey ||
     !isTags(value.tags) ||
     typeof value.content !== "string" ||

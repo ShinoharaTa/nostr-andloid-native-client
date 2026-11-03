@@ -14,6 +14,7 @@ import {
   buildRumor,
   DmDecryptError,
   dmFromRumor,
+  isNip44Payload,
   unwrapGiftWrap,
   WRAP_TIME_SPREAD_SEC,
   wrapGiftWrap,
@@ -79,6 +80,16 @@ describe("正しい gift wrap", () => {
     const unwrapped = await unwrapGiftWrap(signer, giftWrap(withoutId, aliceKey, me), asExtension);
     expect(unwrapped.id).toBe(id);
   });
+
+  it("rumor の sig が空文字なら署名が無いのと同じに読む（#967）", async () => {
+    const rumor = makeRumor(aliceKey, { content: "empty sig", tags: [["p", me]] });
+    const unwrapped = await unwrapGiftWrap(
+      signer,
+      giftWrap({ ...rumor, sig: "" }, aliceKey, me),
+      asExtension,
+    );
+    expect(unwrapped).toEqual(rumor);
+  });
 });
 
 describe("壊れた gift wrap は invalid", () => {
@@ -87,6 +98,22 @@ describe("壊れた gift wrap は invalid", () => {
     const seal = makeSeal(JSON.stringify(rumor), aliceKey, me);
     const forged = { ...seal, sig: seal.sig.replace(/^./, (c) => (c === "0" ? "1" : "0")) };
     expect(await reasonOf(unwrapGiftWrap(signer, makeWrap(JSON.stringify(forged), me), asExtension))).toBe(
+      "invalid",
+    );
+  });
+
+  it("seal の tags が空でない（NIP-59。#967）", async () => {
+    const rumor = makeRumor(aliceKey, { content: "x", tags: [["p", me]] });
+    const content = nip44.encrypt(JSON.stringify(rumor), nip44.getConversationKey(aliceKey, me));
+    const seal = finalizeEvent({ kind: 13, created_at: DM_TIME, tags: [["p", me]], content }, aliceKey);
+    expect(await reasonOf(unwrapGiftWrap(signer, makeWrap(JSON.stringify(seal), me), asExtension))).toBe(
+      "invalid",
+    );
+  });
+
+  it("rumor に署名が付いている（NIP-17: kind:14 は署名しない。#967）", async () => {
+    const rumor = { ...makeRumor(aliceKey, { content: "x", tags: [["p", me]] }), sig: "a".repeat(128) };
+    expect(await reasonOf(unwrapGiftWrap(signer, giftWrap(rumor, aliceKey, me), asExtension))).toBe(
       "invalid",
     );
   });
@@ -167,6 +194,19 @@ describe("復号の例外", () => {
     )) as Error;
     expect(error.message).toBe("invalid");
     expect(error.cause).toBeUndefined();
+  });
+});
+
+describe("isNip44Payload（#967。復号を頼む前の形の確認）", () => {
+  it("NIP-44 v2 の暗号文だけを通す", () => {
+    const payload = nip44.encrypt("a", nip44.getConversationKey(aliceKey, BOB));
+    expect(isNip44Payload(payload)).toBe(true);
+    expect(isNip44Payload(payload.replace(/=+$/, ""))).toBe(true);
+    expect(isNip44Payload("こんにちは、スパムです")).toBe(false);
+    expect(isNip44Payload(`Aw${payload.slice(2)}`)).toBe(false); // 版 3
+    expect(isNip44Payload(`#${payload.slice(1)}`)).toBe(false); // NIP-44: 先頭の # は未対応の版
+    expect(isNip44Payload(payload.slice(0, 64))).toBe(false); // 短すぎる
+    expect(isNip44Payload("")).toBe(false);
   });
 });
 

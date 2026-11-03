@@ -230,6 +230,24 @@ describe("復号と保存", () => {
     expect(contents()).toEqual([]);
   });
 
+  it("暗号文の形でない gift wrap・kind:4（平文のスパムなど）は、署名者に復号を頼まずに捨てる（#967）", async () => {
+    const database = await openDb();
+    login("local");
+    start(database);
+    await subscribed();
+
+    const spam = { created_at: 1_700_000_000, tags: [["p", me]], content: "スパムです" };
+    const plainWrap = finalizeEvent({ ...spam, kind: 1059 }, aliceKey);
+    const plainLegacy = finalizeEvent({ ...spam, kind: 4 }, aliceKey);
+    feed.next(JSON.parse(JSON.stringify(plainWrap)) as NostrEvent);
+    feed.next(JSON.parse(JSON.stringify(plainLegacy)) as NostrEvent);
+    feed.next(wrapFromAlice("good"));
+    await vi.waitFor(() => expect(contents()).toEqual(["good"]));
+    expect(decrypt44).toHaveBeenCalledTimes(2); // good の 2 段（gift wrap → seal）だけ
+    expect(await database.dmProcessed.get([me, plainWrap.id])).toBeUndefined();
+    expect(await database.dmProcessed.get([me, plainLegacy.id])).toBeUndefined();
+  });
+
   it("処理済みの id（DB の dmProcessed）は 2 回目の起動で署名者を呼ばず、保存分をすぐ出す", async () => {
     const database = await openDb();
     login("local");
