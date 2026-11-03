@@ -21,12 +21,15 @@ vi.mock("./dmService", () => ({ startDecrypting: vi.fn(), resumeDecrypting: vi.f
 const ME = PUBKEY;
 const ALICE = OTHER_PUBKEY;
 const BOB = "a".repeat(64);
+/** [#970] フォローしていない相手（会話は「その他」） */
+const CAROL = "c".repeat(64);
 
 beforeEach(() => {
   vi.mocked(startDecrypting).mockClear();
   vi.mocked(resumeDecrypting).mockClear();
   useDm.getState().reset(ME);
-  useDm.setState({ loaded: true });
+  // [#970] BOB はフォロー中（ALICE は自分から送っているので、フォローしていなくても「フォロー中」）
+  useDm.setState({ loaded: true, follows: new Set([BOB]) });
   // 既定は全部既読（未読のテストで first を戻す）
   useDmSeen.setState({ me: ME, first: 2_000_000_000, peers: {} });
 });
@@ -77,9 +80,13 @@ describe("一覧", () => {
     seed();
     renderAt("/messages", 400);
     expect(screen.getByRole("heading", { level: 1, name: "DM" })).toBeInTheDocument();
-    // [#797] 見出しは通常のカラムヘッダ（DM / NIP-17）。「DM | チャット」の切り替えは無い
+    // [#797] 見出しは通常のカラムヘッダ（DM / NIP-17）。「DM | チャット」の切り替えは無い（タブは #970 のフォロー中・その他だけ）
     expect(screen.getByText("NIP-17")).toBeInTheDocument();
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("tablist"))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["フォロー中", "その他"]);
     const rows = rowButtons();
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(ALICE.slice(0, 10));
@@ -116,6 +123,56 @@ describe("一覧", () => {
     const router = renderAt("/messages", 400);
     await userEvent.click(screen.getAllByRole("link", { name: /のプロフィール$/ })[0]);
     expect(router.state.location.pathname).toBe(`/p/${npubEncode(ALICE)}`);
+  });
+});
+
+describe("[#970] フォロー中・その他", () => {
+  function seedWithStranger() {
+    seed();
+    useDm.getState().upsertMessages([dm("c1", CAROL, CAROL, "激安セール", 1_700_000_300)]);
+  }
+
+  it("フォローしていない人から届いただけの会話は「その他」に分け、タブに未読の数と説明を出す", async () => {
+    seedWithStranger();
+    useDmSeen.setState({ first: 0 });
+    renderAt("/messages", 400);
+    const tab = (name: RegExp) => screen.getByRole("tab", { name });
+    expect(tab(/^フォロー中/)).toHaveAttribute("aria-selected", "true");
+    expect(tab(/^その他/)).toHaveTextContent("その他1");
+    expect(rowButtons().map((r) => r.textContent)).not.toContain(expect.stringContaining("激安セール"));
+    expect(rowButtons()).toHaveLength(2);
+    expect(screen.queryByText(/フォローしていない人からの DM です/)).not.toBeInTheDocument();
+
+    await userEvent.click(tab(/^その他/));
+    expect(tab(/^その他/)).toHaveAttribute("aria-selected", "true");
+    expect(rowButtons()).toHaveLength(1);
+    expect(rowButtons()[0]).toHaveTextContent("激安セール");
+    expect(screen.getByText(/フォローしていない人からの DM です/)).toBeInTheDocument();
+  });
+
+  it("「その他」が空なら「フォローしていない人からの DM はありません」", async () => {
+    seed();
+    renderAt("/messages", 400);
+    expect(screen.getByRole("tab", { name: "その他" })).toHaveTextContent(/^その他$/);
+    await userEvent.click(screen.getByRole("tab", { name: "その他" }));
+    expect(screen.getByText("フォローしていない人からの DM はありません")).toBeInTheDocument();
+  });
+
+  it("「その他」の会話を開いたときは「その他」のタブで始め、選んだ行を見せる", () => {
+    seedWithStranger();
+    renderAt(`/messages/${npubEncode(CAROL)}`, 1280);
+    expect(screen.getByRole("tab", { name: /^その他/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(screen.getByRole("list")).getByRole("button", { current: true })).toHaveTextContent(
+      "激安セール",
+    );
+  });
+
+  it("フォローすると「フォロー中」に移る", () => {
+    seedWithStranger();
+    renderAt("/messages", 400);
+    expect(rowButtons()).toHaveLength(2);
+    act(() => useDm.setState({ follows: new Set([BOB, CAROL]) }));
+    expect(rowButtons()).toHaveLength(3);
   });
 });
 

@@ -229,6 +229,7 @@
     <string name="cat_reposts_of_me">自分へのリポスト</string>
     <string name="cat_my_reactions">自分がしたリアクション</string>
     <string name="cat_dms">未読のメッセージ</string>
+    <string name="col_dm_show_others">フォローしていない人の DM も出す</string>
     <string name="cat_public_chat">パブリックチャットの発言</string>
     <string name="feed_chat_in_channel_fmt">#%1$s で発言</string>
     <string name="feed_chat_in_channel_unknown">チャットで発言</string>
@@ -669,6 +670,10 @@
     <string name="dm_send_failed">メッセージを送れませんでした</string>
     <string name="dm_no_relays_warn">相手がDMリレーを公開していないため、届かない可能性があります</string>
     <string name="dm_empty">まだ会話がありません</string>
+    <string name="dm_tab_following">フォロー中</string>
+    <string name="dm_tab_others">その他</string>
+    <string name="dm_others_desc">フォローしていない人からの DM です。通知と未読の数には出しません。自分から送ると「フォロー中」に移ります。</string>
+    <string name="dm_others_empty">フォローしていない人からの DM はありません</string>
     <string name="feed_empty">投稿がありません</string>
     <string name="feed_loading_older">過去を読み込み中…</string>
     <string name="feed_you_reacted">あなたがリアクション</string>
@@ -880,6 +885,10 @@
     <string name="conn_tier_constrained">データセーバー</string>
     <string name="conn_tier_offline">オフライン</string>
     <string name="json_refs">参照先イベント</string>
+    <string name="json_relay_event">リレー上のイベント</string>
+    <string name="json_decrypted_seal">復号した seal（kind:13）</string>
+    <string name="json_decrypted_rumor">復号した中身（rumor・kind:14）</string>
+    <string name="json_dm_no_source">この DM は元のイベントを残す前に保存されたので、アプリが組み立てた形で出しています。設定 → データ・キャッシュ →「キャッシュを強制消去」で取り直すと、元のイベントが出ます。</string>
     <string name="json_copied_toast">JSONをコピーしました</string>
     <string name="open_profile">プロフィールを開く</string>
 

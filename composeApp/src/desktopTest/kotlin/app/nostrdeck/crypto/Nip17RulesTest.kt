@@ -74,6 +74,7 @@ class Nip17RulesTest {
         assertEquals(aliceHex, rumor.sender)
         assertEquals(meHex, rumor.recipient)
         assertEquals("こんにちは", rumor.content)
+        assertEquals(toMe, rumor.tags)   // [#969] tags は作り直さずにそのまま
         assertEquals(Nip01.eventId(aliceHex, time, 14, toMe, "こんにちは"), rumor.id)
         // id が無ければ計算した値を使う。空の sig は「署名が無い」と同じ
         assertEquals(rumor.id, Nip17.unwrap(me, giftWrap(rumorJson(aliceHex, toMe, id = null)))?.id)

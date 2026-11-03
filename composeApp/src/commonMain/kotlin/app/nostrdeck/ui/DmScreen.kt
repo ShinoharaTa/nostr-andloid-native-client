@@ -3,6 +3,7 @@ package app.nostrdeck.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -189,6 +190,9 @@ private fun DmList(
     onSelect: (DmConversation) -> Unit,
     onOpenProfile: (DmConversation) -> Unit,
 ) {
+    // [#970] 「フォロー中」（フォローしている・自分が送ったことがある）と「その他」（フォローしていない人から届いただけ）。
+    var showOthers by remember { mutableStateOf(false) }
+    val othersUnread = convos.orEmpty().filter { !it.accepted }.sumOf { it.unread }
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         // [#794] 見出しはパブリックチャット画面と同じ通常のカラムヘッダ（DM カラムと同じ名前・印）。
         // #422 の「DM | チャット」切り替えはやめた。新規は一覧の先頭行のまま。
@@ -197,7 +201,29 @@ private fun DmList(
             leadingIcon = columnIcon(ColumnKind.DM), pinned = false,
         )
         HorizontalDivider(color = DeckColors.Border)
-        DmConversationRows(convos, selectedPubkey, onSelect, onOpenProfile, onNew = onNew)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            horizontalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
+        ) {
+            ChoiceChip(stringResource(Res.string.dm_tab_following), selected = !showOthers) { showOthers = false }
+            val othersLabel = stringResource(Res.string.dm_tab_others)
+            // 「その他」は通知と未読のバッジに出さないので、未読の数はこのタブにだけ出す。
+            ChoiceChip(if (othersUnread > 0) "$othersLabel $othersUnread" else othersLabel, selected = showOthers) { showOthers = true }
+        }
+        HorizontalDivider(color = DeckColors.Border)
+        if (showOthers) {
+            Text(
+                stringResource(Res.string.dm_others_desc), color = DeckColors.Text3, fontSize = DeckType.Caption,
+                lineHeight = DeckType.LineDesc,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            )
+            DmConversationRows(
+                convos?.filter { !it.accepted }, selectedPubkey, onSelect, onOpenProfile,
+                emptyText = stringResource(Res.string.dm_others_empty),
+            )
+        } else {
+            DmConversationRows(convos?.filter { it.accepted }, selectedPubkey, onSelect, onOpenProfile, onNew = onNew)
+        }
     }
 }
 
@@ -214,12 +240,14 @@ private fun DmConversationRows(
     listState: LazyListState = rememberLazyListState(),
     /** [#422] 非null なら先頭に「新しいメッセージを送る」行（DM 画面のみ。DM カラムには出さない）。 */
     onNew: (() -> Unit)? = null,
+    /** [#970] 会話が無いときの文言（「その他」のタブは専用の文言）。 */
+    emptyText: String = stringResource(Res.string.dm_empty),
 ) {
     // null = まだ読み込んでいない。ここで「まだ会話がありません」を出すと、会話がある人にも
     // 一瞬だけ空表示が出てしまう。
     if (convos == null && onNew == null) return
     if (convos != null && convos.isEmpty() && onNew == null) {
-        DetailPlaceholder(stringResource(Res.string.dm_empty))
+        DetailPlaceholder(emptyText)
         return
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
@@ -233,7 +261,7 @@ private fun DmConversationRows(
         if (convos != null && convos.isEmpty()) {
             item(key = "empty") {
                 Text(
-                    stringResource(Res.string.dm_empty), color = DeckColors.Text3, fontSize = DeckType.Sub,
+                    emptyText, color = DeckColors.Text3, fontSize = DeckType.Sub,
                     modifier = Modifier.fillMaxWidth().padding(DeckSpace.Xl),
                 )
             }
@@ -299,8 +327,11 @@ fun DmColumn(
     menu: ColumnMenuActions? = null,
 ) {
     val repo = LocalRepository.current
-    val convos = if (repo != null) repo.dmConversationsFlow().collectAsState().value
+    val all = if (repo != null) repo.dmConversationsFlow().collectAsState().value
     else SampleData.dmConversations
+    // [#970] 既定は「フォロー中」の会話だけ。カラムのメニューで「その他」も出せる。
+    val showOthers = repo?.dmShowOthersColumns()?.collectAsState()?.value?.contains(spec.id) == true
+    val convos = if (showOthers) all else all?.filter { it.accepted }
     // 一覧の相手ぶんのアイコン/名前をまとめて解決する（DM 相手は接続中リレーに居ないことが多い）。
     val peers = convos.orEmpty().map { it.pubkey }
     LaunchedEffect(peers) {

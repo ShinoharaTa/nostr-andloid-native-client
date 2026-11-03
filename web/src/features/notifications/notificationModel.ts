@@ -101,11 +101,12 @@ export function notificationsFrom(events: readonly NostrEvent[], me: string | nu
 
 /**
  * 未読のある DM 会話を 1 会話 1 行の通知にする（ネイティブ DmNotices.kt dmNotices）。本文は載せない。
- * id は会話ごとに固定（dm_<相手>）、時刻は相手の最新の発言
+ * id は会話ごとに固定（dm_<相手>）、時刻は相手の最新の発言。
+ * [#970]「その他」（フォローしていない人から届いただけの会話）は通知に出さない（ネイティブ dmNotices と同じ）
  */
 export function dmNotices(conversations: readonly DmConversation[]): NotificationItem[] {
   return conversations
-    .filter((c) => c.unread > 0)
+    .filter((c) => c.accepted && c.unread > 0)
     .map((c) => ({
       id: `dm_${c.peer}`,
       kind: "dm",

@@ -23,17 +23,21 @@ import kotlinx.serialization.json.long
 object Nip17 {
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** 復号済み DM 本体。[replyTo] は返信元の rumor id（[#612] reply マーカー付き #e。無ければ null）。 */
+    /**
+     * 復号済み DM 本体。[tags] は rumor の tags をそのまま（[#969] 作り直すと、あとから中身を調べられない）。
+     * [sealJson] / [rumorJson] は復号した文字列そのもの（イベントの JSON の画面で、受け取ったまま出す）。
+     */
     data class Rumor(
         val id: String, val sender: String, val recipient: String?,
         val content: String, val createdAt: Long,
-        val replyTo: String? = null,
+        val tags: List<List<String>> = emptyList(),
+        val sealJson: String = "",
+        val rumorJson: String = "",
     )
 
     /**
-     * [#612] rumor(kind:14) のタグ。宛先 p は相手 1 人。[replyToId] があれば NIP-10 の reply マーカー付き
+     * [#612] 送る rumor(kind:14) のタグ。宛先 p は相手 1 人。[replyToId] があれば NIP-10 の reply マーカー付き
      * #e を添える（Web buildRumor・publishChannelMessage と同じ形。DM は 1:1 なので相手への #p は増やさない）。
-     * 手元に保存する行も同じ形にする（p の無い受信 rumor もあるので [peer] は null を許す）。
      */
     fun rumorTags(peer: String?, replyToId: String? = null): List<List<String>> = buildList {
         if (peer != null) add(listOf("p", peer))
@@ -74,8 +78,10 @@ object Nip17 {
         val me = signer.publicKeyHex()
         if (giftWrap.kind != 1059 || giftWrap.tags.none { it.size >= 2 && it[0] == "p" && it[1] == me }) return null
         if (!Nip44.isPayload(giftWrap.content)) return null
-        val seal = sealOf(signer.nip44Decrypt(giftWrap.pubkey, giftWrap.content)) ?: return null
-        rumorOf(signer.nip44Decrypt(seal.pubkey, seal.content), seal.pubkey, me)
+        val sealJson = signer.nip44Decrypt(giftWrap.pubkey, giftWrap.content)
+        val seal = sealOf(sealJson) ?: return null
+        val rumorJson = signer.nip44Decrypt(seal.pubkey, seal.content)
+        rumorOf(rumorJson, seal.pubkey, me)?.copy(sealJson = sealJson, rumorJson = rumorJson)
     }.getOrNull()
 
     /** [#967] seal(kind:13) の JSON。tags が空で、送り手の鍵の署名が正しいものだけ（NIP-59）。 */
@@ -107,7 +113,7 @@ object Nip17 {
         val recipients = tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
         if (if (sender == me) recipients.isEmpty() else me !in recipients) return null
         Rumor(id = id, sender = sender, recipient = recipients.firstOrNull(), content = content, createdAt = createdAt,
-            replyTo = replyToOf(tags))
+            tags = tags)
     }.getOrNull()
 
     /** 有効な secp256k1 スカラー（1<=k<n）を得る。乱数はほぼ常に有効なので数回で成功する。 */

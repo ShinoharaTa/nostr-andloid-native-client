@@ -82,6 +82,9 @@ data class ColumnMenuActions(
     val onSetStatusType: ((UserStatuses.Type?) -> Unit)? = null,
     /** [#421] カラムの種類ごとの追加の操作（ルームの「参加する／参加をやめる」など）。フィルター編集の下に並べる。 */
     val extraItems: List<HeaderMenuItem> = emptyList(),
+    /** [#970] DM カラム: フォローしていない人の DM（その他）も出しているか。null なら項目を出さない（DM カラム以外）。 */
+    val dmShowOthers: Boolean? = null,
+    val onToggleDmShowOthers: (() -> Unit)? = null,
 )
 
 /**
@@ -229,6 +232,20 @@ internal fun ColumnMenuButton(menu: ColumnMenuActions) {
                         )
                     },
                     onClick = { open = false; menu.onToggleMuted.invoke() },
+                )
+            }
+            // [#970] DM カラム: フォローしていない人の DM（その他）も出すか。トグルしてもメニューは閉じない。
+            if (menu.dmShowOthers != null && menu.onToggleDmShowOthers != null) {
+                val shown = menu.dmShowOthers
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.col_dm_show_others), color = if (shown) DeckColors.Text else DeckColors.Text3) },
+                    leadingIcon = {
+                        Icon(
+                            if (shown) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null,
+                            tint = if (shown) DeckColors.Text else DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconMd),
+                        )
+                    },
+                    onClick = { menu.onToggleDmShowOthers.invoke() },
                 )
             }
             // フォロー中カラム: 通知系（自分への反応/自分のリアクション）を種別ごとに表示/非表示。

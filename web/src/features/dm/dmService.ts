@@ -1,3 +1,4 @@
+import { getPublicContacts } from "applesauce-core/helpers/contacts";
 import type { Filter } from "applesauce-core/helpers/filter";
 import { normalizeURL } from "applesauce-core/helpers/url";
 import { type NostrEvent, verifyEvent } from "nostr-tools/pure";
@@ -141,6 +142,17 @@ function begin(
   const accepted = new Set<string>();
   let stopped = false;
   let decryptStarted = false;
+
+  // [#970] 自分のフォロー（kind:3）。会話を「フォロー中」と「その他」に分ける（ネイティブ buildDmConversations の follows）。
+  // kind:3 は DB から戻り、フォロー中カラムなどの購読で新しくなるので、ここでは REQ を張らずに EventStore を見るだけ
+  subscription.add(
+    eventStore
+      .timeline({ kinds: [3], authors: [me] })
+      .pipe(map(([latest]) => (latest ? new Set(getPublicContacts(latest).map((p) => p.pubkey)) : null)))
+      .subscribe((follows) => {
+        if (!stopped) useDm.setState({ follows });
+      }),
+  );
 
   // ---- 相手のプロフィール（DM の相手は接続中のリレーに居ないことが多いのでインデクサへ） ----
   const knownPeers = new Set<string>();

@@ -49,7 +49,7 @@ function conversation(peer: string, unread: number, lastIncomingAt: number): DmC
     createdAt: lastIncomingAt,
     proto: "nip17",
   };
-  return { peer, last, unread, lastIncomingAt };
+  return { peer, last, unread, lastIncomingAt, accepted: true };
 }
 
 function mix(overrides: Partial<MixInput>): FeedRow[] {
