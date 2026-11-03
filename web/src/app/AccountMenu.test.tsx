@@ -113,6 +113,8 @@ async function choose(name: string | RegExp, path: string) {
 
 function seedUnreadDm(n: number) {
   useDm.getState().reset(PUBKEY);
+  // [#970] フォロー中の相手（「その他」はバッジに数えない）
+  useDm.setState({ follows: new Set([OTHER_PUBKEY]) });
   useDmSeen.setState({ me: PUBKEY, first: 0, peers: {} });
   useDm.getState().upsertMessages(
     Array.from({ length: n }, (_, i) => ({

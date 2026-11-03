@@ -15,7 +15,13 @@ import {
 import { unixNow } from "../../lib/time";
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
-import { FEED_CAT_HIDDEN_KEY, loadFeedCatHidden, useDeck } from "../../store/deck";
+import {
+  DM_SHOW_OTHERS_KEY,
+  FEED_CAT_HIDDEN_KEY,
+  loadDmShowOthers,
+  loadFeedCatHidden,
+  useDeck,
+} from "../../store/deck";
 import { OTHER_PUBKEY, PUBKEY } from "../../test/fakeNostr";
 import { renderWithRouter } from "../../test/renderWithRouter";
 import { startDecrypting } from "../dm/dmService";
@@ -62,7 +68,7 @@ const DM: ColumnSpec = {
 const THREAD: ColumnSpec = { ...DM, id: "c_thread", title: "スレッド", kind: "THREAD", renderer: "THREAD" };
 
 beforeEach(() => {
-  useDeck.setState({ columns: [...DEFAULT_COLUMNS, DM], widths: {} });
+  useDeck.setState({ columns: [...DEFAULT_COLUMNS, DM], widths: {}, dmShowOthers: [] });
 });
 
 afterEach(() => {
@@ -116,7 +122,8 @@ function renderDmColumn(spec: ColumnSpec) {
 
 function seedDm() {
   useDm.getState().reset(PUBKEY);
-  useDm.setState({ loaded: true });
+  // [#970] フォロー中の相手（DM カラムは既定で「フォロー中」の会話だけを出す）
+  useDm.setState({ loaded: true, follows: new Set([OTHER_PUBKEY]) });
   useDm.getState().upsertMessages([
     {
       owner: PUBKEY,
@@ -151,6 +158,52 @@ it("DM カラムは会話の一覧を出し、購読しない。表示したら�
   expect(router.state.location.pathname).toBe(`/messages/${npubEncode(OTHER_PUBKEY)}`);
   // 履歴に積む（戻るでデッキへ）
   expect(router.state.historyAction).toBe("PUSH");
+});
+
+it("[#970] DM カラムは既定で「フォロー中」の会話だけ。⋯ の「フォローしていない人の DM も出す」で「その他」も出し、保存して再描画で戻す", async () => {
+  const user = userEvent.setup();
+  seedDm();
+  const stranger = "c".repeat(64);
+  useDm.getState().upsertMessages([
+    {
+      owner: PUBKEY,
+      id: "s1",
+      peer: stranger,
+      sender: stranger,
+      content: "激安セール",
+      tags: [],
+      createdAt: 1_700_000_100,
+      proto: "nip17",
+    },
+  ]);
+  const first = renderWithRouter(<DeckColumn spec={DM} showHeader />);
+  expect(screen.getByRole("button", { name: /こんにちは/ })).toBeInTheDocument();
+  expect(screen.queryByText("激安セール")).not.toBeInTheDocument();
+  // カラムにはタブを出さない（タブはメッセージ画面だけ）
+  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
+  const toggle = screen.getByRole("menuitemcheckbox", { name: "フォローしていない人の DM も出す" });
+  expect(toggle).toHaveAttribute("aria-checked", "false");
+  await user.click(toggle);
+  // 押してもメニューは開いたまま（種別のトグルと同じ）
+  expect(screen.getByRole("menuitemcheckbox", { name: "フォローしていない人の DM も出す" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  expect(screen.getByText("激安セール")).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem(DM_SHOW_OTHERS_KEY) ?? "null")).toEqual([DM.id]);
+
+  // 保存値から読み直して描き直しても出したまま
+  first.unmount();
+  useDeck.setState({ dmShowOthers: loadDmShowOthers() });
+  const second = renderWithRouter(<DeckColumn spec={DM} showHeader />);
+  expect(screen.getByText("激安セール")).toBeInTheDocument();
+  second.unmount();
+
+  // カラムを消すと設定も消える
+  act(() => useDeck.getState().removeColumn(DM.id));
+  expect(JSON.parse(localStorage.getItem(DM_SHOW_OTHERS_KEY) ?? "null")).toEqual([]);
 });
 
 it("同期で入ってきた DM カラム（ネイティブの JSON）も会話の一覧になる", () => {
@@ -238,12 +291,14 @@ it("⋯ の「タイムラインに混ぜる表示」: フォロー中カラム�
   expect(JSON.parse(localStorage.getItem(FEED_CAT_HIDDEN_KEY) ?? "null")).toEqual({});
   second.unmount();
 
-  // 他の種類のカラムには出さない
+  // 他の種類のカラムには出さない（DM カラムは「フォローしていない人の DM も出す」だけ。#970）
   for (const spec of [hashtag, notif, DM]) {
     const other = renderWithRouter(<DeckColumn spec={spec} showHeader />);
     await user.click(screen.getByRole("button", { name: "カラムメニュー" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    expect(screen.queryByRole("menuitemcheckbox")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("menuitemcheckbox").map((t) => t.textContent)).toEqual(
+      spec === DM ? ["フォローしていない人の DM も出す"] : [],
+    );
     expect(screen.queryByText("タイムラインに混ぜる表示")).not.toBeInTheDocument();
     other.unmount();
   }
@@ -448,6 +503,7 @@ it("フォロー中カラムは混ぜた行を描く（投稿・通知の行・�
       },
       unread: 1,
       lastIncomingAt: unixNow() - 300,
+      accepted: true,
     },
   ]);
   const original = vi.mocked(useColumnFeed).getMockImplementation();

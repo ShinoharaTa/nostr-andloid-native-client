@@ -788,3 +788,22 @@ DELETE FROM deleted_addr;
 
 clearOgpCache:
 DELETE FROM ogp_cache;
+
+-- [#969] 復号した DM の元。event の kind:14 の行は表示と振り分けのためにアプリが組み立てたもの（kind:4 も
+-- kind:14 にして持つ）なので、イベントの JSON を見たときに、リレー上のイベントと復号した中身をそのまま出せるよう
+-- 別に残す。dm_id は event の行の id（NIP-17 は rumor の id、NIP-04 は kind:4 の id）。
+CREATE TABLE dm_source (
+    dm_id      TEXT NOT NULL PRIMARY KEY,
+    event_json TEXT NOT NULL,
+    seal_json  TEXT,
+    rumor_json TEXT
+);
+
+insertDmSource:
+INSERT OR IGNORE INTO dm_source(dm_id, event_json, seal_json, rumor_json) VALUES (?, ?, ?, ?);
+
+dmSourceById:
+SELECT * FROM dm_source WHERE dm_id = ?;
+
+clearDmSources:
+DELETE FROM dm_source;

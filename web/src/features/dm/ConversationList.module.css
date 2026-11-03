@@ -43,6 +43,56 @@
   cursor: pointer;
 }
 
+/* [#970]「フォロー中」「その他」のタブ（ResultsPane.module.css の .tabs / .tab と同じ形） */
+.tabs {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--type-label);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+/* 「その他」の未読（通知と未読の合計には数えないので、タブにだけ出す） */
+.tabCount {
+  min-width: 18px;
+  padding: 1px var(--sp-1);
+  box-sizing: border-box;
+  border-radius: var(--r-full);
+  background: var(--text-3);
+  color: var(--surface);
+  font-size: var(--type-micro);
+  font-weight: var(--w-strong);
+  text-align: center;
+}
+
+/* 「その他」の説明 */
+.caption {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--type-label);
+  line-height: var(--line-desc);
+}
+
 /* 先頭の「新しいメッセージを送る」（ネイティブ dm_new_row） */
 .newRow {
   display: flex;

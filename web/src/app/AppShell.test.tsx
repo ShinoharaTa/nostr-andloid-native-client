@@ -407,6 +407,8 @@ describe("ナビ", () => {
 
   it("DM の未読があれば下部ナビ・レールの自分のアイコンに数を出す（#506 / #797）", () => {
     useDm.getState().reset(PUBKEY);
+    // [#970] フォロー中の相手（「その他」はバッジに数えない）
+    useDm.setState({ follows: new Set([OTHER_PUBKEY]) });
     useDmSeen.setState({ me: PUBKEY, first: 0, peers: {} });
     useDm.getState().upsertMessages(
       ["a1", "a2"].map((id, i) => ({

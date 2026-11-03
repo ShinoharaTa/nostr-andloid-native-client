@@ -1,0 +1,8 @@
+-- v14 -> v15: [#969] 復号した DM の元（リレー上のイベントと、復号した seal・rumor の JSON）を残す。
+-- 既存の DM には元が無い（取り直すまで、イベントの JSON はアプリが組み立てた形で出す）。
+CREATE TABLE dm_source (
+    dm_id      TEXT NOT NULL PRIMARY KEY,
+    event_json TEXT NOT NULL,
+    seal_json  TEXT,
+    rumor_json TEXT
+);

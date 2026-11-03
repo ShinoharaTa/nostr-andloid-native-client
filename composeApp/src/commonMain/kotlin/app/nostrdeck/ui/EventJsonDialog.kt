@@ -24,12 +24,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import app.nostrdeck.model.DmSource
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -39,15 +41,23 @@ import app.nostrdeck.theme.DeckType
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.common_close
 import nostr_deck_client.composeapp.generated.resources.json_copied_toast
+import nostr_deck_client.composeapp.generated.resources.json_decrypted_rumor
+import nostr_deck_client.composeapp.generated.resources.json_decrypted_seal
 import nostr_deck_client.composeapp.generated.resources.json_dialog_title
+import nostr_deck_client.composeapp.generated.resources.json_dm_no_source
 import nostr_deck_client.composeapp.generated.resources.json_loading
 import nostr_deck_client.composeapp.generated.resources.json_refs
+import nostr_deck_client.composeapp.generated.resources.json_relay_event
 import nostr_deck_client.composeapp.generated.resources.note_copy_text
 import app.nostrdeck.i18n.stringResource
 
@@ -57,6 +67,10 @@ import app.nostrdeck.i18n.stringResource
  * タイムラインに流れる全 kind が対象。表示は**ローカル DB のキャッシュ**から組み立てる
  * （kind:7 の "+"→❤️ 正規化などが入るため、リレー上の原文と厳密には一致しないことがある）。
  * e / q タグの参照先イベントへは、その場で辿って JSON を開ける（未取得ならリレーへ要求）。
+ *
+ * [#969] DM（kind:14 の行）はアプリが組み立てたもの（kind:4 も kind:14 にして持つ）なので、残してある元を出す:
+ * リレー上のイベント（gift wrap か kind:4）と、復号した seal・rumor。元を残す前に保存された DM は、
+ * 組み立てた形にその旨を添えて出す。
  */
 @Composable
 fun EventJsonDialog(eventId: String, onDismiss: () -> Unit) {
@@ -74,7 +88,32 @@ fun EventJsonDialog(eventId: String, onDismiss: () -> Unit) {
     LaunchedEffect(currentId, event == null) {
         if (event == null) repo?.requestEvent(currentId)
     }
-    val jsonText = remember(event) { event?.let { prettyEventJson(it) } }
+    val source by produceState<DmSource?>(null, currentId, event?.kind) {
+        value = if (event?.kind == 14) repo?.dmSource(currentId) else null
+    }
+    val relayEventLabel = stringResource(Res.string.json_relay_event)
+    val sealLabel = stringResource(Res.string.json_decrypted_seal)
+    val rumorLabel = stringResource(Res.string.json_decrypted_rumor)
+    val noSourceNote = stringResource(Res.string.json_dm_no_source)
+    // (見出し, JSON) の並び。見出しが null なら JSON だけ（DM 以外）。
+    val sections = remember(event, source) {
+        val e = event ?: return@remember null
+        val src = source
+        when {
+            src != null -> listOfNotNull(
+                relayEventLabel to prettyJsonText(src.eventJson),
+                src.sealJson?.let { sealLabel to prettyJsonText(it) },
+                src.rumorJson?.let { rumorLabel to prettyJsonText(it) },
+            )
+            e.kind == 14 && e.sig.isEmpty() -> listOf(noSourceNote to prettyEventJson(e))
+            else -> listOf(null to prettyEventJson(e))
+        }
+    }
+    val jsonText = remember(sections) {
+        sections?.joinToString("\n\n") { (label, json) -> if (label != null) "$label\n$json" else json }
+    }
+    // 見出しの kind はリレー上のイベントのもの（DM なら 1059 か 4）。
+    val shownKind = remember(event, source) { source?.let { kindOf(it.eventJson) } ?: event?.kind }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -94,7 +133,7 @@ fun EventJsonDialog(eventId: String, onDismiss: () -> Unit) {
                     }
                     TitleText(stringResource(Res.string.json_dialog_title))
                     Spacer(Modifier.width(DeckSpace.Sm))
-                    event?.let { HintText("kind:${it.kind}") }
+                    shownKind?.let { HintText("kind:$it") }
                 }
             }
         },
@@ -107,12 +146,19 @@ fun EventJsonDialog(eventId: String, onDismiss: () -> Unit) {
                             .verticalScroll(rememberScrollState())
                             .padding(DeckSpace.Sm),
                     ) {
-                        if (jsonText != null) {
-                            SelectionContainer {
-                                Text(
-                                    jsonText, color = DeckColors.Text2,
-                                    fontFamily = FontFamily.Monospace, fontSize = DeckType.Caption,
-                                )
+                        if (sections != null) {
+                            sections.forEachIndexed { i, (label, json) ->
+                                if (label != null) {
+                                    if (i > 0) Spacer(Modifier.size(DeckSpace.Md))
+                                    Text(label, color = DeckColors.Text3, fontSize = DeckType.Label)
+                                    Spacer(Modifier.size(DeckSpace.Xs))
+                                }
+                                SelectionContainer {
+                                    Text(
+                                        json, color = DeckColors.Text2,
+                                        fontFamily = FontFamily.Monospace, fontSize = DeckType.Caption,
+                                    )
+                                }
                             }
                         } else {
                             Text(
@@ -160,8 +206,11 @@ fun EventJsonDialog(eventId: String, onDismiss: () -> Unit) {
 
 private val prettyJson = Json { prettyPrint = true }
 
-/** NIP-01 のイベント形（id/pubkey/created_at/kind/tags/content/sig）で整形する。 */
-private fun prettyEventJson(e: NostrEvent): String = prettyJson.encodeToString(
+/**
+ * NIP-01 のイベント形（id/pubkey/created_at/kind/tags/content/sig）で整形する。
+ * [#969] 署名の無い行（復号した DM の中身）は sig を出さない（元の rumor にも無い。空文字を足すと別物に見える）。
+ */
+internal fun prettyEventJson(e: NostrEvent): String = prettyJson.encodeToString(
     JsonObject.serializer(),
     buildJsonObject {
         put("id", JsonPrimitive(e.id))
@@ -170,9 +219,17 @@ private fun prettyEventJson(e: NostrEvent): String = prettyJson.encodeToString(
         put("kind", JsonPrimitive(e.kind))
         put("tags", JsonArray(e.tags.map { tag -> JsonArray(tag.map { JsonPrimitive(it) }) }))
         put("content", JsonPrimitive(e.content))
-        put("sig", JsonPrimitive(e.sig))
+        if (e.sig.isNotEmpty()) put("sig", JsonPrimitive(e.sig))
     },
 )
+
+/** [#969] 保存してある JSON の文字列を読みやすく整形する（読めなければそのまま）。値は変えない。 */
+private fun prettyJsonText(text: String): String =
+    runCatching { prettyJson.encodeToString(JsonElement.serializer(), Json.parseToJsonElement(text)) }.getOrDefault(text)
+
+/** [#969] 保存してある JSON の kind（読めなければ null）。 */
+private fun kindOf(text: String): Int? =
+    runCatching { Json.parseToJsonElement(text).jsonObject["kind"]?.jsonPrimitive?.intOrNull }.getOrNull()
 
 /** e / q タグが指すイベント id（マーカー付きで出現順・重複除去）。 */
 private fun referencedEventIds(e: NostrEvent): List<Pair<String, String>> {

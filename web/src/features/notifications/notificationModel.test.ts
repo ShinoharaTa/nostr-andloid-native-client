@@ -1,7 +1,9 @@
 import { decode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
+import type { DmConversation } from "../dm/dmStore";
 import {
+  dmNotices,
   NOTIFICATIONS_MAX,
   notificationHref,
   notificationSnippet,
@@ -240,5 +242,27 @@ describe("[#817] notificationHref（対象がパブリックチャット）", ()
     expect(pointerOf(notificationHref(item)).kind).toBeUndefined();
     expect(pointerOf(notificationHref(item, ev({ id: B, kind: 42 }))).kind).toBeUndefined();
     expect(pointerOf(notificationHref(item, ev({ id: A, kind: 1 }))).kind).toBeUndefined();
+  });
+});
+
+describe("[#970] dmNotices", () => {
+  function conversation(peer: string, unread: number, accepted: boolean): DmConversation {
+    const last = {
+      owner: ME,
+      id: `m_${peer}`,
+      peer,
+      sender: peer,
+      content: "本文",
+      tags: [],
+      createdAt: 1_000,
+      proto: "nip17" as const,
+    };
+    return { peer, last, unread, lastIncomingAt: 1_000, accepted };
+  }
+
+  it("「その他」（フォローしていない人から届いただけ）の会話は、未読があっても通知の行にしない", () => {
+    expect(dmNotices([conversation(OTHER, 2, true), conversation(Z, 5, false)]).map((n) => n.actor)).toEqual([
+      OTHER,
+    ]);
   });
 });

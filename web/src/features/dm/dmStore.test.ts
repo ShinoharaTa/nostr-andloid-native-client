@@ -1,9 +1,19 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import type { DmMessageRow } from "../../db/schema";
-import { EMPTY_MUTE_LIST, setMuteList, setPendingBlocks } from "../mute/muteList";
+import { EMPTY_MUTE_LIST, muteMatcherFrom, setMuteList, setPendingBlocks } from "../mute/muteList";
 import { useDmSeen } from "./dmSeen";
-import { conversationsOf, messagesWith, useConversations, useDm, useDmUnreadTotal } from "./dmStore";
+import {
+  conversationsOf,
+  isDmTextMuted,
+  messagesWith,
+  unreadTotalOf,
+  useConversations,
+  useDm,
+  useDmUnreadTotal,
+  useMessagesWith,
+  withoutMutedDms,
+} from "./dmStore";
 
 afterEach(() => {
   useDm.getState().reset(null);
@@ -60,6 +70,50 @@ it("conversationsOf: 相手ごとの未読（既読より新しい相手の発�
   ]);
 });
 
+it("[#970] conversationsOf: フォローしている・自分が送った・自分宛てのメモは accepted、届いただけは「その他」", () => {
+  const messages = [
+    row("a1", "alice", 10), // フォローしている
+    row("b1", "bob", 11), // フォローしていないが、自分から送った
+    row("b2", "bob", 12, "b2", "me"),
+    row("m1", "me", 13, "m1", "me"), // 自分宛てのメモ
+    row("s1", "spammer", 14), // フォローしていない人から届いただけ
+  ];
+  const accepted = (follows: ReadonlySet<string> | null) =>
+    Object.fromEntries(
+      conversationsOf(messages, "me", NOTHING_SEEN, follows).map((c) => [c.peer, c.accepted]),
+    );
+  expect(accepted(new Set(["alice"]))).toEqual({ alice: true, bob: true, me: true, spammer: false });
+  // フォローがまだ分からない（null）間は空として扱う（自分が送った相手とメモだけ）
+  expect(accepted(null)).toEqual({ alice: false, bob: true, me: true, spammer: false });
+});
+
+it("[#970] unreadTotalOf: 「その他」の未読は数えない", () => {
+  const conversations = conversationsOf(
+    [row("a1", "alice", 10), row("a2", "alice", 11), row("s1", "spammer", 12)],
+    "me",
+    NOTHING_SEEN,
+    new Set(["alice"]),
+  );
+  expect(conversations.map((c) => [c.peer, c.unread])).toEqual([
+    ["spammer", 1],
+    ["alice", 2],
+  ]);
+  expect(unreadTotalOf(conversations)).toBe(2);
+});
+
+it("[#970] useDmUnreadTotal: フォローしていない人から届いただけの会話は数えず、フォローすると数える", () => {
+  useDm.getState().reset("me");
+  useDmSeen.setState({ me: "me", first: 0, peers: {} });
+  useDm
+    .getState()
+    .upsertMessages([row("a1", "alice", 11), row("s1", "spammer", 12), row("s2", "spammer", 13)]);
+  act(() => useDm.setState({ follows: new Set(["alice"]) }));
+  const { result } = renderHook(() => useDmUnreadTotal());
+  expect(result.current).toBe(1);
+  act(() => useDm.setState({ follows: new Set(["alice", "spammer"]) }));
+  expect(result.current).toBe(3);
+});
+
 it("messagesWith: 相手の分だけを古い順（同時刻は id の昇順）", () => {
   const messages = [
     row("a3", "alice", 30),
@@ -93,11 +147,13 @@ it("upsertMessages は同じ id を上書き、removeMessage で消す、reset �
     decrypting: false,
     nip17: "ok",
     nip04: "ok",
+    follows: null,
   });
 });
 
 it("useDmUnreadTotal: 全会話の未読の合計（既読が進むと減る）", () => {
   useDm.getState().reset("me");
+  useDm.setState({ follows: new Set(["alice", "bob"]) });
   useDmSeen.setState({ me: "me", first: 10, peers: {} });
   useDm.getState().upsertMessages([row("a1", "alice", 11), row("a2", "alice", 12), row("b1", "bob", 13)]);
   const { result } = renderHook(() => useDmUnreadTotal());
@@ -108,6 +164,7 @@ it("useDmUnreadTotal: 全会話の未読の合計（既読が進むと減る）"
 
 it("[#957] ブロック中の相手（保存待ちを含む）の会話は一覧に出さず、未読の合計にも数えない", () => {
   useDm.getState().reset("me");
+  useDm.setState({ follows: new Set(["alice", "bob", "carol"]) });
   useDmSeen.setState({ me: "me", first: 10, peers: {} });
   useDm.getState().upsertMessages([row("a1", "alice", 11), row("b1", "bob", 13), row("c1", "carol", 14)]);
   const { result } = renderHook(() => ({
@@ -127,4 +184,48 @@ it("[#957] ブロック中の相手（保存待ちを含む）の会話は一覧
   expect(result.current).toEqual({ peers: ["alice"], unread: 1 });
   act(() => setPendingBlocks(new Set()));
   expect(result.current).toEqual({ peers: ["carol", "alice"], unread: 2 });
+});
+
+it("[#971] ミュートワードに当たる相手の DM は、一覧・未読・会話の中のどれにも出さない（自分が送った DM は残す）", () => {
+  useDm.getState().reset("me");
+  useDm.setState({ follows: new Set(["alice", "bob"]) });
+  useDmSeen.setState({ me: "me", first: 10, peers: {} });
+  useDm
+    .getState()
+    .upsertMessages([
+      row("a1", "alice", 11, "こんにちは"),
+      row("a2", "alice", 12, "セール → https://jmty.io/shop/"),
+      row("a3", "alice", 13, "jmty.io って何？", "me"),
+      row("b1", "bob", 14, "全部激安 https://JMTY.io/"),
+    ]);
+  const { result } = renderHook(() => ({
+    conversations: useConversations().map((c) => [c.peer, c.unread, c.last.id]),
+    unread: useDmUnreadTotal(),
+    withAlice: useMessagesWith("alice").map((m) => m.id),
+  }));
+  expect(result.current.unread).toBe(3);
+
+  act(() =>
+    setMuteList({
+      ...EMPTY_MUTE_LIST,
+      entries: [{ category: "word", value: "jmty.io", isPublic: false, isPrivate: true }],
+    }),
+  );
+  // bob は全部当たったので会話ごと消える。alice は当たった 1 通だけ消え、自分が送った DM は残る
+  expect(result.current).toEqual({
+    conversations: [["alice", 1, "a3"]],
+    unread: 1,
+    withAlice: ["a1", "a3"],
+  });
+});
+
+it("[#971] withoutMutedDms: /正規表現/ も効く。ミュートワードが無ければそのまま", () => {
+  const messages = [row("a1", "alice", 1, "80%OFF のセール"), row("a2", "alice", 2, "やあ")];
+  expect(withoutMutedDms(messages, "me", muteMatcherFrom(null)).map((m) => m.id)).toEqual(["a1", "a2"]);
+  const matcher = muteMatcherFrom({
+    ...EMPTY_MUTE_LIST,
+    entries: [{ category: "word", value: "/\\d+%OFF/", isPublic: true, isPrivate: false }],
+  });
+  expect(withoutMutedDms(messages, "me", matcher).map((m) => m.id)).toEqual(["a2"]);
+  expect(isDmTextMuted(matcher, row("m1", "alice", 3, "90%off です", "me"), "me")).toBe(false);
 });

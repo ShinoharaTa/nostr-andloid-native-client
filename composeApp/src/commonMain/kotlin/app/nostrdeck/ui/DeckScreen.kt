@@ -471,8 +471,10 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
     // フォロー中カラムだけ「タイムラインに混ぜる表示」カテゴリのトグルを出す。
     val isFollowing = spec.kind == ColumnKind.FOLLOWING
     val isStatus = spec.kind == ColumnKind.STATUS
+    val isDm = spec.kind == ColumnKind.DM
     val hiddenCategories = if (isFollowing && repoForMenu != null)
         repoForMenu.columnHiddenCategoriesFlow().collectAsState().value[spec.id].orEmpty() else emptySet()
+    val dmShowOthers = if (isDm && repoForMenu != null) repoForMenu.dmShowOthersColumns().collectAsState().value else emptySet()
     // [#421] ルームのカラムだけ「参加する／参加をやめる」を出す。
     val joinItem = if (spec.kind == ColumnKind.CHANNEL_ROOM) rememberChannelJoinItem(spec.filter.channelId) else null
     val index = state.columns.indexOfFirst { it.id == spec.id }
@@ -496,6 +498,10 @@ fun rememberColumnMenuActions(spec: ColumnSpec, state: DeckState): ColumnMenuAct
         statusType = if (isStatus && repoForMenu != null) repoForMenu.columnStatusTypesFlow().collectAsState().value[spec.id] else null,
         onSetStatusType = if (isStatus && repoForMenu != null) ({ t: UserStatuses.Type? -> repoForMenu.setColumnStatusType(spec.id, t) }) else null,
         extraItems = listOfNotNull(joinItem),
+        // [#970] DM カラムだけ「フォローしていない人の DM も出す」を出す（既定は出さない）。
+        dmShowOthers = if (isDm && repoForMenu != null) spec.id in dmShowOthers else null,
+        onToggleDmShowOthers = if (isDm && repoForMenu != null)
+            ({ repoForMenu.setColumnDmShowOthers(spec.id, spec.id !in dmShowOthers) }) else null,
     )
 }
 

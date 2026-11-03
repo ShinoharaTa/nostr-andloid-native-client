@@ -20,6 +20,7 @@ import {
   FEED_CATEGORIES,
   type FeedCategory,
   feedCatHiddenOf,
+  isDmShowOthers,
   isMutedRevealed,
   statusTypeOf,
   useDeck,
@@ -119,10 +120,12 @@ function UnsupportedColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader:
 
 /**
  * DM カラム（ネイティブ DmColumn #415）。会話の一覧を出し、行を押すとメッセージ画面をその相手で開く。
- * REQ は張らない（DM の購読は dmService）。表示したら復号を始める（NIP-07 / NIP-46 はここまで署名者を呼ばない）
+ * REQ は張らない（DM の購読は dmService）。表示したら復号を始める（NIP-07 / NIP-46 はここまで署名者を呼ばない）。
+ * [#970] 既定は「フォロー中」の会話だけ。⋯ の「フォローしていない人の DM も出す」で「その他」も出す
  */
 function DmColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean }) {
   const navigate = useNavigate();
+  const showOthers = useDeck((s) => isDmShowOthers(s, spec.id));
   useEffect(() => {
     startDecrypting();
   }, []);
@@ -136,6 +139,7 @@ function DmColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolean 
           onSelect={(peer) => void navigate(`/messages/${npubEncode(peer)}`)}
           showBanners={false}
           showNewRow={false}
+          scope={showOthers ? "all" : "accepted"}
         />
       </div>
     </section>
@@ -414,6 +418,7 @@ function ChannelJoinMenuItem({ channelId, onSelected }: { channelId: string; onS
  * （ネイティブ DeckScreen.kt と同じ。CHANNEL_LIST は対象外）。ROOM（パブリックチャット）は
  * ネイティブには無い Web 独自の対象（発言のミュート表示切替は Web の既存機能なので残す。D3）。
  * 「タイムラインに混ぜる表示」はフォロー中カラムだけ。「表示（すべて / Now Playing / ステータス）」はステータスカラムだけ（#767）。
+ * 「フォローしていない人の DM も出す」は DM カラムだけ（#970）。
  */
 export function ColumnMenu({ spec }: { spec: ColumnSpec }) {
   useT();
@@ -426,6 +431,7 @@ export function ColumnMenu({ spec }: { spec: ColumnSpec }) {
   const mutedRevealed = useDeck((s) => isMutedRevealed(s, spec.id));
   const hiddenCategories = useDeck((s) => feedCatHiddenOf(s, spec.id));
   const statusType = useDeck((s) => statusTypeOf(s, spec.id));
+  const dmShowOthers = useDeck((s) => isDmShowOthers(s, spec.id));
 
   // [#540] 開いている間の「戻る」はメニューを閉じるだけにする
   useCloseMenuOnBack(open, () => setOpen(false));
@@ -552,6 +558,19 @@ export function ColumnMenu({ spec }: { spec: ColumnSpec }) {
                 );
               })}
             </fieldset>
+          )}
+          {spec.kind === "DM" && (
+            // [#970] 種別のトグルと同じくメニューを閉じない（ネイティブ ColumnMenuActions の dmShowOthers）
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={dmShowOthers}
+              className={styles.menuItem}
+              onClick={() => deck().setDmShowOthers(spec.id, !dmShowOthers)}
+            >
+              <Icon name={dmShowOthers ? "checkBox" : "checkBoxOutlineBlank"} size="md" />
+              {t("col_dm_show_others")}
+            </button>
           )}
           {spec.kind === "STATUS" && (
             // 種類の切替は幅と同じくメニューを閉じない

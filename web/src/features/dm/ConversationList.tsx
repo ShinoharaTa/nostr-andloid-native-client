@@ -12,29 +12,78 @@ import { type DmConversation, useConversations, useDm } from "./dmStore";
 import { NewConversationDialog } from "./NewConversationDialog";
 
 /**
+ * 一覧に出す会話（#970）。tabs = 「フォロー中」「その他」のタブで分ける（メッセージ画面）、
+ * accepted = 「フォロー中」だけ、all = 全部（DM カラム。⋯ の「フォローしていない人の DM も出す」）
+ */
+export type ConversationScope = "tabs" | "accepted" | "all";
+
+type Tab = "following" | "others";
+
+/**
  * 会話の一覧（ネイティブ DmConversationRows。メッセージ画面と DM カラムで使う）。新しい順。
  * 行 = アバター（プロフィールへ）・表示名・最後のメッセージ 1 行・未読数（ネイティブ #416）。行を押すと onSelect。
  * showBanners なら上に復号の状態（NIP-44 が無い・一時停止・復号中）を出す。
  * showNewRow なら先頭に「新しいメッセージを送る」（相手を入れて onSelect。まだ会話の無い相手でもよい）。
+ * scope で出す会話を選ぶ（#970。ネイティブ DmList / DmColumn と同じ）
  */
 export function ConversationList({
   selectedPeer,
   onSelect,
   showBanners,
   showNewRow,
+  scope,
 }: {
   selectedPeer: string | null;
   onSelect(peer: string): void;
   showBanners: boolean;
   showNewRow: boolean;
+  scope: ConversationScope;
 }) {
   const t = useT();
-  const conversations = useConversations();
+  const all = useConversations();
   const loaded = useDm((s) => s.loaded);
   const [composing, setComposing] = useState(false);
+  // 開いている会話が「その他」なら、最初は「その他」を見せる（選んだ行が隠れないように）
+  const [tab, setTab] = useState<Tab>(() =>
+    all.find((c) => c.peer === selectedPeer)?.accepted === false ? "others" : "following",
+  );
+  const others = all.filter((c) => !c.accepted);
+  const othersUnread = others.reduce((sum, c) => sum + c.unread, 0);
+  const othersTab = scope === "tabs" && tab === "others";
+  const conversations = scope === "all" ? all : othersTab ? others : all.filter((c) => c.accepted);
+  const empty = !loaded ? t("loading") : othersTab ? t("dm_others_empty") : t("dm_empty");
   return (
     <div className={styles.root}>
       {showBanners && <Banners />}
+      {scope === "tabs" && (
+        <div role="tablist" aria-label={t("nav_dm")} className={styles.tabs}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "following"}
+            className={styles.tab}
+            onClick={() => setTab("following")}
+          >
+            {t("dm_tab_following")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "others"}
+            className={styles.tab}
+            onClick={() => setTab("others")}
+          >
+            {t("dm_tab_others")}
+            {/* 通知と未読の合計には数えないので、ここで気付けるように件数を出す */}
+            {othersUnread > 0 && (
+              <span className={styles.tabCount} aria-hidden="true">
+                {badgeText(othersUnread)}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+      {othersTab && <p className={styles.caption}>{t("dm_others_desc")}</p>}
       {showNewRow && (
         <button type="button" className={styles.newRow} onClick={() => setComposing(true)}>
           <AddIcon className={styles.newIcon} />
@@ -51,7 +100,7 @@ export function ConversationList({
         />
       )}
       {conversations.length === 0 ? (
-        <p className={styles.empty}>{loaded ? t("dm_empty") : t("loading")}</p>
+        <p className={styles.empty}>{empty}</p>
       ) : (
         <ul className={styles.rows}>
           {conversations.map((conversation) => (

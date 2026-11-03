@@ -21,6 +21,8 @@ export const REVEAL_MUTED_KEY = "nostrism.deck.revealMuted";
 export const FEED_CAT_HIDDEN_KEY = "nostrism.deck.feedCatHidden";
 /** ステータスカラムで出す種類（{"<id>":"music"|"general"}。「すべて」は書かない。Web だけ・同期しない #767） */
 export const STATUS_TYPE_KEY = "nostrism.deck.statusType";
+/** [#970] フォローしていない人の DM も出す DM カラム（id の配列。ネイティブ col_dm_show_others:<id>） */
+export const DM_SHOW_OTHERS_KEY = "nostrism.deck.dmShowOthers";
 
 /**
  * フォロー中カラムに混ぜる行の種別（ネイティブ FeedNoticeCategory。⋯ メニューの並び順）。
@@ -46,6 +48,8 @@ export type DeckState = {
   feedCatHidden: Record<string, FeedCategory[]>;
   /** ステータスカラムで出す種類（「すべて」のカラムはキーを持たない） */
   statusType: Record<string, StatusType>;
+  /** [#970] 「その他」（フォローしていない人から届いただけの会話）も出す DM カラムの id。既定は出さない */
+  dmShowOthers: string[];
   /** ジャンプ要求のカラム id（デッキが消費して null に戻す） */
   jumpTarget: string | null;
   /** コンパクト表示で見えているカラム id */
@@ -77,6 +81,8 @@ export type DeckState = {
   setFeedCatHidden(id: string, category: FeedCategory, hidden: boolean): void;
   /** ステータスカラムで出す種類（⋯ メニューの「表示」。null = すべて） */
   setStatusType(id: string, type: StatusType | null): void;
+  /** [#970] DM カラムに「その他」の会話も出すか（⋯ メニューの「フォローしていない人の DM も出す」） */
+  setDmShowOthers(id: string, show: boolean): void;
   jumpTo(id: string): void;
   consumeJump(): void;
   setVisibleColumn(id: string | null): void;
@@ -202,6 +208,21 @@ export function loadStatusType(): Record<string, StatusType> {
   return types;
 }
 
+export function saveDmShowOthers(ids: readonly string[]) {
+  writeItem(DM_SHOW_OTHERS_KEY, JSON.stringify(ids));
+}
+
+/** 保存済みの「その他も出す」DM カラム（文字列だけを拾う。壊れていれば空 = どのカラムも出さない） */
+export function loadDmShowOthers(): string[] {
+  try {
+    const value: unknown = JSON.parse(readItem(DM_SHOW_OTHERS_KEY) ?? "[]");
+    if (Array.isArray(value)) return [...new Set(value.filter((v): v is string => typeof v === "string"))];
+  } catch {
+    // 壊れた保存値は既定（出さない）へ
+  }
+  return [];
+}
+
 // (一時カラム id, 開いた元のカラム id) の戻りスタック。back() の戻り先に使う
 const originStack: [string, string | null][] = [];
 
@@ -231,6 +252,7 @@ export const useDeck = create<DeckState>()((set, get) => {
     revealMuted: loadRevealMuted(),
     feedCatHidden: loadFeedCatHidden(),
     statusType: loadStatusType(),
+    dmShowOthers: loadDmShowOthers(),
     jumpTarget: null,
     visibleColumnId: null,
     editingColumnId: null,
@@ -285,7 +307,7 @@ export const useDeck = create<DeckState>()((set, get) => {
     },
 
     removeColumn(id) {
-      const { columns, widths, revealMuted, feedCatHidden, statusType } = get();
+      const { columns, widths, revealMuted, feedCatHidden, statusType, dmShowOthers } = get();
       const wasPinned = columns.some((c) => c.id === id && c.pinned);
       commit(
         columns.filter((c) => c.id !== id),
@@ -304,6 +326,7 @@ export const useDeck = create<DeckState>()((set, get) => {
         saveFeedCatHidden(rest);
       }
       if (Object.hasOwn(statusType, id)) get().setStatusType(id, null);
+      if (dmShowOthers.includes(id)) get().setDmShowOthers(id, false);
     },
 
     moveColumn(id, delta) {
@@ -356,6 +379,13 @@ export const useDeck = create<DeckState>()((set, get) => {
       const statusType = type === null ? rest : { ...rest, [id]: type };
       set({ statusType });
       saveStatusType(statusType);
+    },
+
+    setDmShowOthers(id, show) {
+      const rest = get().dmShowOthers.filter((c) => c !== id);
+      const dmShowOthers = show ? [...rest, id] : rest;
+      set({ dmShowOthers });
+      saveDmShowOthers(dmShowOthers);
     },
 
     jumpTo(id) {
@@ -451,6 +481,11 @@ const NO_CATEGORIES: readonly FeedCategory[] = [];
 /** このカラムで隠す混在の種別（無ければ同じ空配列） */
 export function feedCatHiddenOf(s: DeckState, id: string): readonly FeedCategory[] {
   return s.feedCatHidden[id] ?? NO_CATEGORIES;
+}
+
+/** [#970] この DM カラムに「その他」の会話も出すか */
+export function isDmShowOthers(s: DeckState, id: string): boolean {
+  return s.dmShowOthers.includes(id);
 }
 
 /** このステータスカラムで出す種類（null = すべて） */

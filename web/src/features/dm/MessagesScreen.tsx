@@ -118,7 +118,13 @@ function ListPane({ selectedPeer, onSelect }: { selectedPeer: string | null; onS
     <div className={styles.list}>
       <ScreenHeader title={t("nav_dm")} subtitle="NIP-17" icon={<Icon name="mailOutline" size="lg" />} />
       <div className={styles.listBody}>
-        <ConversationList selectedPeer={selectedPeer} onSelect={onSelect} showBanners showNewRow />
+        <ConversationList
+          selectedPeer={selectedPeer}
+          onSelect={onSelect}
+          showBanners
+          showNewRow
+          scope="tabs"
+        />
       </div>
     </div>
   );

@@ -177,6 +177,24 @@ describe("購読", () => {
     expect(current).toContain("wss://dm-inbox.example/");
     sub?.unsubscribe();
   });
+
+  it("[#970] 自分の kind:3 が EventStore に入ると、フォローを DM のストアに入れる（kind:3 の REQ は張らない）", async () => {
+    login("local");
+    start(await openDb());
+    await subscribed();
+    expect(useDm.getState().follows).toBeNull();
+
+    addVerified(
+      finalizeEvent({ kind: 3, created_at: 1_700_000_000, tags: [["p", ALICE]], content: "" }, myKey),
+    );
+    expect(useDm.getState().follows).toEqual(new Set([ALICE]));
+    expect(filters?.some((f) => f.kinds?.includes(3))).toBe(false);
+    expect(vi.mocked(requestOnce)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ kinds: [3] })]),
+      expect.anything(),
+    );
+  });
 });
 
 describe("復号と保存", () => {

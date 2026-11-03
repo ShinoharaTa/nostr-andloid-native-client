@@ -14,9 +14,11 @@ import app.nostrdeck.model.Profile
  *
  * 本文は載せない。通知欄とフォロー中TLは主画面で肩越しに見えやすいので、中身は DM 画面の中だけに
  * 留める。並び位置は相手の最新発言の時刻。
+ *
+ * [#970] 「その他」（フォローしていない人から届いただけ）の会話は出さない（未読のバッジと同じ基準）。
  */
 fun dmNotices(conversations: List<DmConversation>): List<NotificationUi> =
-    conversations.filter { it.unread > 0 }.map { c ->
+    conversations.filter { it.accepted && it.unread > 0 }.map { c ->
         NotificationUi(
             id = "dm_${c.pubkey}",   // 会話ごとに固定（新着が来ても同じ行が更新される）
             kind = NotificationKind.DM,

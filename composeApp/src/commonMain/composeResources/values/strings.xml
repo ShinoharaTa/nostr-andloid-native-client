@@ -233,6 +233,7 @@
     <string name="cat_reposts_of_me">Reposts of your posts</string>
     <string name="cat_my_reactions">Your reactions</string>
     <string name="cat_dms">Unread messages</string>
+    <string name="col_dm_show_others">Show messages from people you don’t follow</string>
     <string name="cat_public_chat">Public chat messages</string>
     <string name="feed_chat_in_channel_fmt">Posted in #%1$s</string>
     <string name="feed_chat_in_channel_unknown">Posted in a public chat</string>
@@ -673,6 +674,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="dm_send_failed">Couldn't send the message</string>
     <string name="dm_no_relays_warn">This person hasn't published DM relays, so the message may not reach them</string>
     <string name="dm_empty">No conversations yet</string>
+    <string name="dm_tab_following">Following</string>
+    <string name="dm_tab_others">Others</string>
+    <string name="dm_others_desc">Messages from people you don’t follow. They don’t show up in notifications or unread counts. Once you send a message, the conversation moves to Following.</string>
+    <string name="dm_others_empty">No messages from people you don’t follow</string>
     <string name="feed_empty">No posts</string>
     <string name="feed_loading_older">Loading older posts…</string>
     <string name="feed_you_reacted">You reacted</string>
@@ -884,6 +889,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="conn_tier_constrained">Data saver</string>
     <string name="conn_tier_offline">Offline</string>
     <string name="json_refs">Referenced events</string>
+    <string name="json_relay_event">Event on the relay</string>
+    <string name="json_decrypted_seal">Decrypted seal (kind:13)</string>
+    <string name="json_decrypted_rumor">Decrypted message (rumor, kind:14)</string>
+    <string name="json_dm_no_source">This message was saved before the app kept the original event, so it is shown as rebuilt by the app. Clear the cache in Settings &gt; Data &amp; cache to fetch it again with the original event.</string>
     <string name="json_copied_toast">JSON copied</string>
     <string name="open_profile">Open profile</string>
 

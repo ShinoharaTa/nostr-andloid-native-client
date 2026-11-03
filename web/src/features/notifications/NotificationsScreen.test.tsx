@@ -59,6 +59,8 @@ afterEach(() => {
 /** 相手から未読の DM が 3 通ある状態（既読は 0 から） */
 function seedUnreadDm(peer: string) {
   useDm.getState().reset(me);
+  // [#970] フォロー中の相手（「その他」は通知の行に出さない）
+  useDm.setState({ follows: new Set([peer]) });
   useDmSeen.setState({ me, first: 0, peers: {} });
   useDm.getState().upsertMessages(
     [1, 2, 3].map((n) => ({

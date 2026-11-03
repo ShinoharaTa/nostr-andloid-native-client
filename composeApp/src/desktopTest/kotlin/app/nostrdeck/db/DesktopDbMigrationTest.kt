@@ -45,6 +45,7 @@ class DesktopDbMigrationTest {
         jdbc { c ->
             c.exec(
                 "ALTER TABLE media_server DROP COLUMN protocol",   // 13.sqm（#872）
+                "DROP TABLE dm_source",                             // 14.sqm（#969）
             )
         }
     }
@@ -125,6 +126,6 @@ class DesktopDbMigrationTest {
         assertEquals(9L, infer(setOf("app_setting", "media_server", "custom_emoji", "publish_queue"), queue = setOf("event_id")))
         assertEquals(13L, infer(setOf("ogp_cache", "deleted_event", "publish_queue"), queue = setOf("ref_id")))
         // 版を上げたら createLikeOldDesktop が版 13 の形を作れているか見直す（その版で足した列・表を落とす）。
-        assertEquals(14L, NostrDb.Schema.version)
+        assertEquals(15L, NostrDb.Schema.version)
     }
 }

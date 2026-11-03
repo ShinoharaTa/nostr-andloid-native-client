@@ -444,6 +444,8 @@ it("フォロー中: 自分への反応・自分のリアクション・未読 D
     }
     eventStore.add(myReactionToMuted);
     useDm.getState().reset(me);
+    // [#970] どちらもフォロー中の相手（「その他」は通知の行に出さない）
+    useDm.setState({ follows: new Set([friend, muted]) });
     useDmSeen.setState({ me, first: 0, peers: {} });
     useDm.getState().upsertMessages(
       [friend, muted].map((peer, i) => ({

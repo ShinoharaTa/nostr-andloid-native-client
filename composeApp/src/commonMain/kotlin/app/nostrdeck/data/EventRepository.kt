@@ -65,6 +65,8 @@ import app.nostrdeck.model.ThemeEntry
 import app.nostrdeck.model.ImageCompressionPrefs
 import app.nostrdeck.model.VideoCompressionPrefs
 import app.nostrdeck.model.DmConversation
+import app.nostrdeck.model.DmSource
+import app.nostrdeck.model.MuteMatcher
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.EmbedPrefs
 import app.nostrdeck.model.MuteEntry
@@ -467,10 +469,13 @@ class EventRepository(
             // NIP-17 DM: 自分の DM リレーリスト(kind:10050)と、自分宛 gift wrap(kind:1059)を購読。
             // 10050 が届いたら updateDmRelayList が DM リレーへも追加購読する（broad は維持）。
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
-            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
+            // [#970] DM は読み込みリレーだけで購読する（自分の DM リレーへは updateDmRelayList が別に張る。Web と同じ範囲）。
+            // 以前は subscribeAll で、プロフィールなどを引くために一時的につなぐインデクサにも流れ、使っていない
+            // リレーに置かれたスパムの DM まで届いていた。
+            subscribeRead("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
             // NIP-04 旧型DM(kind:4): 受信(自分宛)・送信(自分発)の両方を購読して統合表示。
-            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
-            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
+            subscribeRead("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
+            subscribeRead("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
             // [M16] 自分のリアクション(kind:7)を購読し、宛先ノートと共に TL へ混ぜる。
             subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
         }
@@ -486,6 +491,10 @@ class EventRepository(
         hideSelfNoticesFlow.value = q.settingsByPrefix(HIDE_SELF_NOTICES_PREFIX).executeAsList()
             .filter { it.value_ == "1" }
             .map { it.key.removePrefix(HIDE_SELF_NOTICES_PREFIX) }.toSet()
+        // [#970] DM カラム別「フォローしていない人の DM も出す」を KV から復元。
+        dmShowOthersFlow.value = q.settingsByPrefix(DM_SHOW_OTHERS_PREFIX).executeAsList()
+            .filter { it.value_ == "1" }
+            .map { it.key.removePrefix(DM_SHOW_OTHERS_PREFIX) }.toSet()
         // [M18] カラム別「非表示にする通知系カテゴリ」を KV から復元。
         loadHiddenCategories()
         // [#10] カラム別の幅を KV から復元。
@@ -904,7 +913,7 @@ class EventRepository(
         dmRelaysByAuthor.value = emptyMap(); ogpCache.clear()
         withContext(relayDispatcher) {
             q.transaction {
-                q.clearEvents(); q.clearTags(); q.clearProfiles(); q.clearChannels(); q.clearPublishQueue()
+                q.clearEvents(); q.clearTags(); q.clearProfiles(); q.clearChannels(); q.clearPublishQueue(); q.clearDmSources()
                 q.clearPinnedColumns(); q.clearAllRelays(); q.clearRelayStatus(); q.clearUsedHashtags()
                 q.clearMediaServers(); q.clearSettings(); q.clearUsedEmojis(); q.clearCustomEmojis()
                 q.clearDeletedEvents(); q.clearDeletedAddrs(); q.clearOgpCache()
@@ -955,6 +964,7 @@ class EventRepository(
                 q.clearProfiles()
                 q.clearChannels()
                 q.clearPublishQueue()
+                q.clearDmSources()   // [#969]
                 q.clearNip65Relays()
                 q.clearCustomEmojis()  // カスタム絵文字リストはアカウント別なので消す。
             }
@@ -966,9 +976,9 @@ class EventRepository(
             subscribeAll("pinnedlist", Filter(kinds = listOf(10001), authors = listOf(me), limit = 1))
             subscribeAll("bookmarklist", Filter(kinds = listOf(10003), authors = listOf(me), limit = 1))
             subscribeAll("dmrelays", Filter(kinds = listOf(10050), authors = listOf(me), limit = 1))
-            subscribeAll("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))
-            subscribeAll("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
-            subscribeAll("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
+            subscribeRead("dm_inbox", Filter(kinds = listOf(1059), pTags = listOf(me)))   // [#970] 読み込みリレーだけ
+            subscribeRead("dm4_in", Filter(kinds = listOf(4), pTags = listOf(me)))
+            subscribeRead("dm4_out", Filter(kinds = listOf(4), authors = listOf(me)))
             subscribeRead("myreactions", Filter(kinds = listOf(7), authors = listOf(me), limit = 100))
 
             // 開いているカラムの REQ を張り直して取りこぼしを防ぐ（relayDispatcher で直列化）。
@@ -999,7 +1009,11 @@ class EventRepository(
                 q.clearProfiles()
                 q.clearChannels()
                 q.clearPublishQueue()
+                q.clearDmSources()   // [#969]
             }
+            // [#969] DM は張り直した購読で届く gift wrap / kind:4 を復号し直して保存し直す。処理済みの印を残すと
+            // 同じ起動のあいだは復号されず、消した DM が開き直すまで戻らなかった。
+            processedWraps.clear(); processedLegacyDm.clear()
             // 自分のフォロー(kind:3)・自分のリスト(10002/10030/30015)と開いているカラムを張り直して再構築。
             // [#396] 従来は emojilist だけ張り直していなかった（漏れ）。
             val me = myPubkey
@@ -2131,9 +2145,10 @@ class EventRepository(
     /**
      * DM の未読件数（全会話の合計）。レール/ナビのバッジ用。
      * 会話一覧（[dmConversationsFlow]）の unread を足すだけにして、未読の判定規則を1か所に保つ。
+     * [#970] 「その他」（フォローしていない人から届いただけ）の会話は数えない（スパムでバッジが点かないように）。
      */
     private val dmUnreadCache: StateFlow<Int> by lazy {
-        dmConversationsCache.map { list -> list?.sumOf { it.unread } ?: 0 }
+        dmConversationsCache.map { list -> list?.filter { it.accepted }?.sumOf { it.unread } ?: 0 }
             .stateIn(scope, feedSharing, 0)
     }
     fun dmUnreadFlow(): StateFlow<Int> = dmUnreadCache
@@ -4145,6 +4160,14 @@ class EventRepository(
     fun setColumnHideSelfNotices(columnId: String, hide: Boolean) {
         hideSelfNoticesFlow.value = if (hide) hideSelfNoticesFlow.value + columnId else hideSelfNoticesFlow.value - columnId
         putSettingAsync(HIDE_SELF_NOTICES_PREFIX + columnId, if (hide) "1" else "0")
+    }
+
+    // [#970] DM カラムで「フォローしていない人の DM（その他）も出す」カラムの集合。KV 永続。既定は出さない。
+    private val dmShowOthersFlow = MutableStateFlow<Set<String>>(emptySet())
+    fun dmShowOthersColumns(): StateFlow<Set<String>> = dmShowOthersFlow
+    fun setColumnDmShowOthers(columnId: String, show: Boolean) {
+        dmShowOthersFlow.value = if (show) dmShowOthersFlow.value + columnId else dmShowOthersFlow.value - columnId
+        putSettingAsync(DM_SHOW_OTHERS_PREFIX + columnId, if (show) "1" else "0")
     }
 
     // [M18] フォロー中カラムで「非表示にする通知系カテゴリ」をカラム別に持つ。KV 永続（カンマ区切り）。
@@ -6365,7 +6388,10 @@ class EventRepository(
             requestProfile(rumor.sender); rumor.recipient?.let { requestProfile(it) }
             // DM相手のアイコン/名前は接続中リレーに無いことが多いのでインデクサからも確実に取る。
             requestProfileFromIndexers(listOfNotNull(rumor.sender, rumor.recipient))
-            storeDm(rumor.id, rumor.sender, rumor.recipient, rumor.content, rumor.createdAt, rumor.replyTo)
+            storeDm(
+                rumor.id, rumor.sender, rumor.tags, rumor.content, rumor.createdAt,
+                eventJson = RelayProtocol.eventJson(e), sealJson = rumor.sealJson, rumorJson = rumor.rumorJson,
+            )
         }
     }
 
@@ -6393,17 +6419,36 @@ class EventRepository(
             if (generation != identityGeneration) return@launch
             requestProfile(e.pubkey); recipient?.let { requestProfile(it) }
             requestProfileFromIndexers(listOfNotNull(e.pubkey, recipient))
-            storeDm(e.id, e.pubkey, recipient ?: me, plain, e.createdAt)
+            storeDm(e.id, e.pubkey, e.tags, plain, e.createdAt, eventJson = RelayProtocol.eventJson(e))
         }
     }
 
+    /**
+     * 復号した DM を kind:14 の行として保存する。[tags] は受け取ったものをそのまま残す（[#969] 以前は
+     * `[["p", 相手]]` に作り直していて、JSON を見ても受け取った DM を調べられなかった）。
+     * 署名は無い（rumor は署名しない。kind:4 の署名は暗号文に対するもの）ので sig は空。
+     * 索引に入るのは振り分けに使う p / e だけ（[indexableTagKeys]）。
+     *
+     * [#969] 行はアプリが組み立てたもの（kind:4 も kind:14 にして持つ）なので、元も [dm_source] に残す:
+     * [eventJson] = リレー上のイベント（gift wrap か kind:4）、[sealJson] / [rumorJson] = 復号した文字列そのもの。
+     */
     private fun storeDm(
-        id: String, sender: String, recipient: String?, content: String, createdAt: Long, replyTo: String? = null,
+        id: String, sender: String, tags: List<List<String>>, content: String, createdAt: Long,
+        eventJson: String, sealJson: String? = null, rumorJson: String? = null,
     ) {
-        // [#612] 返信元の #e も残す（以前は p だけで、返信の引用がどちらの向きでも出なかった）。
-        val tags = Nip17.rumorTags(recipient, replyTo)
-        q.insertEvent(id, sender, 14, createdAt, content, tagsToJson(tags), "")
-        indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
+        q.transaction {
+            q.insertEvent(id, sender, 14, createdAt, content, tagsToJson(tags), "")
+            indexTags(NostrEvent(id, sender, 14, createdAt, content, tags, ""))
+            q.insertDmSource(id, eventJson, sealJson, rumorJson)
+        }
+    }
+
+    /**
+     * [#969] 復号した DM の元（イベントの JSON の画面用）。元を残す前に保存された DM は null
+     * （キャッシュを強制消去して取り直すと残る）。
+     */
+    suspend fun dmSource(id: String): DmSource? = withContext(Dispatchers.Default) {
+        q.dmSourceById(id).executeAsOneOrNull()?.let { DmSource(it.event_json, it.seal_json, it.rumor_json) }
     }
 
     /** [#417] DM 送信の結果。UI はこれを見てトーストを出す。 */
@@ -6458,7 +6503,8 @@ class EventRepository(
             fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
             val toPeer = Nip17.wrap(signer, rumorJson, peerPubkey, rnd(), rnd())
             val toSelf = Nip17.wrap(signer, rumorJson, me, rnd(), rnd())
-            storeDm(rumorId, me, peerPubkey, text, now, replyTo?.id)   // 楽観反映（[#612] 返信の引用も出す）
+            // 楽観反映（[#612] 返信の引用も出す）。[#969] 元は自分宛ての控え（復号できる方）と、送った rumor。
+            storeDm(rumorId, me, rumorTags, text, now, eventJson = RelayProtocol.eventJson(toSelf), rumorJson = rumorJson)
             storedId = rumorId
             processedWraps.add(toPeer.id); processedWraps.add(toSelf.id)
             // 配信先を DM リレーへ限定（NIP-17）。無ければ接続 read リレーへ。
@@ -6513,7 +6559,7 @@ class EventRepository(
         val urls = e.tags.filter { it.size >= 2 && it[0] == "relay" }.map { normalizeRelayUrl(it[1]) }
             .filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
         dmRelaysByAuthor.value = dmRelaysByAuthor.value + (e.pubkey to urls)
-        // 自分の DM リレーが判明したら、そこへも接続して追加購読する（broad な dm_inbox は維持）。
+        // 自分の DM リレーが判明したら、そこへも接続して追加購読する（読み込みリレーの dm_inbox は維持。[#970] 合わせて Web と同じ範囲）。
         if (e.pubkey == myPubkey && urls.isNotEmpty()) {
             subscribeTargeted("dm_inbox_relays", urls.toSet(), Filter(kinds = listOf(1059), pTags = listOf(e.pubkey)))
             subscribeTargeted("dm4_relays", urls.toSet(), Filter(kinds = listOf(4), pTags = listOf(e.pubkey)))
@@ -6604,9 +6650,19 @@ class EventRepository(
     private fun buildDmConversations(): Flow<List<DmConversation>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
         else combine(
-            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen, mutedUsersFlow(),
-        ) { rows, profiles, seenByPeer, firstSeen, blocked ->
+            q.dmAllForMe(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, dmSeenByPeer, dmLastSeen,
+            combine(mutedUsersFlow(), follows, muteFilterState) { blocked, follows, mute ->
+                Triple(blocked, follows.toSet(), MuteMatcher.from(mute))
+            },
+        ) { allRows, profiles, seenByPeer, firstSeen, (blocked, followSet, matcher) ->
+            // [#971] ミュートワードに当たる相手の DM は無かったものとして扱う（一覧・未読・通知のどれにも出さない。
+            // 全部当たった会話は一覧から消える）。自分が送った DM は対象外。
+            val rows = allRows.filter { r -> r.pubkey == me || !matcher.mutedDmText(r.content) }
             val byPk = profiles.associateBy { it.pubkey }
+            // [#970] 自分が送ったことのある相手（宛先の先頭の p。下の会話の相手と同じ決め方）。
+            val sentTo = rows.mapNotNullTo(HashSet()) { r ->
+                if (r.pubkey == me) parseTags(r.tags_json).firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) else null
+            }
             // [#416] 相手ごとの未読数（相手の発言のうち、その会話の既読基準より新しいもの）。
             val unreadByPeer = rows
                 .filter { r -> r.pubkey != me && r.created_at > dmSeenOf(r.pubkey, seenByPeer, firstSeen) }
@@ -6630,6 +6686,9 @@ class EventRepository(
                     pictureUrl = p?.picture_url,
                     unread = unreadByPeer[other] ?: 0,
                     lastIncomingAt = lastIncomingByPeer[other] ?: 0L,
+                    // [#970] フォローしている・自分が送ったことがある・自分宛てのメモなら「フォロー中」。
+                    // それ以外（フォローしていない人から届いただけ）は「その他」（Web の dm と同じ規則）。
+                    accepted = other in followSet || other in sentTo || other == me,
                 )
             }
         }.flowOn(Dispatchers.Default)
@@ -6640,8 +6699,11 @@ class EventRepository(
     fun dmMessagesFlow(peer: String): Flow<List<ChannelMessage>> = myPubkeyFlow.flatMapLatest { me ->
         if (me == null) flowOf(emptyList())
         else combine(
-            q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow, unsentIdsFlow,
-        ) { rows, profiles, unsent ->
+            q.dmMessagesWith(me, peer).asFlow().mapToList(Dispatchers.Default), profilesFlow, unsentIdsFlow, muteFilterState,
+        ) { allRows, profiles, unsent, mute ->
+            // [#971] ミュートワードに当たる相手の DM は出さない（会話の一覧と同じ規則）。
+            val matcher = MuteMatcher.from(mute)
+            val rows = allRows.filter { r -> r.pubkey == me || !matcher.mutedDmText(r.content) }
             val byPk = profiles.associateBy { it.pubkey }
             rows.mapIndexed { i, row ->
                 val prev = rows.getOrNull(i - 1)
@@ -6866,6 +6928,9 @@ class EventRepository(
             30000, 30003 -> TAG_KEYS - "p"
             // [#393] ピン留め(30015)の t は一覧そのもので、「このタグをピン留めした人」の逆引きは使わない。
             30015 -> TAG_KEYS - "t"
+            // [#969] DM（復号した中身）は受け取った tags をそのまま保存する。索引は振り分け（相手・返信元）に
+            // 使う p / e だけにして、中身の t などで公開のカラム（ハッシュタグ等）に出さない。
+            14 -> setOf("p", "e")
             else -> TAG_KEYS
         }
 
@@ -6948,6 +7013,9 @@ class EventRepository(
 
         /** フォロー中カラム別「自分への反応を隠す」設定の KV キー接頭辞。 */
         const val HIDE_SELF_NOTICES_PREFIX = "col_hide_self_notices:"
+
+        /** [#970] DM カラム別「フォローしていない人の DM も出す」設定の KV キー接頭辞。 */
+        const val DM_SHOW_OTHERS_PREFIX = "col_dm_show_others:"
 
         /** [M18] フォロー中カラム別「非表示にする通知系カテゴリ」の KV キー接頭辞（カンマ区切り）。 */
         const val FEED_CAT_HIDDEN_PREFIX = "col_feedcat_hidden:"

@@ -338,7 +338,18 @@ data class DmConversation(
     val unread: Int = 0,
     /** [#419] 相手の最新発言の created_at（DM 通知を時系列に並べる位置）。 */
     val lastIncomingAt: Long = 0,
+    /**
+     * [#970] 「フォロー中」のタブに出す会話か（相手をフォローしている・自分が送ったことがある・自分宛てのメモ）。
+     * false は「その他」（フォローしていない人から届いただけの会話）で、通知の行と未読の数に出さない。
+     */
+    val accepted: Boolean = true,
 )
+
+/**
+ * [#969] 復号した DM の元。[eventJson] = リレー上のイベント（gift wrap か kind:4）、
+ * [sealJson] / [rumorJson] = 復号した文字列そのもの（NIP-17 のみ）。
+ */
+data class DmSource(val eventJson: String, val sealJson: String?, val rumorJson: String?)
 
 /** NIP-28 チャンネルメッセージ（kind:42）の表示用。チャット行。 */
 data class ChannelMessage(
