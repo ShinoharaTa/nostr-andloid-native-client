@@ -23,6 +23,23 @@ object Nip04 {
         return aesCbcDecrypt(sharedSecretX(privKey, peerPubkeyHex), iv, data).decodeToString()
     }
 
+    /**
+     * [#967] NIP-04 の暗号文の形か（`<base64>?iv=<base64>`。iv は 16 バイト、暗号文は 16 バイトの倍数）。復号はしない。
+     * 平文の kind:4 などを、外部署名（NIP-55 / NIP-46）に復号を頼む前に弾くのに使う。
+     */
+    fun isPayload(payload: String): Boolean {
+        val at = payload.indexOf("?iv=")
+        if (at <= 0) return false
+        val data = decodeOrNull(payload.substring(0, at)) ?: return false
+        val iv = decodeOrNull(payload.substring(at + 4)) ?: return false
+        return iv.size == 16 && data.isNotEmpty() && data.size % 16 == 0
+    }
+
+    /** 形の確認用（パディングを省いた送り手もいるので、無くても通す）。 */
+    private val lenientBase64 = Base64.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
+
+    private fun decodeOrNull(text: String): ByteArray? = runCatching { lenientBase64.decode(text) }.getOrNull()
+
     /** [#7] NIP-04 暗号化（NWC 用）。ランダム IV 16byte + AES-256-CBC。 */
     fun encrypt(privKey: ByteArray, peerPubkeyHex: String, plaintext: String): String {
         val iv = secureRandomBytes(16)

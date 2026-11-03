@@ -12,8 +12,8 @@ import { createDecryptQueue, type DecryptQueue, type DecryptResult } from "./dec
 import { dmRelaysFromEvent } from "./dmRelays";
 import { clearSeen, loadSeen } from "./dmSeen";
 import { useDm } from "./dmStore";
-import { decryptLegacy } from "./nip04";
-import { DmDecryptError, dmFromRumor, unwrapGiftWrap } from "./nip17";
+import { decryptLegacy, isNip04Payload } from "./nip04";
+import { DmDecryptError, dmFromRumor, isNip44Payload, unwrapGiftWrap } from "./nip17";
 
 /** 自分の kind:10050 を 1 回だけ取りに行く待ち時間 */
 const OWN_DM_RELAYS_TIMEOUT_MS = 10_000;
@@ -218,6 +218,8 @@ function begin(
     // 自分宛てでない gift wrap は復号できない（NIP-07 では署名者の失敗に数えてしまう）ので入れない
     if (event.kind === 1059 && !event.tags.some((t) => t[0] === "p" && t[1] === me)) return;
     if (event.kind !== 1059 && event.kind !== 4) return;
+    // [#967] 暗号文の形でないもの（平文など）は、署名者に復号を頼まずに捨てる
+    if (event.kind === 1059 ? !isNip44Payload(event.content) : !isNip04Payload(event.content)) return;
     let valid = false;
     try {
       valid = verifyEvent(event);

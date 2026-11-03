@@ -3,7 +3,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from 
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Signer } from "../../nostr/signer";
 import { createCipherSigner } from "../../test/cipherSigner";
-import { decryptLegacy } from "./nip04";
+import { decryptLegacy, isNip04Payload } from "./nip04";
 import { DmDecryptError } from "./nip17";
 
 const aliceKey = generateSecretKey();
@@ -72,4 +72,15 @@ it("復号の例外は DmDecryptError（decryptErrorIsInvalid で signer / inval
   expect(asExtension).toBeInstanceOf(DmDecryptError);
   expect(asExtension).toMatchObject({ reason: "signer" });
   expect(asNsec).toMatchObject({ name: "DmDecryptError", reason: "invalid" });
+});
+
+it("isNip04Payload（#967）: 暗号文と 16 バイトの iv の形だけを通す（復号はしない）", () => {
+  const payload = nip04.encrypt(aliceKey, BOB, "hi");
+  const [data, iv] = payload.split("?iv=");
+  expect(isNip04Payload(payload)).toBe(true);
+  expect(isNip04Payload("こんにちは、スパムです")).toBe(false);
+  expect(isNip04Payload(data)).toBe(false); // iv が無い
+  expect(isNip04Payload(`${data}?iv=AAAA`)).toBe(false); // iv が 16 バイトでない
+  expect(isNip04Payload(`?iv=${iv}`)).toBe(false); // 暗号文が無い
+  expect(isNip04Payload(`aGVsbG8=?iv=${iv}`)).toBe(false); // 暗号文が 16 バイトの倍数でない
 });

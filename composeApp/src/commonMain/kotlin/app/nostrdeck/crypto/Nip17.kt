@@ -6,6 +6,7 @@ import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.signer.Signer
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -62,23 +63,50 @@ object Nip17 {
         return NostrEvent(id = id, pubkey = pub, kind = 1059, createdAt = wrapTime, content = content, tags = tags, sig = sig)
     }
 
-    /** gift wrap(kind:1059) を2段復号して rumor を取り出す。復号/検証失敗は null。 */
+    /**
+     * gift wrap(kind:1059) を2段復号して rumor を取り出す。復号できない・決まり（NIP-59 / NIP-17）に反するものは null
+     * （[#967] 保存せずに捨てる。Web の unwrapGiftWrap・dmFromRumor と同じ規則）。
+     *  - gift wrap: 自分宛ての p があり、中身が NIP-44 の形（署名者に復号を頼む前に、形だけで弾く）
+     *  - seal: [sealOf]
+     *  - rumor: [rumorOf]
+     */
     suspend fun unwrap(signer: Signer, giftWrap: NostrEvent): Rumor? = runCatching {
-        val sealJson = signer.nip44Decrypt(giftWrap.pubkey, giftWrap.content)
-        val seal = json.parseToJsonElement(sealJson).jsonObject
-        if (seal["kind"]?.jsonPrimitive?.int != 13) return null
-        val sealPub = seal["pubkey"]!!.jsonPrimitive.content
-        val rumorJson = signer.nip44Decrypt(sealPub, seal["content"]!!.jsonPrimitive.content)
+        val me = signer.publicKeyHex()
+        if (giftWrap.kind != 1059 || giftWrap.tags.none { it.size >= 2 && it[0] == "p" && it[1] == me }) return null
+        if (!Nip44.isPayload(giftWrap.content)) return null
+        val seal = sealOf(signer.nip44Decrypt(giftWrap.pubkey, giftWrap.content)) ?: return null
+        rumorOf(signer.nip44Decrypt(seal.pubkey, seal.content), seal.pubkey, me)
+    }.getOrNull()
+
+    /** [#967] seal(kind:13) の JSON。tags が空で、送り手の鍵の署名が正しいものだけ（NIP-59）。 */
+    internal fun sealOf(sealJson: String): NostrEvent? {
+        val seal = runCatching { RelayProtocol.parseEventJson(sealJson) }.getOrNull() ?: return null
+        if (seal.kind != 13 || seal.tags.isNotEmpty()) return null
+        return seal.takeIf { EventCrypto.verify(it) }
+    }
+
+    /**
+     * [#967] rumor(kind:14) の JSON。[sealPub] は seal の署名者、[me] は自分の公開鍵。次のものは null:
+     *  - 署名が付いている（NIP-17: kind:14 は署名しない。付いていれば漏れたものか偽物）
+     *  - 作者が seal の署名者と違う（なりすまし）
+     *  - id が中身から計算した値と合わない（id を偽って、別の DM と重ねさせない）
+     *  - 自分が当事者でない（送り手が自分なら宛先 p が要る。相手からなら p に自分が要る）
+     */
+    internal fun rumorOf(rumorJson: String, sealPub: String, me: String): Rumor? = runCatching {
         val rumor = json.parseToJsonElement(rumorJson).jsonObject
         if (rumor["kind"]?.jsonPrimitive?.int != 14) return null
+        if (!rumor["sig"]?.jsonPrimitive?.contentOrNull.isNullOrEmpty()) return null
         val sender = rumor["pubkey"]!!.jsonPrimitive.content
-        if (sender != sealPub) return null   // seal 署名者 ≠ rumor 著者 はなりすまし
+        if (sender != sealPub) return null
         val tags = rumor["tags"]?.jsonArray?.map { t -> t.jsonArray.map { it.jsonPrimitive.content } }.orEmpty()
-        val content = rumor["content"]?.jsonPrimitive?.content ?: ""
+        val content = rumor["content"]!!.jsonPrimitive.content
         val createdAt = rumor["created_at"]!!.jsonPrimitive.long
-        val id = rumor["id"]?.jsonPrimitive?.content ?: Nip01.eventId(sender, createdAt, 14, tags, content)
-        val recipient = tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
-        Rumor(id = id, sender = sender, recipient = recipient, content = content, createdAt = createdAt,
+        val id = Nip01.eventId(sender, createdAt, 14, tags, content)
+        val givenId = rumor["id"]?.jsonPrimitive?.contentOrNull
+        if (givenId != null && givenId != id) return null
+        val recipients = tags.filter { it.size >= 2 && it[0] == "p" }.map { it[1] }
+        if (if (sender == me) recipients.isEmpty() else me !in recipients) return null
+        Rumor(id = id, sender = sender, recipient = recipients.firstOrNull(), content = content, createdAt = createdAt,
             replyTo = replyToOf(tags))
     }.getOrNull()
 

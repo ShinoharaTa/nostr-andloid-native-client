@@ -6,6 +6,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import app.nostrdeck.crypto.Bech32
 import app.nostrdeck.crypto.EventCrypto
 import app.nostrdeck.crypto.Nip01
+import app.nostrdeck.crypto.Nip04
 import app.nostrdeck.crypto.Nip17
 import app.nostrdeck.crypto.currentUnixTime
 import kotlin.random.Random
@@ -6378,10 +6379,14 @@ class EventRepository(
     private fun ingestLegacyDm(e: NostrEvent) {
         if (wiping || !SignerProvider.hasSession()) return   // [#953]
         if (!processedLegacyDm.add(e.id)) return
+        // [#967] 暗号文の形でないもの（平文など）は、署名者に復号を頼まずに捨てる。
+        if (!Nip04.isPayload(e.content)) return
         val generation = identityGeneration
         scope.launch {
             val me = myPubkey ?: SignerProvider.current().publicKeyHex().also { myPubkey = it; myPubkeyFlow.value = it }
             val recipient = e.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+            // [#967] 相手からのものは宛先が自分のときだけ（他人宛てのものは復号できない。Web decryptLegacy と同じ）。
+            if (e.pubkey != me && recipient != me) return@launch
             val peer = if (e.pubkey == me) recipient else e.pubkey
             if (peer.isNullOrBlank()) return@launch
             val plain = runCatching { SignerProvider.current().nip04Decrypt(peer, e.content) }.getOrNull() ?: return@launch

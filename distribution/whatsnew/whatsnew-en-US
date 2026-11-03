@@ -1,6 +1,7 @@
 - Read aloud new posts from people you follow (Android / iOS). Voices: Settings > Read aloud. Speech: ZEN-TTS
-- Block people from ⋯ on posts and profiles: hides their posts, notifications and DMs at once and reports them to your relays and the developer. Blocks are public; Mute stays private
+- Block from ⋯ on posts and profiles: hides them at once and reports them to your relays and the developer. Blocks are public; Mute stays private
 - Reports now show "Reported"
-- Delete your account from Settings > Account (wipes this device)
+- Delete your account in Settings > Account (wipes this device)
 - Added a Terms of Use screen
 - Fixed gaps when scrolling back; Following now loads more at the bottom
+- Hides DMs that break Nostr rules (e.g. spam)

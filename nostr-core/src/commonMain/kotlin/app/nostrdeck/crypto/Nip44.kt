@@ -32,6 +32,18 @@ object Nip44 {
         return Base64.encode(byteArrayOf(2) + nonce + ciphertext + mac)
     }
 
+    /**
+     * [#967] NIP-44 v2 の暗号文の形か（base64・先頭が版 2・99〜65603 バイト）。復号はしない。
+     * 外部署名（NIP-55 / NIP-46）に復号を頼む前に、中身の壊れた gift wrap を弾くのに使う。
+     */
+    fun isPayload(payload: String): Boolean {
+        val data = runCatching { lenientBase64.decode(payload) }.getOrNull() ?: return false
+        return data.size in 99..65_603 && data[0].toInt() == 2
+    }
+
+    /** 形の確認用（パディングを省いた送り手もいるので、無くても通す。復号は今までどおり [Base64]）。 */
+    private val lenientBase64 = Base64.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
+
     fun decrypt(conversationKey: ByteArray, payload: String): String {
         val data = Base64.decode(payload)
         require(data.size >= 99 && data[0].toInt() == 2) { "invalid NIP-44 payload" }
