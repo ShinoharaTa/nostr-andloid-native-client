@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TimelineCoverage } from "./timelineCoverage";
+import { CATCH_UP_LIMIT, type OlderRequest, TimelineCoverage } from "./timelineCoverage";
 
 // [#955] リレーごとの取得範囲の差で、遡ったタイムラインに歯抜けが出ないこと（ネイティブ TimelineCoverageTest と同じ）。
 // A は投稿が多く 1 時間分、B は少なく 5 時間分を最初に返す、という状況を基本にする。
@@ -8,7 +8,10 @@ const NOW = 1_800_000_000;
 const HOUR = 3_600;
 const LIMIT = 100;
 
-/** relay から、from 〜 to（秒前）の間に count 件、新しい順に届いて EOSE。seq は遡りの要求の番号（購読そのものなら null） */
+/**
+ * relay から、from 〜 to（秒前）の間に count 件、新しい順に届いて EOSE。seq は遡りの要求の番号（購読そのものなら null）。
+ * 返すのは、続けて聞く要求（onEose。#962）
+ */
 function receive(
   c: TimelineCoverage,
   relay: string,
@@ -16,11 +19,17 @@ function receive(
   to: number,
   count: number,
   seq: number | null = null,
-) {
+): OlderRequest | null {
   for (let i = 0; i < count; i++) {
     c.onEvent(relay, NOW - from - Math.floor(((to - from) * i) / Math.max(count - 1, 1)), seq !== null);
   }
-  c.onEose(relay, seq);
+  return c.onEose(relay, seq);
+}
+
+function seqOf(requests: Map<string, OlderRequest>, relay: string): number {
+  const request = requests.get(relay);
+  if (!request) throw new Error(`${relay} に遡りの要求が出ていない`);
+  return request.seq;
 }
 
 function untils(c: TimelineCoverage): Record<string, number> {
@@ -156,11 +165,14 @@ describe("TimelineCoverage", () => {
     c.onEose("A", first.seq);
     c.onOlderTimeout("A", first.seq);
     expect(c.loadingOlder()).toBe(true);
-    receive(c, "A", 2 * HOUR, 3 * HOUR, 50, second.get("A")?.seq ?? null);
+    const more = receive(c, "A", 2 * HOUR, 3 * HOUR, 50, second.get("A")?.seq ?? null);
     receive(c, "B", 5 * HOUR, 6 * HOUR, 50, second.get("B")?.seq ?? null);
-    expect(c.loadingOlder()).toBe(false);
-    // [#962] A が外れている間に B の境界（5 時間前）まで下がった下限は、A が戻っても新しい方へは戻さない
+    // [#962] A が外れている間に B の境界（5 時間前）まで下がった下限は、A が戻っても新しい方へは戻さない。
+    // A はまだ下限より浅いので、続けて聞く
     expect(c.floor()).toBe(NOW - 5 * HOUR);
+    expect(more?.until).toBe(NOW - 3 * HOUR);
+    receive(c, "A", 3 * HOUR, 6 * HOUR, 50, more?.seq ?? null);
+    expect(c.loadingOlder()).toBe(false);
   });
 
   it("あとから届く新着は下限を動かさない", () => {
@@ -210,5 +222,54 @@ describe("TimelineCoverage", () => {
     const fresh = new TimelineCoverage(LIMIT);
     receive(fresh, "C", 0, 30 * 60, LIMIT);
     expect(fresh.floor()).toBe(NOW - 30 * 60);
+  });
+
+  it("下限より浅いリレーにだけ、続けて聞く", () => {
+    const c = pagedToThreeHours();
+    receive(c, "C", 0, 30 * 60, LIMIT);
+    const requests = c.olderRequests(NOW);
+    expect([...requests.keys()].sort()).toEqual(["A", "B", "C"]);
+    // [#962] 下限（3 時間前）より深くまで取れた A・B には続けて聞かない
+    expect(receive(c, "A", 3 * HOUR, 4 * HOUR, LIMIT, seqOf(requests, "A"))).toBeNull();
+    expect(receive(c, "B", 5 * HOUR, 6 * HOUR, LIMIT, seqOf(requests, "B"))).toBeNull();
+    // C はまだ 1 時間前（下限より浅い）。自分の境界から続けて聞く
+    const next = receive(c, "C", 30 * 60, 1 * HOUR, LIMIT, seqOf(requests, "C"));
+    expect(next?.until).toBe(NOW - 1 * HOUR);
+    expect(c.loadingOlder()).toBe(true);
+    // 追いついたら止める
+    expect(receive(c, "C", 1 * HOUR, 3 * HOUR + 30 * 60, LIMIT, next?.seq ?? null)).toBeNull();
+    expect(c.floor()).toBe(NOW - 3 * HOUR - 30 * 60);
+  });
+
+  it("続けて聞くのは上限の回数までで、次に遡るときは数え直す", () => {
+    const c = pagedToThreeHours();
+    receive(c, "C", 0, 10 * 60, LIMIT);
+    const requests = c.olderRequests(NOW);
+    receive(c, "A", 3 * HOUR, 4 * HOUR, LIMIT, seqOf(requests, "A"));
+    receive(c, "B", 5 * HOUR, 6 * HOUR, LIMIT, seqOf(requests, "B"));
+    // C は 1 回に 10 分ずつしか進まない。続けて聞くのは CATCH_UP_LIMIT 回まで
+    let seq = seqOf(requests, "C");
+    let at = 10 * 60;
+    for (let i = 0; i < CATCH_UP_LIMIT; i++) {
+      const next = receive(c, "C", at, at + 10 * 60, LIMIT, seq);
+      if (!next) throw new Error(`${i + 1} 回目に続けて聞いていない`);
+      seq = next.seq;
+      at += 10 * 60;
+    }
+    expect(receive(c, "C", at, at + 10 * 60, LIMIT, seq)).toBeNull();
+    expect(c.loadingOlder()).toBe(false);
+    // 次に遡るときは、また聞く（回数も数え直す）
+    const again = requestOf(c, "C");
+    expect(again.until).toBe(NOW - at - 10 * 60);
+    expect(receive(c, "C", at + 10 * 60, at + 20 * 60, LIMIT, again.seq)?.until).toBe(NOW - at - 20 * 60);
+  });
+
+  it("遡っても古いものが無かったリレーには、続けて聞かない", () => {
+    const c = pagedToThreeHours();
+    receive(c, "C", 0, 30 * 60, LIMIT);
+    const requests = c.olderRequests(NOW);
+    // [#962] C は空の EOSE を返した
+    expect(receive(c, "C", 30 * 60, 30 * 60, 0, seqOf(requests, "C"))).toBeNull();
+    expect(c.floor()).toBe(NOW - 3 * HOUR);
   });
 });

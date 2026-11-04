@@ -16,10 +16,13 @@ class TimelineCoverageTest {
     private val hour = 3_600L
     private val limit = 100
 
-    /** [relay] から、[from] 〜 [to]（秒前）の間に [count] 件、新しい順に届いて EOSE。[seq] は遡りの要求の番号（購読そのものなら null）。 */
-    private fun TimelineCoverage.receive(relay: String, from: Long, to: Long, count: Int, seq: Int? = null) {
+    /**
+     * [relay] から、[from] 〜 [to]（秒前）の間に [count] 件、新しい順に届いて EOSE。[seq] は遡りの要求の番号（購読そのものなら null）。
+     * 返すのは、続けて聞く要求（[TimelineCoverage.onEose]。#962）。
+     */
+    private fun TimelineCoverage.receive(relay: String, from: Long, to: Long, count: Int, seq: Int? = null): TimelineCoverage.OlderRequest? {
         repeat(count) { i -> onEvent(relay, now - from - (to - from) * i / maxOf(count - 1, 1), older = seq != null) }
-        onEose(relay, seq)
+        return onEose(relay, seq)
     }
 
     private fun TimelineCoverage.untils(): Map<String, Long> = olderRequests(now).mapValues { it.value.until }
@@ -151,11 +154,14 @@ class TimelineCoverageTest {
         c.onEose("A", first.seq)
         c.onOlderTimeout("A", first.seq)
         assertTrue(c.loadingOlder())
-        c.receive("A", from = 2 * hour, to = 3 * hour, count = 50, seq = second.getValue("A").seq)
+        val more = c.receive("A", from = 2 * hour, to = 3 * hour, count = 50, seq = second.getValue("A").seq)
         c.receive("B", from = 5 * hour, to = 6 * hour, count = 50, seq = second.getValue("B").seq)
-        assertFalse(c.loadingOlder())
-        // [#962] A が外れている間に B の境界（5 時間前）まで下がった下限は、A が戻っても新しい方へは戻さない
+        // [#962] A が外れている間に B の境界（5 時間前）まで下がった下限は、A が戻っても新しい方へは戻さない。
+        // A はまだ下限より浅いので、続けて聞く
         assertEquals(now - 5 * hour, c.floor())
+        assertEquals(now - 3 * hour, more?.until)
+        c.receive("A", from = 3 * hour, to = 6 * hour, count = 50, seq = more!!.seq)
+        assertFalse(c.loadingOlder())
     }
 
     @Test
@@ -223,5 +229,55 @@ class TimelineCoverageTest {
         val fresh = TimelineCoverage(limit)
         fresh.receive("C", from = 0, to = 30 * 60, count = limit)
         assertEquals(now - 30 * 60, fresh.floor())
+    }
+
+    @Test
+    fun only_the_relay_still_above_the_floor_is_asked_again() {
+        val c = pagedToThreeHours()
+        c.receive("C", from = 0, to = 30 * 60, count = limit)
+        val requests = c.olderRequests(now)
+        assertEquals(setOf("A", "B", "C"), requests.keys)
+        // [#962] 下限（3 時間前）より深くまで取れた A・B には続けて聞かない
+        assertNull(c.receive("A", from = 3 * hour, to = 4 * hour, count = limit, seq = requests.getValue("A").seq))
+        assertNull(c.receive("B", from = 5 * hour, to = 6 * hour, count = limit, seq = requests.getValue("B").seq))
+        // C はまだ 1 時間前（下限より浅い）。自分の境界から続けて聞く
+        val next = c.receive("C", from = 30 * 60, to = 1 * hour, count = limit, seq = requests.getValue("C").seq)
+        assertEquals(now - 1 * hour, next?.until)
+        assertTrue(c.loadingOlder())
+        // 追いついたら止める
+        assertNull(c.receive("C", from = 1 * hour, to = 3 * hour + 30 * 60, count = limit, seq = next!!.seq))
+        assertEquals(now - 3 * hour - 30 * 60, c.floor())
+    }
+
+    @Test
+    fun asking_again_stops_at_the_limit_and_starts_over_on_the_next_page() {
+        val c = pagedToThreeHours()
+        c.receive("C", from = 0, to = 10 * 60, count = limit)
+        val requests = c.olderRequests(now)
+        c.receive("A", from = 3 * hour, to = 4 * hour, count = limit, seq = requests.getValue("A").seq)
+        c.receive("B", from = 5 * hour, to = 6 * hour, count = limit, seq = requests.getValue("B").seq)
+        // C は 1 回に 10 分ずつしか進まない。続けて聞くのは CATCH_UP_LIMIT 回まで
+        var request = requests.getValue("C")
+        var at = 10 * 60L
+        repeat(TimelineCoverage.CATCH_UP_LIMIT) {
+            request = c.receive("C", from = at, to = at + 10 * 60, count = limit, seq = request.seq)!!
+            at += 10 * 60
+        }
+        assertNull(c.receive("C", from = at, to = at + 10 * 60, count = limit, seq = request.seq))
+        assertFalse(c.loadingOlder())
+        // 次に遡るときは、また聞く（回数も数え直す）
+        val again = c.olderRequests(now).getValue("C")
+        assertEquals(now - at - 10 * 60, again.until)
+        assertEquals(now - at - 20 * 60, c.receive("C", from = at + 10 * 60, to = at + 20 * 60, count = limit, seq = again.seq)?.until)
+    }
+
+    @Test
+    fun asking_again_stops_when_the_relay_has_nothing_older() {
+        val c = pagedToThreeHours()
+        c.receive("C", from = 0, to = 30 * 60, count = limit)
+        val requests = c.olderRequests(now)
+        // [#962] C は遡っても古いものが無かった（空の EOSE）。続けて聞かない
+        assertNull(c.receive("C", from = 30 * 60, to = 30 * 60, count = 0, seq = requests.getValue("C").seq))
+        assertEquals(now - 3 * hour, c.floor())
     }
 }

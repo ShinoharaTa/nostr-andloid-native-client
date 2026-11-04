@@ -32,6 +32,8 @@ class TimelineCoverage(private val limit: Int) {
         var exhausted = false
         /** 遡りの要求に何も返さなかった。止まらないよう下限の計算から外す（届いたら戻す。次に遡るときはまた聞く）。 */
         var unresponsive = false
+        /** [#962] 今の遡りの操作（[olderRequests]）で、下限に追いつくまで続けて聞いた回数（[CATCH_UP_LIMIT] まで）。 */
+        var catchUps = 0
 
         /** 境界として使える（最初の取得が終わっていて、まだ先がある）。 */
         val settled: Boolean get() = initialDone && !exhausted && oldest != null
@@ -69,11 +71,17 @@ class TimelineCoverage(private val limit: Int) {
         holdFloor()
     }
 
-    /** EOSE が届いた。[olderSeq] は遡りの要求への返事ならその番号（[olderRequests] が返したもの）、カラムの購読なら null。 */
-    fun onEose(relay: String, olderSeq: Int?) {
+    /**
+     * EOSE が届いた。[olderSeq] は遡りの要求への返事ならその番号（[olderRequests] が返したもの）、カラムの購読なら null。
+     *
+     * [#962] 遡りの返事で、そのリレーがまだ下限より浅いところで止まっていれば、続けて聞く要求を返す（呼ぶ側がそのリレーへ出す）。
+     * 下限は新しい方へ戻らないので、遅れて加わったリレーが下限に追いつくまで下限が動かず、いちばん古い行も変わらない
+     * （画面の遡りのきっかけが来なくなる）。追いついた・[CATCH_UP_LIMIT] 回聞いた・先が無かった（古くならなかった）ら止める（null）。
+     */
+    fun onEose(relay: String, olderSeq: Int?): OlderRequest? {
         val r = relays.getOrPut(relay) { Relay() }
         if (olderSeq != null) {
-            if (!r.olderInFlight || olderSeq != r.olderSeq) return
+            if (!r.olderInFlight || olderSeq != r.olderSeq) return null
             r.olderInFlight = false
             val before = r.oldestAtRequest
             val after = r.oldest
@@ -84,6 +92,23 @@ class TimelineCoverage(private val limit: Int) {
             if (r.initialReceived < limit) r.exhausted = true
         }
         holdFloor()
+        return if (olderSeq != null) catchUp(r) else null
+    }
+
+    /** [#962] 下限より浅いところで止まっているリレーに、続けて聞く要求（[onEose]）。追いついたリレーには聞かない。 */
+    private fun catchUp(r: Relay): OlderRequest? {
+        val floor = shownFloor ?: return null
+        val oldest = r.oldest ?: return null
+        if (!r.settled || oldest <= floor || r.catchUps >= CATCH_UP_LIMIT) return null
+        r.catchUps++
+        return ask(r)
+    }
+
+    /** [r] を返事待ちにして、その境界から聞く要求を作る。 */
+    private fun ask(r: Relay): OlderRequest {
+        r.olderInFlight = true
+        r.oldestAtRequest = r.oldest
+        return OlderRequest(until = r.oldest!!, seq = ++r.olderSeq)
     }
 
     /** 遡りの要求（[olderSeq]）に、待つ時間内に EOSE が来なかった。何も届いていなければ応えないリレーとして外す。 */
@@ -127,9 +152,8 @@ class TimelineCoverage(private val limit: Int) {
         val reach = base - (now - base).coerceAtLeast(0)
         return relays.filter { (_, r) -> r.settled && !r.olderInFlight && r.oldest!! >= reach }
             .mapValues { (_, r) ->
-                r.olderInFlight = true
-                r.oldestAtRequest = r.oldest
-                OlderRequest(until = r.oldest!!, seq = ++r.olderSeq)
+                r.catchUps = 0
+                ask(r)
             }
     }
 
@@ -141,4 +165,14 @@ class TimelineCoverage(private val limit: Int) {
 
     /** 返事を待っている遡りの要求があるか（表示の「読み込み中」用）。 */
     fun loadingOlder(): Boolean = relays.values.any { it.olderInFlight }
+
+    companion object {
+        /**
+         * [#962] 1 回の遡りの操作で、下限より浅いリレーに続けて聞く回数の上限（最初の 1 回とは別に）。
+         * 遡りの購読は EOSE で閉じず時間切れまで残るので、続けて聞くほどリレーあたりの同時購読が増える（3 回なら 1 リレー 4 本まで）。
+         * 1 回の操作で 1 リレーから取る量も、最初の 1 回と合わせて 4 ページ（[limit] × 4 件）に抑える。
+         * それでも追いつかないリレーには、次に遡るときにまた聞く。
+         */
+        const val CATCH_UP_LIMIT = 3
+    }
 }
