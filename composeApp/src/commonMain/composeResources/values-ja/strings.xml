@@ -590,7 +590,7 @@
     <string name="note_block_user">このユーザーをブロック</string>
     <string name="note_unblock_user">ブロックを解除</string>
     <string name="block_confirm_title">このユーザーをブロックしますか？</string>
-    <string name="block_confirm_text">この人の投稿・通知・DM をすぐに表示しなくなります。ブロックは公開のミュートリスト（NIP-51）に保存され、相手や他の人にも分かります。あわせて通報（NIP-56）をリレーと開発者に送ります。ブロックは自分のアイコンのメニュー →「ミュート・ブロック」でいつでも解除できます（送った通報は取り消せません）。</string>
+    <string name="block_confirm_text">この人の投稿・通知・DM をすぐに表示しなくなります。ブロックは公開のミュートリスト（NIP-51）に保存され、相手や他の人にも分かります。あわせて通報（NIP-56）をリレーと開発者に送ります。自分のアイコンのメニュー →「ミュート・ブロック」でいつでも解除できます。</string>
     <string name="block_confirm">ブロック</string>
     <string name="blocked_toast">ブロックしました</string>
     <string name="blocked_badge">ブロック中</string>
