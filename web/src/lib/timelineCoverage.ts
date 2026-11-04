@@ -14,6 +14,14 @@
 /** 遡りの要求。until はそのリレーの境界、seq は返事（onEose / onOlderTimeout）に添える番号 */
 export type OlderRequest = { until: number; seq: number };
 
+/**
+ * [#962] 1 回の遡りの操作で、下限より浅いリレーに続けて聞く回数の上限（最初の 1 回とは別に）。
+ * 1 回の操作で 1 リレーから取る量を、最初の 1 回と合わせて 4 ページ（limit × 4 件）に抑える
+ * （ネイティブでは遡りの購読が時間切れまで残るので、リレーあたりの同時購読も 4 本までに抑える）。
+ * それでも追いつかないリレーには、次に遡るときにまた聞く。ネイティブ TimelineCoverage.CATCH_UP_LIMIT と同じ
+ */
+export const CATCH_UP_LIMIT = 3;
+
 type RelayCoverage = {
   /** このリレーから届いた中でいちばん古い created_at */
   oldest: number | null;
@@ -31,6 +39,8 @@ type RelayCoverage = {
   exhausted: boolean;
   /** 遡りの要求に何も返さなかった。止まらないよう下限の計算から外す（届いたら戻す。次に遡るときはまた聞く） */
   unresponsive: boolean;
+  /** [#962] 今の遡りの操作（olderRequests）で、下限に追いつくまで続けて聞いた回数（CATCH_UP_LIMIT まで） */
+  catchUps: number;
 };
 
 /** 境界として使える（最初の取得が終わっていて、まだ先がある） */
@@ -38,8 +48,20 @@ function settled(r: RelayCoverage): r is RelayCoverage & { oldest: number } {
   return r.initialDone && !r.exhausted && r.oldest !== null;
 }
 
+/** r を返事待ちにして、その境界から聞く要求を作る */
+function ask(r: RelayCoverage & { oldest: number }): OlderRequest {
+  r.olderInFlight = true;
+  r.oldestAtRequest = r.oldest;
+  r.olderSeq++;
+  return { until: r.oldest, seq: r.olderSeq };
+}
+
 export class TimelineCoverage {
   private readonly relays = new Map<string, RelayCoverage>();
+  /** [#962] 画面に出している下限（floor）。一度決まったら新しい方へは動かさない */
+  private shownFloor: number | null = null;
+  /** shownFloor が一度決まった。それまでの null は「まだ決まっていない」、決まった後の null は「下限なし」（いちばん古い） */
+  private floorDecided = false;
 
   /** @param limit 1 回の REQ で聞く件数。最初の取得でこれより少なく返したリレーは、持っている分をすべて返したとみなす（0 なら件数では判断しない） */
   constructor(private readonly limit: number) {}
@@ -56,6 +78,7 @@ export class TimelineCoverage {
         oldestAtRequest: null,
         exhausted: false,
         unresponsive: false,
+        catchUps: 0,
       };
       this.relays.set(url, r);
     }
@@ -68,13 +91,20 @@ export class TimelineCoverage {
     r.oldest = r.oldest === null ? createdAt : Math.min(r.oldest, createdAt);
     if (older) r.unresponsive = false;
     else if (!r.initialDone) r.initialReceived++;
+    this.holdFloor();
   }
 
-  /** EOSE が届いた。olderSeq は遡りの要求への返事ならその番号（olderRequests が返したもの）、カラムの購読なら null */
-  onEose(relay: string, olderSeq: number | null): void {
+  /**
+   * EOSE が届いた。olderSeq は遡りの要求への返事ならその番号（olderRequests が返したもの）、カラムの購読なら null。
+   *
+   * [#962] 遡りの返事で、そのリレーがまだ下限より浅いところで止まっていれば、続けて聞く要求を返す（呼ぶ側がそのリレーへ出す）。
+   * 下限は新しい方へ戻らないので、遅れて加わったリレーが下限に追いつくまで下限が動かず、いちばん古い行も変わらない
+   * （画面の遡りのきっかけが来なくなる）。追いついた・CATCH_UP_LIMIT 回聞いた・先が無かった（古くならなかった）ら止める（null）
+   */
+  onEose(relay: string, olderSeq: number | null): OlderRequest | null {
     const r = this.relay(relay);
     if (olderSeq !== null) {
-      if (!r.olderInFlight || olderSeq !== r.olderSeq) return;
+      if (!r.olderInFlight || olderSeq !== r.olderSeq) return null;
       r.olderInFlight = false;
       const before = r.oldestAtRequest;
       const after = r.oldest;
@@ -84,6 +114,16 @@ export class TimelineCoverage {
       // 聞いた件数より少なければ、持っている分をすべて返した（遡っても何も無いので、下限を持ち上げない）
       if (r.initialReceived === 0 || r.initialReceived < this.limit) r.exhausted = true;
     }
+    this.holdFloor();
+    return olderSeq !== null ? this.catchUp(r) : null;
+  }
+
+  /** [#962] 下限より浅いところで止まっているリレーに、続けて聞く要求（onEose）。追いついたリレーには聞かない */
+  private catchUp(r: RelayCoverage): OlderRequest | null {
+    const floor = this.shownFloor;
+    if (floor === null || !settled(r) || r.oldest <= floor || r.catchUps >= CATCH_UP_LIMIT) return null;
+    r.catchUps++;
+    return ask(r);
   }
 
   /** 遡りの要求（olderSeq）に、待つ時間内に EOSE が来なかった。何も届いていなければ応えないリレーとして外す */
@@ -92,6 +132,7 @@ export class TimelineCoverage {
     if (!r?.olderInFlight || olderSeq !== r.olderSeq) return;
     r.olderInFlight = false;
     if (r.oldest === r.oldestAtRequest) r.unresponsive = true;
+    this.holdFloor();
   }
 
   /** 出している遡りの要求を取り下げる（返事はもう数えない）。遅れて届く EOSE・時間切れは無視される */
@@ -102,10 +143,24 @@ export class TimelineCoverage {
   /**
    * 画面に並べてよい下限（これより古い投稿は、どこかのリレーの分が抜けているかもしれない）。
    * まだ先があるリレーの境界のうち、いちばん新しいもの。そういうリレーが無ければ null（下限なし）。
-   * 最初の取得が終わっていないリレーは数えない（届いた分だけで境界を置くと、手元にある投稿がいったん全部隠れてしまう）
+   * 最初の取得が終わっていないリレーは数えない（届いた分だけで境界を置くと、手元にある投稿がいったん全部隠れてしまう）。
+   * [#962] 一度決まったら新しい方へは戻さない（holdFloor）
    */
   floor(): number | null {
-    return this.boundary(false);
+    return this.shownFloor;
+  }
+
+  /**
+   * [#962] 境界が変わったら下限を決め直す。古い方へは動かすが、新しい方へは戻さない
+   * （遅れて加わったリレー・応えなくなってから応えたリレーの浅い境界で、読んでいる途中の行を隠さない。そのリレーの分は歯抜けが出うる）。
+   * 最初からやり直すのは、数え手を作り直したときだけ（REQ が変わった）
+   */
+  private holdFloor(): void {
+    const current = this.boundary(false);
+    const held = this.shownFloor;
+    if (!this.floorDecided) this.shownFloor = current;
+    else this.shownFloor = held === null || current === null ? null : Math.min(held, current);
+    if (current !== null) this.floorDecided = true;
   }
 
   private boundary(includeUnresponsive: boolean): number | null {
@@ -130,10 +185,8 @@ export class TimelineCoverage {
     const reach = base - Math.max(now - base, 0);
     for (const [url, r] of this.relays) {
       if (!settled(r) || r.olderInFlight || r.oldest < reach) continue;
-      r.olderInFlight = true;
-      r.oldestAtRequest = r.oldest;
-      r.olderSeq++;
-      requests.set(url, { until: r.oldest, seq: r.olderSeq });
+      r.catchUps = 0;
+      requests.set(url, ask(r));
     }
     return requests;
   }
