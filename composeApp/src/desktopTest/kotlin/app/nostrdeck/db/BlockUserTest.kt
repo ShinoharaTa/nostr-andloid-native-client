@@ -23,6 +23,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -48,6 +49,14 @@ class BlockUserTest {
         withTimeout(5_000) { repo.loggedInPubkey().first { it != null } }
         return repo
     }
+
+    /** 起動する前の端末の KV（前の版が残した値）を入れておく。 */
+    private fun seedSettings(dbFile: File, vararg kv: Pair<String, String>) {
+        DriverFactory(dbFile).createDriver().also { d -> kv.forEach { (k, v) -> NostrDb(d).nostrQueries.putSetting(k, v) } }.close()
+    }
+
+    private fun setting(dbFile: File, key: String): String? =
+        DriverFactory(dbFile).createDriver().let { d -> NostrDb(d).nostrQueries.getSetting(key).executeAsOneOrNull().also { d.close() } }
 
     @Test
     fun blocking_hides_right_away_and_keeps_hiding_when_the_mute_list_cannot_be_saved(): Unit = runBlocking {
@@ -85,6 +94,69 @@ class BlockUserTest {
         }
     }
 
+    /**
+     * [#965] rc3（ブロック = 非公開と案内していた版）が残した保存待ちは、同意した内容に合わせて非公開（ミュート）で保存する。
+     * 同意した規約の版が今の版と違えば rc3 の分とみなし、保存するまで「ミュート中」として隠す。通報は送らない。
+     */
+    @Test
+    fun pending_blocks_left_by_rc3_stay_private_mutes_and_are_not_reported(): Unit = runBlocking {
+        val dbFile = File.createTempFile("block-rc3", ".db").apply { deleteOnExit() }
+        seedSettings(dbFile, EventRepository.TERMS_ACCEPTED_KEY to RC3_TERMS_VERSION, EventRepository.BLOCK_PENDING_KEY to target)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(dbFile, scope)
+            withTimeout(1_000) { repo.muteFilterFlow().first { it.hides(target) } }
+            assertTrue(repo.mutedUsersFlow().first().contains(target))
+            assertFalse(repo.blockedUsersFlow().first().contains(target), "公開のブロックとしては見せない（ミュート中）")
+            assertFalse(repo.muteListFlow().value.hides(target))
+            delay(300)   // KV の書き込み（putSettingAsync）を待つ
+            assertEquals(target, setting(dbFile, EventRepository.MUTE_PENDING_LEGACY_KEY))
+            assertEquals("", setting(dbFile, EventRepository.BLOCK_PENDING_KEY), "公開で保存する方には残さない")
+
+            // やり直し（ログインから MODERATION_RETRY_FIRST_MS 後）。リレーに届かないので保存できず残るが、通報は出さない
+            delay(EventRepository.MODERATION_RETRY_FIRST_MS + 7_000)
+            assertEquals(0, repo.developerOutboxSize())
+            assertTrue(repo.muteFilterFlow().value.hides(target))
+            assertFalse(repo.blockedUsersFlow().first().contains(target))
+        } finally {
+            scope.cancel()
+        }
+
+        // 起動し直しても（規約の同意はまだ古いまま）ミュート中として隠したまま。解除するとその場で消える
+        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(dbFile, scope2)
+            withTimeout(1_000) { repo.muteFilterFlow().first { it.hides(target) } }
+            assertFalse(repo.blockedUsersFlow().first().contains(target))
+            assertTrue(repo.unmuteUser(target))
+            withTimeout(1_000) { repo.muteFilterFlow().first { !it.hides(target) } }
+            delay(300)   // KV の書き込み（putSettingAsync）を待つ
+            assertEquals("", setting(dbFile, EventRepository.MUTE_PENDING_LEGACY_KEY))
+        } finally {
+            scope2.cancel()
+        }
+    }
+
+    /** [#965] 規約の同意が今の版なら、保存待ちは今の版で押したブロック（公開で保存する）。同意が無い（入れたばかり）ときも移さない。 */
+    @Test
+    fun pending_blocks_stay_public_blocks_when_the_terms_are_current_or_never_accepted(): Unit = runBlocking {
+        for (accepted in listOf(EventRepository.TERMS_VERSION, null)) {
+            val dbFile = File.createTempFile("block-terms", ".db").apply { deleteOnExit() }
+            val seed = listOfNotNull(accepted?.let { EventRepository.TERMS_ACCEPTED_KEY to it }, EventRepository.BLOCK_PENDING_KEY to target)
+            seedSettings(dbFile, *seed.toTypedArray())
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val repo = openRepo(dbFile, scope)
+                withTimeout(1_000) { repo.blockedUsersFlow().first { target in it } }
+                delay(300)   // KV の書き込み（putSettingAsync）を待つ
+                assertEquals(target, setting(dbFile, EventRepository.BLOCK_PENDING_KEY), "accepted=$accepted")
+                assertNull(setting(dbFile, EventRepository.MUTE_PENDING_LEGACY_KEY), "accepted=$accepted")
+            } finally {
+                scope.cancel()
+            }
+        }
+    }
+
     @Test
     fun reports_stay_on_the_device_until_the_developer_relay_accepts_them(): Unit = runBlocking {
         val dbFile = File.createTempFile("developer-outbox", ".db").apply { deleteOnExit() }
@@ -107,5 +179,10 @@ class BlockUserTest {
         } finally {
             scope2.cancel()
         }
+    }
+
+    private companion object {
+        /** rc3 が書いた規約の版（[EventRepository.TERMS_VERSION] を #963 で上げる前）。 */
+        const val RC3_TERMS_VERSION = "2026-10-30"
     }
 }
