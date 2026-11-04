@@ -187,10 +187,13 @@ data class RelayConn(val url: String, val state: RelayConnState)
 /**
  * 単一リレーへの WebSocket 接続（NIP-01）。
  * 切断時は指数バックオフ+ジッターで再接続し、購読中の REQ を張り直す。
+ * [#853] [holdReconnect] が true の間（アプリが裏にいる間）は、切断・接続失敗のあと時間では再接続せず、
+ * [wake]（前面への復帰）を待つ。
  */
 class RelayClient(
     val url: String,
     private val scope: CoroutineScope,
+    private val holdReconnect: () -> Boolean = { false },
 ) {
     // [#849] ping はエンジンごとに効かせ方が違うので relayHttpClient に任せる。接続(TCP)のタイムアウトだけ付ける
     // （request / socket のタイムアウトは付けない。WebSocket の受信待ちで切れてしまう）。
@@ -296,6 +299,15 @@ class RelayClient(
                 }
                 // [#849] 復帰(wake)でぶら下がった試行を打ち切ったなら、待たずにすぐやり直す（後退も初期値へ）。
                 if (r.abortedByWakeAfterMs != null) {
+                    backoff = RECONNECT_BACKOFF_INITIAL_MS
+                    continue
+                }
+                // [#853] 裏にいる間は時間では再接続しない（Android 15 以降は裏で通信が遮断され、DNS から失敗し続けるだけ）。
+                // 前面に戻ると onForeground の wake で起こされて 1 回繋ぎ直す。前面にいた間の wake の残り
+                // （繋がっている間の wake も溜まる）を先に捨てる。捨てたあとで前面に戻っていたら、待たずに繋ぐ。
+                if (holdReconnect()) {
+                    wakeSignal.tryReceive()
+                    if (holdReconnect()) wakeSignal.receive()
                     backoff = RECONNECT_BACKOFF_INITIAL_MS
                     continue
                 }
