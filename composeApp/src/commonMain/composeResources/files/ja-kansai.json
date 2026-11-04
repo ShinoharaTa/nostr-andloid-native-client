@@ -397,6 +397,7 @@
   "nosskey_enroll_failed_fmt": "登録でけへんかった: %1$s",
   "nip46_desc": "署名アプリ(Amber 等)や bunker とつなぐで。秘密鍵はリモートの署名側に残るわ。",
   "nip46_paste_prompt": "この接続リンクを署名アプリで「クリップボードから貼付」して、承認してな:",
+  "nip46_relay_desc": "署名アプリとのやりとりに使うリレーやで。既定は relay.nsec.app",
   "connect_failed_fmt": "接続でけへんかった: %1$s",
   "nip46_bunker_prompt": "もしくは bunker:// を貼り付けてな:",
   "nip55_desc_fmt": "秘密鍵はアプリに渡さんと、%1$s 側で署名するで（NIP-55）。",
