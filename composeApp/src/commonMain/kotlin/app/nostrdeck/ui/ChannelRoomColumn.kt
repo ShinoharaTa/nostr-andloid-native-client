@@ -58,6 +58,7 @@ import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -90,6 +91,7 @@ import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import app.nostrdeck.i18n.stringResource
+import app.nostrdeck.i18n.getString
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
@@ -518,9 +520,15 @@ private fun Bubble(
     val repo = LocalRepository.current
     val devMode by (repo?.developerModeFlow()?.collectAsState()
         ?: remember { mutableStateOf(false) })
-    val hasActions = onReply != null || onReact != null || devMode
+    // [#321] 自分のパブリックチャット発言（kind:42）だけ NIP-09 削除リクエストを出せる。
+    // DM（kind:14 の rumor）は署名済みイベントではないので対象外。
+    val canDelete = repo != null && m.isMine && m.event.kind == 42
+    val hasActions = onReply != null || onReact != null || devMode || canDelete
     var menu by remember { mutableStateOf(false) }
     var showJson by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val toast = rememberToaster()
     // タイムライン(NoteItem)と同じコンテンツ処理:
     //  - 画像URLは本文から除去し、吹き出しの下にサムネ([NoteImages])で表示（LINE/WhatsApp 風）
     //  - :shortcode: はインライン画像、@メンション/#タグ/リンクは装飾（[CollapsibleText]→[noteAnnotated]）
@@ -561,6 +569,14 @@ private fun Bubble(
                             onClick = { menu = false; onReply() },
                         )
                     }
+                    // [#321] 削除リクエスト。投稿の ⋯ と同じく Warn 色・確認ダイアログ付き。
+                    if (canDelete) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.note_request_delete), color = DeckColors.Warn) },
+                            leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null, tint = DeckColors.Warn, modifier = Modifier.size(18.dp)) },
+                            onClick = { menu = false; confirmDelete = true },
+                        )
+                    }
                     // [#351] 開発者モード: 発言(kind:42)の生JSON。
                     if (devMode) {
                         DropdownMenuItem(
@@ -572,6 +588,23 @@ private fun Bubble(
                 }
                 if (showJson) {
                     EventJsonDialog(m.event.id, onDismiss = { showJson = false })
+                }
+                // [#321] 投稿の削除（NoteItem）と同じダイアログ・トースト。消える保証はないことを本文で明示する。
+                // 手元からは requestDelete が DB から消すので、チャンネルの一覧（messagesByChannel）からもそのまま消える。
+                if (confirmDelete && repo != null) {
+                    DeckConfirmDialog(
+                        title = stringResource(Res.string.note_delete_title),
+                        text = stringResource(Res.string.note_delete_text),
+                        confirmLabel = stringResource(Res.string.note_delete_confirm), destructive = true,
+                        onConfirm = {
+                            confirmDelete = false
+                            scope.launch {
+                                val ok = repo.requestDelete(m.event)
+                                toast(getString(if (ok) Res.string.note_delete_sent else Res.string.note_delete_failed))
+                            }
+                        },
+                        onDismiss = { confirmDelete = false },
+                    )
                 }
             }
         }
