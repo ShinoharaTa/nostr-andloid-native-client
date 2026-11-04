@@ -905,6 +905,7 @@ class EventRepository(
         // ブックマーク・固定投稿も空に戻す（残すと、次のアカウントで最初に足したときに前のアカウントの分ごと発行してしまう）
         bookmarkList.reset(); pinnedList.reset(); pinsAtByAuthor.clear()
         pendingBlocks.value = emptySet()   // [#951] KV は下で消す。手元の分も捨てる
+        legacyMutes.value = emptySet()     // [#965] 同上
         syncEventByD.value = emptyMap()
         muteListAt = 0L; muteFlow.value = null
         muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
@@ -4122,24 +4123,53 @@ class EventRepository(
      * フィードからはすぐ消したままにする（App Store ガイドライン 1.2）。保存できたら外す（[saveBlock]）。
      */
     private val pendingBlocks = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * [#965] rc3 までの版（ブロック = 非公開と案内していた）が残した保存待ちのブロック。同意した内容に合わせ、
+     * **非公開**の `p`（ミュート）として保存する（[saveLegacyMute]。通報は送らない）。保存できるまでフィードからは隠したまま。
+     */
+    private val legacyMutes = MutableStateFlow<Set<String>>(emptySet())
+
     private fun loadPendingBlocks() {
-        pendingBlocks.value = q.getSetting(BLOCK_PENDING_KEY).executeAsOneOrNull()
+        fun pubkeys(key: String) = q.getSetting(key).executeAsOneOrNull()
             ?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+        val blocks = pubkeys(BLOCK_PENDING_KEY)
+        val legacy = pubkeys(MUTE_PENDING_LEGACY_KEY)
+        // [#965] 同意した規約の版が今の版（[TERMS_VERSION]）と違えば、保存待ちは rc3 までの版が残したもの。
+        // [acceptTerms] が KV を上書きする前の値で見分け、非公開で保存する方へ移す（移したあとは block_pending が空なので一度きり）。
+        val accepted = q.getSetting(TERMS_ACCEPTED_KEY).executeAsOneOrNull()
+        if (accepted != null && accepted != TERMS_VERSION && blocks.isNotEmpty()) {
+            pendingBlocks.value = emptySet()
+            legacyMutes.value = legacy + blocks
+            putSettingAsync(MUTE_PENDING_LEGACY_KEY, legacyMutes.value.joinToString("\n"))
+            putSettingAsync(BLOCK_PENDING_KEY, "")
+        } else {
+            pendingBlocks.value = blocks
+            legacyMutes.value = legacy
+        }
     }
     private fun updatePendingBlocks(change: (Set<String>) -> Set<String>) {
         val next = pendingBlocks.updateAndGet(change)
         putSettingAsync(BLOCK_PENDING_KEY, next.joinToString("\n"))
     }
+    private fun updateLegacyMutes(change: (Set<String>) -> Set<String>) {
+        val next = legacyMutes.updateAndGet(change)
+        putSettingAsync(MUTE_PENDING_LEGACY_KEY, next.joinToString("\n"))
+    }
 
     /**
-     * 画面で隠す判定に使うミュート（[muteListFlow] ＋ 保存待ちのブロック [pendingBlocks]）。
+     * 画面で隠す判定に使うミュート（[muteListFlow] ＋ 保存待ちのブロック [pendingBlocks] ＋ rc3 の保存待ち [legacyMutes]）。
      * ミュートの編集画面は [muteListFlow] を使う（保存待ちの人を編集のついでに保存してしまわないように）。
      */
-    private val muteFilterState: StateFlow<MuteList?> = combine(muteFlow, pendingBlocks) { m, blocking ->
+    private val muteFilterState: StateFlow<MuteList?> = combine(muteFlow, pendingBlocks, legacyMutes) { m, blocking, legacy ->
         val extra = blocking.filter { pk -> m?.entries?.none { it.category == MuteCategory.USER && it.value == pk && it.isPublic } ?: true }
-        if (extra.isEmpty()) m
-        // [#963] ブロックは公開の p。保存待ちの間も「ブロック中」として見せる
-        else (m ?: MuteList()).let { it.copy(entries = it.entries + extra.map { pk -> MuteEntry(MuteCategory.USER, pk, isPublic = true, isPrivate = false) }) }
+        val extraLegacy = legacy.filter { pk -> pk !in blocking && m?.entries?.none { it.category == MuteCategory.USER && it.value == pk } ?: true }
+        if (extra.isEmpty() && extraLegacy.isEmpty()) m
+        // [#963] ブロックは公開の p。保存待ちの間も「ブロック中」として見せる。[#965] rc3 の分は非公開（「ミュート中」）
+        else (m ?: MuteList()).let {
+            it.copy(entries = it.entries + extra.map { pk -> MuteEntry(MuteCategory.USER, pk, isPublic = true, isPrivate = false) } +
+                extraLegacy.map { pk -> MuteEntry(MuteCategory.USER, pk, isPublic = false, isPrivate = true) })
+        }
     }.stateIn(scope, SharingStarted.Eagerly, null)
     fun muteFilterFlow(): StateFlow<MuteList?> = muteFilterState
 
@@ -4429,6 +4459,7 @@ class EventRepository(
      */
     fun blockUser(pubkey: String, note: NostrEvent? = null) {
         updatePendingBlocks { it + pubkey }
+        if (pubkey in legacyMutes.value) updateLegacyMutes { it - pubkey }   // [#965] 今ブロックした方を優先（公開で保存する）
         // 通報（リレーの受理を待つ）とミュートリストの保存は別々に進める（片方の待ちで、もう片方とトーストを遅らせない）。
         scope.launch { runCatching { publishReport(blockReport(pubkey, note), notify = false) } }
         scope.launch { blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING) }
@@ -4461,9 +4492,21 @@ class EventRepository(
         return saved
     }
 
-    /** 保存待ちのブロックをやり直す（ログインしてしばらく後。リレーに繋がってから）。 */
+    /**
+     * [#965] rc3 が残した保存待ち（[legacyMutes]）を、非公開 `p` としてミュートリストに保存する。通報は送らない。
+     * 保存できた（公開・非公開のどちらかで、すでに入っていた）ら外す。NIP-44 が使えないときは保存できないので残す。
+     */
+    private suspend fun saveLegacyMute(pubkey: String): Boolean {
+        val saved = runCatching { muteUserPrivate(pubkey, notify = false) }.getOrDefault(false) ||
+            muteFlow.value?.entries?.any { it.category == MuteCategory.USER && it.value == pubkey } == true
+        if (saved) updateLegacyMutes { it - pubkey }
+        return saved
+    }
+
+    /** 保存待ちのブロックをやり直す（ログインしてしばらく後。リレーに繋がってから）。[#965] rc3 の保存待ちも同じときに。 */
     private suspend fun retryPendingBlocks() {
         pendingBlocks.value.forEach { saveBlock(it) }
+        legacyMutes.value.forEach { saveLegacyMute(it) }
     }
 
     /**
@@ -4474,8 +4517,12 @@ class EventRepository(
 
     private suspend fun unmuteUserLocked(pubkey: String): Boolean {
         // [#951] 保存待ちのブロックは手元で外す。ミュートリストに入っていなければそれで終わり（リレーに届かなくても外せる）。
-        if (pubkey in pendingBlocks.value) {
-            updatePendingBlocks { it - pubkey }
+        // [#965] rc3 の保存待ち（[legacyMutes]）も同じ。
+        val pending = pubkey in pendingBlocks.value
+        val legacy = pubkey in legacyMutes.value
+        if (pending || legacy) {
+            if (pending) updatePendingBlocks { it - pubkey }
+            if (legacy) updateLegacyMutes { it - pubkey }
             if (muteFlow.value?.entries?.none { it.category == MuteCategory.USER && it.value == pubkey } != false) return true
         }
         refreshMute() ?: return false   // [#478]
@@ -7039,6 +7086,8 @@ class EventRepository(
         const val BLOCK_REPORT_REASON = "blocked"
         /** [#951] まだミュートリストに保存できていないブロック（pubkey の改行区切り）の KV キー。 */
         const val BLOCK_PENDING_KEY = "block_pending"
+        /** [#965] rc3 までの版が残した保存待ちのブロック（非公開で保存する。pubkey の改行区切り）の KV キー。 */
+        const val MUTE_PENDING_LEGACY_KEY = "mute_pending_legacy"
         const val MODERATION_RETRY_FIRST_MS = 15_000L
         const val MODERATION_RETRY_INTERVAL_MS = 60_000L
         /** [#951] 開発者のリレーに届いていない通報（"id\t送る JSON" の改行区切り）の KV キー。 */

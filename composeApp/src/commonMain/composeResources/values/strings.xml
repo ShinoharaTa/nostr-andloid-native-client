@@ -594,7 +594,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_block_user">Block this user</string>
     <string name="note_unblock_user">Unblock</string>
     <string name="block_confirm_title">Block this user?</string>
-    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can undo this anytime from your icon menu → Mute &amp; block.</string>
+    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can unblock anytime from your icon menu → Mute &amp; block (reports already sent can’t be withdrawn).</string>
     <string name="block_confirm">Block</string>
     <string name="blocked_toast">Blocked</string>
     <string name="blocked_badge">Blocked</string>
