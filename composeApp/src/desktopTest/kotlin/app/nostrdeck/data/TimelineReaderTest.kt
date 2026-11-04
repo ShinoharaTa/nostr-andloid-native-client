@@ -30,12 +30,14 @@ class TimelineReaderTest {
         val failLoad: Boolean = false,
         /** この文章を読もうとしたら投げる。 */
         val failOn: (String) -> Throwable? = { null },
+        /** この文章を読み始めたときに呼ぶ（読んでいる間に時計を進める等）。 */
+        val onSpeak: (String) -> Unit = {},
     ) : SpeechEngine {
         val loaded = mutableListOf<TtsVoice>()
         val spoken = mutableListOf<String>()
         @Volatile var closed = false
         override suspend fun load(voice: TtsVoice) { delay(loadDelayMs); if (failLoad) error("load failed"); loaded += voice }
-        override suspend fun speak(text: String) { failOn(text)?.let { throw it }; spoken += text; delay(5) }
+        override suspend fun speak(text: String) { onSpeak(text); failOn(text)?.let { throw it }; spoken += text; delay(5) }
         override fun stop() {}
         override fun close() { closed = true }
     }
@@ -317,6 +319,65 @@ class TimelineReaderTest {
             s.waitSpoken(12)
             assertEquals(burst.map { "${it.author.name}。${it.event.content}" }, s.spoken)
             withTimeout(2_000) { s.reader.stats.first { it.read == 12 && it.waiting == 0 } }
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun posts_older_than_five_minutes_are_skipped(): Unit = runBlocking {
+        var now = start
+        val s = setup(clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            // 圏外から戻った再送: ON にした後の投稿だが、読む時点で 5 分より前
+            now = start + 1_000
+            s.arrive(note("fresh", "c", "う", "新しい", start + 995), note("stale", "b", "い", "古い", start + 1))
+            withTimeout(2_000) { s.reader.stats.first { it.read == 1 } }   // 古い順に読むので、古い方はもう飛ばしている
+            assertEquals(listOf("う。新しい"), s.spoken)
+            assertEquals(0, s.reader.stats.value.failed)   // 飛ばした分は失敗に数えない
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_post_exactly_five_minutes_old_is_read(): Unit = runBlocking {
+        var now = start
+        val s = setup(clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            now = start + 1_000
+            s.arrive(
+                note("edge", "c", "う", "ちょうど 5 分", now - TimelineReader.MAX_AGE_SEC),
+                note("over", "b", "い", "5 分と 1 秒", now - TimelineReader.MAX_AGE_SEC - 1),
+            )
+            s.waitSpoken(1)
+            delay(30)
+            assertEquals(listOf("う。ちょうど 5 分"), s.spoken)
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_post_that_goes_stale_while_waiting_is_skipped(): Unit = runBlocking {
+        var now = start
+        // 1 件目を読んでいる間に時計が 5 分以上進む（読み上げに追いつけず待っている間に古くなる）
+        val s = setup(engines = listOf(FakeEngine(onSpeak = { if ("一つ目" in it) now = start + 303 })), clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(
+                note("c", "d", "え", "三つ目", start + 10),
+                note("b", "c", "う", "二つ目", start + 2),
+                note("a", "b", "い", "一つ目", start + 1),
+            )
+            withTimeout(2_000) { s.reader.stats.first { it.read == 2 } }
+            assertEquals(listOf("い。一つ目", "え。三つ目"), s.spoken)
+            assertEquals(0, s.reader.stats.value.failed)
         } finally {
             s.reader.stop(); s.scope.cancel()
         }
