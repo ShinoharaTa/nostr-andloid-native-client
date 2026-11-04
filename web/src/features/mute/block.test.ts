@@ -1,13 +1,10 @@
-import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publishEvent } from "../../nostr/publish";
 import { useSession } from "../../signer/session";
-import { reportTargets } from "../actions/reactions";
 import {
-  BLOCK_REPORT_REASON,
   blockUser,
   loadPendingBlocks,
-  MODERATION_RELAY,
   removePendingBlock,
   resetBlocksForTest,
   retryPendingBlocks,
@@ -59,43 +56,11 @@ afterEach(() => {
   useSession.setState({ status: "loading", method: null, pubkey: null });
 });
 
-describe("通報（#963: ⋯ の通報と同じ送り先）", () => {
-  it("送り先は書き込みリレー ∪ 開発者のリレー（reportTargets）", () => {
-    expect(reportTargets()).toContain(MODERATION_RELAY);
-  });
-
-  it("投稿から: kind:1984・content blocked・e（other）と p。送り先は reportTargets（未送信なら知らせる）", async () => {
-    const note = finalizeEvent({ kind: 1, created_at: 1, tags: [], content: "x" }, generateSecretKey());
-    await blockUser(me, note.pubkey, note);
-    expect(vi.mocked(publishEvent).mock.calls).toEqual([
-      [
-        {
-          kind: 1984,
-          content: BLOCK_REPORT_REASON,
-          tags: [
-            ["e", note.id, "other"],
-            ["p", note.pubkey],
-          ],
-        },
-        { relays: reportTargets() },
-      ],
-    ]);
-    expect(BLOCK_REPORT_REASON).toBe("blocked");
-  });
-
-  it("プロフィールから（投稿なし）: p に other", async () => {
-    await blockUser(me, BOB);
-    expect(vi.mocked(publishEvent).mock.calls).toEqual([
-      [{ kind: 1984, content: "blocked", tags: [["p", BOB, "other"]] }, { relays: reportTargets() }],
-    ]);
-  });
-
-  it("通報に失敗してもブロックは失敗にしない", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.mocked(publishEvent).mockRejectedValue(new Error("no signer"));
+describe("[#961] ブロックでは通報しない", () => {
+  it("kind:1984 を発行せず、ミュートリストへの保存だけをする", async () => {
     expect(await blockUser(me, BOB)).toBe("saved");
-    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
-    warn.mockRestore();
+    expect(vi.mocked(saveBlockedUser)).toHaveBeenCalledWith(me, BOB);
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
   });
 });
 

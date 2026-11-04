@@ -109,13 +109,9 @@ fun MuteSettings() {
 
     fun save() {
         val d = draft ?: return
-        // [#963] ブロックに変わった人（公開になった人）には、⋯ のブロックと同じく通報も送る
-        val blockedBefore = mute?.entries.orEmpty().filter { it.category == MuteCategory.USER && it.isPublic }.map { it.value }.toSet()
-        val newlyBlocked = d.filter { it.category == MuteCategory.USER && it.isPublic && it.value !in blockedBefore }.map { it.value }
         saving = true
         scope.launch {
             val ok = repo.publishMuteList(d)
-            if (ok && newlyBlocked.isNotEmpty()) repo.reportBlocked(newlyBlocked)
             // 安定待ち: 楽観反映 + リレーエコーが落ち着くまで待ってから編集ロックを解く。
             delay(1500)
             saving = false
@@ -196,7 +192,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.muteSection(
     }
 }
 
-/** [#963] ユーザーの行の状態。MUTE = 非公開の p（相手に分からない）、BLOCK = 公開の p（相手にも分かる・通報あり）。 */
+/** [#963] ユーザーの行の状態。MUTE = 非公開の p（相手に分からない）、BLOCK = 公開の p（相手にも分かる）。 */
 private enum class MuteMode { MUTE, BLOCK }
 
 @Composable

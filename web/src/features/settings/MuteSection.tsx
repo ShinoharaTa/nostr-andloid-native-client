@@ -5,7 +5,6 @@ import { displayName, useProfile } from "../../nostr/loaders";
 import { currentSigner, useSession } from "../../signer/session";
 import { Icon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
-import { reportBlock } from "../mute/block";
 import { type MuteCategory, type MuteEntry, useMute } from "../mute/muteList";
 import { addMuteWord, MuteListError, saveMuteList, signerCanPrivateMute } from "../mute/muteSync";
 import styles from "./SettingsSections.module.css";
@@ -47,24 +46,13 @@ const MUTE_MODE_PATCH = {
   remove: { isPublic: false, isPrivate: false },
 } as const satisfies Record<string, MutePatch>;
 
-/** 保存で新たにブロックになる人（前は公開の p に無く、下書きで公開の p に入れた人。ミュートからの切り替えを含む） */
-export function newlyBlocked(before: readonly MuteEntry[], after: readonly MuteEntry[]): string[] {
-  const wasBlocked = new Set(before.filter((e) => e.category === "p" && e.isPublic).map((e) => e.value));
-  return [
-    ...new Set(
-      after.filter((e) => e.category === "p" && e.isPublic && !wasBlocked.has(e.value)).map((e) => e.value),
-    ),
-  ];
-}
-
 /**
  * ミュート（ネイティブ MuteSettings。NIP-51 kind:10000 の公開 + 復号した非公開）。行ごとの公開 / 非公開の
  * チェックを下書きに反映し、変更があれば下部の「保存」で 1 回にまとめて kind:10000 を再発行する
  * （muteSync.ts の saveMuteList。#478: 取り直し・応答なしなら発行しない・basedOnId 照合・非公開部分の再暗号化）。
  * 署名者が暗号（NIP-44 / NIP-04）を使えなければ非公開のチェックを無効にし、案内を出す（公開に黙って倒さない）。
  * [#963] ユーザーの行は「ミュート（非公開の p）| ブロック（公開の p）」の 2 択と外す（✕）。読み込んだ項目が両方に
- * 入っていればブロックとして出す。暗号を使えなければミュートを選べない。保存できたら、新たにブロックにした人へ
- * 通報（NIP-56。block.ts の reportBlock）を送る。
+ * 入っていればブロックとして出す。暗号を使えなければミュートを選べない。[#961] ブロックにしても通報は送らない。
  * ⋯ メニューからの 1 件のミュート・ブロック / 解除（muteUser / blockUser など）はここを介さず、その場で発行する。
  */
 export function MuteSection() {
@@ -96,15 +84,11 @@ export function MuteSection() {
   async function save() {
     if (!me || !draft) return;
     setSaving(true);
-    const blocked = newlyBlocked(list?.entries ?? [], draft.entries);
     try {
       await saveMuteList(me, draft.entries, draft.basedOnId);
       setDraft(null);
       // ネイティブ mute_saved
       showToast(t("mute_saved"));
-      for (const pubkey of blocked) {
-        reportBlock(pubkey).catch((e) => console.warn("[mute] Failed to report the block", e));
-      }
     } catch (e) {
       // 最新版と食い違っていたら下書きを捨てて最新の内容を出し直す
       if (e instanceof MuteListError && e.reason === "stale") setDraft(null);

@@ -40,10 +40,14 @@ class BlockUserTest {
     private fun MuteList?.hides(pubkey: String) =
         this?.entries?.any { it.category == MuteCategory.USER && it.value == pubkey } == true
 
-    private suspend fun openRepo(dbFile: File, scope: CoroutineScope): EventRepository {
+    private suspend fun openRepo(
+        dbFile: File,
+        scope: CoroutineScope,
+        db: NostrDb = createDatabase(DriverFactory(dbFile)),
+    ): EventRepository {
         SignerProvider.use(LocalSigner(InMemoryKeyVault().apply { importPrivateKey(me) }))
         // リレーにつながない（offline）ので、ミュートリストの取り直しは届かず、保存できない。
-        val repo = EventRepository(createDatabase(DriverFactory(dbFile)), scope, emptyList(), offline = true)
+        val repo = EventRepository(db, scope, emptyList(), offline = true)
         repo.start()
         withTimeout(5_000) { repo.loggedInPubkey().first { it != null } }
         return repo
@@ -85,27 +89,45 @@ class BlockUserTest {
         }
     }
 
+    /** [#961] ブロックは通報（kind:1984）を送らない。kind:1984 を出すのは ⋯ の「通報」だけ。 */
     @Test
-    fun reports_stay_on_the_device_until_the_developer_relay_accepts_them(): Unit = runBlocking {
-        val dbFile = File.createTempFile("developer-outbox", ".db").apply { deleteOnExit() }
+    fun blocking_does_not_send_a_report_but_the_report_menu_does(): Unit = runBlocking {
+        val dbFile = File.createTempFile("block-no-report", ".db").apply { deleteOnExit() }
+        val db = createDatabase(DriverFactory(dbFile))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            val repo = openRepo(dbFile, scope)
-            // 通報もブロックも、開発者のリレーに届かない（offline）ので端末に残る
-            repo.reportUser(target, "spam")
+            val repo = openRepo(dbFile, scope, db)
+            val myPubkey = repo.loggedInPubkey().first { it != null }!!
+            // 自分が発行したイベントは送る前に手元の DB に入る（publishSigned）
+            fun myReports() = db.nostrQueries.eventsByKindAuthor(1984L, myPubkey).executeAsList()
+
+            val result = async(start = CoroutineStart.UNDISPATCHED) { repo.blockResultFlow().first() }
             repo.blockUser(target)
-            withTimeout(2_000) { while (repo.developerOutboxSize() < 2) delay(50) }
-            delay(300)   // KV の書き込み（putSettingAsync）を待つ
+            assertEquals(EventRepository.BlockResult.PENDING, result.await())
+            delay(300)   // 前の版はブロックの通報を別のコルーチンで出していた。走り終わる分を待ってから見る
+            assertTrue(myReports().isEmpty(), "ブロックでは通報しない")
+
+            repo.reportUser(target, "spam")
+            assertEquals(1, myReports().size, "⋯ の通報は kind:1984 を出す")
         } finally {
             scope.cancel()
         }
-        // 起動し直しても残っている（ログイン中は送り直す）
-        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+
+    /** [#961] 前の版で溜まった開発者のリレーへの送信待ちは、起動したら送らずに捨てる。 */
+    @Test
+    fun the_old_developer_outbox_is_discarded_on_start(): Unit = runBlocking {
+        val dbFile = File.createTempFile("developer-outbox", ".db").apply { deleteOnExit() }
+        val db = createDatabase(DriverFactory(dbFile))
+        db.nostrQueries.putSetting(EventRepository.DEVELOPER_OUTBOX_KEY, "id\t[\"EVENT\",{}]")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            val repo = openRepo(dbFile, scope2)
-            assertEquals(2, repo.developerOutboxSize())
+            openRepo(dbFile, scope, db)
+            withTimeout(2_000) {
+                while (db.nostrQueries.getSetting(EventRepository.DEVELOPER_OUTBOX_KEY).executeAsOneOrNull() != null) delay(50)
+            }
         } finally {
-            scope2.cancel()
+            scope.cancel()
         }
     }
 }

@@ -20,7 +20,7 @@
 </head>
 <body>
 <h1>利用規約 / Terms of Use — Nostrism</h1>
-<p class="meta">最終更新 / Last updated: 2026-10-31</p>
+<p class="meta">最終更新 / Last updated: 2026-11-04</p>
 
 <hr>
 
@@ -53,14 +53,14 @@
 <ul>
   <li><strong>通報</strong>: 不快な投稿は、投稿の「⋯」から通報できます。利用者は、プロフィールの「⋯」から通報できます。</li>
   <li><strong>ブロック</strong>: 不快な利用者は、投稿やプロフィールの「⋯」からブロックできます。ブロックした利用者の投稿・通知・DM は、すぐに表示されなくなります。ブロックは、あなたの公開のミュートリスト（NIP-51）に保存され、相手や他の人にも分かります（リレーにつながらないときは端末に覚えておき、つながったら保存します）。解除は、自分のアイコンのメニューの「ミュート・ブロック」からできます。</li>
-  <li><strong>ミュート</strong>: 相手に知られずに表示しないようにしたいときは、同じ「⋯」の「ミュート」を使えます。ミュートは非公開のミュートリストに保存され、通報は送りません。「ミュート・ブロック」で、ミュートとブロックを切り替えられます。</li>
-  <li><strong>開発者への知らせ</strong>: 通報とブロックは、Nostr の通報（NIP-56）として、あなたのリレーと開発者が運営するリレー（<code>relay-jp.shino3.net</code>）に送られ、開発者に届きます。届かなかったときは、本アプリが送り直します。</li>
-  <li><strong>通報の公開</strong>: 通報は Nostr の公開イベントです。「⋯」からの通報も、ブロックの通報も、あなたのリレーと開発者のリレーに送られます。</li>
+  <li><strong>ミュート</strong>: 相手に知られずに表示しないようにしたいときは、同じ「⋯」の「ミュート」を使えます。ミュートは非公開のミュートリストに保存されます。「ミュート・ブロック」で、ミュートとブロックを切り替えられます。</li>
+  <li><strong>通報の送り先</strong>: 「⋯」からの通報は、Nostr の通報（NIP-56）として、あなたのリレー（書き込み先のリレー）に送られます。開発者が運営するリレー（<code>relay-jp.shino3.net</code>。端末の言語が日本語のときは既定で入っています）があなたのリレーに入っていれば、開発者にも届きます。ブロックやミュートでは、通報は送られません。</li>
+  <li><strong>通報の公開</strong>: 通報は Nostr の公開イベントです。</li>
 </ul>
 
 <h3>4. 通報への対応</h3>
 <ul>
-  <li>開発者は、届いた通報を確認します。</li>
+  <li>開発者は、開発者が運営するリレーに届いた通報を確認します。</li>
   <li>禁止事項にあたる場合は、開発者が運営するリレーからコンテンツを削除するなど、開発者が管理できる範囲で対応します。</li>
   <li>ほかのリレーは第三者が運営しています。ネットワークから完全に削除するには、それぞれのリレーの運営者の対応が必要です。</li>
   <li>児童の安全に関わる事案など、法令で求められる場合は、関係当局へ報告します。</li>
@@ -121,14 +121,14 @@
 <ul>
   <li><strong>Report</strong>: Report objectionable posts from the "⋯" menu on each post, and report users from the "⋯" menu on their profile.</li>
   <li><strong>Block</strong>: Block abusive users from the "⋯" menu on their posts or profile. Their posts, notifications and direct messages are hidden right away. The block is saved in your public mute list (NIP-51), so they and others can see it; if the relays can't be reached, the App keeps it on your device and saves it once they can. You can undo a block from "Mute &amp; block" in your icon menu.</li>
-  <li><strong>Mute</strong>: To hide someone without them knowing, use "Mute" in the same "⋯" menu. Mutes are saved in your private mute list and no report is sent. You can switch between mute and block in "Mute &amp; block".</li>
-  <li><strong>Notifying the developer</strong>: Reports and blocks are sent as Nostr reports (NIP-56) to your relays and to the relay operated by the developer (<code>relay-jp.shino3.net</code>), so that they reach the developer. If one can't be delivered, the App sends it again later.</li>
-  <li><strong>Reports are public</strong>: A report is a public Nostr event. Reports from the "⋯" menu and reports for blocks are sent to your relays and to the developer's relay.</li>
+  <li><strong>Mute</strong>: To hide someone without them knowing, use "Mute" in the same "⋯" menu. Mutes are saved in your private mute list. You can switch between mute and block in "Mute &amp; block".</li>
+  <li><strong>Where reports go</strong>: Reports from the "⋯" menu are sent as Nostr reports (NIP-56) to your relays (the relays you write to). If your relays include the relay operated by the developer (<code>relay-jp.shino3.net</code>, included by default when your device language is Japanese), the report also reaches the developer. Blocking or muting does not send a report.</li>
+  <li><strong>Reports are public</strong>: A report is a public Nostr event.</li>
 </ul>
 
 <h3>4. How reports are handled</h3>
 <ul>
-  <li>The developer reviews reports.</li>
+  <li>The developer reviews reports that reach the developer's relay.</li>
   <li>If the content violates these terms, the developer acts within what it controls, for example by removing the content from the developer's relay.</li>
   <li>Other relays are run by third parties. Removing content from the whole network requires action by each relay operator.</li>
   <li>Where required by law, such as in child-safety matters, the developer reports to the relevant authorities.</li>

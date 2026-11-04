@@ -233,7 +233,7 @@ export function unmuteUser(me: string, pubkey: string, basedOnId?: string | null
 
 /**
  * [#963] ユーザーをブロックとして保存する（公開の p だけにする。非公開の p があれば外す）。
- * すでに公開の p だけなら "noop"。block.ts の blockUser から呼ぶ（保存待ち・通報はそちら）。
+ * すでに公開の p だけなら "noop"。block.ts の blockUser から呼ぶ（保存待ちはそちら）。
  */
 export function saveBlockedUser(me: string, pubkey: string): Promise<"done" | "noop"> {
   return editMuteList(me, (entries) => {

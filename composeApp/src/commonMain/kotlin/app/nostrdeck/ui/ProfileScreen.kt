@@ -764,7 +764,7 @@ private fun ProfileHeaderCard(
                             },
                         )
                         if (!isMe) {
-                            // [#963] ミュート（非公開・通報なし）とブロック（公開・通報あり）の両方。ブロック中なら解除だけ
+                            // [#963] ミュート（非公開）とブロック（公開）の両方。ブロック中なら解除だけ
                             if (blocked) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(Res.string.note_unblock_user)) },
@@ -901,7 +901,7 @@ private fun ProfileHeaderCard(
         )
     }
 
-    // [#951][#963] ブロック/解除の確認。ブロック = 公開の p ＋ この人の通報。結果のトーストは App が出す（[EventRepository.blockResultFlow]）。
+    // [#951][#963] ブロック/解除の確認。ブロック = 公開の p（[#961] 通報は送らない）。結果のトーストは App が出す（[EventRepository.blockResultFlow]）。
     if (confirmBlock) {
         DeckConfirmDialog(
             title = if (blocked) stringResource(Res.string.unblock_confirm_title) else stringResource(Res.string.block_confirm_title),

@@ -668,6 +668,10 @@ SELECT key, value FROM app_setting WHERE key LIKE ? || '%';
 putSetting:
 INSERT OR REPLACE INTO app_setting(key, value) VALUES (?, ?);
 
+-- [#961] 使わなくなったキーを消す（開発者のリレーへの送信待ち developer_outbox）。
+deleteSetting:
+DELETE FROM app_setting WHERE key = ?;
+
 -- ============ used_emoji: 過去に飛ばした絵文字（リアクションピッカーの「最近」） ============
 -- content = 送信した content（Unicode 絵文字 or ":shortcode:"）。image_url はカスタムのみ。
 -- 最近/よく使う順で先頭に出す。used_hashtag と同方針（UPSERT 不可なので2文）。
