@@ -39,12 +39,34 @@ class TimelineCoverage(private val limit: Int) {
 
     private val relays = mutableMapOf<String, Relay>()
 
+    /** [#962] 画面に出している下限（[floor]）。一度決まったら新しい方へは動かさない。 */
+    private var shownFloor: Long? = null
+    /** [shownFloor] が一度決まった。それまでの null は「まだ決まっていない」、決まった後の null は「下限なし」（いちばん古い）。 */
+    private var floorDecided = false
+
+    /**
+     * [#962] 境界が変わったら下限を決め直す。古い方へは動かすが、新しい方へは戻さない
+     * （遅れて加わったリレー・応えなくなってから応えたリレーの浅い境界で、読んでいる途中の行を隠さない。そのリレーの分は歯抜けが出うる）。
+     * 最初からやり直すのは、数え手を作り直したときだけ（条件が変わった・キャッシュを消した）。
+     */
+    private fun holdFloor() {
+        val current = boundary(includeUnresponsive = false)
+        val held = shownFloor
+        shownFloor = when {
+            !floorDecided -> current
+            held == null || current == null -> null
+            else -> minOf(held, current)
+        }
+        if (current != null) floorDecided = true
+    }
+
     /** イベントが届いた。[older] は遡りの要求への返事か（false = カラムの購読そのもの）。 */
     fun onEvent(relay: String, createdAt: Long, older: Boolean) {
         val r = relays.getOrPut(relay) { Relay() }
         r.oldest = r.oldest?.let { minOf(it, createdAt) } ?: createdAt
         if (older) r.unresponsive = false
         else if (!r.initialDone) r.initialReceived++
+        holdFloor()
     }
 
     /** EOSE が届いた。[olderSeq] は遡りの要求への返事ならその番号（[olderRequests] が返したもの）、カラムの購読なら null。 */
@@ -61,6 +83,7 @@ class TimelineCoverage(private val limit: Int) {
             // 聞いた件数より少なければ、持っている分をすべて返した（遡っても何も無いので、下限を持ち上げない）
             if (r.initialReceived < limit) r.exhausted = true
         }
+        holdFloor()
     }
 
     /** 遡りの要求（[olderSeq]）に、待つ時間内に EOSE が来なかった。何も届いていなければ応えないリレーとして外す。 */
@@ -69,6 +92,7 @@ class TimelineCoverage(private val limit: Int) {
         if (!r.olderInFlight || olderSeq != r.olderSeq) return
         r.olderInFlight = false
         if (r.oldest == r.oldestAtRequest) r.unresponsive = true
+        holdFloor()
     }
 
     /** 出している遡りの要求を取り下げる（カラムを閉じた・張り直した。返事はもう数えない）。遅れて届く EOSE・時間切れは無視される。 */
@@ -80,8 +104,9 @@ class TimelineCoverage(private val limit: Int) {
      * 画面に並べてよい下限（これより古い投稿は、どこかのリレーの分が抜けているかもしれない）。
      * まだ先があるリレーの境界のうち、いちばん新しいもの。そういうリレーが無ければ null（下限なし）。
      * 最初の取得が終わっていないリレーは数えない（届いた分だけで境界を置くと、手元にある投稿がいったん全部隠れてしまう）。
+     * [#962] 一度決まったら新しい方へは戻さない（[holdFloor]）。
      */
-    fun floor(): Long? = boundary(includeUnresponsive = false)
+    fun floor(): Long? = shownFloor
 
     private fun boundary(includeUnresponsive: Boolean): Long? = relays.values
         .filter { it.settled && (includeUnresponsive || !it.unresponsive) }
@@ -111,6 +136,7 @@ class TimelineCoverage(private val limit: Int) {
     /** 読み込み先から外れたリレー（もう聞かないので、下限の計算に残さない）。 */
     fun dropRelay(relay: String) {
         relays.remove(relay)
+        holdFloor()
     }
 
     /** 返事を待っている遡りの要求があるか（表示の「読み込み中」用）。 */
