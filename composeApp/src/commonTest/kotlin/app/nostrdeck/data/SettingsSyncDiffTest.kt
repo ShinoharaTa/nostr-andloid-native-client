@@ -4,8 +4,16 @@ import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.ReqFilter
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** [#374] リレー同期の差分計算（設定・カラム構成）と個別適用のテスト。 */
@@ -157,5 +165,89 @@ class SettingsSyncDiffTest {
         val diffs = diffDeckColumns(local, remote)
         val applied = applyColumnDiffs(local, diffs.filterIsInstance<ColumnDiff.Removed>())
         assertEquals(listOf("a"), applied.map { it.id })
+    }
+
+    // ---- [#778] 知らない種別のカラムを、同期の保存で消さない ----
+
+    // a（知っている）/ x（知らない kind。未知のフィールド付き）/ b（知っている）/ y（知らない renderer）
+    private val unknownX =
+        """{"id":"x","title":"未来","kind":"FUTURE_KIND","renderer":"FEED","filter":{"kinds":[30315]},"order":1,"extra":{"nested":[1,"two"]}}"""
+    private val unknownY = """{"id":"y","title":"y","kind":"FOLLOWING","renderer":"GRID","order":3}"""
+    private val snapshotWithUnknown =
+        """[{"id":"a","title":"a","kind":"FOLLOWING","renderer":"FEED"},""" + unknownX + "," +
+            """{"id":"b","title":"b","kind":"FOLLOWING","renderer":"FEED","order":2},""" + unknownY + "]"
+
+    private fun rows(content: String): JsonArray = Json.parseToJsonElement(content).jsonArray
+    private fun idOf(row: JsonElement): String = row.jsonObject.getValue("id").jsonPrimitive.content
+
+    @Test
+    fun decode_keeps_unknown_rows_raw_with_their_position() {
+        val decoded = assertNotNull(decodeDeckColumnsContent(snapshotWithUnknown))
+        assertEquals(listOf("a", "b"), decoded.columns.map { it.id })
+        assertEquals(listOf(1, 3), decoded.unknown.map { it.position })
+        assertEquals(Json.parseToJsonElement(unknownX), decoded.unknown[0].raw)
+        assertEquals(Json.parseToJsonElement(unknownY), decoded.unknown[1].raw)
+    }
+
+    @Test
+    fun decode_counts_position_in_order_not_array_index() {
+        // 配列の順と order の順が違う: 知らない行は order 順で 0 番目。
+        val content = """[{"id":"a","title":"a","kind":"FOLLOWING","renderer":"FEED","order":1},""" +
+            """{"id":"z","title":"z","kind":"FUTURE_KIND","renderer":"FEED"}]"""
+        val decoded = assertNotNull(decodeDeckColumnsContent(content))
+        assertEquals(listOf(0), decoded.unknown.map { it.position })
+    }
+
+    @Test
+    fun decode_broken_json_is_null() {
+        assertNull(decodeDeckColumnsContent("{not json"))
+    }
+
+    @Test
+    fun load_then_save_keeps_unknown_rows_at_same_position_and_content() {
+        val decoded = assertNotNull(decodeDeckColumnsContent(snapshotWithUnknown))
+        val saved = rows(encodeDeckColumnsContent(decoded.columns.sortedBy { it.order }, decoded.unknown))
+        assertEquals(listOf("a", "x", "b", "y"), saved.map { idOf(it) })
+        assertEquals(Json.parseToJsonElement(unknownX), saved[1])
+        assertEquals(Json.parseToJsonElement(unknownY), saved[3])
+        // 読み直しても同じ（知っている行は同じ中身・知らない行も同じ位置）。
+        val again = assertNotNull(decodeDeckColumnsContent(saved.toString()))
+        assertEquals(decoded.columns.map { it.id to it.title }, again.columns.map { it.id to it.title })
+        assertEquals(decoded.unknown, again.unknown)
+    }
+
+    @Test
+    fun unknown_rows_are_not_listed_as_removed_in_diff() {
+        val decoded = assertNotNull(decodeDeckColumnsContent(snapshotWithUnknown))
+        val local = listOf(col("a", order = 0), col("b", order = 1))
+        val diffs = diffDeckColumns(local, decoded.columns)
+        assertTrue(diffs.none { it is ColumnDiff.Removed })
+        assertEquals(emptyList(), diffs)
+    }
+
+    @Test
+    fun editing_known_rows_still_works_with_unknown_rows_kept() {
+        val decoded = assertNotNull(decodeDeckColumnsContent(snapshotWithUnknown))
+        // 手元: a を外し、b のタイトルを変え、c を足した。
+        val local = listOf(col("b", title = "新しい b", order = 0), col("c", order = 1))
+        val saved = rows(encodeDeckColumnsContent(local, decoded.unknown))
+        // x は位置 1、y は位置 3 だが手元が減ったので末尾へ。
+        assertEquals(listOf("b", "x", "c", "y"), saved.map { idOf(it) })
+        assertEquals("新しい b", saved[0].jsonObject.getValue("title").jsonPrimitive.content)
+        assertEquals(Json.parseToJsonElement(unknownX), saved[1])
+        assertEquals(Json.parseToJsonElement(unknownY), saved[3])
+        // 知っている行の order は書き出した位置で振り直す（0 は既定なので省かれる）。
+        assertNull(saved[0].jsonObject["order"])
+        assertEquals("2", saved[2].jsonObject.getValue("order").jsonPrimitive.content)
+    }
+
+    @Test
+    fun save_without_unknown_rows_keeps_previous_format() {
+        val local = listOf(col("a", order = 0), col("b", order = 1))
+        assertEquals(
+            """[{"id":"a","title":"a","kind":"FOLLOWING","renderer":"FEED"},""" +
+                """{"id":"b","title":"b","kind":"FOLLOWING","renderer":"FEED","order":1}]""",
+            encodeDeckColumnsContent(local, emptyList()),
+        )
     }
 }
