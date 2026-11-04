@@ -569,7 +569,7 @@ class EventRepository(
         val key = normalizeRelayUrl(url)
         scope.launch(relayDispatcher) {
             if (relays.containsKey(key)) return@launch
-            val client = RelayClient(key, scope)
+            val client = RelayClient(key, scope, holdReconnect = { inBackground })   // [#853]
             relays[key] = client
             client.start()
             scope.launch { client.messages.collect { onMessage(it, client) } }
@@ -600,6 +600,8 @@ class EventRepository(
 
     // [#358] バックグラウンド滞在で全リレーを一時停止するジョブ。フォアグラウンド復帰でキャンセル。
     private var bgPauseJob: Job? = null
+    // [#853] 裏にいるか（onBackground から onForeground まで）。裏で切れたリレーは前面に戻るまで再接続しない。
+    @kotlin.concurrent.Volatile private var inBackground = false
 
     /**
      * アプリがフォアグラウンド復帰したときに呼ぶ。バックオフ待機中のリレーを即再接続させる。
@@ -607,6 +609,7 @@ class EventRepository(
      * [#358] バックグラウンドで一時停止([onBackground])したリレーもここで再開する。
      */
     fun onForeground() {
+        inBackground = false   // [#853] wake より先に下ろす（裏で止めていた再接続を wake で 1 回だけ起こす）
         bgPauseJob?.cancel()
         bgPauseJob = null
         readerInstance?.onAppForeground()   // [#948]
@@ -629,6 +632,7 @@ class EventRepository(
      * 切らず、置きっぱなしだけを止める」ための猶予。
      */
     fun onBackground(delayMs: Long = BG_PAUSE_DELAY_MS) {
+        inBackground = true   // [#853] 切れなければ 5 分は繋いだまま。切れたら前面に戻るまで繋ぎ直さない
         readerInstance?.onAppBackground()   // [#948] 読み上げのエンジンは読み上げ側の猶予で片付ける
         bgPauseJob?.cancel()
         bgPauseJob = scope.launch {
