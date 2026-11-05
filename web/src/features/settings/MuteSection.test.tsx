@@ -7,9 +7,10 @@ import { publishEvent } from "../../nostr/publish";
 import { currentSigner, useSession } from "../../signer/session";
 import { createCipherSigner } from "../../test/cipherSigner";
 import { useToast } from "../../ui/toast";
+import { blockNoticeText, notifyDeveloper } from "../mute/developerNotice";
 import { EMPTY_MUTE_LIST, type MuteList, setMuteList } from "../mute/muteList";
 import { addMuteWord, MuteListError, saveMuteList } from "../mute/muteSync";
-import { MuteSection } from "./MuteSection";
+import { MuteSection, newlyBlocked } from "./MuteSection";
 
 // 取り直し・発行は muteSync.test.ts。ここは呼び出しと画面だけ
 vi.mock("../mute/muteSync", async (importOriginal) => ({
@@ -22,6 +23,12 @@ vi.mock("../mute/muteSync", async (importOriginal) => ({
 vi.mock("../../nostr/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../nostr/publish")>()),
   publishEvent: vi.fn(async () => ({})),
+}));
+
+// [#961] 開発者への知らせ（暗号化した DM）は developerNotice.test.ts。ここは呼ばれることだけ見る
+vi.mock("../mute/developerNotice", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mute/developerNotice")>()),
+  notifyDeveloper: vi.fn(async () => {}),
 }));
 
 // 署名者は既定で NIP-44 / NIP-04 とも使える（no-cipher のテストだけ差し替える）
@@ -51,6 +58,7 @@ beforeEach(() => {
   vi.mocked(addMuteWord).mockClear();
   vi.mocked(saveMuteList).mockClear();
   vi.mocked(publishEvent).mockClear();
+  vi.mocked(notifyDeveloper).mockClear();
 });
 
 afterEach(() => {
@@ -147,6 +155,34 @@ it("[#963] ユーザーの ✕ で外すと解除として保存に渡す（通�
   const [, draft] = vi.mocked(saveMuteList).mock.calls[0];
   expect(draft).toContainEqual({ category: "p", value: muted, isPublic: false, isPrivate: false });
   expect(publishEvent).not.toHaveBeenCalled();
+  expect(notifyDeveloper).not.toHaveBeenCalled();
+});
+
+it("[#961] ミュートからブロックに変えて保存したら、開発者に暗号化した DM で知らせる（通報の kind:1984 は出さない）", async () => {
+  const user = userEvent.setup();
+  setMuteList(LIST);
+  render(<MuteSection />);
+
+  await user.click(modeButton(muted, "ブロック"));
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(notifyDeveloper).toHaveBeenCalledTimes(1));
+  expect(notifyDeveloper).toHaveBeenCalledWith(blockNoticeText(muted));
+  expect(publishEvent).not.toHaveBeenCalled();
+});
+
+it("[#961] newlyBlocked: 保存で新たに公開の p になった人だけ（もとからブロックの人・外した人・ミュートは除く）", () => {
+  const before = [
+    { category: "p" as const, value: muted, isPublic: false, isPrivate: true },
+    { category: "p" as const, value: blocked, isPublic: true, isPrivate: false },
+  ];
+  expect(newlyBlocked(before, [{ ...before[0], isPublic: true, isPrivate: false }, before[1]])).toEqual([
+    muted,
+  ]);
+  expect(newlyBlocked(before, before)).toEqual([]);
+  expect(newlyBlocked(before, [{ ...before[1], isPublic: false, isPrivate: false }])).toEqual([]);
+  expect(newlyBlocked([], [{ category: "word", value: "spam", isPublic: true, isPrivate: false }])).toEqual(
+    [],
+  );
 });
 
 it("[#963] 選んでいる方（ミュート）をもう一度押すと解除になり、ブロックを押せばブロックに切り替わる", async () => {

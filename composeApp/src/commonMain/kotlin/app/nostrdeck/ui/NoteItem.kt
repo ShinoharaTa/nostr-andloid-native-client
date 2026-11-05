@@ -677,7 +677,7 @@ fun NoteItem(
           confirmLabel = stringResource(Res.string.block_confirm), destructive = true,
           onConfirm = {
               confirmBlock = false
-              repo?.blockUser(note.event.pubkey)
+              repo?.blockUser(note.event.pubkey, note.event)   // [#961] 開発者への知らせに押した投稿も添える
           },
           onDismiss = { confirmBlock = false },
       )

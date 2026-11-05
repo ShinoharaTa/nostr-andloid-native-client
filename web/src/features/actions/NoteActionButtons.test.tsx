@@ -617,7 +617,8 @@ describe("⋯ メニュー", () => {
     const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
     expect(dialog).toHaveTextContent("公開のミュートリスト（NIP-51）");
     await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
-    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey);
+    // [#961] 投稿から押したら、開発者への知らせに載せる投稿 id も渡す
+    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event.id);
     expect(muteUser).not.toHaveBeenCalled();
     await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
 

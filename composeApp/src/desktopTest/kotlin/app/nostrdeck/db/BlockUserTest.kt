@@ -2,6 +2,15 @@ package app.nostrdeck.db
 
 import app.nostrdeck.crypto.toHex
 import app.nostrdeck.data.EventRepository
+import app.nostrdeck.data.DeveloperNotice
+import app.nostrdeck.signer.Signer
+import app.nostrdeck.signer.SignerCap
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import app.nostrdeck.model.MuteCategory
 import app.nostrdeck.model.MuteList
 import app.nostrdeck.signer.InMemoryKeyVault
@@ -126,6 +135,67 @@ class BlockUserTest {
             withTimeout(2_000) {
                 while (db.nostrQueries.getSetting(EventRepository.DEVELOPER_OUTBOX_KEY).executeAsOneOrNull() != null) delay(50)
             }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** [#961] 送信待ちに積まれた、開発者あての gift wrap（kind:1059）。届け先のリレーと一緒に。 */
+    private fun developerWraps(db: app.nostrdeck.db.NostrDb): List<Pair<JsonObject, List<String>>> =
+        db.nostrQueries.pendingPublishes().executeAsList().mapNotNull { row ->
+            val e = Json.parseToJsonElement(row.payload).jsonArray[1].jsonObject
+            val toDeveloper = e["tags"]!!.jsonArray.any { t ->
+                t.jsonArray.map { it.jsonPrimitive.content } == listOf("p", DeveloperNotice.PUBKEY)
+            }
+            if (e["kind"]!!.jsonPrimitive.int == 1059 && toDeveloper)
+                e to Json.decodeFromString<List<String>>(row.relays ?: "[]") else null
+        }
+
+    /**
+     * [#961] ブロックと ⋯ の通報は、開発者あての暗号化した DM（gift wrap）を送信待ちに積む（開発者の DM リレーと relay-jp へ）。
+     * 自分宛ての控えは作らない。公開の kind:1984 はブロックでは出さない（[blocking_sends_no_report_but_reporting_does]）。
+     */
+    @Test
+    fun blocks_and_reports_notify_the_developer_with_an_encrypted_dm(): Unit = runBlocking {
+        val dbFile = File.createTempFile("developer-notice", ".db").apply { deleteOnExit() }
+        val db = createDatabase(DriverFactory(dbFile))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(dbFile, scope, db)
+            repo.blockUser(target)
+            // 開発者の DM リレーを引く間（オフラインなので最大 2.5 秒）待ってから積まれる
+            val afterBlock = withTimeout(10_000) { while (developerWraps(db).isEmpty()) delay(100); developerWraps(db) }
+            assertEquals(1, afterBlock.size)
+            assertTrue(DeveloperNotice.FALLBACK_RELAY in afterBlock.single().second)
+
+            repo.reportUser(target, "spam")
+            withTimeout(10_000) { while (developerWraps(db).size < 2) delay(100) }
+            assertEquals(2, developerWraps(db).size)
+            // 送信待ちにあるのは、公開の通報 1 件と開発者あての 2 件だけ（自分宛ての控えは無い）
+            assertEquals(3, db.nostrQueries.pendingPublishes().executeAsList().size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** [#961] NIP-44 を使えない署名者では、開発者への知らせを送らない（諦める）。ブロック自体はする。 */
+    @Test
+    fun signers_without_nip44_do_not_notify_the_developer(): Unit = runBlocking {
+        val dbFile = File.createTempFile("developer-notice-no-nip44", ".db").apply { deleteOnExit() }
+        val db = createDatabase(DriverFactory(dbFile))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val local = LocalSigner(InMemoryKeyVault().apply { importPrivateKey(me) })
+            SignerProvider.use(object : Signer by local {
+                override val capabilities: Set<SignerCap> = setOf(SignerCap.SIGN)
+            })
+            val repo = EventRepository(db, scope, emptyList(), offline = true)
+            repo.start()
+            withTimeout(5_000) { repo.loggedInPubkey().first { it != null } }
+            repo.blockUser(target)
+            withTimeout(5_000) { repo.mutedUsersFlow().first { target in it } }   // ブロック自体はする
+            delay(3_500)   // 知らせを作るなら積まれている時間（DM リレーを引く 2.5 秒 ＋ 余裕）
+            assertTrue(developerWraps(db).isEmpty())
         } finally {
             scope.cancel()
         }

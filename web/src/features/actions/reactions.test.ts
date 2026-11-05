@@ -8,6 +8,7 @@ import { type EventDraft, PublishError, publishEvent } from "../../nostr/publish
 import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { createTestSigner } from "../../test/fakeSigner";
+import { notifyDeveloper, reportNoticeText } from "../mute/developerNotice";
 import { loadRecentEmojis, setDefaultReaction, useDefaultReaction } from "./reactionPrefs";
 import {
   ensureMyReactionsSubscribed,
@@ -24,6 +25,12 @@ import {
 } from "./reactions";
 
 // 署名・送信はしない（publishEvent だけ差し替えて draft を見る）
+// [#961] 開発者への知らせ（暗号化した DM）は developerNotice.test.ts。ここは呼ばれることだけ見る
+vi.mock("../mute/developerNotice", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mute/developerNotice")>()),
+  notifyDeveloper: vi.fn(async () => {}),
+}));
+
 vi.mock("../../nostr/publish", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../nostr/publish")>();
   return { ...actual, publishEvent: vi.fn() };
@@ -272,6 +279,17 @@ it("reportNote は kind:1984 で e に理由・p に作者", async () => {
       ],
     },
   ]);
+});
+
+it("[#961] 通報したら開発者にも暗号化した DM で知らせる（投稿の通報は投稿と作者、ユーザーの通報は人だけ）", async () => {
+  vi.mocked(notifyDeveloper).mockClear();
+  const event = note();
+  await reportNote(event, "spam");
+  expect(notifyDeveloper).toHaveBeenLastCalledWith(reportNoticeText("spam", event.pubkey, event.id));
+  const target = getPublicKey(generateSecretKey());
+  await reportUser(target, "impersonation");
+  expect(notifyDeveloper).toHaveBeenLastCalledWith(reportNoticeText("impersonation", target));
+  expect(notifyDeveloper).toHaveBeenCalledTimes(2);
 });
 
 it("reportUser（プロフィールの ⋯）は kind:1984 で p だけ、e タグは付けない", async () => {

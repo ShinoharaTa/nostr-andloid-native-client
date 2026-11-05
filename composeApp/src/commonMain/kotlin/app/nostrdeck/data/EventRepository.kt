@@ -114,6 +114,7 @@ import app.nostrdeck.nostr.RelayMessage
 import app.nostrdeck.nostr.RelayProtocol
 import app.nostrdeck.nostr.RelayTraffic
 import app.nostrdeck.signer.Nip46Manager
+import app.nostrdeck.signer.SignerCap
 import app.nostrdeck.signer.SignerProvider
 import app.nostrdeck.wallet.NwcManager
 import kotlinx.coroutines.CompletableDeferred
@@ -2810,11 +2811,58 @@ class EventRepository(
             listOf("p", target.pubkey),
         )
         publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = tags))
+        notifyDeveloper(DeveloperNotice.report(target.pubkey, target.id, type, reason))   // [#961]
     }
 
     /** [#95] NIP-56 ユーザー通報。対象イベントの無い通報は p タグにレポートタイプを付す。 */
     suspend fun reportUser(pubkey: String, type: String, reason: String = "") {
         publishSigned(UnsignedEvent(kind = 1984, content = reason, tags = listOf(listOf("p", pubkey, type))))
+        notifyDeveloper(DeveloperNotice.report(pubkey, null, type, reason))   // [#961]
+    }
+
+    /**
+     * [#961] 開発者へ、暗号化した DM（NIP-17）でブロック・通報を知らせる（[DeveloperNotice]）。相手からは見えない。
+     *  - 送り先は開発者の DM リレー（kind:10050）と [DeveloperNotice.FALLBACK_RELAY]。自分宛ての控えは作らない
+     *    （自分の DM の一覧に出さない）
+     *  - NIP-44 を使えない署名者では送らない（諦める。2026-11-05 決定）。開発者自身の操作でも送らない
+     *  - 送信待ち（publish_queue）に積むので、受理を確認できなければ未送信の再送（[retryUnsent]。回数の上限つき）に任せる
+     *  - 呼び出し側を待たせない（隠す・トーストは先に済ませる）。失敗は握る
+     */
+    private fun notifyDeveloper(text: String) {
+        scope.launch {
+            try {
+                val signer = SignerProvider.current()
+                if (SignerCap.NIP44 !in signer.capabilities) return@launch
+                val me = myPubkey ?: signer.publicKeyHex()
+                if (me == DeveloperNotice.PUBKEY) return@launch
+                val now = currentUnixTime()
+                val tags = listOf(listOf("p", DeveloperNotice.PUBKEY))
+                val rumorJson = buildJsonObject {
+                    put("id", Nip01.eventId(me, now, 14, tags, text)); put("pubkey", me); put("created_at", now); put("kind", 14)
+                    putJsonArray("tags") { tags.forEach { t -> add(buildJsonArray { t.forEach { add(it) } }) } }
+                    put("content", text)
+                }.toString()
+                // NIP-17: seal / wrap の created_at は直近 2 日内でずらす（DM の送信と同じ）
+                fun rnd() = now - Random.nextLong(0, 2 * 24 * 3600)
+                val wrap = Nip17.wrap(signer, rumorJson, DeveloperNotice.PUBKEY, rnd(), rnd())
+                val relays = (fetchDmRelaysFor(DeveloperNotice.PUBKEY) + DeveloperNotice.FALLBACK_RELAY)
+                    .map { normalizeRelayUrl(it) }.distinct()
+                val payload = RelayProtocol.event(wrap)
+                q.enqueuePublishTo(wrap.id, payload, now, 0, json.encodeToString(relays), null)
+                registerAck(wrap.id)
+                publishToRelays(payload, relays)
+                confirmPublish(wrap.id, notify = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                println("Nostrism notifyDeveloper failed: $e")
+            }
+        }
+    }
+
+    /** [#961] 設定の「ミュート・ブロック」でブロックに変えた人を、開発者に知らせる（⋯ のブロックと同じ）。 */
+    fun notifyDeveloperOfBlocks(pubkeys: Collection<String>) {
+        pubkeys.forEach { notifyDeveloper(DeveloperNotice.block(it, null)) }
     }
 
     /**
@@ -4375,12 +4423,14 @@ class EventRepository(
     /**
      * [#951][#963] ブロック = **公開**のミュート（kind:10000 の公開 `p`。[muteUserPublic]）。押したらすぐフィードから消す（[pendingBlocks]）。
      * ブロックしていることは見えてよい（意思表示になる）。見えないように隠したいだけならミュート（[muteUserPrivate]）。
-     * [#961] 通報（NIP-56）は送らない（Damus / Amethyst / Primal / Nostur と同じ。通報は ⋯ の「通報」から別に送る）。
+     * [#961] 公開の通報（NIP-56）は送らない（Damus / Amethyst / Primal / Nostur と同じ。通報は ⋯ の「通報」から別に送る）。
+     * 開発者には暗号化した DM で知らせる（[notifyDeveloper]。App Store 1.2）。[note] は投稿の ⋯ から押したときの、その投稿。
      * 押した投稿の行はすぐ消え、その行のコルーチンも止まるので、処理はこのスコープで続け、結果は [blockResultFlow] で知らせる。
      */
-    fun blockUser(pubkey: String) {
+    fun blockUser(pubkey: String, note: NostrEvent? = null) {
         updatePendingBlocks { it + pubkey }
         scope.launch { blockResults.emit(if (saveBlock(pubkey)) BlockResult.SAVED else BlockResult.PENDING) }
+        notifyDeveloper(DeveloperNotice.block(pubkey, note?.id))
     }
 
     /**
@@ -6982,7 +7032,9 @@ class EventRepository(
 
         /** [#951] 同意した利用規約の版の KV キー。規約を変えて同意を取り直すときは [TERMS_VERSION] を上げる。 */
         const val TERMS_ACCEPTED_KEY = "terms_accepted_version"
-        const val TERMS_VERSION = "2026-10-31"   // [#963] ブロックが公開になった版。rc3 までの同意は取り直す
+        // [#963] ブロックが公開になった版（2026-10-31）。[#961] ブロックで公開の通報を出さず、通報とブロックは
+        // 開発者に暗号化した DM で届く版（2026-11-05）。前の版の同意は取り直す。
+        const val TERMS_VERSION = "2026-11-05"
 
         /** [#13] 投稿の下書き（未送信テキスト）の KV キー。 */
         const val COMPOSE_DRAFT = "compose_draft"

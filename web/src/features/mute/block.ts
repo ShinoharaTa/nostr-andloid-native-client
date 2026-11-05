@@ -1,4 +1,5 @@
 import { useSession } from "../../signer/session";
+import { blockNoticeText, notifyDeveloper } from "./developerNotice";
 import { setPendingBlocks, useMute } from "./muteList";
 import { removeMuteEntry, saveBlockedUser } from "./muteSync";
 
@@ -6,6 +7,7 @@ import { removeMuteEntry, saveBlockedUser } from "./muteSync";
  * [#957 / #963] ブロック = ミュートリストの公開の p（saveBlockedUser）。ミュート（非公開の p）は muteSync.ts の muteUser。
  * ネイティブ EventRepository.kt の blockUser / saveBlock / pendingBlocks（#951・#963）の Web 版。
  * [#961] ブロックでは通報（NIP-56）を送らない（Damus / Amethyst / Primal / Nostur と同じ。通報は ⋯ の「通報」から別に送る）。
+ * 開発者には暗号化した DM で知らせる（App Store 1.2。developerNotice.ts）。
  */
 
 /** saved = ミュートリストに保存できた（すでに入っていた場合も）。pending = 隠したが、まだ保存できていない（あとでやり直す） */
@@ -97,9 +99,11 @@ export async function retryPendingBlocks(me: string): Promise<void> {
 /**
  * ユーザーをブロックする。押したらすぐ隠し（保存待ち）、ミュートリストに公開の p だけで保存する
  * （ミュート中なら非公開の p を外してブロックに上げる）。throw しない。
+ * [#961] 開発者には暗号化した DM で知らせる（developerNotice.ts。post = 投稿から押したときの投稿 id。結果は待たない）
  */
-export function blockUser(me: string, pubkey: string): Promise<BlockResult> {
+export function blockUser(me: string, pubkey: string, post?: string | null): Promise<BlockResult> {
   updatePendingBlocks(me, (pending) => new Set(pending).add(pubkey));
+  void notifyDeveloper(blockNoticeText(pubkey, post));
   return saveBlock(me, pubkey).then((saved) => (saved ? "saved" : "pending"));
 }
 

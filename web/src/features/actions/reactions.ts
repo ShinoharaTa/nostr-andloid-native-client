@@ -8,6 +8,7 @@ import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { type RelayHintLookup, storeRelayHints } from "../compose/relayHints";
 import { fillRelayHints } from "../compose/tags";
+import { notifyDeveloper, reportNoticeText } from "../mute/developerNotice";
 import { normalizeReaction } from "../thread/engagement";
 import { recordUsedEmoji, useDefaultReaction } from "./reactionPrefs";
 
@@ -145,7 +146,8 @@ export async function requestDelete(event: NostrEvent, reason = ""): Promise<boo
 
 /**
  * 通報（NIP-56 kind:1984）。type = illegal / nudity / spam / impersonation / profanity / other
- * [#961] 送り先はほかの発行と同じ（defaultPublishTargets）。開発者のリレーへ特別には送らない
+ * [#961] 送り先はほかの発行と同じ（defaultPublishTargets）。開発者のリレーへ特別には送らない。
+ * 開発者には暗号化した DM で知らせる（developerNotice.ts。結果は待たない）
  */
 export async function reportNote(event: NostrEvent, type: string): Promise<void> {
   await publishEvent({
@@ -156,15 +158,17 @@ export async function reportNote(event: NostrEvent, type: string): Promise<void>
       ["p", event.pubkey],
     ],
   });
+  void notifyDeveloper(reportNoticeText(type, event.pubkey, event.id));
 }
 
-/** ユーザーの通報（NIP-56 kind:1984。ネイティブ reportUser）。e タグは付けない（投稿ではなく人への通報） */
+/** ユーザーの通報（NIP-56 kind:1984。ネイティブ reportUser）。e タグは付けない（投稿ではなく人への通報）。開発者にも知らせる */
 export async function reportUser(pubkey: string, type: string): Promise<void> {
   await publishEvent({
     kind: 1984,
     content: "",
     tags: [["p", pubkey, type]],
   });
+  void notifyDeveloper(reportNoticeText(type, pubkey));
 }
 
 // ---- 押下状態（ストアにある自分の kind:7 / kind:6 から。ベストエフォート） ----
