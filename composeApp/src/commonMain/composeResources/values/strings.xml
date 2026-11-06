@@ -148,7 +148,8 @@
     <string name="ui_scale_medium">Large</string>
     <string name="ui_scale_large">Largest</string>
     <string name="text_scale_title">Font size</string>
-    <string name="text_scale_desc">Make only the text larger.</string>
+    <string name="text_scale_desc">Make only the text larger or smaller.</string>
+    <string name="text_scale_hacker">Super hacker</string>
     <string name="text_scale_small">Small</string>
     <string name="text_scale_medium">Medium</string>
     <string name="text_scale_large">Large</string>

@@ -147,20 +147,24 @@
   --w-body:   400;  /* 本文・メタ（時刻/ハンドル/npub/ID） */
 
   /* --- Type scale (Option C: hybrid / 7段, Compose DeckType と 1対1) --- */
-  /* 文字サイズ設定の倍率（Compose TextScale.factor = 1 / 1.15 / 1.35。sp が fontScale に追従するのと同じく
+  /* 文字サイズ設定の倍率（Compose TextScale.factor = 0.75 / 1 / 1.15 / 1.35。sp が fontScale に追従するのと同じく
      --type-* / --line-* に掛ける）。Web は <html> の style で差し替える（web/src/features/theme）。
      [#464] 表示サイズ（--ui-scale）も掛け合わせる（ネイティブは density 経由で sp にも効くため）。
-     [#660] --web-base（Web の density 補正）も掛け、標準（s）で本文 ≈16px・タイトル ≈17px・caption ≈14px。 */
+     [#660] --web-base（Web の density 補正）も掛け、標準（s）で本文 ≈16px・タイトル ≈17px・caption ≈14px。
+     [#985] 1 行の中の文字を 14 / 12 / 10 の 3 段にまとめた（Compose DeckType と同じ。#984）。名前（--type-sub）は
+     本文と同じ 14、時刻・ラベル（--type-label）は補足（--type-caption）と同じ 12。役割の名前は残している。
+     [#985] 文字の最小は 8px（Compose DeckType.MIN_TEXT_SP と同じ）。スーパーハッカー（×0.75）などで縮めても、
+     倍率を掛けた結果が 8px を下回る役割だけ 8px に持ち上げる（max(8px, ...)）。 */
   --text-scale: 1;
-  --type-display: calc(20px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* ダイアログ見出し */
-  --type-title:   calc(15px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 画面/カラム名 */
-  --type-body:    calc(14px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 本文 */
-  --type-sub:     calc(13px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 著者名/小見出し */
-  --type-caption: calc(12px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 補足 */
-  --type-label:   calc(11px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 時刻/ハンドル/ラベル */
-  --type-micro:   calc(10px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* バッジ/最小メタ */
-  --type-emoji:   calc(18px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* リアクション絵文字グリフ */
-  --type-emoji-lg: calc(22px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 拡大絵文字（Compose DeckType.EmojiLg と 1 対 1） */
+  --type-display: max(8px, calc(20px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* ダイアログ見出し */
+  --type-title:   max(8px, calc(15px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 画面/カラム名 */
+  --type-body:    max(8px, calc(14px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 本文 */
+  --type-sub:     max(8px, calc(14px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 著者名/小見出し（[#985] 13 → 14。本文と同じ大きさ） */
+  --type-caption: max(8px, calc(12px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 補足 */
+  --type-label:   max(8px, calc(12px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 時刻/ハンドル/ラベル（[#985] 11 → 12。補足と同じ大きさ） */
+  --type-micro:   max(8px, calc(10px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* バッジ/最小メタ */
+  --type-emoji:   max(8px, calc(18px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* リアクション絵文字グリフ */
+  --type-emoji-lg: max(8px, calc(22px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 拡大絵文字（Compose DeckType.EmojiLg と 1 対 1） */
   --line-title:   calc(22px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 2段テキスト(タイトル+説明)のタイトル行高 */
   --line-desc:    calc(18px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 同・説明行高（合計40px, スペーサーなし） */
   --line-body: calc(20px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 本文の行高（Compose CollapsibleText の lineHeight 20sp と 1 対 1） */
