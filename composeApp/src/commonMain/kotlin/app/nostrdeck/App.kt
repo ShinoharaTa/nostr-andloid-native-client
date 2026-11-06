@@ -42,6 +42,7 @@ import app.nostrdeck.model.NyanMode
 import app.nostrdeck.model.TextScale
 import app.nostrdeck.model.ThemeMode
 import app.nostrdeck.model.UiScale
+import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 import app.nostrdeck.theme.DeckDensity
 import app.nostrdeck.i18n.Dialect
@@ -279,6 +280,8 @@ fun App(
             density.density * uiScale.factor,
             density.fontScale * textScale.factor,
         )
+        // [#984] 文字の最小（8）を判定する倍率。端末の設定 × 文字サイズの倍率（スーパーハッカーなら ×0.75）。
+        DeckType.apply(scaledDensity.fontScale)
         CompositionLocalProvider(
             LocalRepository provides repository,
             LocalProfileNames provides names,

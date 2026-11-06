@@ -6,8 +6,12 @@ import kotlin.math.pow
  * [#appearance] 文字サイズ（設定 > 表示）。「小」が従来のサイズ。
  * 倍率は fontScale に乗算され、sp 指定の全テキストへ波及する（dp 寸法・レイアウトは変えない）。
  * 老眼などで文字だけを大きくしたい人向け。文字だけのスケーリングはここに集約する。
+ *
+ * [#984] スーパーハッカー（[HACKER]）は「小」より小さい段。文字だけを ×0.75 に縮める（アイコン・余白は変えない）。
+ * 縮めても画面上 8 より小さくはしない（DeckType.MIN_TEXT_SP）。並び（entries）は小さい順で、設定の選択肢もこの順に出す。
  */
 enum class TextScale(val id: String, val factor: Float) {
+    HACKER("xs", 0.75f),
     SMALL("s", 1.0f),
     MEDIUM("m", 1.15f),
     LARGE("l", 1.35f);
