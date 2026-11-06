@@ -1266,6 +1266,7 @@ private fun uiScaleLabel(s: app.nostrdeck.model.UiScale): String = when (s) {
 
 @Composable
 private fun textScaleLabel(s: app.nostrdeck.model.TextScale): String = when (s) {
+    app.nostrdeck.model.TextScale.HACKER -> stringResource(Res.string.text_scale_hacker)   // [#984]
     app.nostrdeck.model.TextScale.SMALL -> stringResource(Res.string.text_scale_small)
     app.nostrdeck.model.TextScale.MEDIUM -> stringResource(Res.string.text_scale_medium)
     app.nostrdeck.model.TextScale.LARGE -> stringResource(Res.string.text_scale_large)
@@ -1306,6 +1307,7 @@ private fun ReactionChoice(icon: ImageVector, label: String, selected: Boolean, 
  * [M14] 表示（リンク埋め込み）。YouTube/Spotify/OGP カードの表示可否と、
  * OGP 画像の読み込み可否を切り替える。設定は app_setting(KV) に即時保存。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AppearanceSettings() {
     val repo = LocalRepository.current
@@ -1433,7 +1435,8 @@ private fun AppearanceSettings() {
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
-    // [#appearance] 文字サイズ（小=従来 / 中 / 大）。表示サイズに加えて文字だけをさらに拡大。
+    // [#appearance] 文字サイズ（小=従来 / 中 / 大）。表示サイズに加えて文字だけを拡大・縮小。
+    // [#984] 一番左にスーパーハッカー（×0.75）。選択肢が 4 つになり、英語や大きい表示では 1 行に収まらないので折り返す。
     SectionCaption(stringResource(Res.string.text_scale_title))
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(
@@ -1441,7 +1444,10 @@ private fun AppearanceSettings() {
         color = DeckColors.Text3, fontSize = DeckType.Label,
     )
     Spacer(Modifier.size(DeckSpace.Md))
-    Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+        verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm),
+    ) {
         app.nostrdeck.model.TextScale.entries.forEach { s ->
             ChoiceChip(textScaleLabel(s), selected = textScale == s) { repo.setTextScale(s) }
         }
