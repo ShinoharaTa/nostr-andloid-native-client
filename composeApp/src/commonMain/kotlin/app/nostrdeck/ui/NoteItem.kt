@@ -481,7 +481,7 @@ fun NoteItem(
                             )
                         } else {
                             // [#94] ミュート済みなら「ミュートを解除」に切替。ミュートは確認してから実行する。
-                            // [#963] ミュート（非公開・通報なし）とブロック（公開・通報あり）の両方を出す。ブロック中なら解除だけ。
+                            // [#963] ミュート（非公開）とブロック（公開）の両方を出す。ブロック中なら解除だけ。
                             val mutedUsers by (repo?.mutedUsersFlow()?.collectAsState(emptySet())
                                 ?: remember { mutableStateOf(emptySet<String>()) })
                             val blockedUsers by (repo?.blockedUsersFlow()?.collectAsState(emptySet())
@@ -668,7 +668,7 @@ fun NoteItem(
       )
   }
 
-  // [#951][#963] ブロック: その人を公開でミュートし、この投稿を通報する（[EventRepository.blockUser]）。
+  // [#951][#963] ブロック: その人を公開でミュートする（[EventRepository.blockUser]。[#961] 通報は送らない）。
   // この行はすぐ消えるので、結果のトーストは App が [EventRepository.blockResultFlow] を受けて出す。
   if (confirmBlock) {
       DeckConfirmDialog(
@@ -677,7 +677,7 @@ fun NoteItem(
           confirmLabel = stringResource(Res.string.block_confirm), destructive = true,
           onConfirm = {
               confirmBlock = false
-              repo?.blockUser(note.event.pubkey, note.event)
+              repo?.blockUser(note.event.pubkey, note.event)   // [#961] 開発者への知らせに押した投稿も添える
           },
           onDismiss = { confirmBlock = false },
       )

@@ -422,8 +422,8 @@
     <string name="terms_title">Terms of Use</string>
     <string name="terms_lead">Before using Nostrism, please read and agree to the Terms of Use.</string>
     <string name="terms_point_conduct">There is no tolerance for objectionable content or abusive behavior, including illegal content, sexual content involving minors, harassment, threats, hate speech, spam and impersonation.</string>
-    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. You can block abusive users from the ⋯ menu: their posts, notifications and direct messages are hidden right away, and a report is sent to your relays and the developer. Blocks are saved publicly in your mute list, so they and others can see it (use Mute to hide someone without them knowing).</string>
-    <string name="terms_point_response">The developer reviews reports and acts on them where it can, for example by removing the content from the developer’s relay.</string>
+    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. You can block abusive users from the ⋯ menu: their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list, so they and others can see it (use Mute to hide someone without them knowing). Reports and blocks reach the developer in an encrypted message.</string>
+    <string name="terms_point_response">The developer reviews the reports and blocks it receives and acts on them where it can, for example by removing the content from the developer’s relay.</string>
     <string name="terms_point_nostr">Nostr is a decentralized network. Posts sent to relays are public and may not be fully removable from the network.</string>
     <string name="terms_read_full">Read the full Terms of Use</string>
     <string name="terms_agree">Agree and continue</string>
@@ -591,11 +591,11 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="mute_confirm">Mute</string>
     <string name="muted_toast">Muted</string>
     <string name="block_pending_toast">Blocked (saving to your mute list will be retried once the relays are reachable)</string>
-    <!-- [#963] Block (public p + report), separate from mute (private) -->
+    <!-- [#963] Block (public p), separate from mute (private) -->
     <string name="note_block_user">Block this user</string>
     <string name="note_unblock_user">Unblock</string>
     <string name="block_confirm_title">Block this user?</string>
-    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can undo this anytime from your icon menu → Mute &amp; block.</string>
+    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. The developer is also notified in an encrypted message (they can’t see it). You can undo this anytime from your icon menu → Mute &amp; block.</string>
     <string name="block_confirm">Block</string>
     <string name="blocked_toast">Blocked</string>
     <string name="blocked_badge">Blocked</string>
@@ -604,7 +604,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_unblocked_toast">Unblocked</string>
     <string name="mute_mode_mute">Mute</string>
     <string name="mute_mode_block">Block</string>
-    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56). Tap the selected one again to remove.</string>
+    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to Block notifies the developer in an encrypted message. Tap the selected one again to remove.</string>
     <string name="cw_sensitive">Sensitive content</string>
     <string name="report_title">Report this post</string>
     <string name="report_illegal">Illegal / child safety</string>

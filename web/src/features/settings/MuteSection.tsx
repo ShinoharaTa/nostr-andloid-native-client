@@ -5,7 +5,7 @@ import { displayName, useProfile } from "../../nostr/loaders";
 import { currentSigner, useSession } from "../../signer/session";
 import { Icon } from "../../ui/icons";
 import { showToast } from "../../ui/toast";
-import { reportBlock } from "../mute/block";
+import { blockNoticeText, notifyDeveloper } from "../mute/developerNotice";
 import { type MuteCategory, type MuteEntry, useMute } from "../mute/muteList";
 import { addMuteWord, MuteListError, saveMuteList, signerCanPrivateMute } from "../mute/muteSync";
 import styles from "./SettingsSections.module.css";
@@ -63,8 +63,8 @@ export function newlyBlocked(before: readonly MuteEntry[], after: readonly MuteE
  * （muteSync.ts の saveMuteList。#478: 取り直し・応答なしなら発行しない・basedOnId 照合・非公開部分の再暗号化）。
  * 署名者が暗号（NIP-44 / NIP-04）を使えなければ非公開のチェックを無効にし、案内を出す（公開に黙って倒さない）。
  * [#963] ユーザーの行は「ミュート（非公開の p）| ブロック（公開の p）」の 2 択と外す（✕）。読み込んだ項目が両方に
- * 入っていればブロックとして出す。暗号を使えなければミュートを選べない。保存できたら、新たにブロックにした人へ
- * 通報（NIP-56。block.ts の reportBlock）を送る。
+ * 入っていればブロックとして出す。暗号を使えなければミュートを選べない。[#961] ブロックにしても通報は送らない。
+ * 保存できたら、新たにブロックにした人を開発者に暗号化した DM で知らせる（developerNotice.ts。⋯ のブロックと同じ）。
  * ⋯ メニューからの 1 件のミュート・ブロック / 解除（muteUser / blockUser など）はここを介さず、その場で発行する。
  */
 export function MuteSection() {
@@ -102,9 +102,7 @@ export function MuteSection() {
       setDraft(null);
       // ネイティブ mute_saved
       showToast(t("mute_saved"));
-      for (const pubkey of blocked) {
-        reportBlock(pubkey).catch((e) => console.warn("[mute] Failed to report the block", e));
-      }
+      for (const pubkey of blocked) void notifyDeveloper(blockNoticeText(pubkey));
     } catch (e) {
       // 最新版と食い違っていたら下書きを捨てて最新の内容を出し直す
       if (e instanceof MuteListError && e.reason === "stale") setDraft(null);
