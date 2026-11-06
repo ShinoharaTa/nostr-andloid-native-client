@@ -264,7 +264,7 @@ it("resolveTheme: matchMedia が無ければ system はダーク", () => {
   expect(resolveTheme("system")).toBe("light");
 });
 
-it("文字サイズは --text-scale に TextScale.factor（1 / 1.15 / 1.35）を入れて保存する", () => {
+it("文字サイズは --text-scale に TextScale.factor（0.75 / 1 / 1.15 / 1.35）を入れて保存する", () => {
   dispose = initTheme();
 
   setTextScale("m");
@@ -276,6 +276,21 @@ it("文字サイズは --text-scale に TextScale.factor（1 / 1.15 / 1.35）を
 
   setTextScale("s");
   expect(html().style.getPropertyValue("--text-scale")).toBe("1");
+
+  // [#985] スーパーハッカー
+  setTextScale("xs");
+  expect(html().style.getPropertyValue("--text-scale")).toBe("0.75");
+  expect(saved()).toEqual({ ...SAVED_DEFAULTS, textScale: "xs" });
+});
+
+it("[#985] 保存値の textScale が xs（スーパーハッカー）ならそのまま読み込み、不正値は既定（小）", async () => {
+  expect(
+    (await initialWith(JSON.stringify({ textScale: "xs", version: CURRENT_THEME_VERSION }))).textScale,
+  ).toBe("xs");
+  localStorage.clear();
+  expect(
+    (await initialWith(JSON.stringify({ textScale: "xxs", version: CURRENT_THEME_VERSION }))).textScale,
+  ).toBe("s");
 });
 
 it("太字は data-bold を付け外しして保存する", () => {

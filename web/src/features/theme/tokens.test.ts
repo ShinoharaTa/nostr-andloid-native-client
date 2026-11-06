@@ -100,13 +100,13 @@ it("designs/tokens.css のライト配色は Color.kt LightPalette と一致す�
 /**
  * [#660] --web-base（Web の density 補正）の計算値。calc(<基準px>px * var(--web-base) * ...) の
  * 形を素朴に評価し、標準表示（textScale=uiScale=1）で本文 ≈16px・カラム M/S/L ≈400/320/520px に
- * なることを確認する。
+ * なることを確認する。[#985] --type-* の max(<最小px>px, calc(...)) も評価する。
  */
 function evalCalc(expr: string, vars: Record<string, number>): number {
-  const inner = expr
-    .trim()
-    .replace(/^calc\(/, "")
-    .replace(/\)$/, "");
+  const trimmed = expr.trim();
+  const max = trimmed.match(/^max\((-?\d+(?:\.\d+)?)px,\s*(calc\(.*\))\)$/);
+  if (max) return Math.max(Number(max[1]), evalCalc(max[2], vars));
+  const inner = trimmed.replace(/^calc\(/, "").replace(/\)$/, "");
   return inner.split("*").reduce((acc, part) => {
     const token = part.trim();
     const px = token.match(/^(-?\d+(?:\.\d+)?)px$/);
@@ -149,6 +149,36 @@ it("[#660] 標準表示（s）でカラム幅 M/S/L ≈400/320/520px", () => {
     const px = evalCalc(readVar(darkBlock, name), STANDARD_VARS);
     expect(Math.round(px), `--${name}`).toBe(expectedPx);
   }
+});
+
+/** [#985] 文字の段は Compose DeckType と同じ（名前 14・時刻/ラベル 12 を含む）。標準表示（s）で ×1.15 */
+it("[#985] 文字の段は DeckType と同じ基準値（本文・名前 14 / 補足・ラベル 12 / バッジ 10）", () => {
+  const cases: [name: string, basePx: number][] = [
+    ["type-display", 20],
+    ["type-title", 15],
+    ["type-body", 14],
+    ["type-sub", 14],
+    ["type-caption", 12],
+    ["type-label", 12],
+    ["type-micro", 10],
+  ];
+  for (const [name, base] of cases) {
+    expect(evalCalc(readVar(darkBlock, name), STANDARD_VARS), `--${name}`).toBeCloseTo(base * 1.15);
+  }
+});
+
+/** [#985] スーパーハッカー（×0.75）。全 --type-* は max(8px, ...) で、縮めても 8px を下回らない */
+it("[#985] --type-* は max(8px, ...) で、スーパーハッカー（×0.75）でも 8px を下回らない", () => {
+  const typeNames = [...darkBlock.matchAll(/--(type-[\w-]+):/g)].map((m) => m[1]);
+  expect(typeNames.length).toBeGreaterThan(0);
+  const hacker = { ...STANDARD_VARS, "text-scale": 0.75 };
+  for (const name of typeNames) {
+    const expr = readVar(darkBlock, name);
+    expect(expr, `--${name}`).toMatch(/^max\(8px, calc\(/);
+    expect(evalCalc(expr, hacker), `--${name}`).toBeGreaterThanOrEqual(8);
+  }
+  // 最小に当たるときは 8px ちょうどへ持ち上がる（Web の標準 ×1.15 では当たらないので、倍率を下げて確かめる）
+  expect(evalCalc(readVar(darkBlock, "type-micro"), { ...hacker, "web-base": 1 })).toBe(8);
 });
 
 /** calc(<基準px>px * ...) の先頭の px リテラル（ui-scale 等を掛ける前の基準値）だけを取り出す */

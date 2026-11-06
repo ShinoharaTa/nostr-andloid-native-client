@@ -144,7 +144,8 @@
     <string name="ui_scale_medium">大きめ</string>
     <string name="ui_scale_large">最大</string>
     <string name="text_scale_title">文字サイズ</string>
-    <string name="text_scale_desc">文字だけをさらに大きく。</string>
+    <string name="text_scale_desc">文字だけを大きく・小さく。</string>
+    <string name="text_scale_hacker">スーパーハッカー</string>
     <string name="text_scale_small">小</string>
     <string name="text_scale_medium">中</string>
     <string name="text_scale_large">大</string>

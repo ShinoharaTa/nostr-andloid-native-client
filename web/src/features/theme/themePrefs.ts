@@ -20,8 +20,8 @@ export const CURRENT_THEME_VERSION = 2;
 
 /** テーマ（ネイティブ ThemeMode の id）。custom は #464 の残り（3色から導出） */
 export type ThemeMode = "system" | "light" | "dark" | "custom";
-/** 文字サイズ（ネイティブ TextScale の id。小 / 中 / 大） */
-export type TextScale = "s" | "m" | "l";
+/** 文字サイズ（ネイティブ TextScale の id。スーパーハッカー / 小 / 中 / 大。[#985] xs を足した） */
+export type TextScale = "xs" | "s" | "m" | "l";
 /** 表示サイズ（ネイティブ UiScale の id。標準 / 大きめ / 最大）。文字だけの TextScale とは独立 */
 export type UiScale = "s" | "m" | "l";
 /** [#674] 密度（廃人モード）。カラム間隔・余白・行の高さを詰めて情報量を増やす。Web のみ、NIP-78 同期はしない */
@@ -52,8 +52,11 @@ export const DEFAULT_THEME_PREFS: ThemePrefs = {
   density: "normal",
 };
 
-/** 文字サイズの倍率（ネイティブ TextScale.factor と 1 対 1）。tokens.css の --text-scale に入れる */
-export const TEXT_SCALE_FACTOR: Record<TextScale, number> = { s: 1, m: 1.15, l: 1.35 };
+/**
+ * 文字サイズの倍率（ネイティブ TextScale.factor と 1 対 1）。tokens.css の --text-scale に入れる。
+ * [#985] スーパーハッカー（xs）は ×0.75。縮めても文字は 8px を下回らない（tokens.css の --type-* の max(8px, ...)）
+ */
+export const TEXT_SCALE_FACTOR: Record<TextScale, number> = { xs: 0.75, s: 1, m: 1.15, l: 1.35 };
 
 /** 表示サイズの倍率（ネイティブ UiScale.factor と 1 対 1）。tokens.css の --ui-scale に入れる */
 export const UI_SCALE_FACTOR: Record<UiScale, number> = { s: 1, m: 1.15, l: 1.3 };
@@ -72,7 +75,7 @@ function isThemeMode(v: unknown): v is ThemeMode {
 }
 
 function isTextScale(v: unknown): v is TextScale {
-  return v === "s" || v === "m" || v === "l";
+  return v === "xs" || v === "s" || v === "m" || v === "l";
 }
 
 function isUiScale(v: unknown): v is UiScale {

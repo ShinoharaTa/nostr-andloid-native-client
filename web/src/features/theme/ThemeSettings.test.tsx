@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, expect, it } from "vitest";
 import { useSession } from "../../signer/session";
@@ -90,6 +90,21 @@ it("選ぶとすぐ保存して <html> へ反映する", async () => {
   });
 });
 
+it("[#985] 文字サイズはスーパーハッカーが一番左。選ぶと xs（×0.75）になる", async () => {
+  const user = userEvent.setup();
+  dispose = initTheme();
+  render(<ThemeSettings />);
+  const group = screen.getByRole("group", { name: "文字サイズ" });
+  const labels = within(group)
+    .getAllByRole("radio")
+    .map((el) => el.closest("label")?.textContent);
+  expect(labels).toEqual(["スーパーハッカー", "小", "中", "大"]);
+
+  await user.click(within(group).getByRole("radio", { name: "スーパーハッカー" }));
+  expect(html().style.getPropertyValue("--text-scale")).toBe("0.75");
+  expect(JSON.parse(localStorage.getItem(THEME_KEY) ?? "null").textScale).toBe("xs");
+});
+
 it("種別の視覚表示を選ぶと種別→色の凡例が出る。「なし」に戻すと消える（S11）", async () => {
   const user = userEvent.setup();
   render(<ThemeSettings />);
@@ -108,7 +123,7 @@ it("種別の視覚表示を選ぶと種別→色の凡例が出る。「なし�
 
 it("文字サイズの説明文を出す（S12）", () => {
   render(<ThemeSettings />);
-  expect(screen.getByText("文字だけをさらに大きく。")).toBeInTheDocument();
+  expect(screen.getByText("文字だけを大きく・小さく。")).toBeInTheDocument();
 });
 
 it("テーマを「カスタム」にすると、色をカスタマイズ / テーマストアから取得の導線行が出る", async () => {
