@@ -5,6 +5,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { QrCode } from "../../ui/QrCode";
 import { showToast } from "../../ui/toast";
 import styles from "./ZapDialog.module.css";
+import { isTouchDevice, ZAP_WALLETS } from "./zapWallets";
 
 /** WebLN（Alby 等の拡張がページに注入する window.webln）のうち使うところ */
 type WebLNProvider = {
@@ -71,6 +72,8 @@ export function ZapDialog({
   // 外部ウォレットで払う invoice（出したら閉じるまでそのまま）
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  // [#994] ウォレットの一覧を出すか（開いている間は変えない）
+  const [touchDevice] = useState(isTouchDevice);
   // [#537] NWC の送金確認（毎回）。invoice 取得後、確定で payWithWallet を呼ぶ
   const [confirmInvoice, setConfirmInvoice] = useState<string | null>(null);
   const effectiveAmount = customSats(custom) ?? amount;
@@ -231,6 +234,22 @@ export function ZapDialog({
               <p role="status" className={styles.status}>
                 {copyStatus}
               </p>
+            )}
+            {/* [#994] スマホのブラウザでは、ウォレットを指定して開ける（iOS の lightning: は選べないため） */}
+            {touchDevice && (
+              <details className={styles.otherWallets}>
+                <summary>{t("web_zap_other_wallets")}</summary>
+                <p className={styles.desc}>{t("web_zap_other_wallets_hint")}</p>
+                <ul className={styles.walletList}>
+                  {ZAP_WALLETS.map((w) => (
+                    <li key={w.id}>
+                      <a className={styles.walletLink} href={`${w.prefix}${invoice}`}>
+                        {w.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
         )}
