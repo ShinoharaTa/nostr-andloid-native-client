@@ -364,10 +364,10 @@ private fun BottomBar(state: DeckState) {
             state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat),
             onClick = { state.openPublicChat() },
         )
-        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
+        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。[#991] どちらも一番上（最新）まで戻す。
         NavItem(
             state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications),
-            selected = state.notificationsActive, onClick = { state.openNotifications() },
+            selected = state.notificationsActive, onClick = { state.tapNotificationsCompact() },
         )
         val pk = myPubkey
         // [#794][#806] タップで自分のメニュー（よく使う / Nostr の設定 / 設定 / ログアウト）。未ログインは今までどおり設定へ。
