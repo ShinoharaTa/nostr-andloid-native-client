@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCompose } from "../features/compose/composeStore";
 import { saveDraft } from "../features/compose/storage";
-import { registerColumnScroll } from "../features/deck/columnScroll";
+import { NOTIFICATIONS_SCREEN_SCROLL_ID, registerColumnScroll } from "../features/deck/columnScroll";
 import { useDmSeen } from "../features/dm/dmSeen";
 import { useDm } from "../features/dm/dmStore";
 import type { ColumnSpec } from "../lib/columns";
@@ -389,6 +389,58 @@ describe("ナビ", () => {
       t.dispose();
       expect(t.scrollToTop).not.toHaveBeenCalled();
       expect(t.targets).toEqual(["c_following"]);
+    });
+  });
+
+  describe("[#992] 1 カラム表示の通知", () => {
+    /** 通知の一覧のスクロールの窓口を差し替える。jump した先を集める（描いたあとに呼ぶ） */
+    function setup(id: string) {
+      const scrollToTop = vi.fn();
+      const unregister = registerColumnScroll(id, { atTop: () => false, scrollToTop });
+      const targets: string[] = [];
+      const unsubscribe = useDeck.subscribe((s, prev) => {
+        if (s.jumpTarget !== null && s.jumpTarget !== prev.jumpTarget) targets.push(s.jumpTarget);
+      });
+      return {
+        scrollToTop,
+        targets,
+        dispose() {
+          unsubscribe();
+          unregister();
+        },
+      };
+    }
+
+    it("ほかのカラムから押すと、通知カラムをすぐ先頭へ置き直してから移る", async () => {
+      renderAt(["/"]);
+      act(() => useDeck.setState({ visibleColumnId: "c_hashtag" }));
+      const t = setup("c_notif");
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith({ instant: true });
+      expect(t.targets).toEqual(["c_notif"]);
+    });
+
+    it("通知カラムを見ているときに押すと、滑らせて先頭へ戻し、移らない", async () => {
+      renderAt(["/"]);
+      act(() => useDeck.setState({ visibleColumnId: "c_notif" }));
+      const t = setup("c_notif");
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith();
+      expect(t.targets).toEqual([]);
+    });
+
+    it("通知カラムが無ければ、見ている通知画面を先頭へ戻す", async () => {
+      act(() => {
+        useDeck.getState().removeColumn("c_notif");
+      });
+      const router = renderAt(["/notifications"]);
+      const t = setup(NOTIFICATIONS_SCREEN_SCROLL_ID);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith();
+      expect(router.state.location.pathname).toBe("/notifications");
     });
   });
 
