@@ -239,6 +239,25 @@
   height: var(--icon-sm);
 }
 
+/* [#989] ⋯ のメニューの「リアクション」の右端の ♡ / ☆（押してあれば投稿の ♡ ボタンと同じ色） */
+.menuGlyph {
+  display: grid;
+  color: var(--text-3);
+}
+
+.menuGlyph > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.menuGlyph[data-on][data-shape="heart"] {
+  color: var(--react-heart);
+}
+
+.menuGlyph[data-on][data-shape="star"] {
+  color: var(--react-star);
+}
+
 /* Slack 風の集約リアクション（絵文字 + 件数） */
 .reactions {
   display: flex;

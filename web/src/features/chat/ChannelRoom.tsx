@@ -19,7 +19,16 @@ import { retryUnsentNow, useIsUnsent } from "../../nostr/publish";
 import { useSession } from "../../signer/session";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { EventJsonDialog } from "../../ui/EventJsonDialog";
-import { ArrowBackIcon, CloseIcon, MoreHorizIcon, ReplyIcon } from "../../ui/icons";
+import {
+  ArrowBackIcon,
+  CloseIcon,
+  FavoriteBorderIcon,
+  FavoriteIcon,
+  MoreHorizIcon,
+  ReplyIcon,
+  StarBorderIcon,
+  StarIcon,
+} from "../../ui/icons";
 import { MenuButton, type MenuEntry } from "../../ui/MenuButton";
 import { showToast } from "../../ui/toast";
 import { muteMenuEntries } from "../actions/moreMenu";
@@ -449,7 +458,7 @@ function warn(message: string) {
 /**
  * 吹き出しの横の ⋯（ネイティブ MessageMenu）。[#989] 以前は横にリプライ・既定リアクション・絵文字・⚡ も常設していて、
  * 狭いカラムや大きい表示ではそのぶん吹き出しが数文字の幅まで細くなっていたので、すべて ⋯ のメニューに入れた。
- * 並び: リプライ → 既定リアクション（押してあれば取り消し）→ 絵文字でリアクション → Zap →
+ * 並び: リプライ → リアクション（既定。押してあれば取り消し）→ 絵文字でリアクション → Zap →
  * テキストをコピー・このユーザーをミュート / ブロック（#963）・通報、開発者モード中は末尾に「イベントJSONを表示」（CH3）。
  * [#538] Zap は発言者の kind:0 に lud16 があるときだけ。
  */
@@ -499,13 +508,23 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
     }
   }
 
+  // 既定リアクションは投稿の ♡ ボタン（DefaultReactionButton）と同じく、⭐ / ★ なら ☆、それ以外は ♡ を右端に添える
+  // （カスタム絵文字でもショートコードを文言に出さない）。押してあれば塗りつぶして「取り消す」にする。
+  const isStar = content === "⭐" || content === "★";
+  const Glyph = isStar ? (reacted ? StarIcon : StarBorderIcon) : reacted ? FavoriteIcon : FavoriteBorderIcon;
+  const glyph = (
+    <span className={styles.menuGlyph} data-shape={isStar ? "star" : "heart"} data-on={reacted || undefined}>
+      <Glyph />
+    </span>
+  );
   const entries: MenuEntry[] = [
     { type: "item", label: t("chat_reply"), onSelect: onReply },
     reacted
-      ? { type: "item", label: t("web_unreact"), onSelect: () => setDialog("unreact") }
+      ? { type: "item", label: t("web_unreact"), trailing: glyph, onSelect: () => setDialog("unreact") }
       : {
           type: "item",
-          label: t("web_react_with_fmt", content === "+" || content === "" ? "♡" : content),
+          label: t("section_reaction"),
+          trailing: glyph,
           onSelect: () => void reactWithDefault(message).catch(warn("Failed to react")),
         },
     { type: "item", label: t("web_emoji_reaction"), onSelect: () => setDialog("picker") },

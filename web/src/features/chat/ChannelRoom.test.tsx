@@ -20,6 +20,7 @@ import { useDm } from "../dm/dmStore";
 import { MessagesScreen } from "../dm/MessagesScreen";
 import { OwnListError } from "../lists/ownLists";
 import { setMuteList } from "../mute/muteList";
+import { useDeveloperMode } from "../settings/devMode";
 import { resetChannelsForTest, useChannels } from "./channels";
 import { join, leave, useJoinedRooms } from "./joinedRooms";
 
@@ -290,7 +291,7 @@ describe("デッキのルームカラム", () => {
     await user.click(within(firstRow).getByRole("button", { name: "その他の操作" }));
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "リプライ",
-      "♡ でリアクション",
+      "リアクション",
       "絵文字でリアクション",
       "テキストをコピー",
       "このユーザーをミュート",
@@ -304,10 +305,17 @@ describe("デッキのルームカラム", () => {
     await user.click(within(mineRow).getByRole("button", { name: "その他の操作" }));
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "リプライ",
-      "♡ でリアクション",
+      "リアクション",
       "絵文字でリアクション",
       "テキストをコピー",
     ]);
+    await user.keyboard("{Escape}");
+
+    // 開発者モード中は末尾に「イベントJSONを表示」
+    act(() => useDeveloperMode.setState({ enabled: true }));
+    await user.click(within(mineRow).getByRole("button", { name: "その他の操作" }));
+    expect(screen.getAllByRole("menuitem").at(-1)?.textContent).toBe("イベントJSONを表示");
+    act(() => useDeveloperMode.setState({ enabled: false }));
   });
 
   it("[#989] 既定のリアクションを送った発言は、⋯ に「リアクションを取り消す」（確認してから取り消す）", async () => {
@@ -332,7 +340,7 @@ describe("デッキのルームカラム", () => {
     const firstRow = screen.getByText("こんにちは").closest("article");
     if (!firstRow) throw new Error("no row");
     await user.click(within(firstRow).getByRole("button", { name: "その他の操作" }));
-    expect(screen.queryByRole("menuitem", { name: "♡ でリアクション" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "リアクション" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "リアクションを取り消す" }));
     expect(screen.getByRole("dialog", { name: "リアクションを取り消しますか？" })).toBeInTheDocument();
 
@@ -443,6 +451,13 @@ describe("デッキのルームカラム", () => {
     const aliceRow = screen.getByText("こんにちは").closest("article");
     if (!aliceRow) throw new Error("no row");
     await user.click(within(aliceRow).getByRole("button", { name: "その他の操作" }));
+    // [#989] Zap は絵文字でリアクションの後（区切りの前）
+    expect(
+      screen
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent)
+        .slice(0, 4),
+    ).toEqual(["リプライ", "リアクション", "絵文字でリアクション", "Zap"]);
     await user.click(screen.getByRole("menuitem", { name: "Zap" }));
     const dialog = screen.getByRole("dialog", { name: "⚡ Zap" });
     expect(within(dialog).getByText("送信先: alice@ln.example")).toBeInTheDocument();

@@ -20,7 +20,6 @@
   "web_chat_empty": "まだ発言がありません",
   "web_more_actions": "その他の操作",
   "web_emoji_reaction": "絵文字でリアクション",
-  "web_react_with_fmt": "%1$s でリアクション",
   "web_unreact": "リアクションを取り消す",
   "web_columnform_npub_required": "npub または hex を入力",
   "web_columnform_relay_add": "配信先リレーを追加",
