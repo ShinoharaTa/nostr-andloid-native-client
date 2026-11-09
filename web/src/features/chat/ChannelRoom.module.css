@@ -132,12 +132,13 @@
   width: 38px;
 }
 
+/* [#989] 吹き出しは 78% まで。横の ⋯（28px ＋ 間 2px）はその外に置き、⋯ のぶん吹き出しを細くしない */
 .main {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  max-width: 78%;
+  max-width: calc(78% + 30px);
 }
 
 .meta {
@@ -231,14 +232,6 @@
   .action:hover {
     background: var(--surface-2);
   }
-}
-
-.action[aria-pressed="true"][data-shape="heart"] {
-  color: var(--react-heart);
-}
-
-.action[aria-pressed="true"][data-shape="star"] {
-  color: var(--react-star);
 }
 
 .actionIcon {

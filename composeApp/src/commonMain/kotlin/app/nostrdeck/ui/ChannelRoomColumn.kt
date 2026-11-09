@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,6 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import coil3.compose.AsyncImage
 import nostr_deck_client.composeapp.generated.resources.chat_upload_failed
 import nostr_deck_client.composeapp.generated.resources.compose_attach_image
@@ -54,11 +54,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.AddReaction
-import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -90,12 +88,17 @@ import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
 import app.nostrdeck.i18n.stringResource
+import app.nostrdeck.i18n.getString
+import org.jetbrains.compose.resources.StringResource
 import app.nostrdeck.theme.DeckDimens
 import app.nostrdeck.theme.DeckSpace
 import app.nostrdeck.theme.DeckRadius
 import app.nostrdeck.theme.DeckType
 import app.nostrdeck.theme.DeckWeight
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.drawBehind
@@ -366,23 +369,25 @@ private fun MessageBubble(
     // [#dm-idiom] DM(1:1) は自分＝右寄せ・明色バブル（iMessage流）。パブチャは全員左寄せで統一し、
     // 自分の投稿は色反転の白ではなく少し明るいダークサーフェスで区別する（Slack/Discord流・Bubble 側）。
     val mineRight = mineOnRight && m.isMine
-    // [#370] Zap: 投稿者に lud16 があるときだけ吹き出し横の常設アイコンに ⚡ を出す
+    // [#370] Zap: 投稿者に lud16 があるときだけ ⋯ のメニューに Zap を出す
     // （NoteItem の⚡と同じ条件）。押すと既存の ZapSheet フロー（NWC対応）を開く。
     val repo = LocalRepository.current
     val canZap = repo != null && !m.author.lud16.isNullOrBlank()
     var showZap by remember { mutableStateOf(false) }
     val onZap: (() -> Unit)? = if (canZap) ({ showZap = true }) else null
+    // [#989] 吹き出しの横の ⋯ と、吹き出しの長押しで同じメニューを開く。
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().padding(top = if (m.continuation) 1.dp else 8.dp),
         horizontalArrangement = if (mineRight) Arrangement.End else Arrangement.Start,
     ) {
         if (!mineRight) AvatarSlot(m)
-        // 吹き出し列は画面幅の 78% までに制限（左寄せ時は画像/カードを列幅いっぱいに、
-        // 右寄せ(DM自分)時は内容幅で右に寄せる）。
+        // 吹き出しは画面幅の 78% までに制限し、⋯ はその外に置く（[bubbleColumnWidth]）。
+        // 左寄せ時は画像/カードを吹き出しの幅いっぱいに、右寄せ(DM自分)時は内容幅で右に寄せる。
+        // weight: 右寄せではアイコンが後ろに来るので、アイコンを置いた残りの幅から測る（先に測るとアイコンが欠ける）。
         Column(
             horizontalAlignment = if (mineRight) Alignment.End else Alignment.Start,
-            modifier = if (mineRight) Modifier.fillMaxWidth(0.78f).wrapContentWidth(Alignment.End)
-            else Modifier.fillMaxWidth(0.78f),
+            modifier = Modifier.weight(1f, fill = false).bubbleColumnWidth(),
         ) {
             if (!m.continuation) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -398,15 +403,16 @@ private fun MessageBubble(
             }
             // 返信なら、返信元を一行引用で示す（誰への返信か分かるように）。
             if (parent != null) ReplyQuote(parent, m.isMine)
-            // [#107][#108] 吹き出しの外に常設のリプライ/リアクションアイコン（長押しメニューの近道）。
+            // [#989] 吹き出しの横は ⋯ だけ（リプライ・リアクション・Zap もメニューに入れる）。以前は横に常設の
+            // ボタンを並べていて（#107 #108）、狭いカラムや大きい表示ではそのぶん吹き出しが数文字の幅まで細くなっていた。
             // 左寄せは吹き出しの右、右寄せ(DM自分)は吹き出しの左に置く（画面端側に寄せない）。
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Row(verticalAlignment = Alignment.Bottom) {
                 if (mineRight) {
-                    MessageActions(onReply = onReply, onReact = onReact, onZap = onZap)
-                    Bubble(m, names = names, mineOnRight = mineOnRight, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
+                    MessageMenu(m, expanded = menu, onExpandedChange = { menu = it }, onReply = onReply, onReact = onReact, onZap = onZap)
+                    Bubble(m, names = names, mineOnRight = mineOnRight, onLongPress = { menu = true }, modifier = Modifier.weight(1f, fill = false))
                 } else {
-                    Bubble(m, names = names, mineOnRight = mineOnRight, onReply = onReply, onReact = onReact, modifier = Modifier.weight(1f, fill = false))
-                    MessageActions(onReply = onReply, onReact = onReact, onZap = onZap)
+                    Bubble(m, names = names, mineOnRight = mineOnRight, onLongPress = { menu = true }, modifier = Modifier.weight(1f, fill = false))
+                    MessageMenu(m, expanded = menu, onExpandedChange = { menu = it }, onReply = onReply, onReact = onReact, onZap = onZap)
                 }
             }
             // Slack 風の集約リアクション（絵文字 + 件数）。
@@ -429,33 +435,166 @@ private fun MessageBubble(
     }
 }
 
+/** 吹き出しの幅の上限（カラムの幅に対する割合）。 */
+private const val BUBBLE_MAX_FRACTION = 0.78f
+
+/** [#989] 吹き出しの横の ⋯。デッキの狭いカラムでも邪魔にならないよう IconSm + Text3 で控えめに。 */
+private val MENU_BUTTON_SIZE = 28.dp
+private val MENU_BUTTON_PADDING = 2.dp
+
 /**
- * [#107][#108] メッセージ横の常設アクション（リプライ/リアクション/Zap）。
- * デッキの狭いカラムでも邪魔にならないよう IconSm + Text3 で控えめに。
+ * [#989] 吹き出しの列の幅。カラムの 78%（吹き出しの上限）に、横の ⋯ の領域を足す。
+ * 以前は 78% の中に常設のボタンを並べていたので、ボタンのぶん吹き出しが細くなっていた。
+ */
+private fun Modifier.bubbleColumnWidth(): Modifier = layout { measurable, constraints ->
+    val fixed = if (constraints.hasBoundedWidth) {
+        val menuSlot = (MENU_BUTTON_SIZE + MENU_BUTTON_PADDING * 2).roundToPx()
+        val width = minOf(constraints.maxWidth, (constraints.maxWidth * BUBBLE_MAX_FRACTION).roundToInt() + menuSlot)
+        constraints.copy(minWidth = width, maxWidth = width)
+    } else constraints
+    val placeable = measurable.measure(fixed)
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+}
+
+/**
+ * [#989] 発言の ⋯（吹き出しの長押しでも開く）。以前は吹き出しの横に常設していたリプライ・リアクション・Zap もここに入れる。
+ * 並びは Web の ⋯ と同じ（リプライ → リアクション → Zap → コピー → ミュート / ブロック → 通報 → JSON）。
+ * ミュート・ブロック・通報はパブリックチャット（kind:42）の他人の発言だけ（DM の発言は署名済みのイベントではない）。
  */
 @Composable
-private fun MessageActions(onReply: (() -> Unit)?, onReact: (() -> Unit)?, onZap: (() -> Unit)? = null) {
-    if (onReply == null && onReact == null && onZap == null) return
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 2.dp)) {
-        if (onReply != null) {
-            Box(
-                Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReply),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Outlined.Reply, stringResource(Res.string.chat_reply), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+private fun MessageMenu(
+    m: ChannelMessage,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onReply: (() -> Unit)?,
+    onReact: (() -> Unit)?,
+    onZap: (() -> Unit)?,
+) {
+    val repo = LocalRepository.current
+    // [#351] 開発者モード ON なら、発言(kind:42)の生JSONの導線を出す。
+    val devMode by (repo?.developerModeFlow()?.collectAsState()
+        ?: remember { mutableStateOf(false) })
+    val canModerate = repo != null && !m.isMine && m.event.kind == 42
+    val clipboard = rememberClipboardCopy()
+    val toast = rememberToaster()
+    val scope = rememberCoroutineScope()
+    var confirmMute by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }
+    var showReport by remember { mutableStateOf(false) }
+    var showJson by remember { mutableStateOf(false) }
+    val close = { onExpandedChange(false) }
+    Box(Modifier.padding(horizontal = MENU_BUTTON_PADDING)) {
+        Box(
+            Modifier.size(MENU_BUTTON_SIZE).clip(CircleShape).clickable { onExpandedChange(true) },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.MoreHoriz, stringResource(Res.string.menu), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
+        DeckDropdownMenu(expanded = expanded, onDismissRequest = close) {
+            if (onReply != null) {
+                DropdownMenuItem(text = { Text(stringResource(Res.string.chat_reply)) }, onClick = { close(); onReply() })
+            }
+            if (onReact != null) {
+                DropdownMenuItem(text = { Text(stringResource(Res.string.section_reaction)) }, onClick = { close(); onReact() })
+            }
+            // [#370] Zap（投稿者に lud16 があるときだけ渡される）。
+            if (onZap != null) {
+                DropdownMenuItem(text = { Text(stringResource(Res.string.chat_zap)) }, onClick = { close(); onZap() })
+            }
+            if (onReply != null || onReact != null || onZap != null) HorizontalDivider(color = DeckColors.Border)
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.note_copy_text)) },
+                onClick = { close(); clipboard(m.event.content) },
+            )
+            if (canModerate) {
+                // [#963] NoteItem の ⋯ と同じ。ミュート（非公開）とブロック（公開）の両方を出し、ブロック中なら解除だけ。
+                val mutedUsers by (repo?.mutedUsersFlow()?.collectAsState(emptySet())
+                    ?: remember { mutableStateOf(emptySet<String>()) })
+                val blockedUsers by (repo?.blockedUsersFlow()?.collectAsState(emptySet())
+                    ?: remember { mutableStateOf(emptySet<String>()) })
+                val isBlocked = m.event.pubkey in blockedUsers
+                val isMuted = !isBlocked && m.event.pubkey in mutedUsers
+                // 解除はすぐ実行する（確認なし）。結果はトーストで知らせる。
+                val unmute = { done: StringResource ->
+                    scope.launch {
+                        withContext(NonCancellable) {
+                            toast(getString(if (repo?.unmuteUser(m.event.pubkey) == true) done else Res.string.note_mute_locked))
+                        }
+                    }
+                }
+                if (isBlocked) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.note_unblock_user)) },
+                        onClick = { close(); unmute(Res.string.note_unblocked_toast) },
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(if (isMuted) Res.string.note_unmute_user else Res.string.note_mute_user)) },
+                        onClick = { close(); if (isMuted) unmute(Res.string.note_unmuted_toast) else confirmMute = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.note_block_user)) },
+                        onClick = { close(); confirmBlock = true },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.note_report), color = DeckColors.Warn) },
+                    onClick = { close(); showReport = true },
+                )
+            }
+            if (devMode) {
+                HorizontalDivider(color = DeckColors.Border)
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.note_view_json)) },
+                    onClick = { close(); showJson = true },
+                )
+            }
         }
-        if (onReact != null) {
-            Box(
-                Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onReact),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.AddReaction, stringResource(Res.string.section_reaction), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
-        }
-        // [#370] Zap（投稿者に lud16 があるときだけ渡される）。
-        if (onZap != null) {
-            Box(
-                Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onZap),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.Bolt, stringResource(Res.string.chat_zap), tint = DeckColors.Text3, modifier = Modifier.size(DeckDimens.IconSm)) }
-        }
+    }
+
+    // [#94] ミュートの確認（非公開。通報なし）。ミュートした発言はすぐ消えるので、保存とトーストは最後までやりきる。
+    if (confirmMute) {
+        DeckConfirmDialog(
+            title = stringResource(Res.string.mute_confirm_title),
+            text = stringResource(Res.string.mute_confirm_text),
+            confirmLabel = stringResource(Res.string.mute_confirm), destructive = true,
+            onConfirm = {
+                confirmMute = false
+                scope.launch {
+                    withContext(NonCancellable) {
+                        toast(
+                            if (repo?.muteUserPrivate(m.event.pubkey) == true) getString(Res.string.muted_toast)
+                            else getString(Res.string.mute_change_failed)
+                        )
+                    }
+                }
+            },
+            onDismiss = { confirmMute = false },
+        )
+    }
+    // [#951][#963] ブロック（公開でミュート）。結果のトーストは App が [EventRepository.blockResultFlow] を受けて出す。
+    if (confirmBlock) {
+        DeckConfirmDialog(
+            title = stringResource(Res.string.block_confirm_title),
+            text = stringResource(Res.string.block_confirm_text),
+            confirmLabel = stringResource(Res.string.block_confirm), destructive = true,
+            onConfirm = {
+                confirmBlock = false
+                repo?.blockUser(m.event.pubkey, m.event)   // [#961] 開発者への知らせに押した発言も添える
+            },
+            onDismiss = { confirmBlock = false },
+        )
+    }
+    // [#6] 通報（NIP-56 kind:1984）。理由を選んで発言を通報する。
+    if (showReport) {
+        ReportDialog(
+            onPick = { type ->
+                showReport = false
+                scope.launch { repo?.reportNote(m.event, type); toast(getString(Res.string.reported_toast)) }
+            },
+            onDismiss = { showReport = false },
+        )
+    }
+    if (showJson) {
+        EventJsonDialog(m.event.id, onDismiss = { showJson = false })
     }
 }
 
@@ -496,8 +635,8 @@ private fun AvatarSlot(m: ChannelMessage) {
 private fun Bubble(
     m: ChannelMessage,
     names: Map<String, String>,
-    onReply: (() -> Unit)?,
-    onReact: (() -> Unit)?,
+    /** [#989] 長押しで発言の ⋯ のメニュー（[MessageMenu]）を開く。 */
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
     mineOnRight: Boolean = false,
 ) {
@@ -514,13 +653,6 @@ private fun Bubble(
     }
     val textColor = if (mineRight) DeckColors.Bg else DeckColors.Text
     val linkColor = if (mineRight) DeckColors.Bg else DeckColors.Accent
-    // [#351] 開発者モード ON なら、リアクション/リプライが無い発言でも JSON の導線を出す。
-    val repo = LocalRepository.current
-    val devMode by (repo?.developerModeFlow()?.collectAsState()
-        ?: remember { mutableStateOf(false) })
-    val hasActions = onReply != null || onReact != null || devMode
-    var menu by remember { mutableStateOf(false) }
-    var showJson by remember { mutableStateOf(false) }
     // タイムライン(NoteItem)と同じコンテンツ処理:
     //  - 画像URLは本文から除去し、吹き出しの下にサムネ([NoteImages])で表示（LINE/WhatsApp 風）
     //  - :shortcode: はインライン画像、@メンション/#タグ/リンクは装飾（[CollapsibleText]→[noteAnnotated]）
@@ -537,42 +669,12 @@ private fun Bubble(
     Column(modifier) {
         // 本文（画像URL除去済み）。画像のみの投稿（本文が空）では吹き出しを出さず画像だけにする。
         if (bodyText != null) {
-            Box {
-                Box(
-                    Modifier.clip(shape).background(bgColor)
-                        .combinedClickable(enabled = hasActions, onClick = {}, onLongClick = { menu = true })
-                        .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
-                ) {
-                    CollapsibleText(bodyText, emojis = emojis, color = textColor, linkColor = linkColor, authorPubkey = m.event.pubkey)   // [#378]
-                }
-                // 長押しメニュー: リアクション / リプライ。
-                DeckDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (onReact != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.section_reaction)) },
-                            leadingIcon = { Icon(Icons.Outlined.AddReaction, null, modifier = Modifier.size(18.dp)) },
-                            onClick = { menu = false; onReact() },
-                        )
-                    }
-                    if (onReply != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.chat_reply)) },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Reply, null, modifier = Modifier.size(18.dp)) },
-                            onClick = { menu = false; onReply() },
-                        )
-                    }
-                    // [#351] 開発者モード: 発言(kind:42)の生JSON。
-                    if (devMode) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.note_view_json)) },
-                            leadingIcon = { Icon(Icons.Outlined.Code, null, modifier = Modifier.size(18.dp)) },
-                            onClick = { menu = false; showJson = true },
-                        )
-                    }
-                }
-                if (showJson) {
-                    EventJsonDialog(m.event.id, onDismiss = { showJson = false })
-                }
+            Box(
+                Modifier.clip(shape).background(bgColor)
+                    .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                    .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+            ) {
+                CollapsibleText(bodyText, emojis = emojis, color = textColor, linkColor = linkColor, authorPubkey = m.event.pubkey)   // [#378]
             }
         }
         // 画像（吹き出しの下）。1枚/グリッド/カルーセルは NoteImages が出し分ける。
