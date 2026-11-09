@@ -622,6 +622,11 @@
     <string name="zap_to_fmt">送信先: %1$s</string>
     <string name="zap_invoice_failed">invoice を取得できませんでした。lud16/リレー設定を確認してください。</string>
     <string name="zap_wallet_failed">Lightning ウォレットを開けませんでした。</string>
+    <string name="zap_copy_invoice">請求書をコピー</string>
+    <string name="zap_wallet_open_failed_fmt">%1$s を開けませんでした。入っているか確かめるか、請求書をコピーしてウォレットに貼り付けてください。</string>
+    <string name="zap_wallet_title">Zap で開くウォレット</string>
+    <string name="zap_wallet_desc">ウォレット接続（NWC）を使わないとき、Zap の請求書をこのウォレットで開きます。</string>
+    <string name="zap_wallet_system">端末の既定のアプリ</string>
     <string name="img_saved">画像を保存しました</string>
     <string name="img_view">画像を表示</string>
     <string name="img_load_failed">画像を読み込めませんでした</string>

@@ -62,6 +62,21 @@ targets:
             CFBundleURLName: net.shino3.nostrism.nostr
             CFBundleURLSchemes:
               - nostr
+        # [#993] Zap の請求書を開くウォレットが入っているかを canOpenURL で確かめるスキーム。
+        # 並べていないスキームは常に「入っていない」になる。composeApp の ZapWallet（https の Cash App を除く）と揃える。
+        LSApplicationQueriesSchemes:
+          - lightning
+          - strike
+          - muun
+          - bluewallet
+          - walletofsatoshi
+          - zebedee
+          - zeusln
+          - phoenix
+          - breez
+          - blink
+          - river
+          - alby
         # 暗背景アプリなのでステータスバー文字は明色固定。
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: false

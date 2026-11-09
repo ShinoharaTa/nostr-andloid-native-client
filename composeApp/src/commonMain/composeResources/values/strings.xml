@@ -626,6 +626,11 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="zap_to_fmt">To: %1$s</string>
     <string name="zap_invoice_failed">Couldn’t get an invoice. Check lud16 / relay settings.</string>
     <string name="zap_wallet_failed">Couldn’t open a Lightning wallet.</string>
+    <string name="zap_copy_invoice">Copy invoice</string>
+    <string name="zap_wallet_open_failed_fmt">Couldn’t open %1$s. Make sure it’s installed, or copy the invoice and paste it into your wallet.</string>
+    <string name="zap_wallet_title">Wallet for zaps</string>
+    <string name="zap_wallet_desc">When you don’t use Nostr Wallet Connect, zap invoices open in this wallet.</string>
+    <string name="zap_wallet_system">Device default</string>
     <string name="img_saved">Image saved</string>
     <string name="img_view">View image</string>
     <string name="img_load_failed">Couldn't load the image</string>
