@@ -360,5 +360,7 @@
   "web_x_post_open": "X で開く",
   "web_zap_amount": "金額",
   "web_zap_invoice_label": "Zap の invoice（%1$d sats）",
-  "web_zap_pay_confirm_text": "%1$s に ⚡ %2$d sats を送金します。よろしいですか？"
+  "web_zap_pay_confirm_text": "%1$s に ⚡ %2$d sats を送金します。よろしいですか？",
+  "web_zap_other_wallets": "ほかのウォレットで開く",
+  "web_zap_other_wallets_hint": "入っているウォレットを選んでください（入っていないものは開けません）。"
 }
