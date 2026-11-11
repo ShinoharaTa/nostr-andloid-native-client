@@ -153,6 +153,53 @@ it("ウォレットが無ければ QR・「外部ウォレットで開く」・�
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+describe("[#994] スマホのブラウザのほかのウォレット", () => {
+  /** (hover: none) and (pointer: coarse) に当たる端末にする */
+  function touchDevice(matches: boolean) {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: matches && query === "(hover: none) and (pointer: coarse)",
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    );
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("指で触る端末なら「ほかのウォレットで開く」に、ウォレットごとの URL で請求書を開くリンクを並べる", async () => {
+    touchDevice(true);
+    const user = userEvent.setup();
+    const { dialog } = renderDialog({});
+    await user.click(within(dialog).getByRole("button", { name: "⚡ 100" }));
+
+    await user.click(await within(dialog).findByText("ほかのウォレットで開く"));
+    expect(within(dialog).getByRole("link", { name: "Wallet of Satoshi" })).toHaveAttribute(
+      "href",
+      `walletofsatoshi:lightning:${PR}`,
+    );
+    expect(within(dialog).getByRole("link", { name: "Cash App" })).toHaveAttribute(
+      "href",
+      `https://cash.app/launch/lightning/${PR}`,
+    );
+    // 端末の既定は「外部ウォレットで開く」のほう
+    expect(within(dialog).getByRole("link", { name: "外部ウォレットで開く" })).toHaveAttribute(
+      "href",
+      `lightning:${PR}`,
+    );
+  });
+
+  it("PC（ホバーできる端末）では出さない", async () => {
+    touchDevice(false);
+    const user = userEvent.setup();
+    const { dialog } = renderDialog({});
+    await user.click(within(dialog).getByRole("button", { name: "⚡ 100" }));
+    expect(await within(dialog).findByRole("link", { name: "外部ウォレットで開く" })).toBeInTheDocument();
+    expect(within(dialog).queryByText("ほかのウォレットで開く")).not.toBeInTheDocument();
+  });
+});
+
 describe("失敗", () => {
   it("invoice が取れなければ zap_invoice_failed を出し、もう一度送れる", async () => {
     const user = userEvent.setup();

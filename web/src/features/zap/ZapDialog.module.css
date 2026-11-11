@@ -119,6 +119,41 @@
   font-size: var(--type-label);
 }
 
+/* [#994] スマホのブラウザの「ほかのウォレットで開く」（折りたたみ） */
+.otherWallets {
+  align-self: stretch;
+  margin-top: var(--sp-1);
+}
+
+.otherWallets > summary {
+  min-height: var(--touch-xs);
+  color: var(--text-2);
+  font-size: var(--type-body);
+  font-weight: var(--w-link);
+  cursor: pointer;
+}
+
+.walletList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.walletLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--type-body);
+  text-decoration: none;
+}
+
 .error {
   margin: var(--sp-2) 0 0;
   color: var(--warn);
