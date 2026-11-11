@@ -1414,6 +1414,8 @@ class EventRepository(
     private val coverages = mutableMapOf<String, TimelineCoverage>()
     /** [coverages] を数え始めたときの条件（フィルタ・フォロー）。同じなら張り直しでも引き継ぐ。 */
     private val coverageKeys = mutableMapOf<String, Any>()
+    /** [#962] カラム id → 遡りの要求のフィルタ（最後の [pageOlder] のもの）。下限に追いつくまで続けて聞くときに使う。 */
+    private val olderFilters = mutableMapOf<String, (until: Long) -> Filter>()
 
     /** カラム id → 画面に並べてよい下限（created_at）。無いカラムは下限なし。 */
     private val floorsState = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -1458,7 +1460,7 @@ class EventRepository(
     private suspend fun runCoverage() {
         for (signal in coverageSignals) {
             if (signal is CoverageSignal.ForgetAll) {
-                coverages.clear(); coverageKeys.clear(); floorsState.value = emptyMap()
+                coverages.clear(); coverageKeys.clear(); olderFilters.clear(); floorsState.value = emptyMap()
                 continue
             }
             val id = signal.columnId
@@ -1469,11 +1471,16 @@ class EventRepository(
                     if (!signal.force) coverageKeys[id] = signal.key
                 }
                 is CoverageSignal.Received -> coverages[id]?.onEvent(signal.relay, signal.createdAt, signal.older)
-                is CoverageSignal.Eose -> coverages[id]?.onEose(signal.relay, signal.olderSeq)
+                is CoverageSignal.Eose -> coverages[id]?.let { counted ->
+                    // [#962] まだ下限より浅ければ、そのリレーにだけ続けて聞く（[TimelineCoverage.onEose]）
+                    val next = counted.onEose(signal.relay, signal.olderSeq) ?: return@let
+                    val filterAt = olderFilters[id] ?: return@let
+                    requestOlder(id, counted, signal.relay, next, filterAt)
+                }
                 is CoverageSignal.OlderTimeout -> if (coverages[id] === signal.coverage) signal.coverage.onOlderTimeout(signal.relay, signal.seq)
                 is CoverageSignal.DropRelay -> coverages[id]?.dropRelay(signal.relay)
                 is CoverageSignal.CancelOlder -> coverages[id]?.cancelOlder()
-                is CoverageSignal.Clear -> { coverages.remove(id); coverageKeys.remove(id) }
+                is CoverageSignal.Clear -> { coverages.remove(id); coverageKeys.remove(id); olderFilters.remove(id) }
             }
             val floor = coverages[id]?.floor()
             floorsState.update { m ->
@@ -1489,21 +1496,34 @@ class EventRepository(
     /**
      * 遡る。下限の近くで止まっているリレーにだけ、それぞれの境界を until にして 1 リレーずつ聞く（[TimelineCoverage.olderRequests]）。
      * EOSE は数えるだけで、購読は [OLDER_TIMEOUT_MS] たってから閉じる。
+     * [#962] 返事のあともまだ下限より浅いリレーには、[runCoverage] が続けて聞く（[TimelineCoverage.CATCH_UP_LIMIT] 回まで）。
      */
     private fun pageOlder(columnId: String, filterAt: (until: Long) -> Filter) {
         scope.launch(coverageDispatcher) {
             val counted = coverages[columnId] ?: return@launch
+            olderFilters[columnId] = filterAt
             counted.olderRequests(currentUnixTime()).forEach { (relay, request) ->
-                val subId = "older-$columnId-${olderReqSeq++}"
-                coverageSubs.update { it + (subId to CoverageSub(columnId, olderSeq = request.seq)) }
-                subscribeTargeted(subId, setOf(relay), filterAt(request.until))
-                scope.launch {
-                    delay(OLDER_TIMEOUT_MS)
-                    coverageSignals.trySend(CoverageSignal.OlderTimeout(columnId, relay, request.seq, counted))
-                    coverageSubs.update { it - subId }
-                    unsubscribeAll(subId)
-                }
+                requestOlder(columnId, counted, relay, request, filterAt)
             }
+        }
+    }
+
+    /** 1 リレーへ遡りの要求を出す（[coverageDispatcher] 上で呼ぶ）。購読は [OLDER_TIMEOUT_MS] たってから閉じる。 */
+    private fun requestOlder(
+        columnId: String,
+        counted: TimelineCoverage,
+        relay: String,
+        request: TimelineCoverage.OlderRequest,
+        filterAt: (until: Long) -> Filter,
+    ) {
+        val subId = "older-$columnId-${olderReqSeq++}"
+        coverageSubs.update { it + (subId to CoverageSub(columnId, olderSeq = request.seq)) }
+        subscribeTargeted(subId, setOf(relay), filterAt(request.until))
+        scope.launch {
+            delay(OLDER_TIMEOUT_MS)
+            coverageSignals.trySend(CoverageSignal.OlderTimeout(columnId, relay, request.seq, counted))
+            coverageSubs.update { it - subId }
+            unsubscribeAll(subId)
         }
     }
 
