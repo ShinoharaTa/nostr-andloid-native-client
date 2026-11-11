@@ -1,9 +1,11 @@
 - Read aloud new posts from people you follow (ZEN-TTS)
-- Block from ⋯: hides them and privately tells the developer. Blocks are public; Mute is private
+- Block from ⋯ hides them and privately tells the developer. Blocks are public; Mute is private
 - Reports go to your relays and privately to the developer
 - Delete your account in Settings > Account
-- Terms of Use screen (shown again after update)
+- Terms of Use screen (shown again)
 - Fixed gaps when scrolling back
-- DMs from people you don't follow go to Others, with no alerts
-- New "Super hacker" font size (Settings > Appearance)
-- Names and times are a bit larger
+- DMs from non-follows go to Others
+- "Super hacker" font size
+- Chat actions moved into ⋯
+- Notifications tab jumps to top
+- Copy zap invoices; iOS: pick a wallet
