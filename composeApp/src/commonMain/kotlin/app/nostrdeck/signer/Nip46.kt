@@ -77,6 +77,22 @@ private fun urlDecode(s: String): String = buildString {
     }
 }
 
+/** [#886] nostrconnect:// の中継リレーの候補（Web #899 の NOSTRCONNECT_RELAY_PRESETS と同じ）。手入力も別にできる。 */
+val NOSTRCONNECT_RELAY_PRESETS: List<String> = listOf(Nip46Manager.DEFAULT_RELAY, "wss://nos.lol")
+
+/**
+ * [#886] 入力を nostrconnect:// の中継リレーの URL にする（[RelayUrl.normalize] で末尾の / を落とす。例: wss://relay.nsec.app）。
+ * Web（#899）と同じく `wss://` の URL だけ受け、それ以外（`ws://` を含む）は null。
+ */
+fun parseNostrConnectRelay(input: String): String? {
+    val relay = RelayUrl.normalize(input)
+    return relay.takeIf { it.startsWith("wss://") && RelayUrl.isValid(it) }
+}
+
+/** [#886] 選べる中継リレー（候補 + 選んだもの。候補に無いもの（手入力）は末尾に足す）。 */
+fun nostrConnectRelayChoices(relay: String): List<String> =
+    if (relay in NOSTRCONNECT_RELAY_PRESETS) NOSTRCONNECT_RELAY_PRESETS else NOSTRCONNECT_RELAY_PRESETS + relay
+
 /** URL エンコード（nostrconnect:// のクエリ用。英数と -_.~ 以外を %XX に）。 */
 private fun urlEncode(s: String): String = buildString {
     for (b in s.encodeToByteArray()) {
@@ -103,7 +119,7 @@ class Nip46Client(
 ) {
     private val secp = Secp256k1.get()
     val clientPubkey: String = secp.pubKeyCompress(secp.pubkeyCreate(clientSecret)).copyOfRange(1, 33).toHex()
-    private val relayUrl = relayUrls.first()  // MVP: 先頭リレー
+    val relayUrl = relayUrls.first()  // MVP: 先頭リレー（[#886] 設定のアカウント欄に出すので公開）
     private val relay = RelayClient(relayUrl, scope)
     private val pending = mutableMapOf<String, CompletableDeferred<Pair<String, String>>>() // id → (result, error)
     private val json = Json { ignoreUnknownKeys = true }
@@ -224,8 +240,8 @@ interface Nip46Store {
  * 長寿命の appScope と永続化ストアを起動時に init() で注入する。
  */
 object Nip46Manager {
-    /** nostrconnect:// の既定リレー（NIP-46 用途で広く使われる公開リレー）。 */
-    const val DEFAULT_RELAY = "wss://nos.lol"
+    /** nostrconnect:// の既定の中継リレー（[#886] 2026-10-19 の決定。Web #899 と同じ。以前は nos.lol 固定）。 */
+    const val DEFAULT_RELAY = "wss://relay.nsec.app"
 
     private var scope: CoroutineScope? = null
     private var store: Nip46Store? = null
@@ -237,6 +253,9 @@ object Nip46Manager {
     }
 
     val isActive: Boolean get() = client != null
+
+    /** [#886] 接続中の中継リレー（設定のアカウント欄に出す）。NIP-46 でなければ null。 */
+    val relayUrl: String? get() = client?.relayUrl
 
     /** bunker:// で接続 → connect/get_public_key。成功で NIP-46 に切替＋永続化し userPubkey を返す。 */
     suspend fun connectBunker(bunkerUri: String): String {
@@ -261,12 +280,18 @@ object Nip46Manager {
         val secret = secureRandomBytes(16).toHex()
         val c = Nip46Client(clientSecret, listOf(relay), sc)
         c.start()
-        onUri(c.nostrConnectUri(relay, secret, appName))
-        c.awaitConnect(secret)
-        val user = c.request("get_public_key", emptyList())
-        val remote = c.remoteSignerPubkeyOrNull ?: throw RuntimeException("remote pubkey not determined")
-        finish(c, clientSecret, remote, listOf(relay), user)
-        return user
+        try {
+            onUri(c.nostrConnectUri(relay, secret, appName))
+            c.awaitConnect(secret)
+            val user = c.request("get_public_key", emptyList())
+            val remote = c.remoteSignerPubkeyOrNull ?: throw RuntimeException("remote pubkey not determined")
+            finish(c, clientSecret, remote, listOf(relay), user)
+            return user
+        } catch (t: Throwable) {
+            // [#886] 中継リレーを変えて作り直した（キャンセル）・タイムアウトなどで、待っていたリレーを切る
+            c.stop()
+            throw t
+        }
     }
 
     /** 起動時復元。保存済みセッションがあれば NIP-46 を張り直して true。 */

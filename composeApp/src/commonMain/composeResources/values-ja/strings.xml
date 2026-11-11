@@ -480,6 +480,8 @@
     <string name="nip46_waiting">承認待ち…</string>
     <string name="nip46_generating">生成中…</string>
     <string name="nip46_generate">接続リンクを生成（Amber 等）</string>
+    <string name="nip46_relay_title">中継リレー</string>
+    <string name="nip46_relay_desc">署名アプリとの通信に使うリレーです。既定は relay.nsec.app</string>
     <string name="connect_failed_fmt">接続に失敗: %1$s</string>
     <string name="nip46_bunker_prompt">または bunker:// を貼り付け:</string>
     <string name="connecting">接続中…</string>

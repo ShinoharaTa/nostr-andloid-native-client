@@ -484,6 +484,8 @@
     <string name="nip46_waiting">Waiting for approval…</string>
     <string name="nip46_generating">Generating…</string>
     <string name="nip46_generate">Generate connection link (Amber etc.)</string>
+    <string name="nip46_relay_title">Relay</string>
+    <string name="nip46_relay_desc">Relay used to talk to your signing app. Default: relay.nsec.app</string>
     <string name="connect_failed_fmt">Connection failed: %1$s</string>
     <string name="nip46_bunker_prompt">Or paste a bunker:// URI:</string>
     <string name="connecting">Connecting…</string>
