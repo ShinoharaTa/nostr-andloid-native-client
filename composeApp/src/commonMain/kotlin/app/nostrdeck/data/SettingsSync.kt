@@ -1,9 +1,18 @@
 package app.nostrdeck.data
 
 import app.nostrdeck.model.AuthPolicy
+import app.nostrdeck.model.ColumnKind
+import app.nostrdeck.model.ColumnRenderer
 import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.model.NoteAccentStyle
+import app.nostrdeck.model.ReqFilter
+import app.nostrdeck.model.withHexProfileAuthors
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonArray
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.auth_always
 import nostr_deck_client.composeapp.generated.resources.auth_dm_mine
@@ -167,6 +176,8 @@ private fun sameColumnContent(a: ColumnSpec, b: ColumnSpec): Boolean =
 /**
  * カラム構成の差分を計算する。id で突き合わせ、追加/削除/変更をカラム単位で返す。
  * 双方に存在するカラムの並び順が違うときだけ [ColumnDiff.Reordered] を1件加える。
+ * [#778] [remote] は [decodeDeckColumnsContent] の columns（知らない種別の行は含まない）。
+ * 知らない種別の行は手元にも無いので、ここでは差分（削除・並び順）に出さない。保存では元の位置へ書き戻す。
  */
 fun diffDeckColumns(local: List<ColumnSpec>, remote: List<ColumnSpec>): List<ColumnDiff> {
     val localSorted = local.sortedBy { it.order }
@@ -213,4 +224,84 @@ fun applyColumnDiffs(local: List<ColumnSpec>, selected: List<ColumnDiff>): List<
         result = (inRemote + rest).toMutableList()
     }
     return result.mapIndexed { i, s -> s.copy(order = i) }
+}
+
+// ---- [#778] カラム構成の content（d=DECK_COLUMNS_D）の読み書き（純関数・単体テスト対象）----
+
+/** 30078 の content に載せるカラム1件分。他クライアントからも読める素直な JSON。
+ *  #122 時代に発行済みのイベントと互換のある形式なので変更しないこと。 */
+@Serializable
+private data class DeckColumnDto(
+    val id: String,
+    val title: String,
+    val subtitle: String = "",
+    val kind: String,
+    val renderer: String,
+    val filter: ReqFilter = ReqFilter(),
+    val order: Int = 0,
+)
+
+// EventRepository の json と同じ設定（encodeDefaults = false。既定と等しい subtitle / filter / order は書かない）。
+private val deckColumnsJson = Json { ignoreUnknownKeys = true }
+
+/**
+ * このビルドが知らない種別（kind / renderer）の行。表示はせず、保存のときに書き戻す。
+ * [position] は order の昇順（同じ order は元の順）に並べたときの位置。[raw] は受け取った行の JSON そのまま。
+ */
+data class UnknownDeckColumn(val position: Int, val raw: JsonElement)
+
+/** カラム構成の content を読んだ結果。[columns] は表示できる行（元の配列の順）、[unknown] は知らない種別の行。 */
+data class DeckColumnsContent(val columns: List<ColumnSpec>, val unknown: List<UnknownDeckColumn>)
+
+/**
+ * d=DECK_COLUMNS_D の content（#122 互換の DeckColumnDto 配列）を読む。JSON 全体が壊れていれば null。
+ * [#388-review] 行の変換は loadPinnedColumns と同じく 1 件ずつ包む（1 件の失敗で全件を失わない）。
+ * [#778] 知らない種別の行は捨てずに、生の JSON のまま [DeckColumnsContent.unknown] へ控える。
+ */
+fun decodeDeckColumnsContent(content: String): DeckColumnsContent? {
+    val dtos = runCatching { deckColumnsJson.decodeFromString(ListSerializer(DeckColumnDto.serializer()), content) }
+        .getOrNull() ?: return null
+    val raws = runCatching { deckColumnsJson.parseToJsonElement(content).jsonArray }.getOrNull() ?: return null
+    // 位置は order の昇順で数える（sortedBy は安定。Web の sortByOrder と同じ並び）。
+    val positionOf = dtos.indices.sortedBy { dtos[it].order }.withIndex().associate { (pos, i) -> i to pos }
+    val columns = mutableListOf<ColumnSpec>()
+    val unknown = mutableListOf<UnknownDeckColumn>()
+    dtos.forEachIndexed { i, d ->
+        val kind = ColumnKind.entries.firstOrNull { it.name == d.kind }
+        val renderer = ColumnRenderer.entries.firstOrNull { it.name == d.renderer }
+        if (kind == null || renderer == null) {
+            unknown += UnknownDeckColumn(positionOf.getValue(i), raws[i])
+            return@forEachIndexed
+        }
+        runCatching {
+            ColumnSpec(
+                id = d.id, title = d.title, subtitle = d.subtitle,
+                kind = kind, renderer = renderer,
+                filter = d.filter, pinned = true, order = d.order,
+            ).withHexProfileAuthors()   // [#578]
+        }.getOrNull()?.let { columns += it }
+    }
+    return DeckColumnsContent(columns, unknown)
+}
+
+/**
+ * 手元のピン留めカラム [local]（並び順どおり）を d=DECK_COLUMNS_D の content にする。
+ * 手元の行の order は書き出す配列の位置で振り直す。
+ * [#778] [unknown]（最後に読み込んだ版の知らない種別の行）は、読み込んだときの位置へ中身を変えずに差し戻す
+ * （手元の行が減って位置が配列の長さを超えるときは末尾へ）。
+ */
+fun encodeDeckColumnsContent(local: List<ColumnSpec>, unknown: List<UnknownDeckColumn>): String {
+    // null = 手元の行が入る場所
+    val slots = MutableList<JsonElement?>(local.size) { null }
+    unknown.sortedBy { it.position }.forEach { u -> slots.add(u.position.coerceIn(0, slots.size), u.raw) }
+    val known = local.iterator()
+    val rows = slots.mapIndexed { i, raw ->
+        raw ?: known.next().let { s ->
+            deckColumnsJson.encodeToJsonElement(
+                DeckColumnDto.serializer(),
+                DeckColumnDto(s.id, s.title, s.subtitle, s.kind.name, s.renderer.name, s.filter, i),
+            )
+        }
+    }
+    return JsonArray(rows).toString()
 }
