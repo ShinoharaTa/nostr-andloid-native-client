@@ -20,6 +20,7 @@
   "web_chat_empty": "No messages yet",
   "web_more_actions": "More actions",
   "web_emoji_reaction": "React with an emoji",
+  "web_unreact": "Remove reaction",
   "web_columnform_npub_required": "Enter an npub or hex",
   "web_columnform_relay_add": "Add a relay to publish to",
   "web_columnform_relay_placeholder": "wss://… (optional)",

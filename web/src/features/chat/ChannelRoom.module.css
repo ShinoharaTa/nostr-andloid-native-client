@@ -132,12 +132,13 @@
   width: 38px;
 }
 
+/* [#989] 吹き出しは 78% まで。横の ⋯（28px ＋ 間 2px）はその外に置き、⋯ のぶん吹き出しを細くしない */
 .main {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  max-width: 78%;
+  max-width: calc(78% + 30px);
 }
 
 .meta {
@@ -233,17 +234,28 @@
   }
 }
 
-.action[aria-pressed="true"][data-shape="heart"] {
-  color: var(--react-heart);
-}
-
-.action[aria-pressed="true"][data-shape="star"] {
-  color: var(--react-star);
-}
-
 .actionIcon {
   width: var(--icon-sm);
   height: var(--icon-sm);
+}
+
+/* [#989] ⋯ のメニューの「リアクション」の右端の ♡ / ☆（押してあれば投稿の ♡ ボタンと同じ色） */
+.menuGlyph {
+  display: grid;
+  color: var(--text-3);
+}
+
+.menuGlyph > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.menuGlyph[data-on][data-shape="heart"] {
+  color: var(--react-heart);
+}
+
+.menuGlyph[data-on][data-shape="star"] {
+  color: var(--react-star);
 }
 
 /* Slack 風の集約リアクション（絵文字 + 件数） */
