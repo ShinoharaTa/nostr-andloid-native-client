@@ -2377,6 +2377,23 @@ private fun RelaySettings() {
         }
     }
 
+    // [#853] Android 15 以降は裏に回ると数秒で接続が遮断される。保ちたい人向けに電池「制限なし」を案内し、
+    // アプリ情報を開くだけのボタンを置く（Android のみ）。
+    if (appDetailsSettingsSupported) {
+        val openAppDetails = rememberAppDetailsOpener()
+        Spacer(Modifier.size(DeckSpace.Md))
+        HorizontalDivider(color = DeckColors.Border)
+        Spacer(Modifier.size(DeckSpace.Md))
+        SectionCaption(stringResource(Res.string.battery_unrestricted_title))
+        Spacer(Modifier.size(DeckSpace.Xs))
+        Text(
+            stringResource(Res.string.battery_unrestricted_desc),
+            color = DeckColors.Text3, fontSize = DeckType.Label,
+        )
+        Spacer(Modifier.size(DeckSpace.Sm))
+        DeckButton(stringResource(Res.string.battery_unrestricted_open), onClick = openAppDetails)
+    }
+
     // 削除は破壊的操作なので確認を挟む。
     confirmRemove?.let { url ->
         DeckConfirmDialog(

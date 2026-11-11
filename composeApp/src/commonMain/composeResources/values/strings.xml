@@ -505,6 +505,10 @@
     <string name="auth_off">Off</string>
     <string name="relays_recs_loading">Aggregating relay lists (NIP-65) of people you follow…</string>
     <string name="relays_recs_empty">Could not aggregate (no follows etc.). Popular picks:</string>
+    <!-- [#853] Android 15 以降の裏での接続（電池「制限なし」の案内。Android のみ表示） -->
+    <string name="battery_unrestricted_title">Staying connected in the background</string>
+    <string name="battery_unrestricted_desc">On Android 15 and later, the app loses its relay connections a few seconds after you leave it (it reconnects as soon as you come back). To stay connected in the background, open App info → Battery and choose Unrestricted. This uses more battery.</string>
+    <string name="battery_unrestricted_open">Open App info</string>
     <string name="relay_delete_title">Remove this relay?</string>
     <string name="relay_delete_text_fmt">%1$s
 It will be removed from the list and reflected in the next published kind:10002.</string>

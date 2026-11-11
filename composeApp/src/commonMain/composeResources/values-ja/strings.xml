@@ -501,6 +501,10 @@
     <string name="auth_off">無効</string>
     <string name="relays_recs_loading">フォロー中のリレーリスト(NIP-65)を集計中…</string>
     <string name="relays_recs_empty">集計できませんでした（フォローが無い等）。定番の候補:</string>
+    <!-- [#853] Android 15 以降の裏での接続（電池「制限なし」の案内。Android のみ表示） -->
+    <string name="battery_unrestricted_title">裏での接続</string>
+    <string name="battery_unrestricted_desc">Android 15 以降は、アプリを裏に回すと数秒でリレーとの接続が切れます（戻るとすぐ繋がり直します）。裏でも接続を保ちたいときは、アプリ情報 →「電池」で「制限なし」を選んでください。電池の減りは早くなります。</string>
+    <string name="battery_unrestricted_open">アプリ情報を開く</string>
     <string name="relay_delete_title">リレーを削除しますか？</string>
     <string name="relay_delete_text_fmt">%1$s
 一覧から削除されます。次回「保存」で公開する kind:10002 にも反映されます。</string>
