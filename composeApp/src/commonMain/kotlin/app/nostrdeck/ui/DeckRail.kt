@@ -140,9 +140,10 @@ fun DeckRail(
             }
             // [#405][#409] 通知カラムがあるときは目次のベルがその役を担う（同じベルを2つ並べない）。
             // 通知カラムを表示していないユーザーだけ、ここから従来の通知画面を開く。
+            // [#991] スマホ表示では、見ている通知画面を押したら先頭へ戻す（下部のタブと同じ）。
             if (state.notificationsColumnId == null) {
                 NavIcon(Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications), state.navDest == NavDest.NOTIFICATIONS) {
-                    state.openNotifications()
+                    if (compact) state.tapNotificationsCompact() else state.openNotifications()
                 }
             }
         }

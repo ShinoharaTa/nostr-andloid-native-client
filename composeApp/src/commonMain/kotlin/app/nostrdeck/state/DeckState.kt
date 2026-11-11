@@ -18,6 +18,9 @@ enum class NavDest { HOME, SEARCH, NOTIFICATIONS, DM, CHANNELS, SETTINGS }
 /** [#14] キーボードショートカットで選択中の投稿に対して行うアクション。 */
 enum class KbAction { OPEN, REPLY, REPOST, REACT, BOOKMARK }
 
+/** [#991] 通知画面（通知カラムが無い人の [NavDest.NOTIFICATIONS]）を先頭へ戻すときの [DeckState.scrollTopTarget]。カラムの id とは重ならない。 */
+const val NOTIFICATIONS_SCREEN_SCROLL_ID = "screen:notifications"
+
 /**
  * 全幅で重ねる詳細ルート（どの宛先からでもプロフィール/スレッドを開ける）。
  * Deck の細いカラムではなく、コンテンツ領域いっぱいの adaptive 2ペイン/タブで描く。
@@ -198,6 +201,28 @@ class DeckState(
         clearDetail()
         val id = notificationsColumnId
         if (id != null) jumpTo(id) else navDest = NavDest.NOTIFICATIONS
+    }
+
+    /**
+     * [#991] スマホ表示の「通知」のタップ。通知カラム（無ければ通知画面）へ移り、一番上（最新）まで戻す。
+     * 通知カラムをいま見ているときは、ホーム（#917）と同じく滑らせて先頭へ（[scrollTopTarget]）。
+     * ほかのカラム・画面から移るときは、移る前に先頭へ置き直す（移り先のカラムはまだ並んでいないので滑らせられない）。
+     * 通知画面は開くたびに作り直されて先頭から出るので、見ているときだけ [NOTIFICATIONS_SCREEN_SCROLL_ID] で戻す。
+     * デッキ表示（カラムが横に並ぶ）では使わない（[openNotifications] のまま）。
+     */
+    fun tapNotificationsCompact() {
+        val id = notificationsColumnId
+        when {
+            id == null -> {
+                if (navDest == NavDest.NOTIFICATIONS) scrollTopTarget = NOTIFICATIONS_SCREEN_SCROLL_ID
+                openNotifications()
+            }
+            navDest == NavDest.HOME && !hasDetail && visibleColumnId == id -> scrollTopTarget = id
+            else -> {
+                listStateFor(id).requestScrollToItem(0)
+                openNotifications()
+            }
+        }
     }
 
     val pinnedColumns: List<ColumnSpec> get() = columns.filter { it.pinned }

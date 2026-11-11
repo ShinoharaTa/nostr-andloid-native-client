@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.AlternateEmail
@@ -47,6 +48,7 @@ import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.NotificationUi
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.state.DeckState
+import app.nostrdeck.state.NOTIFICATIONS_SCREEN_SCROLL_ID
 import app.nostrdeck.state.DetailRoute
 import app.nostrdeck.state.detailRouteForEvent
 import app.nostrdeck.theme.DeckColors
@@ -78,6 +80,16 @@ fun NotificationsScreen(state: DeckState) {
     // 通知タブ（全幅）は常にミュートを適用（カラムのような目トグルは無し）。
     val mute = rememberMuteMatcher()
     val items = all.filterNot { mute.muted(it) }
+    val listState = rememberLazyListState()
+    // [#991] 見ているときに「通知」を押したら先頭（最新）へ戻す。指で触って止められたときも要求は消す。
+    LaunchedEffect(state.scrollTopTarget) {
+        if (state.scrollTopTarget != NOTIFICATIONS_SCREEN_SCROLL_ID) return@LaunchedEffect
+        try {
+            listState.scrollToTopQuickly()
+        } finally {
+            state.consumeScrollTop()
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(DeckColors.Surface)) {
         ColumnHeader(
@@ -86,7 +98,7 @@ fun NotificationsScreen(state: DeckState) {
         )
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
-            items, rememberLazyListState(),
+            items, listState,
             onNoticeClick = rememberNotificationOpener(state),  // [#837]
             onActorClick = { pk -> state.openProfile(pk) },
             // [#254] 引っ張って更新: REQ を張り直してリレーから取り直す。
