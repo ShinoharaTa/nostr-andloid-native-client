@@ -149,6 +149,9 @@ import nostr_deck_client.composeapp.generated.resources.nwc_disconnect
 import nostr_deck_client.composeapp.generated.resources.nwc_disconnect_confirm_title
 import nostr_deck_client.composeapp.generated.resources.nwc_disconnect_confirm_text
 import nostr_deck_client.composeapp.generated.resources.nwc_methods_fmt
+import nostr_deck_client.composeapp.generated.resources.zap_wallet_title
+import nostr_deck_client.composeapp.generated.resources.zap_wallet_desc
+import nostr_deck_client.composeapp.generated.resources.zap_wallet_system
 import nostr_deck_client.composeapp.generated.resources.common_paste
 import nostr_deck_client.composeapp.generated.resources.common_saving
 import nostr_deck_client.composeapp.generated.resources.section_mute
@@ -632,6 +635,12 @@ private fun WalletSettings() {
         HintText(stringResource(Res.string.nwc_hint))
     }
 
+    // [#993] iOS は Zap の請求書を開くウォレットを選ぶ（iOS にはアプリを選ぶ画面が無い）
+    if (zapWalletChoiceSupported) {
+        Spacer(Modifier.size(DeckSpace.Lg))
+        ZapWalletChoice()
+    }
+
     if (confirmDisconnect) {
         DeckConfirmDialog(
             title = stringResource(Res.string.nwc_disconnect_confirm_title),
@@ -641,6 +650,40 @@ private fun WalletSettings() {
             onConfirm = { app.nostrdeck.wallet.NwcManager.disconnect(); confirmDisconnect = false },
             onDismiss = { confirmDisconnect = false },
         )
+    }
+}
+
+/**
+ * [#993] Zap の請求書を開くウォレット（iOS だけ）。NWC を使わないとき、ZapSheet がこのウォレットの URL で開く。
+ * 一覧は [app.nostrdeck.wallet.ZapWallet]（Damus と同じ）。入っていないウォレットを選ぶと、Zap のときに
+ * 「開けませんでした」と出て請求書をコピーできる。
+ */
+@Composable
+private fun ZapWalletChoice() {
+    val repo = LocalRepository.current ?: return
+    val selected by repo.zapWalletFlow().collectAsState()
+    SectionCaption(stringResource(Res.string.zap_wallet_title))
+    Spacer(Modifier.size(DeckSpace.Xs))
+    Text(stringResource(Res.string.zap_wallet_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.size(DeckSpace.Sm))
+    app.nostrdeck.wallet.ZapWallet.entries.forEach { w ->
+        Row(
+            Modifier.fillMaxWidth().clickable { repo.setZapWallet(w) }.padding(vertical = DeckSpace.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = w == selected,
+                onClick = { repo.setZapWallet(w) },
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = DeckColors.Accent,
+                    unselectedColor = DeckColors.Text3,
+                ),
+            )
+            Text(
+                if (w == app.nostrdeck.wallet.ZapWallet.SYSTEM) stringResource(Res.string.zap_wallet_system) else w.displayName,
+                color = DeckColors.Text, fontSize = DeckType.Sub,
+            )
+        }
     }
 }
 
