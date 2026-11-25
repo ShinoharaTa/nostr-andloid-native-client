@@ -43,6 +43,7 @@ import {
   publishReaction,
   reactWithDefault,
   reportNote,
+  requestDelete,
   useIsReacted,
 } from "../actions/reactions";
 import { registerColumnScroll } from "../deck/columnScroll";
@@ -468,6 +469,7 @@ function warn(message: string) {
  * 並び: リプライ → リアクション（既定。押してあれば取り消し）→ 絵文字でリアクション → Zap →
  * テキストをコピー・このユーザーをミュート / ブロック（#963）・通報、開発者モード中は末尾に「イベントJSONを表示」（CH3）。
  * [#538] Zap は発言者の kind:0 に lud16 があるときだけ。
+ * [#1016] 自分の kind:42 は「削除をリクエスト」（ネイティブ #974。投稿の ⋯ と同じ確認・トースト・NIP-09 kind:5）。
  */
 function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine: boolean; onReply(): void }) {
   const t = useT();
@@ -479,7 +481,7 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
   const muteState = useUserMuteState(message.pubkey);
   const developerMode = useDeveloperMode((s) => s.enabled);
   const [dialog, setDialog] = useState<
-    "picker" | "unreact" | "mute" | "block" | "report" | "zap" | "json" | null
+    "picker" | "unreact" | "mute" | "block" | "report" | "delete" | "zap" | "json" | null
   >(null);
   // [#537] ウォレット接続（NWC）済みなら Zap ダイアログの受け口へアプリ内送金を渡す
   const walletConnected = useNwc((s) => s.connection !== null);
@@ -541,6 +543,15 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
     { type: "separator" },
     { type: "item", label: t("note_copy_text"), onSelect: () => void copyText(plainTextOf(message)) },
   );
+  // [#1016] 削除リクエストは自分のパブリックチャット発言（kind:42）だけ（DM は署名済みイベントではないので対象外）
+  if (mine && me !== null && message.kind === 42) {
+    entries.push({
+      type: "item",
+      label: t("note_request_delete"),
+      onSelect: () => setDialog("delete"),
+      tone: "danger",
+    });
+  }
   if (!mine) {
     entries.push(
       ...muteMenuEntries(muteState, {
@@ -622,6 +633,22 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           onConfirm={() => {
             setDialog(null);
             mute("block");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "delete" && (
+        <ConfirmDialog
+          title={t("note_delete_title")}
+          text={t("note_delete_text")}
+          confirmLabel={t("note_delete_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            // 手元からは kind:5 を store に入れたところで消え、削除の記録（#579）で取り直しても戻らない
+            void requestDelete(message).then((ok) =>
+              showToast(ok ? t("note_delete_sent") : t("note_delete_failed")),
+            );
           }}
           onDismiss={() => setDialog(null)}
         />

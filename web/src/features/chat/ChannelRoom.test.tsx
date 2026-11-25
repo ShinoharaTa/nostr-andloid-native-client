@@ -8,7 +8,7 @@ import { LOADING_TIMEOUT_MS } from "../../lib/columnRequest";
 import { type ColumnSpec, DEFAULT_COLUMNS, decodeDeckColumns } from "../../lib/columns";
 import { requestZapInvoice } from "../../lib/lnurl";
 import { readRelays, subscribeTo } from "../../nostr/pool";
-import { unsent$ } from "../../nostr/publish";
+import { type EventDraft, publishEvent, unsent$ } from "../../nostr/publish";
 import { addVerified, eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { useDeck } from "../../store/deck";
@@ -34,6 +34,11 @@ vi.mock("../../nostr/pool", async (importOriginal) => {
     subscribe: vi.fn(() => NEVER),
   };
 });
+// [#1016] 発行はリレーへ送らない（署名してストアに入れるところまで。本物の publishEvent と同じく手元へ先に入れる）
+vi.mock("../../nostr/publish", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../nostr/publish")>()),
+  publishEvent: vi.fn(),
+}));
 // DM の購読・復号はしない
 vi.mock("../dm/dmService", () => ({ startDecrypting: vi.fn(), resumeDecrypting: vi.fn() }));
 // [#856] 参加・退出は発行しない（呼ばれ方だけ見る）
@@ -135,6 +140,20 @@ const FETCHED = {
 beforeEach(() => {
   installDialogPolyfill();
   vi.mocked(subscribeTo).mockClear();
+  vi.mocked(publishEvent).mockReset();
+  vi.mocked(publishEvent).mockImplementation(async (draft: EventDraft) => {
+    const signed = finalizeEvent(
+      {
+        kind: draft.kind,
+        content: draft.content,
+        tags: draft.tags,
+        created_at: draft.created_at ?? 1_700_009_000,
+      },
+      meKey,
+    );
+    addVerified(signed);
+    return signed;
+  });
   useSession.setState({ status: "in", method: "nip07", pubkey: ME });
   useDeck.setState({ columns: structuredClone([...DEFAULT_COLUMNS]), widths: {}, revealMuted: [] });
   for (const event of [first, muted, mine, reply, reaction, otherRoom]) addVerified(event);
@@ -309,13 +328,19 @@ describe("デッキのルームカラム", () => {
       "リアクション",
       "絵文字でリアクション",
       "テキストをコピー",
+      "削除をリクエスト",
     ]);
     await user.keyboard("{Escape}");
 
-    // 開発者モード中は末尾に「イベントJSONを表示」
+    // 開発者モード中は末尾に「イベントJSONを表示」（[#1016] 削除をリクエストはその前）
     act(() => useDeveloperMode.setState({ enabled: true }));
     await user.click(within(mineRow).getByRole("button", { name: "その他の操作" }));
-    expect(screen.getAllByRole("menuitem").at(-1)?.textContent).toBe("イベントJSONを表示");
+    expect(
+      screen
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent)
+        .slice(-2),
+    ).toEqual(["削除をリクエスト", "イベントJSONを表示"]);
     act(() => useDeveloperMode.setState({ enabled: false }));
   });
 
@@ -496,6 +521,82 @@ describe("デッキのルームカラム", () => {
     );
 
     eventStore.remove(aliceProfile.id);
+  });
+});
+
+describe("[#1016] 削除をリクエスト", () => {
+  function renderColumn() {
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    const router = createMemoryRouter([{ path: "*", element: <DeckColumn spec={spec} showHeader /> }]);
+    render(<RouterProvider router={router} />);
+  }
+
+  async function openMenuOf(user: ReturnType<typeof userEvent.setup>, text: string) {
+    const row = screen.getByText(text).closest("article");
+    if (!row) throw new Error("no row");
+    await user.click(within(row).getByRole("button", { name: "その他の操作" }));
+  }
+
+  it("他人の発言・未ログインでは出さない", async () => {
+    const user = userEvent.setup();
+    renderColumn();
+    await openMenuOf(user, "こんにちは");
+    expect(screen.queryByRole("menuitem", { name: "削除をリクエスト" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    act(() => useSession.setState({ status: "out", method: null, pubkey: null }));
+    await openMenuOf(user, "わたしの発言");
+    expect(screen.queryByRole("menuitem", { name: "削除をリクエスト" })).not.toBeInTheDocument();
+  });
+
+  it("自分の発言: 確認 →「リクエストする」で kind:5（理由なし）とトースト。一覧から消え、取り直しても戻らない", async () => {
+    const user = userEvent.setup();
+    const doomed = message(meKey, "消す発言", 1_700_001_500);
+    addVerified(doomed);
+    renderColumn();
+    expect(screen.getByText("消す発言")).toBeInTheDocument();
+
+    await openMenuOf(user, "消す発言");
+    const item = screen.getByRole("menuitem", { name: "削除をリクエスト" });
+    expect(item.className).toMatch(/danger/);
+    await user.click(item);
+    const dialog = screen.getByRole("dialog", { name: "この投稿の削除をリクエストしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "リクエストする" }));
+
+    expect(vi.mocked(publishEvent)).toHaveBeenCalledWith({
+      kind: 5,
+      content: "",
+      tags: [
+        ["e", doomed.id],
+        ["k", "42"],
+      ],
+    });
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["削除をリクエストしました"]));
+    expect(screen.queryByText("消す発言")).not.toBeInTheDocument();
+
+    // リレーから取り直しても戻らない（削除の記録 #579）
+    act(() => {
+      addVerified(doomed);
+    });
+    expect(screen.queryByText("消す発言")).not.toBeInTheDocument();
+    expect(eventStore.getEvent(doomed.id)).toBeUndefined();
+  });
+
+  it("発行できなければ「削除をリクエストできませんでした」で、発言は残る", async () => {
+    const user = userEvent.setup();
+    vi.mocked(publishEvent).mockRejectedValueOnce(new Error("no relay"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderColumn();
+
+    await openMenuOf(user, "わたしの発言");
+    await user.click(screen.getByRole("menuitem", { name: "削除をリクエスト" }));
+    const dialog = screen.getByRole("dialog", { name: "この投稿の削除をリクエストしますか？" });
+    await user.click(within(dialog).getByRole("button", { name: "リクエストする" }));
+
+    await waitFor(() => expect(useToast.getState().queue).toEqual(["削除をリクエストできませんでした"]));
+    expect(screen.getByText("わたしの発言")).toBeInTheDocument();
+    vi.mocked(console.warn).mockRestore();
   });
 });
 
