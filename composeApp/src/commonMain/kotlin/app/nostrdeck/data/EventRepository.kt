@@ -5374,6 +5374,23 @@ class EventRepository(
     }
     private fun loadTtsVoice() {
         ttsVoiceState.value = app.nostrdeck.model.TtsVoice.fromId(q.getSetting(TTS_VOICE_KEY).executeAsOneOrNull())
+        // [#1008] 話し方（トーン・速さ・高さ）
+        ttsStyleState.value = app.nostrdeck.model.TtsStyle(
+            tone = app.nostrdeck.model.TtsTone.fromId(q.getSetting(TTS_TONE_KEY).executeAsOneOrNull()),
+            speedTenths = q.getSetting(TTS_SPEED_KEY).executeAsOneOrNull()?.toIntOrNull() ?: app.nostrdeck.model.TtsStyle.DEFAULT.speedTenths,
+            pitch = q.getSetting(TTS_PITCH_KEY).executeAsOneOrNull()?.toIntOrNull() ?: app.nostrdeck.model.TtsStyle.DEFAULT.pitch,
+        ).clamped()
+    }
+
+    /** [#1008] 読み上げの話し方（トーン・速さ・高さ。端末ローカル設定）。 */
+    private val ttsStyleState = MutableStateFlow(app.nostrdeck.model.TtsStyle.DEFAULT)
+    fun ttsStyleFlow(): StateFlow<app.nostrdeck.model.TtsStyle> = ttsStyleState
+    fun setTtsStyle(style: app.nostrdeck.model.TtsStyle) {
+        val s = style.clamped()
+        ttsStyleState.value = s
+        putSettingAsync(TTS_TONE_KEY, s.tone.id)
+        putSettingAsync(TTS_SPEED_KEY, s.speedTenths.toString())
+        putSettingAsync(TTS_PITCH_KEY, s.pitch.toString())
     }
 
     private var readerInstance: TimelineReader? = null
@@ -5383,6 +5400,7 @@ class EventRepository(
             scope = scope,
             ready = { ttsModels.isReady(it) },
             voice = { ttsVoiceState.value },
+            style = { ttsStyleState.value },   // [#1008]
             // 読む投稿はフォロー中のカラムが描く一覧から受け取る（DeckScreen → TimelineReader.onFeedRendered）。
             // フィードを別に組み立てて見張らない（画面に出たものと読むものを一致させる・重い変換を二重に走らせない）
             mutes = muteFilterFlow(),   // [#951] 保存待ちのブロックも含めて読まない（画面で隠す判定と同じ）
@@ -7068,6 +7086,9 @@ class EventRepository(
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
         const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
+        const val TTS_TONE_KEY = "tts:tone"     // [#1008] 読み上げのトーン（neutral/happy/sad/angry/apologetic）
+        const val TTS_SPEED_KEY = "tts:speed"   // [#1008] 読み上げの速さ（10 分の 1 倍。5〜15）
+        const val TTS_PITCH_KEY = "tts:pitch"   // [#1008] 読み上げの高さ（半音。−6〜+12）
         const val DENSITY_KEY = "ui:density"       // [#675] 廃人モード（normal/dense）
         const val KANSAI_MODE_KEY = "ui:kansai_mode" // [#710] うにゅうと握手（on/off）
         const val NOTE_ACCENT_STYLE_KEY = "ui:note_accent"  // [#256][#257] 種別の視覚表示（none/line/bg）

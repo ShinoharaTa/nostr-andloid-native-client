@@ -931,7 +931,7 @@
     <string name="hashtags_unavailable">ピン留めを管理するにはログインしてください。</string>
     <!-- [#948] 読み上げ（ZEN-TTS） -->
     <string name="section_speech">読み上げ</string>
-    <string name="speech_desc">ホーム（フォロー中）を開いている間に新しく届いた投稿を、音声で読み上げます。ON / OFF は投稿ボタンの上のボタンで切り替えます。読み上げには声のデータのダウンロードが必要です（1 つ約 31 MB）。声のデータは ZEN-TTS の公式の配布元（GitHub）から取ってきます。</string>
+    <string name="speech_desc">ホーム（フォロー中）を開いている間に新しく届いた投稿を、音声で読み上げます。投稿ボタンの上の読み上げのボタンを押すと、読み上げの開始・終了と設定を選べます。読み上げには声のデータのダウンロードが必要です（声 1 つ約 28 MB と、最初の 1 回だけ読みのモデル約 13 MB）。声のデータは ZEN-TTS の公式の配布元（声は全力機械の配布サーバー、読みのモデルは全力機械の Hugging Face）から取ってきます。</string>
     <string name="speech_unsupported">この端末では読み上げを使えません（Android と、iOS 16.4 以降）。</string>
     <string name="speech_no_runtime">このビルドには読み上げのエンジンが入っていません。</string>
     <string name="speech_voices">声</string>
@@ -950,11 +950,9 @@
     <string name="speech_voice_kai_desc">40代の男性。響きのある低音</string>
     <string name="speech_voice_kikka_desc">素朴で透明感のある若い女性の声</string>
     <string name="speech_credit_prefix">音声合成：ZEN-TTS（</string>
-    <string name="speech_credit_suffix">）</string>
-    <string name="speech_toggle_on">読み上げを止める</string>
-    <string name="speech_toggle_off">読み上げを始める</string>
+    <string name="speech_credit_suffix"> ）</string>
     <string name="speech_confirm_title">読み上げを始めますか？</string>
-    <string name="speech_confirm_text">フォロー中に新しく届いた投稿を、音声で読み上げます。音が出るので、周りに気をつけてください。止めるときは、もう一度このボタンを押します。</string>
+    <string name="speech_confirm_text">フォロー中に新しく届いた投稿を、音声で読み上げます。音が出るので、周りに気をつけてください。止めるときは、読み上げのボタンを押して「読み上げを終了する」を選びます。</string>
     <string name="speech_confirm_ok">読み上げる</string>
     <string name="speech_fail_not_downloaded">声のデータがありません。設定 → 読み上げ からダウンロードしてください</string>
     <string name="speech_fail_unsupported">この端末では読み上げを使えません</string>
@@ -963,4 +961,19 @@
     <string name="speech_fail_engine">読み上げのエンジンを読み込めませんでした</string>
     <string name="speech_stats_fmt">この ON の間に読んだ投稿: %1$d 件（読めなかった投稿: %2$d 件、読む順番を待っている投稿: %3$d 件）</string>
     <string name="speech_stats_error_fmt">最後のエラー: %1$s</string>
+    <string name="speech_menu_start">読み上げを開始する</string>
+    <string name="speech_menu_stop">読み上げを終了する</string>
+    <string name="speech_menu_settings">読み上げの設定</string>
+    <string name="speech_style">話し方</string>
+    <string name="speech_tone">トーン</string>
+    <string name="speech_tone_neutral">ふつう</string>
+    <string name="speech_tone_happy">うれしい</string>
+    <string name="speech_tone_sad">かなしい</string>
+    <string name="speech_tone_angry">おこる</string>
+    <string name="speech_tone_apologetic">申し訳なさそう</string>
+    <string name="speech_speed_fmt">速さ（%1$s 倍）</string>
+    <string name="speech_pitch_fmt">高さ（%1$s 半音）</string>
+    <string name="speech_style_reset">標準に戻す</string>
+    <string name="speech_style_hint">試聴は、選んでいる話し方で読みます。読み上げ中に変えたときは、次の投稿から変わります。</string>
+    <string name="speech_legacy_removed">読み上げのエンジンを新しくしました。前の声のデータは使えなくなったので消しました。使う声をもう一度ダウンロードしてください。</string>
 </resources>

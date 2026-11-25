@@ -935,7 +935,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="hashtags_unavailable">Sign in to manage pinned tags.</string>
     <!-- [#948] Read aloud (ZEN-TTS) -->
     <string name="section_speech">Read aloud</string>
-    <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Turn it on or off with the button above the post button. You need to download a voice first (about 31 MB each). Voices are downloaded from ZEN-TTS’s official source (GitHub).</string>
+    <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Tap the read-aloud button above the post button to start, stop, or open these settings. You need to download a voice first (about 28 MB each, plus a 13 MB reading model the first time). Voices come from ZEN-TTS’s official sources (Zenryoku Kikai’s model server and its Hugging Face).</string>
     <string name="speech_unsupported">Read aloud is not available on this device (Android, and iOS 16.4 or later).</string>
     <string name="speech_no_runtime">This build does not include the speech engine.</string>
     <string name="speech_voices">Voice</string>
@@ -954,11 +954,9 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="speech_voice_kai_desc">A man in his 40s with a resonant low voice</string>
     <string name="speech_voice_kikka_desc">A simple, clear young female voice</string>
     <string name="speech_credit_prefix">Speech synthesis: ZEN-TTS (</string>
-    <string name="speech_credit_suffix">)</string>
-    <string name="speech_toggle_on">Stop reading aloud</string>
-    <string name="speech_toggle_off">Start reading aloud</string>
+    <string name="speech_credit_suffix"> )</string>
     <string name="speech_confirm_title">Start reading aloud?</string>
-    <string name="speech_confirm_text">New posts from people you follow will be read aloud. Sound will play, so mind your surroundings. Tap this button again to stop.</string>
+    <string name="speech_confirm_text">New posts from people you follow will be read aloud. Sound will play, so mind your surroundings. To stop, tap the read-aloud button and choose “Stop reading aloud”.</string>
     <string name="speech_confirm_ok">Read aloud</string>
     <string name="speech_fail_not_downloaded">No voice downloaded. Download one in Settings > Read aloud</string>
     <string name="speech_fail_unsupported">Read aloud is not available on this device</string>
@@ -967,4 +965,19 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="speech_fail_engine">Couldn’t load the speech engine</string>
     <string name="speech_stats_fmt">Read %1$d posts since turning on (%2$d couldn’t be read, %3$d waiting)</string>
     <string name="speech_stats_error_fmt">Last error: %1$s</string>
+    <string name="speech_menu_start">Start reading aloud</string>
+    <string name="speech_menu_stop">Stop reading aloud</string>
+    <string name="speech_menu_settings">Read-aloud settings</string>
+    <string name="speech_style">Speaking style</string>
+    <string name="speech_tone">Tone</string>
+    <string name="speech_tone_neutral">Neutral</string>
+    <string name="speech_tone_happy">Happy</string>
+    <string name="speech_tone_sad">Sad</string>
+    <string name="speech_tone_angry">Angry</string>
+    <string name="speech_tone_apologetic">Apologetic</string>
+    <string name="speech_speed_fmt">Speed (%1$s×)</string>
+    <string name="speech_pitch_fmt">Pitch (%1$s semitones)</string>
+    <string name="speech_style_reset">Reset to default</string>
+    <string name="speech_style_hint">Preview uses the style you choose here. Changes made while reading apply from the next post.</string>
+    <string name="speech_legacy_removed">The speech engine was updated. Voices downloaded before can’t be used anymore and were removed. Please download the voice you use again.</string>
 </resources>

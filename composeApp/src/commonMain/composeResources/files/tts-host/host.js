@@ -2,7 +2,9 @@
 // 音声合成：ZEN-TTS（https://zenryokukikai.com）。ランタイムは改変せずにそのまま読み込む（../zen-tts/）。
 // ネイティブからの依頼で合成し、1 文ずつ 16bit PCM（base64）にしてネイティブへ返す。再生はネイティブがする。
 //
-//   ネイティブ → ここ: nostrismTtsLoad(id, voice) / nostrismTtsSpeak(id, text) / nostrismTtsStop()
+//   ネイティブ → ここ: nostrismTtsLoad(id, voice) / nostrismTtsSpeak(id, text, options) / nostrismTtsStop()
+//   [#1008] 声は /models/voices/<voice>.ztm、読みのモデルは /models/g2p/（どちらもネイティブがダウンロードしたもの）。
+//   options は ZEN-TTS の speak のオプション（emotion・speed・pitch。既定のままなら {}）
 //   ここ → ネイティブ: {type:'ready'} / {type:'loaded', id} / {type:'chunk', id, index, sampleRate, pcm}
 //                      / {type:'end', id} / {type:'error', id, message}
 import { ZenTts } from '../zen-tts/index.js';
@@ -35,7 +37,12 @@ window.nostrismTtsLoad = async (id, voice) => {
   try {
     if (tts) { tts.destroy(); tts = null; }
     // CPU（WASM SIMD）で動かす。WebView の WebGPU は端末によってまちまちなので使わない
-    tts = await ZenTts.load({ modelsUrl: '/models', cpuWasmUrl: '/zen-tts/cpu/tts-cpu.wasm', backend: 'cpu', voice });
+    tts = await ZenTts.load({
+      modelsUrl: '/models',
+      model: `/models/voices/${voice}.ztm`,
+      cpuWasmUrl: '/zen-tts/cpu/tts-cpu.wasm',
+      backend: 'cpu',
+    });
     post({ type: 'loaded', id });
   } catch (e) {
     post({ type: 'error', id, message: errorText(e) });
@@ -46,7 +53,7 @@ window.nostrismTtsLoad = async (id, voice) => {
 const SENTENCES = /[^。！？!?\n]*[。！？!?\n]+|[^。！？!?\n]+$/g;
 const SPEAKABLE = /[\p{L}\p{N}]/u;
 
-window.nostrismTtsSpeak = async (id, text) => {
+window.nostrismTtsSpeak = async (id, text, options = {}) => {
   current = id;
   if (!tts) { post({ type: 'error', id, message: 'not loaded' }); return; }
   let index = 0;
@@ -54,7 +61,7 @@ window.nostrismTtsSpeak = async (id, text) => {
   for (const sentence of text.match(SENTENCES) ?? []) {
     if (!SPEAKABLE.test(sentence)) continue;
     try {
-      for await (const chunk of tts.speakStream(sentence)) {
+      for await (const chunk of tts.speakStream(sentence, options)) {
         if (current !== id) return;   // 止められた・次の依頼が来た
         post({ type: 'chunk', id, index: index++, sampleRate: chunk.sampleRate, pcm: pcm16Base64(chunk.pcm) });
       }
