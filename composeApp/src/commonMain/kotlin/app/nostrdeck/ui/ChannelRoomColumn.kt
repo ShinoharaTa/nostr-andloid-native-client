@@ -122,12 +122,14 @@ fun LiveChannelRoom(
     onBack: (() -> Unit)? = null,
     /** [#791] 本文の kind:42 へのリンクから開いたときの発言 id。届いたらその位置まで送って短く強調する。 */
     highlightMessageId: String? = null,
+    /** [#1004] 発言のアイコン・名前を押したらその人のプロフィールを開く（[ChannelRoomColumn] へ渡す）。 */
+    onOpenProfile: ((String) -> Unit)? = null,
 ) {
     val repo = LocalRepository.current
     if (repo == null) {
         ChannelRoomColumn(
             spec, emptyList(), modifier, listState, onPin = onPin, onClose = onClose, menu = menu, onBack = onBack,
-            highlightMessageId = highlightMessageId,
+            highlightMessageId = highlightMessageId, onOpenProfile = onOpenProfile,
         )
         return
     }
@@ -156,6 +158,7 @@ fun LiveChannelRoom(
         overflow = listOfNotNull(joinItem),
         names = names,
         highlightMessageId = highlightMessageId,
+        onOpenProfile = onOpenProfile,
         onSend = { text, replyTo -> scope.launch { repo.publishChannelMessage(channelId, text, replyTo?.event) } },
         onReact = { target, content, url -> scope.launch { repo.publishReaction(target, content, url, announce = true) } },   // [#732]
         onReactMade = { target, made -> scope.launch { repo.publishMadeReaction(target, made) } },   // [#775]
@@ -193,6 +196,11 @@ fun ChannelRoomColumn(
     highlightMessageId: String? = null,
     /** [#421] デッキの外（[menu] が null）のヘッダの ⋯ に出す操作（ルームの「参加する」など）。 */
     overflow: List<HeaderMenuItem> = emptyList(),
+    /**
+     * [#1004] 非null なら発言のアイコン・名前を押すとその人のプロフィールを開く（タイムラインの NoteItem の
+     * onAuthorClick と同じ）。以前はどこにも処理が無く、チャットからプロフィールへ行けなかった。
+     */
+    onOpenProfile: ((String) -> Unit)? = null,
 ) {
     // 長押しで開いた操作対象。返信中のメッセージ／リアクションピッカー対象。
     var replyingTo by remember { mutableStateOf<ChannelMessage?>(null) }
@@ -294,6 +302,7 @@ fun ChannelRoomColumn(
                             mineOnRight = mineOnRight,
                             onReply = if (onSend != null) ({ replyingTo = m }) else null,
                             onReact = if (onReact != null) ({ pickerFor = m }) else null,
+                            onOpenProfile = onOpenProfile,
                         )
                     }
                 }
@@ -365,7 +374,10 @@ private fun MessageBubble(
     onReply: (() -> Unit)?,
     onReact: (() -> Unit)?,
     mineOnRight: Boolean = false,
+    onOpenProfile: ((String) -> Unit)? = null,
 ) {
+    // [#1004] アイコンと名前を押したら発言した人のプロフィールへ
+    val openAuthor: (() -> Unit)? = onOpenProfile?.let { open -> { open(m.event.pubkey) } }
     // [#dm-idiom] DM(1:1) は自分＝右寄せ・明色バブル（iMessage流）。パブチャは全員左寄せで統一し、
     // 自分の投稿は色反転の白ではなく少し明るいダークサーフェスで区別する（Slack/Discord流・Bubble 側）。
     val mineRight = mineOnRight && m.isMine
@@ -381,7 +393,7 @@ private fun MessageBubble(
         Modifier.fillMaxWidth().padding(top = if (m.continuation) 1.dp else 8.dp),
         horizontalArrangement = if (mineRight) Arrangement.End else Arrangement.Start,
     ) {
-        if (!mineRight) AvatarSlot(m)
+        if (!mineRight) AvatarSlot(m, openAuthor)
         // 吹き出しは画面幅の 78% までに制限し、⋯ はその外に置く（[bubbleColumnWidth]）。
         // 左寄せ時は画像/カードを吹き出しの幅いっぱいに、右寄せ(DM自分)時は内容幅で右に寄せる。
         // weight: 右寄せではアイコンが後ろに来るので、アイコンを置いた残りの幅から測る（先に測るとアイコンが欠ける）。
@@ -394,7 +406,8 @@ private fun MessageBubble(
                     // 長い表示名は省略（… ）。時刻は右に固定。
                     Text(
                         m.author.name, color = DeckColors.Accent2, fontSize = DeckType.Caption, fontWeight = DeckWeight.Name,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, false).let { if (openAuthor != null) it.clickable(onClick = openAuthor) else it },
                     )
                     Spacer(Modifier.width(DeckSpace.Xs))
                     Text(timeLabel(m.event.createdAt), color = DeckColors.Text3, fontSize = DeckType.Micro)
@@ -427,7 +440,7 @@ private fun MessageBubble(
                 )
             }
         }
-        if (mineRight) AvatarSlot(m)
+        if (mineRight) AvatarSlot(m, openAuthor)
     }
     // [#370] Zap シート（既存の ZapSheet フロー。e タグ + k=42 で zap request を発行）。
     if (showZap) {
@@ -614,14 +627,17 @@ private fun ReplyQuote(parent: ChannelMessage, mine: Boolean) {
 }
 
 @Composable
-private fun AvatarSlot(m: ChannelMessage) {
+private fun AvatarSlot(m: ChannelMessage, onClick: (() -> Unit)? = null) {
     // アイコンサイズ/上パディングはタイムライン(NoteItem)と揃える。連投(continuation)は
     // アイコン非表示だが、幅はアイコンと同じだけ確保して本文の左端がズレないようにする(#3)。
     Box(Modifier.padding(horizontal = DeckSpace.Sm)) {
         if (!m.continuation) {
+            // [#1004] 押すとプロフィール（連投の行はアイコンが無いので何もしない）
             Avatar(
                 m.author.name, m.author.pictureUrl,
-                Modifier.padding(top = DeckSpace.Xs), size = DeckDimens.AvatarSize,
+                Modifier.padding(top = DeckSpace.Xs)
+                    .let { if (onClick != null) it.clickable(onClick = onClick) else it },   // NoteItem と同じ（猫耳を切らないよう clip しない）
+                size = DeckDimens.AvatarSize,
                 pubkey = m.event.pubkey,   // [#378] 猫耳判定用
             )
         } else {

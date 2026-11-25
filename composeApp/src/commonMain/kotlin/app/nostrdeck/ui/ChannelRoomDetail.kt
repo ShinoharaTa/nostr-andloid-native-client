@@ -55,6 +55,7 @@ internal fun ChannelRoomDetail(state: DeckState, channelId: String, messageId: S
         modifier = Modifier.fillMaxSize(),
         onBack = { state.popDetail() },
         highlightMessageId = messageId,
+        onOpenProfile = { pk -> state.openProfile(pk) },   // [#1004] 重ねたルームの上にプロフィールを重ねる（戻るとルーム）
     )
 }
 
