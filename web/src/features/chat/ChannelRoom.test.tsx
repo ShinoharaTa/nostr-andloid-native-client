@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { npubEncode } from "nostr-tools/nip19";
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from "nostr-tools/pure";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -345,6 +346,26 @@ describe("デッキのルームカラム", () => {
     expect(screen.getByRole("dialog", { name: "リアクションを取り消しますか？" })).toBeInTheDocument();
 
     eventStore.remove(myReaction.id);
+  });
+
+  it("[#1005] 発言のアイコン・名前を押すとその人のプロフィール（/p/npub…）へ", async () => {
+    const user = userEvent.setup();
+    useChannels.setState({ channels: CHANNELS });
+    const [spec] = decodeDeckColumns(SYNCED) ?? [];
+    const router = createMemoryRouter([{ path: "*", element: <DeckColumn spec={spec} showHeader /> }]);
+    render(<RouterProvider router={router} />);
+
+    const firstRow = screen.getByText("こんにちは").closest("article");
+    if (!firstRow) throw new Error("no row");
+    const profile = `/p/${npubEncode(ALICE)}`;
+    // アイコンのリンクは読み上げ・Tab から外す（名前のリンクだけ。タイムラインと同じ）
+    const avatar = firstRow.querySelector('a[aria-hidden="true"]');
+    expect(avatar).toHaveAttribute("href", profile);
+    expect(avatar).toHaveAttribute("tabindex", "-1");
+    const [name] = within(firstRow).getAllByRole("link");
+    expect(name).toHaveAttribute("href", profile);
+    await user.click(name);
+    expect(router.state.location.pathname).toBe(profile);
   });
 
   it("[#859] 入力欄の幅が 320px 未満なら、添付を「＋」（添付）のメニュー（画像を添付 / 動画を添付）にまとめる", async () => {

@@ -132,6 +132,11 @@
   width: 38px;
 }
 
+/* [#1005] アイコンを押すとプロフィール */
+.avatarLink {
+  display: flex;
+}
+
 /* [#989] 吹き出しは 78% まで。横の ⋯（28px ＋ 間 2px）はその外に置き、⋯ のぶん吹き出しを細くしない */
 .main {
   display: flex;
@@ -157,6 +162,13 @@
   color: var(--accent-2);
   font-size: var(--type-caption);
   font-weight: var(--w-name);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .name:hover {
+    text-decoration: underline;
+  }
 }
 
 .time {
