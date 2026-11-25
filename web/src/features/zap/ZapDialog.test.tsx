@@ -1,10 +1,14 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
+import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import { requestZapInvoice } from "../../lib/lnurl";
+import { eventStore } from "../../nostr/store";
 import { installDialogPolyfill } from "../../test/dialog";
 import { useToast } from "../../ui/toast";
+import { OPEN_APP_TIMEOUT_MS } from "./useOpenAppFallback";
 import { ZapDialog } from "./ZapDialog";
 
 // LNURL の取得・署名はしない（lnurl.test.ts で見る）。invoice の取得の呼ばれ方だけ見る
@@ -153,19 +157,20 @@ it("ウォレットが無ければ QR・「外部ウォレットで開く」・�
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+/** (hover: none) and (pointer: coarse) に当たる端末にする */
+function touchDevice(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: matches && query === "(hover: none) and (pointer: coarse)",
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
+
 describe("[#994] スマホのブラウザのほかのウォレット", () => {
-  /** (hover: none) and (pointer: coarse) に当たる端末にする */
-  function touchDevice(matches: boolean) {
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn((query: string) => ({
-        matches: matches && query === "(hover: none) and (pointer: coarse)",
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      })),
-    );
-  }
   afterEach(() => vi.unstubAllGlobals());
 
   it("指で触る端末なら「ほかのウォレットで開く」に、ウォレットごとの URL で請求書を開くリンクを並べる", async () => {
@@ -325,4 +330,157 @@ it("キャンセル・Esc で閉じる", async () => {
   expect(onClose).toHaveBeenCalledTimes(1);
   dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
   expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+describe("[#1012] アプリが開かなければ QR のモーダル", () => {
+  const QR_TITLE = "スマホのウォレットで読み取ってください";
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** 外部ウォレットの表示（請求書あり）まで進める。そこからはフェイクタイマー */
+  async function toInvoice(dialog: HTMLElement) {
+    const user = userEvent.setup();
+    await user.click(within(dialog).getByRole("button", { name: "⚡ 100" }));
+    await within(dialog).findByRole("link", { name: "外部ウォレットで開く" });
+    vi.useFakeTimers();
+  }
+
+  it("「外部ウォレットで開く」を押して 1500ms ページが裏に回らなければ、モーダルで QR を大きく出す", async () => {
+    const { dialog, onClose } = renderDialog();
+    await toInvoice(dialog);
+    // userEvent.setup() が clipboard を差し替えるので、その後に置く
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    fireEvent.click(within(dialog).getByRole("link", { name: "外部ウォレットで開く" }));
+    act(() => vi.advanceTimersByTime(OPEN_APP_TIMEOUT_MS - 1));
+    expect(screen.queryByRole("dialog", { name: QR_TITLE })).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+
+    const modal = screen.getByRole("dialog", { name: QR_TITLE });
+    expect(within(modal).getByRole("img", { name: "Zap の invoice（100 sats）" })).toHaveAttribute(
+      "width",
+      "320",
+    );
+    await act(async () => {
+      fireEvent.click(within(modal).getByRole("button", { name: "コピー" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(PR);
+    expect(within(modal).getByRole("status")).toHaveTextContent("コピーしました");
+
+    fireEvent.click(within(modal).getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByRole("dialog", { name: QR_TITLE })).toBeNull();
+    // Zap のダイアログはそのまま
+    expect(screen.getByRole("dialog", { name: "⚡ Zap" })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["blur", () => window.dispatchEvent(new Event("blur"))],
+    [
+      "visibilitychange（hidden）",
+      () => {
+        Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+      },
+    ],
+  ])("%s が来たら（アプリが開いた）モーダルは出さない", async (_, leave) => {
+    const { dialog } = renderDialog();
+    await toInvoice(dialog);
+
+    fireEvent.click(within(dialog).getByRole("link", { name: "外部ウォレットで開く" }));
+    act(() => vi.advanceTimersByTime(300));
+    leave();
+    act(() => vi.advanceTimersByTime(OPEN_APP_TIMEOUT_MS));
+    expect(screen.queryByRole("dialog", { name: QR_TITLE })).toBeNull();
+    Reflect.deleteProperty(document, "visibilityState");
+  });
+
+  it("スマホの「ほかのウォレットで開く」のリンクでも同じ。「QR を大きく表示」は出さない", async () => {
+    touchDevice(true);
+    const { dialog } = renderDialog();
+    await toInvoice(dialog);
+    expect(within(dialog).queryByRole("button", { name: "QR を大きく表示" })).toBeNull();
+    expect(within(dialog).getByRole("img", { name: "Zap の invoice（100 sats）" })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("link", { name: "Strike" }));
+    act(() => vi.advanceTimersByTime(OPEN_APP_TIMEOUT_MS));
+    expect(screen.getByRole("dialog", { name: QR_TITLE })).toBeInTheDocument();
+  });
+
+  it("PC は「QR を大きく表示」でモーダルを開ける", async () => {
+    touchDevice(false);
+    const { dialog } = renderDialog();
+    await toInvoice(dialog);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "QR を大きく表示" }));
+    expect(screen.getByRole("dialog", { name: QR_TITLE })).toBeInTheDocument();
+  });
+
+  it("Zap のダイアログを閉じたらタイマーを残さない", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ZapDialog
+          recipient={RECIPIENT}
+          recipientName="アリス"
+          lud16="alice@example.com"
+          onClose={() => setOpen(false)}
+        />
+      ) : null;
+    }
+    render(<Harness />);
+    const dialog = screen.getByRole("dialog", { name: "⚡ Zap" });
+    await toInvoice(dialog);
+
+    const before = vi.getTimerCount();
+    fireEvent.click(within(dialog).getByRole("link", { name: "外部ウォレットで開く" }));
+    // クリックで積まれる 0ms のタスク（jsdom の遷移など）は先に流す
+    act(() => vi.advanceTimersByTime(0));
+    expect(vi.getTimerCount()).toBe(before + 1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByRole("dialog", { name: "⚡ Zap" })).toBeNull();
+    expect(vi.getTimerCount()).toBe(before);
+    act(() => vi.advanceTimersByTime(OPEN_APP_TIMEOUT_MS));
+    expect(screen.queryByRole("dialog", { name: QR_TITLE })).toBeNull();
+  });
+
+  it("この請求書の receipt（bolt11 が一致）が届いたらモーダルだけ閉じる", async () => {
+    // ストアは共有なので、ほかのテストと被らない請求書と投稿にする
+    const pr = "lnbc210n1preceiptclose";
+    const noteId = "e".repeat(64);
+    vi.mocked(requestZapInvoice).mockResolvedValue(pr);
+    const { dialog, onClose } = renderDialog({ eventId: noteId, targetKind: 1 });
+    await toInvoice(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "QR を大きく表示" }));
+    expect(screen.getByRole("dialog", { name: QR_TITLE })).toBeInTheDocument();
+
+    const receipt = (bolt11: string) =>
+      finalizeEvent(
+        {
+          kind: 9735,
+          created_at: 1_000,
+          tags: [
+            ["e", noteId],
+            ["bolt11", bolt11],
+          ],
+          content: "",
+        },
+        generateSecretKey(),
+      );
+    act(() => {
+      eventStore.add(receipt("lnbc210n1pothers"));
+    });
+    expect(screen.getByRole("dialog", { name: QR_TITLE })).toBeInTheDocument();
+
+    act(() => {
+      eventStore.add(receipt(pr));
+    });
+    expect(screen.queryByRole("dialog", { name: QR_TITLE })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "⚡ Zap" })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

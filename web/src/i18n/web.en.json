@@ -363,5 +363,7 @@
   "web_zap_invoice_label": "Zap invoice (%1$d sats)",
   "web_zap_pay_confirm_text": "Send ⚡ %2$d sats to %1$s. Continue?",
   "web_zap_other_wallets": "Open in another wallet",
-  "web_zap_other_wallets_hint": "Pick a wallet you have installed (others won’t open)."
+  "web_zap_other_wallets_hint": "Pick a wallet you have installed (others won’t open).",
+  "web_zap_qr_title": "Scan this with a wallet on your phone",
+  "web_zap_qr_enlarge": "Show larger QR"
 }
