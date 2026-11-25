@@ -657,6 +657,7 @@ private fun WalletSettings() {
  * [#993] Zap の請求書を開くウォレット（iOS だけ）。NWC を使わないとき、ZapSheet がこのウォレットの URL で開く。
  * 一覧は [app.nostrdeck.wallet.ZapWallet]（Damus と同じ）。入っていないウォレットを選ぶと、Zap のときに
  * 「開けませんでした」と出て請求書をコピーできる。
+ * [#1011] 先頭は「毎回選ぶ」（既定）。Zap のたびに、入っているウォレットから選ぶ。
  */
 @Composable
 private fun ZapWalletChoice() {
@@ -666,7 +667,8 @@ private fun ZapWalletChoice() {
     Spacer(Modifier.size(DeckSpace.Xs))
     Text(stringResource(Res.string.zap_wallet_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
     Spacer(Modifier.size(DeckSpace.Sm))
-    app.nostrdeck.wallet.ZapWallet.entries.forEach { w ->
+    val choices = listOf<app.nostrdeck.wallet.ZapWallet?>(null) + app.nostrdeck.wallet.ZapWallet.entries
+    choices.forEach { w ->
         Row(
             Modifier.fillMaxWidth().clickable { repo.setZapWallet(w) }.padding(vertical = DeckSpace.Xs),
             verticalAlignment = Alignment.CenterVertically,
@@ -680,7 +682,11 @@ private fun ZapWalletChoice() {
                 ),
             )
             Text(
-                if (w == app.nostrdeck.wallet.ZapWallet.SYSTEM) stringResource(Res.string.zap_wallet_system) else w.displayName,
+                when (w) {
+                    null -> stringResource(Res.string.zap_wallet_ask)
+                    app.nostrdeck.wallet.ZapWallet.SYSTEM -> stringResource(Res.string.zap_wallet_system)
+                    else -> w.displayName
+                },
                 color = DeckColors.Text, fontSize = DeckType.Sub,
             )
         }

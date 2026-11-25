@@ -3,17 +3,22 @@ package app.nostrdeck.wallet
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** [#993] Zap の請求書を開くウォレット（iOS の設定で選ぶ）。 */
+/** [#993] Zap の請求書を開くウォレット（iOS の設定で選ぶ。[#1011] 既定は毎回選ぶ）。 */
 class ZapWalletTest {
 
     @Test
-    fun saved_ids_round_trip_and_unknown_falls_back_to_the_device_default() {
-        for (w in ZapWallet.entries) assertEquals(w, ZapWallet.fromId(w.id))
-        assertEquals(ZapWallet.SYSTEM, ZapWallet.fromId(null))
-        assertEquals(ZapWallet.SYSTEM, ZapWallet.fromId("lnlink"))
+    fun saved_ids_round_trip_and_the_rest_ask_every_time() {
+        for (w in ZapWallet.entries) assertEquals(w, ZapWallet.fromSetting(w.id))
+        // [#1011] 未設定・「毎回選ぶ」・知らない id は毎回選ぶ（null）。v0.6.33 で選んだ端末の既定はそのまま
+        assertNull(ZapWallet.fromSetting(null))
+        assertNull(ZapWallet.fromSetting(ZapWallet.ASK_ID))
+        assertNull(ZapWallet.fromSetting("lnlink"))
+        assertEquals(ZapWallet.SYSTEM, ZapWallet.fromSetting("system"))
         assertEquals(ZapWallet.entries.size, ZapWallet.entries.map { it.id }.toSet().size, "id は重ならない")
+        assertTrue(ZapWallet.entries.none { it.id == ZapWallet.ASK_ID }, "「毎回選ぶ」の値とウォレットの id は重ならない")
     }
 
     @Test
