@@ -230,7 +230,7 @@ private fun ContentWithCompose(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(DeckSpace.Md),
             ) {
-                SpeechToggle()
+                SpeechToggle(onOpenSettings = { state.openSettingsSection("speech") })   // [#1008] メニューの「読み上げの設定」
                 if (!hasRail) {
                     FloatingActionButton(onClick = { state.showCompose = true }) {
                         Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
