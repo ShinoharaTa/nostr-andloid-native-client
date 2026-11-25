@@ -236,3 +236,25 @@
     animation: none;
   }
 }
+
+/* [#1012] 請求書の QR を大きく出すモーダル。読み取りやすいよう QR のまわりも白にする */
+.qrModal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* QR 自体を min(80vw, 320px)。狭い画面ではダイアログの幅に収める */
+.qrLarge {
+  width: min(80vw, 320px, 100% - var(--sp-3) * 2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.qrLarge > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

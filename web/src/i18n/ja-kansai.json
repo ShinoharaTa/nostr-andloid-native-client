@@ -287,6 +287,7 @@
   "zap_desc_fmt": "%1$s に投げ銭するで。金額を選んで、ウォレットで払ってな。",
   "zap_invoice_failed": "invoice が取れへんかった。lud16 とリレーの設定を見てみてな。",
   "web_zap_pay_confirm_text": "%1$s に ⚡ %2$d sats を送金するで。ええ？",
+  "web_zap_qr_title": "スマホのウォレットで読み取ってな",
   "relogin_text": "今のログインを切り替える操作やで。続けると、端末に保存してあるキャッシュ（タイムライン履歴・プロフィール等）を消すわ。ローカル鍵はバックアップ（nsec）がないと復元でけへんで。",
   "relogin_title": "ログインし直してもええ？",
   "keyswitch_generate_title": "新しい鍵、作ってもええ？",
