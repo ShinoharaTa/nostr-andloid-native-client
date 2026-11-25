@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatches, useNavigate, useParams } from "react-router";
 import { useShallow } from "zustand/react/shallow";
 import { ComposeHost } from "../features/compose/ComposeHost";
+import { openCompose } from "../features/compose/composeStore";
 import { AddColumnDialog } from "../features/deck/AddColumnDialog";
 import { EditColumnDialog } from "../features/deck/EditColumnDialog";
 import { useDmUnreadTotal } from "../features/dm/dmStore";
@@ -141,6 +142,7 @@ export function AppShell() {
           onSelect={open}
           onOpenColumn={openColumn}
           onAddColumn={() => useDeck.getState().setShowAddColumn(true)}
+          onCompose={() => openCompose({ mode: "new" })}
         />
       )}
       <main className={styles.content} id="main">
@@ -160,7 +162,8 @@ export function AppShell() {
             )}
           </DetailOverlay>
         )}
-        <ComposeHost showFab={dest === "home" && overlay === null && !onRoomPage} />
+        {/* [#1001] レールが出ている表示（Rail / Expanded）では、投稿はレールのボタンから開く */}
+        <ComposeHost showFab={mode === "compact" && dest === "home" && overlay === null && !onRoomPage} />
         <KeyboardShortcuts enabled={dest === "home"} hasDetail={overlay !== null} />
         <ConnectionPill />
         <UpdateToast />
