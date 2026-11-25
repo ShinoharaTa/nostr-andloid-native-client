@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Home
@@ -41,6 +42,7 @@ import app.nostrdeck.model.ColumnSpec
 import app.nostrdeck.state.DeckState
 import app.nostrdeck.state.NavDest
 import nostr_deck_client.composeapp.generated.resources.Res
+import nostr_deck_client.composeapp.generated.resources.fab_post
 import nostr_deck_client.composeapp.generated.resources.nav_add_column
 import nostr_deck_client.composeapp.generated.resources.nav_home
 import nostr_deck_client.composeapp.generated.resources.nav_public_chat
@@ -57,7 +59,7 @@ import app.nostrdeck.theme.DeckType
  * 左 NavigationRail（展開時の常設）。3 ブロック構成:
  *  1. 上部固定 : ブランド + グローバルナビ
  *  2. 中央     : ピン留めカラムの目次（**ここだけがスクロール対象**）
- *  3. 下部固定 : 接続ステータス / 設定 / 自分
+ *  3. 下部固定 : 検索 / パブリックチャット / 通知 / 新規投稿 ｜ 接続ステータス / 自分
  *
  * すべての項目を [RailSlot]（[DeckDimens.RailItem] の同一タップ領域＋中央寄せ）に通し、
  * グリフは [DeckDimens.RailIcon] に統一。ブロック境界は 1px の [RailDivider] で分ける。
@@ -146,6 +148,9 @@ fun DeckRail(
                     if (compact) state.tapNotificationsCompact() else state.openNotifications()
                 }
             }
+            // [#1000] 新規投稿（接続ステータスの上の区切りの上）。レールが出ている表示では右下の投稿ボタン（FAB）の
+            // 代わりにここから開く（AppScaffold の ContentWithCompose はレールのとき FAB を出さない）。`n` は今まで通り。
+            RailComposeButton { state.showCompose = true }
         }
 
         RailDivider()
@@ -187,6 +192,20 @@ private fun RailSlot(active: Boolean = false, onClick: (() -> Unit)? = null, con
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) { content() }
+}
+
+/** [#1000] レールの新規投稿。投稿ボタン（FAB）と同じ塗り（primaryContainer = Accent / Bg）で、大きさはほかの項目と同じ。 */
+@Composable
+private fun RailComposeButton(onClick: () -> Unit) {
+    Box(
+        Modifier.size(DeckDimens.RailItem)
+            .clip(RoundedCornerShape(DeckRadius.Md))
+            .background(DeckColors.Accent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post), tint = DeckColors.Bg, modifier = Modifier.size(DeckDimens.RailIcon))
+    }
 }
 
 @Composable

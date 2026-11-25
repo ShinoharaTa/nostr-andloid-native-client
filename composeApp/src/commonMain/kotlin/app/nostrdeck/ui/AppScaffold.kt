@@ -130,7 +130,7 @@ fun AppScaffold(state: DeckState) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state, compact = true)
                 CompositionLocalProvider(LocalHasNavRail provides true) {
-                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder)
+                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder, hasRail = true)
                 }
             }
         } else if (isCompact) {
@@ -146,6 +146,7 @@ fun AppScaffold(state: DeckState) {
                     state, isCompact = true,
                     Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bottomBarHeight)),
                     detailStateHolder,
+                    hasRail = false,
                 )
                 Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
                     BottomBar(state)
@@ -156,7 +157,7 @@ fun AppScaffold(state: DeckState) {
             // ここで下端インセットを padding して内容がインジケータ帯に潜らないようにする（従来挙動を維持）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state)
-                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder)
+                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder, hasRail = true)
             }
         }
 
@@ -202,6 +203,8 @@ val LocalHasNavRail = staticCompositionLocalOf { false }
  * 宛先の内容 + 投稿 FAB を重ねる。FAB は内容領域の右下に置く（= Compact では
  * BottomBar の上に浮く）ので、下部ナビの「設定」等を覆わない。投稿はタイムライン
  * （Home Deck）の操作なので HOME でのみ表示する。
+ * [#1000] 左レールが出ている表示（[hasRail]）では、投稿はレールのボタンから開くので FAB は出さない
+ * （読み上げの ON / OFF は右下に残す）。
  */
 @Composable
 private fun ContentWithCompose(
@@ -209,6 +212,7 @@ private fun ContentWithCompose(
     isCompact: Boolean,
     modifier: Modifier,
     detailStateHolder: SaveableStateHolder,
+    hasRail: Boolean,
 ) {
     Box(modifier.fillMaxSize()) {
         Destination(state, isCompact = isCompact)
@@ -227,8 +231,10 @@ private fun ContentWithCompose(
                 verticalArrangement = Arrangement.spacedBy(DeckSpace.Md),
             ) {
                 SpeechToggle()
-                FloatingActionButton(onClick = { state.showCompose = true }) {
-                    Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                if (!hasRail) {
+                    FloatingActionButton(onClick = { state.showCompose = true }) {
+                        Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                    }
                 }
             }
         }
