@@ -105,6 +105,7 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
+      "投稿",
       "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
@@ -122,6 +123,7 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
+      "投稿",
       "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
@@ -154,6 +156,7 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
+      "投稿",
       "アカウントのメニュー",
     ]);
 
@@ -168,6 +171,7 @@ describe("骨格", () => {
       "検索",
       "パブリックチャット",
       "通知",
+      "投稿",
       "アカウントのメニュー",
     ]);
   });
@@ -588,6 +592,23 @@ describe("投稿ボタン", () => {
   it("デッキ（/）には「投稿」を出す", () => {
     renderAt(["/"]);
     expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
+  });
+
+  it("[#1001] レールの表示（Rail / Expanded）では右下の投稿ボタンを出さず、レールの「投稿」から開く", async () => {
+    installDialogPolyfill();
+    renderAt(["/"], 1400);
+    const buttons = screen.getAllByRole("button", { name: "投稿" });
+    expect(buttons).toHaveLength(1);
+    expect(mainNav()).toContainElement(buttons[0]);
+    await userEvent.click(buttons[0]);
+    expect(screen.getByRole("dialog", { name: "投稿" })).toBeInTheDocument();
+    act(() => useCompose.setState({ request: null }));
+  });
+
+  it("[#1001] レールの「投稿」は検索などほかの画面でも出す", async () => {
+    renderAt(["/search"], 700);
+    expect(await screen.findByRole("heading", { name: "検索" })).toBeInTheDocument();
+    expect(within(mainNav()).getByRole("button", { name: "投稿" })).toBeInTheDocument();
   });
 
   it("検索では出さない", async () => {

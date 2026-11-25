@@ -9,8 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router";
 import { t, useT } from "../../i18n";
-import { oneLine } from "../../lib/content/labels";
+import { hrefForProfile, oneLine } from "../../lib/content/labels";
 import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
 import { timeLabel } from "../../lib/time";
@@ -331,6 +332,7 @@ function MessageRow({
   const media = extractMedia(message);
   const hasMedia = media.images.length + media.videos.length + media.youtube.length > 0;
   const unsent = useIsUnsent(message.id);
+  const profileHref = hrefForProfile(message.pubkey);
   return (
     <article
       className={styles.message}
@@ -339,14 +341,19 @@ function MessageRow({
       data-highlight={highlighted || undefined}
     >
       <span className={styles.avatarSlot}>
+        {/* [#1005] アイコン・名前を押すとプロフィール（タイムライン NoteItem と同じ。読み上げ・Tab は名前のリンクだけ） */}
         {!continuation && (
-          <Avatar key={picture} url={picture} size="md" seed={name} pubkey={message.pubkey} />
+          <Link className={styles.avatarLink} to={profileHref} tabIndex={-1} aria-hidden="true">
+            <Avatar key={picture} url={picture} size="md" seed={name} pubkey={message.pubkey} />
+          </Link>
         )}
       </span>
       <div className={styles.main}>
         {!continuation && (
           <div className={styles.meta}>
-            <span className={styles.name}>{name}</span>
+            <Link className={styles.name} to={profileHref}>
+              {name}
+            </Link>
             <span className={styles.time}>{timeLabel(message.created_at, now, timeDisplay)}</span>
           </div>
         )}

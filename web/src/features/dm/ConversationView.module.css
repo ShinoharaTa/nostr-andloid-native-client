@@ -146,6 +146,13 @@
   font-size: var(--type-label);
   font-weight: var(--w-name);
   line-height: var(--line-desc);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .sender:hover {
+    text-decoration: underline;
+  }
 }
 
 /* 吹き出し + 返信ボタン（ネイティブ MessageActions。#589） */

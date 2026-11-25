@@ -782,7 +782,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
         ColumnRenderer.ROOM -> {
             val channelId = spec.filter.channelId
             if (channelId != null) {
-                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu)
+                LiveChannelRoom(spec, channelId, modifier, listState, menu = menu, onOpenProfile = { pk -> state.openProfile(pk) })   // [#1004]
             } else {
                 ChannelRoomColumn(spec, emptyList(), modifier, listState, menu = menu)
             }

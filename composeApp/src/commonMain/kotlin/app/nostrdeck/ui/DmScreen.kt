@@ -154,6 +154,7 @@ fun DmScreen(state: DeckState, isCompact: Boolean) {
                     mineOnRight = true,
                     // [#382] ヘッダの名前をタップ → 相手のプロフィールへ。
                     onTitleClick = { state.openProfile(selected.pubkey) },
+                    onOpenProfile = { pk -> state.openProfile(pk) },   // [#1004] 発言のアイコン・名前からも
                     titleClickLabel = stringResource(Res.string.open_profile),
                 )
             }
