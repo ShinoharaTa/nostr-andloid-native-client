@@ -625,8 +625,11 @@
     <string name="zap_copy_invoice">請求書をコピー</string>
     <string name="zap_wallet_open_failed_fmt">%1$s を開けませんでした。入っているか確かめるか、請求書をコピーしてウォレットに貼り付けてください。</string>
     <string name="zap_wallet_title">Zap で開くウォレット</string>
-    <string name="zap_wallet_desc">ウォレット接続（NWC）を使わないとき、Zap の請求書をこのウォレットで開きます。</string>
+    <string name="zap_wallet_desc">ウォレット接続（NWC）を使わないとき、Zap の請求書をこのウォレットで開きます。「毎回選ぶ」なら、Zap のたびに端末に入っているウォレットから選びます。</string>
     <string name="zap_wallet_system">端末の既定のアプリ</string>
+    <string name="zap_wallet_ask">毎回選ぶ</string>
+    <string name="zap_choose_wallet">開くウォレットを選んでください</string>
+    <string name="zap_wallet_chooser_title">ウォレットを選ぶ</string>
     <string name="img_saved">画像を保存しました</string>
     <string name="img_view">画像を表示</string>
     <string name="img_load_failed">画像を読み込めませんでした</string>

@@ -11,6 +11,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="nostrsigner" />
         </intent>
+        <!-- [#1011] Zap の請求書を開くとき、lightning: を受け付けるウォレットを数えて、2 つ以上なら選ぶ画面を出す -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="lightning" />
+        </intent>
     </queries>
 
     <!-- [#822] ws://（平文の WebSocket）のリレーへ繋ぐため、network security config で平文を許可する。 -->

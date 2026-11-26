@@ -3,6 +3,7 @@ package app.nostrdeck.wallet
 /**
  * [#993] Zap の請求書を開くウォレット（iOS の設定 → ウォレットで選ぶ）。
  * iOS にはアプリを選ぶ画面が無く、`lightning:` はどれか 1 つのアプリが開くだけなので、ウォレットごとの URL で開く。
+ * [#1011] 設定の既定は「毎回選ぶ」（[ASK_ID]。Zap の画面で、入っているウォレットから選ぶ）。
  * 一覧と URL の作り方（[prefix] の後ろに請求書をそのまま付ける）は Damus（damus/Features/Wallet/Models/Wallet.swift）と同じ。
  * TestFlight でしか配っていないもの（LNLink・Blixt）は入れていない。
  * iOS で入っているかを確かめるため、[scheme] は iosApp/project.yml の LSApplicationQueriesSchemes にも並べる。
@@ -31,7 +32,13 @@ enum class ZapWallet(val id: String, val displayName: String, val prefix: String
     val scheme: String get() = prefix.substringBefore(':')
 
     companion object {
-        /** 保存した id から。未設定・知らない id は端末の既定。 */
-        fun fromId(id: String?): ZapWallet = entries.firstOrNull { it.id == id } ?: SYSTEM
+        /** [#1011] 設定の「毎回選ぶ」を保存するときの値。 */
+        const val ASK_ID = "ask"
+
+        /**
+         * [#1011] 設定に保存した値から。null は「毎回選ぶ」（未設定・[ASK_ID]・知らない id）。
+         * v0.6.33 / v0.6.34 で選んで保存したウォレット（端末の既定も）は、そのまま使う。
+         */
+        fun fromSetting(id: String?): ZapWallet? = entries.firstOrNull { it.id == id }
     }
 }

@@ -5474,18 +5474,22 @@ class EventRepository(
 
     // ---- [#993] Zap の請求書を開くウォレット（iOS の設定 → ウォレット。端末の中だけ）----
 
-    private val zapWalletState = MutableStateFlow(app.nostrdeck.wallet.ZapWallet.SYSTEM)
-    /** Zap の請求書を開くウォレット。NWC を使わないとき ZapSheet が読む（iOS 以外は常に端末の既定）。 */
-    fun zapWalletFlow(): StateFlow<app.nostrdeck.wallet.ZapWallet> = zapWalletState
+    private val zapWalletState = MutableStateFlow<app.nostrdeck.wallet.ZapWallet?>(null)
+    /**
+     * Zap の請求書を開くウォレット。NWC を使わないとき ZapSheet が読む（iOS 以外は常に端末の既定）。
+     * [#1011] null は「毎回選ぶ」（Zap の画面で、入っているウォレットから選ぶ）。
+     */
+    fun zapWalletFlow(): StateFlow<app.nostrdeck.wallet.ZapWallet?> = zapWalletState
 
-    fun setZapWallet(wallet: app.nostrdeck.wallet.ZapWallet) {
+    /** null で「毎回選ぶ」。 */
+    fun setZapWallet(wallet: app.nostrdeck.wallet.ZapWallet?) {
         zapWalletState.value = wallet
-        putSettingAsync(ZAP_WALLET_KEY, wallet.id)
+        putSettingAsync(ZAP_WALLET_KEY, wallet?.id ?: app.nostrdeck.wallet.ZapWallet.ASK_ID)
     }
 
-    /** KV から復元（未設定は端末の既定）。start() から呼ぶ。 */
+    /** KV から復元（未設定は「毎回選ぶ」）。start() から呼ぶ。 */
     private fun loadZapWallet() {
-        zapWalletState.value = app.nostrdeck.wallet.ZapWallet.fromId(q.getSetting(ZAP_WALLET_KEY).executeAsOneOrNull())
+        zapWalletState.value = app.nostrdeck.wallet.ZapWallet.fromSetting(q.getSetting(ZAP_WALLET_KEY).executeAsOneOrNull())
     }
 
     // ---- [#247] 画像アップロード圧縮（低/中の長辺px + 再エンコード品質）----
@@ -7079,7 +7083,7 @@ class EventRepository(
         /** リンク埋め込み設定の KV キー接頭辞。 */
         const val EMBED_PREFIX = "embed:"
         const val TEXT_SCALE_KEY = "ui:text_scale"   // [#appearance] 文字サイズ（s/m/l）
-        const val ZAP_WALLET_KEY = "zap:wallet"   // [#993] Zap の請求書を開くウォレット（ZapWallet.id）
+        const val ZAP_WALLET_KEY = "zap:wallet"   // [#993] Zap の請求書を開くウォレット（ZapWallet.id。[#1011] "ask" は毎回選ぶ）
         const val UI_SCALE_KEY = "ui:ui_scale"
         const val BOLD_TEXT_KEY = "appearance_bold_text"   // [#327]       // [#appearance] 表示サイズ（s/m/l）
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
