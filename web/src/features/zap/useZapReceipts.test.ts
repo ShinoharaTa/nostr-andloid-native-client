@@ -4,7 +4,14 @@ import type { Subject } from "rxjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { subscribeTo } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
-import { useNoteZaps, useZapReceipts, useZapSats, ZAP_NOTE_LIMIT, zapTargetIds } from "./useZapReceipts";
+import {
+  useInvoicePaid,
+  useNoteZaps,
+  useZapReceipts,
+  useZapSats,
+  ZAP_NOTE_LIMIT,
+  zapTargetIds,
+} from "./useZapReceipts";
 
 // リレーには繋がず、REQ ごとに Subject を返す
 vi.mock("../../nostr/pool", async (importOriginal) => {
@@ -103,5 +110,47 @@ describe("useNoteZaps / useZapSats", () => {
     expect(sats.current).toBe(1_234);
     expect(zaps.current.totalSats).toBe(1_234);
     expect(zaps.current.zaps).toHaveLength(1);
+  });
+});
+
+describe("[#1012] useInvoicePaid", () => {
+  it("この投稿への receipt で bolt11 が一致したら true（ほかの請求書・投稿では false）", () => {
+    const note = signed(1);
+    const pr = "lnbc210n1pinvoicepaid";
+    const { result } = renderHook(() => useInvoicePaid(note.id, pr));
+    expect(result.current).toBe(false);
+
+    act(() => {
+      eventStore.add(
+        signed(9735, [
+          ["e", note.id],
+          ["bolt11", "lnbc210n1pother"],
+        ]),
+      );
+      eventStore.add(
+        signed(9735, [
+          ["e", signed(1).id],
+          ["bolt11", pr],
+        ]),
+      );
+    });
+    expect(result.current).toBe(false);
+
+    act(() => {
+      eventStore.add(
+        signed(9735, [
+          ["e", note.id],
+          ["bolt11", pr.toUpperCase()],
+        ]),
+      );
+    });
+    expect(result.current).toBe(true);
+  });
+
+  it("投稿 id か請求書が無ければ false", () => {
+    const { result } = renderHook(() => useInvoicePaid(undefined, "lnbc1"));
+    expect(result.current).toBe(false);
+    const { result: noInvoice } = renderHook(() => useInvoicePaid(signed(1).id, null));
+    expect(noInvoice.current).toBe(false);
   });
 });

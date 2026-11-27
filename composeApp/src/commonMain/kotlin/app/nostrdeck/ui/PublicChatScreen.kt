@@ -76,6 +76,7 @@ fun PublicChatScreen(state: DeckState, isCompact: Boolean) {
                     // Compact は ← 戻る（一覧へ）、Expanded は ✕ 選択解除。
                     onClose = if (isCompact) null else ({ state.publicChatRoom = null }),
                     onBack = if (isCompact) ({ state.publicChatRoom = null }) else null,
+                    onOpenProfile = { pk -> state.openProfile(pk) },   // [#1004]
                 )
             }
         },

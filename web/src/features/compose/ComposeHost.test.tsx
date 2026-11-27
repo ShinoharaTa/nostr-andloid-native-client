@@ -8,6 +8,7 @@ import { installDialogPolyfill } from "../../test/dialog";
 import { PUBKEY } from "../../test/fakeNostr";
 import { renderWithRouter } from "../../test/renderWithRouter";
 import { useToast } from "../../ui/toast";
+import { useStatusEditor } from "../status/statusEditorStore";
 import { ComposeHost } from "./ComposeHost";
 import { useCompose } from "./composeStore";
 
@@ -29,6 +30,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   useCompose.setState({ request: null });
+  useStatusEditor.setState({ open: false });
   useToast.setState({ queue: [] });
   useSession.setState({ status: "loading", method: null, pubkey: null });
 });
@@ -43,6 +45,28 @@ it("showFab なら「投稿」ボタン。押すと投稿シートを開く。�
 it("showFab={false} ならボタンを出さない", () => {
   renderWithRouter(<ComposeHost showFab={false} />);
   expect(screen.queryByRole("button", { name: "投稿" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "ステータスを更新" })).toBeNull();
+});
+
+it("[#1020] 投稿ボタンの上に「ステータスを更新」。押すとステータスの画面を開く", async () => {
+  renderWithRouter(<ComposeHost showFab />);
+  const status = screen.getByRole("button", { name: "ステータスを更新" });
+  expect(status.nextElementSibling).toBe(screen.getByRole("button", { name: "投稿" }));
+  await userEvent.click(status);
+  expect(screen.getByRole("dialog", { name: "ステータスを更新" })).toBeInTheDocument();
+});
+
+it("[#1020] ステータスの画面は、右下のボタンを出さない表示でも開ける（レールのボタンから）", () => {
+  renderWithRouter(<ComposeHost showFab={false} />);
+  act(() => useStatusEditor.setState({ open: true }));
+  expect(screen.getByRole("dialog", { name: "ステータスを更新" })).toBeInTheDocument();
+});
+
+it("[#1020] 未ログインでは「ステータスを更新」を出さない", () => {
+  useSession.setState({ status: "out", method: null, pubkey: null });
+  renderWithRouter(<ComposeHost showFab />);
+  expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "ステータスを更新" })).toBeNull();
 });
 
 it("受理を確認できなかったらトーストを 2 秒出す", () => {

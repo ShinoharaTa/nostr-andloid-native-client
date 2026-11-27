@@ -23,12 +23,12 @@ class SpeechHostFilesTest {
     fun serves_host_page_and_models_but_nothing_else() = runBlocking {
         val dir = File.createTempFile("tts-models", "").apply { delete(); mkdirs(); deleteOnExit() }
         TtsModelFiles.dir = dir
-        assertTrue(TtsModelFiles.write("tts/own.json", "{}".encodeToByteArray()))
+        assertTrue(TtsModelFiles.write("g2p/g2p.json", "{}".encodeToByteArray()))
 
         val host = assertNotNull(SpeechHostFiles.read("/host/host.html"))
         assertEquals("text/html", host.first)
         assertEquals("text/javascript", assertNotNull(SpeechHostFiles.read("/host/host.js")).first)
-        val model = assertNotNull(SpeechHostFiles.read("/models/tts/own.json?v=1"))
+        val model = assertNotNull(SpeechHostFiles.read("/models/g2p/g2p.json?v=1"))
         assertEquals("application/json", model.first)
         assertContentEquals("{}".encodeToByteArray(), model.second)
 
@@ -50,19 +50,58 @@ class SpeechHostFilesTest {
     fun voices_and_fetch_script_use_the_same_commit() {
         val script = File("../scripts/fetch-zen-tts.sh").readText()
         assertTrue(script.contains("COMMIT=${ZenTts.COMMIT}"), "scripts/fetch-zen-tts.sh の COMMIT と ZenTts.COMMIT を揃える")
-        assertTrue(ZenTts.MODELS_BASE.contains(ZenTts.COMMIT))
-        // 声ごとに 4 ファイル（G2P・韻律・生成器 / デコーダ）。パスは声で重ならない
-        TtsVoice.entries.forEach { v ->
-            assertEquals(4, v.files.size)
-            assertTrue(v.files.all { it.sha256.length == 64 })
-            assertTrue(v.totalBytes in 30_000_000L..32_000_000L)
+        // ビルドに入れたランタイムの版（scripts/fetch-zen-tts.sh を通したときだけ確かめる）
+        File("src/commonMain/composeResources/files/zen-tts/version.js").takeIf { it.isFile }?.let { version ->
+            assertTrue(version.readText().contains("VERSION = '${ZenTts.VERSION}'"), "同梱のランタイムの版と ZenTts.VERSION を揃える")
+            assertTrue(version.readText().contains("ZTM_BASE_URL = '${ZenTts.VOICE_BASE}/'"), "声の配布元はランタイムの ZTM_BASE_URL と同じ")
         }
-        assertEquals(16, TtsVoice.entries.flatMap { it.files }.map { it.path }.toSet().size)
+    }
+
+    /** [#1008] 1 声 1 ファイル（.ztm）を配布サーバーから、読みのモデルを Hugging Face（固定コミット）から。GitHub からは取らない。 */
+    @Test
+    fun models_come_from_the_official_sources_not_github() {
+        TtsVoice.entries.forEach { v ->
+            assertEquals("voices/${v.id}.ztm", v.file.path)
+            assertEquals("https://tts-models.zenryoku.work/v1.3.0/${v.id}.ztm", v.file.url)
+            assertEquals(64, v.file.sha256.length)
+            assertTrue(v.file.bytes in 27_000_000L..28_000_000L)
+        }
+        assertEquals(listOf("g2p/g2p.json", "g2p/g2p.bin"), ZenTts.G2P_FILES.map { it.path })
+        ZenTts.G2P_FILES.forEach { f ->
+            assertTrue(f.url.startsWith("https://huggingface.co/Zenryokukikai/zen-tts/resolve/"))
+            assertEquals(64, f.sha256.length)
+        }
+        val all = TtsVoice.entries.map { it.file } + ZenTts.G2P_FILES
+        assertTrue(all.none { "github" in it.url })
+        assertEquals(all.size, all.map { it.path }.toSet().size, "置き場のパスは重ならない")
+        // v1.0.0 の 4 ファイル × 4 声は、新しい置き場と重ならない（消すときに新しいファイルを巻き込まない）
+        assertEquals(16, ZenTts.LEGACY_FILES.toSet().size)
+        assertTrue(ZenTts.LEGACY_FILES.none { legacy -> all.any { it.path == legacy } })
+    }
+
+    /** [#1008] 声が使えるのは、声と読みのモデルがそろっているとき。v1.0.0 のファイルは見つけたら消す。最後の声を消したら読みのモデルも消す。 */
+    @Test
+    fun a_voice_needs_the_shared_reading_model_and_legacy_files_are_removed() {
+        val dir = File.createTempFile("tts-models", "").apply { delete(); mkdirs(); deleteOnExit() }
+        TtsModelFiles.dir = dir
+        fun put(file: app.nostrdeck.model.TtsModelFile) = assertTrue(TtsModelFiles.write(file.path, ByteArray(file.bytes.toInt())))
+
+        assertEquals(TtsModels.State.Missing, TtsModels.stateOnDisk(TtsVoice.KAI))
+        put(TtsVoice.KAI.file)
+        assertEquals(TtsModels.State.Missing, TtsModels.stateOnDisk(TtsVoice.KAI), "読みのモデルが無ければ使えない")
+        ZenTts.G2P_FILES.forEach(::put)
+        assertEquals(TtsModels.State.Ready, TtsModels.stateOnDisk(TtsVoice.KAI))
+
+        assertTrue(TtsModelFiles.write("voices/kai/tts/own.bin", ByteArray(1)))
+        assertTrue(TtsModels.removeLegacyFiles())
+        assertNull(TtsModelFiles.size("voices/kai/tts/own.bin"))
+        assertEquals(false, TtsModels.removeLegacyFiles())
+        assertEquals(TtsModels.State.Ready, TtsModels.stateOnDisk(TtsVoice.KAI), "新しいファイルは消さない")
     }
 
     @Test
     fun verification_checks_size_and_hash() {
-        val file = app.nostrdeck.model.TtsModelFile("x", 3, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")   // "abc"
+        val file = app.nostrdeck.model.TtsModelFile("x", "https://example.invalid/x", 3, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")   // "abc"
         assertTrue(TtsModels.verified("abc".encodeToByteArray(), file))
         assertEquals(false, TtsModels.verified("abd".encodeToByteArray(), file))
         assertEquals(false, TtsModels.verified("abcd".encodeToByteArray(), file.copy(bytes = 3)))
