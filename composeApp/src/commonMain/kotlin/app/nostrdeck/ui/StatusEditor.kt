@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import app.nostrdeck.crypto.currentUnixTime
 import app.nostrdeck.i18n.getString
 import app.nostrdeck.i18n.stringResource
 import app.nostrdeck.model.NostrEvent
@@ -75,6 +78,7 @@ fun StatusFab(me: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
  * [#1019] 自分のステータス（NIP-38 の 1 行。`d=general`）を更新する画面。Web #1020 と同じ。
  * 開いたとき、いま出しているステータスを入れておく（手元に無ければ取りに行く。ステータスのカラムを置いていない人でも入るように）。
  * 「更新」で出し、「消す」（いま出しているときだけ）で空のステータスを出す。受理を確かめられなければ画面を残す。
+ * 期限は選び直さなければ、いまのステータスの期限を引き継ぐ（文言だけ直したとき、期限つきを期限なしにしない）。
  * `music`（Now Playing）には触らない。
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -94,7 +98,9 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
 
     var text by remember { mutableStateOf("") }
     var touched by remember { mutableStateOf(false) }
-    var expiry by remember { mutableStateOf(ExpiryChoice.NONE) }
+    // 期限。null = 選び直していない（いまのステータスに期限が残っていれば引き継ぐ。無ければ「なし」）
+    var expiry by remember { mutableStateOf<ExpiryChoice?>(null) }
+    val currentExpiration = current?.let { UserStatuses.expirationOf(it) }?.takeIf { it > now }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // いまのステータスが届いたら入れる（もう書き始めていたら触らない）
@@ -104,7 +110,7 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
         if (busy) return
         busy = true; error = null
         scope.launch {
-            val ok = repo.publishUserStatus(content, expiry)
+            val ok = repo.publishUserStatus(content, UserStatuses.expirationFor(expiry, currentExpiration, currentUnixTime()))
             busy = false
             if (ok) {
                 toast(getString(done))
@@ -118,7 +124,9 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(
+            // 横向きのスマホでキーボードが出ても、下のボタンまで届くようにスクロールできるようにする
             Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Lg)).background(DeckColors.Surface)
+                .verticalScroll(rememberScrollState())
                 .padding(DeckSpace.Lg),
         ) {
             Text(stringResource(Res.string.status_edit_title), color = DeckColors.Text, fontSize = DeckType.Display, fontWeight = DeckWeight.Strong)
@@ -127,8 +135,7 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
             Spacer(Modifier.size(DeckSpace.Md))
             DeckTextField(
                 value = text,
-                // 上限を超える入力は受け付けない。ほかのアプリで出した長いステータスが入っているときも、短くする編集は通す
-                onValueChange = { v -> if (v.length <= UserStatuses.MAX_LENGTH || v.length < text.length) { text = v; touched = true } },
+                onValueChange = { v -> if (UserStatuses.acceptsEdit(text, v)) { text = v; touched = true } },
                 placeholder = stringResource(Res.string.status_edit_placeholder),
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -138,16 +145,18 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
             Text(stringResource(Res.string.status_edit_expiry), color = DeckColors.Text2, fontSize = DeckType.Label)
             Spacer(Modifier.size(DeckSpace.Xs))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // いまのステータスに期限が残っていれば、先頭に「いまのまま」（選び直すまではこれ。文言だけ直しても期限は変えない）
+                currentExpiration?.let { at ->
+                    ExpiryChip(
+                        stringResource(Res.string.status_expiry_keep_fmt, expiryText(at, now)),
+                        active = expiry == null, enabled = !busy, onClick = { expiry = null },
+                    )
+                }
                 ExpiryChoice.entries.forEach { choice ->
-                    val active = expiry == choice
-                    Text(
+                    ExpiryChip(
                         stringResource(expiryLabel(choice)),
-                        color = if (active) DeckColors.Bg else DeckColors.Text,
-                        fontSize = DeckType.Sub, fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
-                        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Full))
-                            .background(if (active) DeckColors.Accent else DeckColors.Surface2)
-                            .clickable(enabled = !busy) { expiry = choice }
-                            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                        active = expiry == choice || (expiry == null && currentExpiration == null && choice == ExpiryChoice.NONE),
+                        enabled = !busy, onClick = { expiry = choice },
                     )
                 }
             }
@@ -178,6 +187,19 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun ExpiryChip(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (active) DeckColors.Bg else DeckColors.Text,
+        fontSize = DeckType.Sub, fontWeight = if (active) DeckWeight.Strong else DeckWeight.Body,
+        modifier = Modifier.clip(RoundedCornerShape(DeckRadius.Full))
+            .background(if (active) DeckColors.Accent else DeckColors.Surface2)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+    )
 }
 
 /** [#1019] いま出している自分の 1 行のステータス（`general`。空・期限切れ・古すぎるものは無い扱い）。 */

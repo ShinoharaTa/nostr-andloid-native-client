@@ -91,11 +91,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun DeckArea(state: DeckState, isCompact: Boolean, modifier: Modifier = Modifier) {
     // [#14] キーボードショートカット。ルートを focusable にして onPreviewKeyEvent で受ける。
-    // 起動時と投稿シートを閉じた時にフォーカスを取り戻す（テキスト入力中は handleDeckKey 側で譲る）。
+    // 起動時と、投稿シート・[#1019] ステータスの画面を閉じた時にフォーカスを取り戻す（テキスト入力中は handleDeckKey 側で譲る）。
     val kbFocus = remember { FocusRequester() }
     val kbRepo = LocalRepository.current
-    LaunchedEffect(state.showCompose) {
-        if (!state.showCompose) runCatching { kbFocus.requestFocus() }
+    LaunchedEffect(state.showCompose, state.showStatusEditor) {
+        if (!state.showCompose && !state.showStatusEditor) runCatching { kbFocus.requestFocus() }
     }
     Box(
         modifier.fillMaxSize().background(DeckColors.Bg)

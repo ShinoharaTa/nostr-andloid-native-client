@@ -121,14 +121,34 @@ object UserStatuses {
     fun oneLine(text: String): String = text.replace(Regex("[\\r\\n\\t]+"), " ").trim()
 
     /**
-     * 自分で出す 1 行のステータス（`d=general`）。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
-     * [now] は今の unix 秒（[ExpiryChoice.seconds] を足して NIP-40 の `expiration` にする）。
+     * 入力欄の編集を受け付けるか。上限（[MAX_LENGTH]）を超える入力は受け付けないが、ほかのアプリで出した長い
+     * ステータスが入っているときも、短くする編集は通す。
      */
-    fun generalEvent(text: String, expiry: ExpiryChoice, now: Long): UnsignedEvent {
+    fun acceptsEdit(old: String, new: String): Boolean = new.length <= MAX_LENGTH || new.length < old.length
+
+    /**
+     * 自分で出す 1 行のステータス（`d=general`）。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
+     * [expiration] は NIP-40 の期限（unix 秒。null は期限なし）、[now] は今の unix 秒。
+     * [replacing] は、いま出している版の created_at（あれば）。置き換え可能イベントは新しい方が残るので、created_at は
+     * それより後にする（時計の進んだ端末で出した版や、同じ秒に出した版に負けない。ほかの置き換え可能イベントの発行と同じ）。
+     */
+    fun generalEvent(text: String, expiration: Long?, now: Long, replacing: Long? = null): UnsignedEvent {
         val content = oneLine(text)
-        val expiration = expiry.seconds?.takeIf { content.isNotEmpty() }?.let { listOf("expiration", (now + it).toString()) }
-        return UnsignedEvent(kind = KIND, content = content, tags = listOfNotNull(listOf("d", Type.GENERAL.d), expiration), createdAt = now)
+        val expirationTag = expiration?.takeIf { content.isNotEmpty() }?.let { listOf("expiration", it.toString()) }
+        return UnsignedEvent(
+            kind = KIND, content = content,
+            tags = listOfNotNull(listOf("d", Type.GENERAL.d), expirationTag),
+            createdAt = maxOf(now, (replacing ?: 0L) + 1),
+        )
     }
+
+    /**
+     * ステータスの画面で選んだ期限 → NIP-40 の期限（unix 秒）。[choice] が null は「選び直していない」で、いま出している
+     * ステータスに期限（[currentExpiration]）が残っていればそれを引き継ぐ（文言だけ直したとき、期限つきのステータスを
+     * 期限なしにしない）。
+     */
+    fun expirationFor(choice: ExpiryChoice?, currentExpiration: Long?, now: Long): Long? =
+        if (choice == null) currentExpiration?.takeIf { it > now } else choice.seconds?.let { now + it }
 
     /** 期限の表示の種類（文言は UI が付ける）。 */
     sealed interface Expiry {

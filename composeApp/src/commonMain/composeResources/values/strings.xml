@@ -213,6 +213,7 @@
     <string name="status_edit_desc">A short line shown on your profile and in status columns. It is public.</string>
     <string name="status_edit_placeholder">What are you up to?</string>
     <string name="status_edit_expiry">Expires</string>
+    <string name="status_expiry_keep_fmt">Keep (%1$s)</string>
     <string name="status_expiry_none">Never</string>
     <string name="status_expiry_30m">30 min</string>
     <string name="status_expiry_1h">1 hour</string>
