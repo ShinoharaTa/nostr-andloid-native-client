@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,7 +63,7 @@ import app.nostrdeck.theme.DeckType
  * 左 NavigationRail（展開時の常設）。3 ブロック構成:
  *  1. 上部固定 : ブランド + グローバルナビ
  *  2. 中央     : ピン留めカラムの目次（**ここだけがスクロール対象**）
- *  3. 下部固定 : 検索 / パブリックチャット / 通知 / ステータス / 新規投稿（後ろ 2 つは composeButtons のときだけ） ｜ 接続ステータス / 自分
+ *  3. 下部固定 : 検索 / パブリックチャット / 通知 / ステータス / 新規投稿（後ろ 2 つはデッキの表示だけ） ｜ 接続ステータス / 自分
  *
  * すべての項目を [RailSlot]（[DeckDimens.RailItem] の同一タップ領域＋中央寄せ）に通し、
  * グリフは [DeckDimens.RailIcon] に統一。ブロック境界は 1px の [RailDivider] で分ける。
@@ -69,14 +71,29 @@ import app.nostrdeck.theme.DeckType
 @Composable
 fun DeckRail(
     state: DeckState,
-    /** [#917] スマホ表示（シングルカラム）の横に出すレールか。ホームのタップで表示中のカラムを先頭へ戻す。 */
-    compact: Boolean = false,
     /**
-     * [#1000][#1019] 新規投稿とステータスのボタンを置くか。シングルカラムと、高さの足りない画面では置かない
-     * （AppScaffold が右下に出す）。
+     * [#917] スマホ表示（シングルカラム）の横に出すレールか。ホームのタップで表示中のカラムを先頭へ戻す。
+     * [#1019] 新規投稿とステータスのボタンは置かない（AppScaffold が右下に出す）。
      */
-    composeButtons: Boolean = !compact,
+    compact: Boolean = false,
 ) {
+    // [#1019] 固定の項目が収まらない高さ（スマホの横向きなど）では、レール全体を縦スクロールにする。
+    // 以前は下の「接続ステータス・自分」が画面からはみ出して押せなかった。
+    BoxWithConstraints(Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg)) {
+        RailColumn(state, compact, scrollWhole = maxHeight < RAIL_MIN_HEIGHT)
+    }
+}
+
+/**
+ * レールの固定の項目（最大 10 個・48dp ずつ）+ 区切り + 余白で約 550dp。これより低ければレール全体をスクロールさせる。
+ */
+private val RAIL_MIN_HEIGHT = 560.dp
+
+/**
+ * レールの中身。[scrollWhole] ならレール全体が縦スクロール（目次だけのスクロールはしない。縦スクロールは入れ子にできない）。
+ */
+@Composable
+private fun RailColumn(state: DeckState, compact: Boolean, scrollWhole: Boolean) {
     val repo = LocalRepository.current
     // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
     // （ここで DM 画面に居るだけで既読にすると、読んでいない会話まで消えていた）。
@@ -87,7 +104,7 @@ fun DeckRail(
     val myPubkey by (repo?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
     val myProfile by (repo?.myProfileFlow()?.collectAsState(null) ?: remember { mutableStateOf(null) })
     Column(
-        Modifier.width(DeckDimens.RailWidth).fillMaxHeight().background(DeckColors.Bg),
+        Modifier.fillMaxSize().then(if (scrollWhole) Modifier.verticalScroll(rememberScrollState()) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // ── 上部固定: ブランド + ホーム ──
@@ -116,7 +133,7 @@ fun DeckRail(
         // [#409] タブと同じ順序で並べ、いま見えているカラムを点灯する。タブを左から順に押すと
         // 目次の点灯が上から順に下りていく（通知カラムも目次に含めて順序を崩さない）。
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            (if (scrollWhole) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs),
         ) {
@@ -157,9 +174,9 @@ fun DeckRail(
             }
             // [#1000] 新規投稿（接続ステータスの上の区切りの上）。デッキの表示では右下の投稿ボタン（FAB）の
             // 代わりにここから開く（AppScaffold の ContentWithCompose はデッキのとき FAB を出さない）。`n` は今まで通り。
-            // [#1019] その上に自分のステータスを更新するボタン（ログイン中だけ）。[composeButtons] が false なら、
+            // [#1019] その上に自分のステータスを更新するボタン（ログイン中だけ）。シングルカラム（[compact]）では、
             // どちらも右下に出すのでレールには置かない。
-            if (composeButtons) {
+            if (!compact) {
                 if (myPubkey != null) {
                     NavIcon(Icons.Outlined.Mood, stringResource(Res.string.status_edit_title), active = false) { state.showStatusEditor = true }
                 }

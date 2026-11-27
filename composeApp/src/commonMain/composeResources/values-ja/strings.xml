@@ -209,6 +209,7 @@
     <string name="status_edit_desc">プロフィールやステータスのカラムに出る、ひとことです。公開されます。</string>
     <string name="status_edit_placeholder">いま何してる？</string>
     <string name="status_edit_expiry">期限</string>
+    <string name="status_expiry_keep_fmt">いまのまま（%1$s）</string>
     <string name="status_expiry_none">なし</string>
     <string name="status_expiry_30m">30 分</string>
     <string name="status_expiry_1h">1 時間</string>
