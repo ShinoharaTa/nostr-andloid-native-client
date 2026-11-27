@@ -1,6 +1,6 @@
 import { use$ } from "applesauce-react/hooks/use-$";
 import type { NostrEvent } from "nostr-tools/pure";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { distinctUntilChanged, map } from "rxjs";
 import { subscribeTo, useReadRelays } from "../../nostr/pool";
 import { eventStore } from "../../nostr/store";
@@ -71,4 +71,25 @@ export function useZapSats(noteId: string): number {
       [noteId],
     ) ?? 0
   );
+}
+
+/**
+ * [#1012] この請求書（bolt11）の receipt がストアに届いたか。投稿への Zap だけ見る（届くのは表示中の投稿への
+ * 既存の購読 useZapReceipts の分。プロフィール Zap は購読が無いので見ない）。noteId か invoice が無ければ false
+ */
+export function useInvoicePaid(noteId: string | undefined, invoice: string | null): boolean {
+  // 届いた請求書（invoice が変わったら外れる）
+  const [paidInvoice, setPaidInvoice] = useState<string | null>(null);
+  useEffect(() => {
+    if (noteId === undefined || invoice === null) return;
+    const target = invoice.toLowerCase();
+    const sub = eventStore.timeline({ kinds: [9735], "#e": [noteId] }).subscribe((receipts) => {
+      const hit = receipts.some((r) =>
+        r.tags.some((t) => t[0] === "bolt11" && typeof t[1] === "string" && t[1].toLowerCase() === target),
+      );
+      if (hit) setPaidInvoice(invoice);
+    });
+    return () => sub.unsubscribe();
+  }, [noteId, invoice]);
+  return invoice !== null && paidInvoice === invoice;
 }

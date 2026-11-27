@@ -1,14 +1,27 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
-import { afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_COLUMNS, decodeDeckColumns, encodeReqFilter } from "../../lib/columns";
 import { resetRelays, useRelays } from "../../nostr/pool";
 import { addVerified } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { COLUMNS_KEY, useDeck } from "../../store/deck";
 import { USED_HASHTAGS_KEY } from "../compose/storage";
+import { openHashtagManager } from "../hashtags/hashtagManagerStore";
+import { togglePinnedHashtag } from "../hashtags/pinnedHashtags";
 import { AddColumnDialog } from "./AddColumnDialog";
+
+// 取り直し・発行は pinnedHashtags.test.ts。ここは呼び出しと画面だけ
+vi.mock("../hashtags/pinnedHashtags", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hashtags/pinnedHashtags")>()),
+  togglePinnedHashtag: vi.fn(async () => "done" as const),
+}));
+
+vi.mock("../hashtags/hashtagManagerStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hashtags/hashtagManagerStore")>()),
+  openHashtagManager: vi.fn(),
+}));
 
 // jsdom は <dialog> の showModal / close を持たないので、開閉と close イベントだけを足す
 beforeAll(() => {
@@ -24,6 +37,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   useDeck.setState({ columns: [...DEFAULT_COLUMNS], showAddColumn: true, jumpTarget: null });
+  vi.mocked(togglePinnedHashtag).mockClear();
+  vi.mocked(openHashtagManager).mockClear();
 });
 
 afterEach(() => {
@@ -166,7 +181,8 @@ it("グローバル: wss:// で始まらない追加入力は無視する", asyn
   expect(screen.getByRole("button", { name: "配信先リレーを追加" })).toBeDisabled();
 });
 
-it("ハッシュタグ / キーワード・タグ: ピン留め・最近使ったタグのチップを押すと入力に入る（#536）", async () => {
+/** ピン留め [#zap]・使用履歴 [#bitcoin] の自分としてログインする */
+function signInWithTags(): string {
   const meKey = generateSecretKey();
   const me = getPublicKey(meKey);
   useSession.setState({ status: "in", method: "local", pubkey: me });
@@ -185,23 +201,77 @@ it("ハッシュタグ / キーワード・タグ: ピン留め・最近使っ�
     ),
   );
   localStorage.setItem(USED_HASHTAGS_KEY, JSON.stringify([{ tag: "bitcoin", lastUsed: 1 }]));
+  return me;
+}
+
+/** 見出し（「📌 ピン留め」「最近のタグ」）の次の段のチップ */
+function chipRow(heading: string): HTMLElement {
+  return screen.getByText(heading).nextElementSibling as HTMLElement;
+}
+
+it("ハッシュタグ: 「📌 ピン留め」「最近のタグ」の 2 段のチップ、押すと入力を置き換える（#642）", async () => {
+  signInWithTags();
   const user = userEvent.setup();
   render(<AddColumnDialog />);
 
   await user.click(screen.getByRole("button", { name: /^ハッシュタグ/ }));
-  const chips = screen.getByRole("list", { name: "ピン留め・最近使ったタグ" });
   expect(
-    within(chips)
+    within(chipRow("📌 ピン留め"))
       .getAllByRole("button")
       .map((b) => b.textContent),
-  ).toEqual(["#zap", "#bitcoin"]);
-  await user.click(within(chips).getByRole("button", { name: "#zap" }));
-  expect(screen.getByRole("textbox", { name: "ハッシュタグ" })).toHaveValue("zap");
+  ).toEqual(["#zap", "整理…"]);
+  expect(
+    within(chipRow("最近のタグ"))
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+  ).toEqual(["#bitcoin"]);
 
-  await user.click(screen.getByRole("button", { name: "戻る" }));
+  await user.type(screen.getByRole("textbox", { name: "ハッシュタグ" }), "hello");
+  await user.click(within(chipRow("📌 ピン留め")).getByRole("button", { name: "#zap" }));
+  expect(screen.getByRole("textbox", { name: "ハッシュタグ" })).toHaveValue("zap");
+  await user.click(within(chipRow("最近のタグ")).getByRole("button", { name: "#bitcoin" }));
+  expect(screen.getByRole("textbox", { name: "ハッシュタグ" })).toHaveValue("bitcoin");
+});
+
+it("ハッシュタグ: 使ったタグが無ければ「最近のタグ」の段は出さない（#642）", async () => {
+  signInWithTags();
+  localStorage.removeItem(USED_HASHTAGS_KEY);
+  const user = userEvent.setup();
+  render(<AddColumnDialog />);
+
+  await user.click(screen.getByRole("button", { name: /^ハッシュタグ/ }));
+  expect(screen.getByText("📌 ピン留め")).toBeInTheDocument();
+  expect(screen.queryByText("最近のタグ")).not.toBeInTheDocument();
+});
+
+it("ハッシュタグ: チップの長押し / 右クリックでピン留め・解除、「整理…」で整理画面（#642）", async () => {
+  const me = signInWithTags();
+  const user = userEvent.setup();
+  render(<AddColumnDialog />);
+  await user.click(screen.getByRole("button", { name: /^ハッシュタグ/ }));
+
+  fireEvent.contextMenu(within(chipRow("📌 ピン留め")).getByRole("button", { name: "#zap" }));
+  await user.click(screen.getByRole("menuitem", { name: "ピン留めを解除" }));
+  expect(vi.mocked(togglePinnedHashtag)).toHaveBeenCalledWith(me, "zap", false);
+  // 長押し / 右クリックに続くクリックはタグの入力として扱わない
+  expect(screen.getByRole("textbox", { name: "ハッシュタグ" })).toHaveValue("");
+
+  fireEvent.contextMenu(within(chipRow("最近のタグ")).getByRole("button", { name: "#bitcoin" }));
+  await user.click(screen.getByRole("menuitem", { name: "ピン留め" }));
+  expect(vi.mocked(togglePinnedHashtag)).toHaveBeenCalledWith(me, "bitcoin", true);
+
+  await user.click(screen.getByRole("button", { name: "整理…" }));
+  expect(vi.mocked(openHashtagManager)).toHaveBeenCalledTimes(1);
+});
+
+it("キーワード・タグ: タグのチップは出さない（ネイティブと同じ。#642）", async () => {
+  signInWithTags();
+  const user = userEvent.setup();
+  render(<AddColumnDialog />);
+
   await user.click(screen.getByRole("button", { name: /^キーワード・タグ/ }));
-  const searchChips = screen.getByRole("list", { name: "ピン留め・最近使ったタグ" });
-  await user.type(screen.getByRole("textbox", { name: "キーワード・タグ" }), "hello");
-  await user.click(within(searchChips).getByRole("button", { name: "#bitcoin" }));
-  expect(screen.getByRole("textbox", { name: "キーワード・タグ" })).toHaveValue("hello #bitcoin");
+  expect(screen.getByRole("textbox", { name: "キーワード・タグ" })).toBeInTheDocument();
+  expect(screen.queryByText("📌 ピン留め")).not.toBeInTheDocument();
+  expect(screen.queryByText("最近のタグ")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "#zap" })).not.toBeInTheDocument();
 });

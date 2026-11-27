@@ -9,6 +9,7 @@ import { KbRow, useKbColumnId, useKbList } from "../keyboard/KbList";
 import { NewItemsPill } from "./NewItemsPill";
 import { NoteItem } from "./NoteItem";
 import styles from "./Timeline.module.css";
+import { useScrollToTop } from "./useScrollToTop";
 
 // 先頭へ新着を差し込むたびに減らす仮想インデックスの起点（react-virtuoso の firstItemIndex は正の数）
 const START_INDEX = 1_000_000_000;
@@ -16,11 +17,6 @@ const START_INDEX = 1_000_000_000;
 const AT_TOP_THRESHOLD = 40;
 // 先頭に見えている投稿がこの位置以降なら、新着が無くても「最新へ戻る」を出す（ネイティブの rememberScrolledAway と同じ 3）
 const SCROLLED_AWAY_INDEX = 3;
-// [#919] 先頭へ戻すとき、先頭に見えている投稿がこれより下なら、まずこの位置まで一気に飛んでから滑らせる
-const JUMP_NEAR_INDEX = 8;
-// [#919] 一気に飛んだあと、行の描画がこの時間来なくなったら滑らせ始める（待つのは最長 JUMP_SETTLE_MAX_MS）
-const JUMP_SETTLE_MS = 200;
-const JUMP_SETTLE_MAX_MS = 1000;
 
 /** 行の位置 = それより上にある件数（見つからなければ 0） */
 function positionOf(events: readonly { id: string }[], id: string | undefined): number {
@@ -137,44 +133,8 @@ export function Timeline<T extends { id: string } = NostrEvent>({
     [firstItemIndex],
   );
 
-  // 先頭へ戻す（「最新へ戻る」ピルと 1 カラム表示の「ホーム」#919）。新着は firstItemIndex で先頭に差し込むので、
-  // virtuoso はそのずれを内部の補正で持つ。ピクセル位置 0（scrollTo）では先頭に届かないため、行の番号で戻す（#782）。
-  // 遠くまで読み進めていたら、先頭近くまで一気に飛んでから滑らせる（ネイティブ #917）。
-  // 即時ジャンプ直後は virtuoso が高さを測り直して scrollBy の補正をかけ smooth を打ち切るため、
-  // 描画が落ち着くまで待つ（ネイティブの scrollToItem → animateScrollToItem と同じ順）。
-  // 待っている間にもう一度呼ばれたら前の待ちは捨てる（アンマウントでも捨てる）
-  const lastRendered = useRef(0);
-  const onItemsRendered = useCallback(() => {
-    lastRendered.current = performance.now();
-  }, []);
-  const cancelSettle = useRef<(() => void) | null>(null);
-  useEffect(() => () => cancelSettle.current?.(), []);
-  const scrollToTop = useCallback(() => {
-    cancelSettle.current?.();
-    cancelSettle.current = null;
-    const handle = list.current;
-    if (!handle) return;
-    const slide = () => list.current?.scrollToIndex({ index: 0, align: "start", behavior: "smooth" });
-    if (topRow.current <= JUMP_NEAR_INDEX) {
-      slide();
-      return;
-    }
-    handle.scrollToIndex({ index: JUMP_NEAR_INDEX, align: "start" });
-    const start = performance.now();
-    lastRendered.current = start;
-    let frame = 0;
-    const wait = () => {
-      const now = performance.now();
-      if (now - lastRendered.current >= JUMP_SETTLE_MS || now - start >= JUMP_SETTLE_MAX_MS) {
-        cancelSettle.current = null;
-        slide();
-      } else {
-        frame = requestAnimationFrame(wait);
-      }
-    };
-    frame = requestAnimationFrame(wait);
-    cancelSettle.current = () => cancelAnimationFrame(frame);
-  }, []);
+  // 先頭へ戻す（「最新へ戻る」ピルと 1 カラム表示の「ホーム」#919・「通知」#992）
+  const { scrollToTop, onItemsRendered } = useScrollToTop(list, topRow);
 
   // [#919] デッキのカラムなら、1 カラム表示の「ホーム」から先頭にいるかを聞かれ、先頭へ戻せるようにする
   const columnId = useKbColumnId();
@@ -212,7 +172,7 @@ export function Timeline<T extends { id: string } = NostrEvent>({
   return (
     <div className={styles.timeline}>
       <PullToRefreshIndicator progress={progress} refreshing={refreshing} />
-      <NewItemsPill count={newCount} scrolledAway={scrolledAway} onClick={scrollToTop} />
+      <NewItemsPill count={newCount} scrolledAway={scrolledAway} onClick={() => scrollToTop()} />
       <Virtuoso
         ref={list}
         className={styles.list}

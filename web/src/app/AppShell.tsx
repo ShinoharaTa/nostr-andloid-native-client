@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatches, useNavigate, useParams } from "react-router";
 import { useShallow } from "zustand/react/shallow";
 import { ComposeHost } from "../features/compose/ComposeHost";
+import { openCompose } from "../features/compose/composeStore";
 import { AddColumnDialog } from "../features/deck/AddColumnDialog";
 import { EditColumnDialog } from "../features/deck/EditColumnDialog";
 import { useDmUnreadTotal } from "../features/dm/dmStore";
@@ -12,6 +13,7 @@ import { KeyboardShortcuts } from "../features/keyboard/KeyboardShortcuts";
 import { NotificationsScreen } from "../features/notifications/NotificationsScreen";
 import { SearchScreen } from "../features/search/SearchScreen";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
+import { openStatusEditor } from "../features/status/statusEditorStore";
 import { useT } from "../i18n";
 import { notificationsColumnId, pinnedColumns, useDeck } from "../store/deck";
 import { BottomNav } from "../ui/BottomNav";
@@ -65,6 +67,9 @@ function DestScreen({ dest }: { dest: Dest }) {
  */
 export function AppShell() {
   const mode = useLayoutMode();
+  // [#1020] 投稿とステータスのボタンをレールに置くのは、デッキの表示（Expanded）だけ。1 カラムの表示（Compact / Rail）
+  // では右下に出す（ネイティブ AppScaffold と同じ）
+  const railActions = mode === "expanded";
   const handle = routeHandleOf(useMatches());
   const params = useParams();
   const { key: locationKey } = useLocation();
@@ -141,6 +146,8 @@ export function AppShell() {
           onSelect={open}
           onOpenColumn={openColumn}
           onAddColumn={() => useDeck.getState().setShowAddColumn(true)}
+          onCompose={railActions ? () => openCompose({ mode: "new" }) : undefined}
+          onStatus={railActions ? openStatusEditor : undefined}
         />
       )}
       <main className={styles.content} id="main">
@@ -160,7 +167,8 @@ export function AppShell() {
             )}
           </DetailOverlay>
         )}
-        <ComposeHost showFab={dest === "home" && overlay === null && !onRoomPage} />
+        {/* [#1001][#1020] レールに投稿とステータスのボタンがある表示（Expanded）では、右下に出さない */}
+        <ComposeHost showFab={!railActions && dest === "home" && overlay === null && !onRoomPage} />
         <KeyboardShortcuts enabled={dest === "home"} hasDetail={overlay !== null} />
         <ConnectionPill />
         <UpdateToast />

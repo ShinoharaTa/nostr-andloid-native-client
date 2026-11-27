@@ -145,4 +145,70 @@ class UserStatusTest {
         assertNull(UserStatuses.pointerOf(status(extra = listOf(listOf("a", "30023:short:x")))))
         assertNull(UserStatuses.pointerOf(status()))
     }
+
+    // ---- [#1019] 自分のステータスを出す（Web #1020 の statusModel.test.ts と同じ例）----
+
+    @Test
+    fun one_line_replaces_line_breaks_and_trims() {
+        assertEquals("作業中 です", UserStatuses.oneLine("  作業中\n\nです\t "))
+        assertEquals("a  b", UserStatuses.oneLine("a  b"), "行の中の空白はそのまま")
+        assertEquals("", UserStatuses.oneLine(" \n "))
+    }
+
+    @Test
+    fun general_event_has_d_and_optional_expiration() {
+        val plain = UserStatuses.generalEvent(" 作業中 ", null, now)
+        assertEquals(UserStatuses.KIND, plain.kind)
+        assertEquals("作業中", plain.content)
+        assertEquals(listOf(listOf("d", "general")), plain.tags)
+        assertEquals(now, plain.createdAt)
+
+        val timed = UserStatuses.generalEvent("昼休み", now + 3600, now)
+        assertEquals(listOf(listOf("d", "general"), listOf("expiration", (now + 3600).toString())), timed.tags)
+    }
+
+    @Test
+    fun clearing_is_an_empty_content_without_expiration() {
+        val cleared = UserStatuses.generalEvent("  ", now + day, now)
+        assertEquals("", cleared.content)
+        assertEquals(listOf(listOf("d", "general")), cleared.tags)
+    }
+
+    @Test
+    fun created_at_is_after_the_version_it_replaces() {
+        // 古い版より後なら今の時刻。同じ秒・時計の進んだ端末で出した版には、その 1 秒後にして負けないようにする
+        assertEquals(now, UserStatuses.generalEvent("a", null, now, replacing = now - 60).createdAt)
+        assertEquals(now + 1, UserStatuses.generalEvent("a", null, now, replacing = now).createdAt)
+        assertEquals(now + 301, UserStatuses.generalEvent("", null, now, replacing = now + 300).createdAt)
+    }
+
+    @Test
+    fun expiration_follows_the_choice_or_keeps_the_current_one() {
+        // 選び直していない（null）: いまの期限が残っていれば引き継ぐ。切れていれば・無ければ期限なし
+        assertEquals(now + 900, UserStatuses.expirationFor(null, now + 900, now))
+        assertNull(UserStatuses.expirationFor(null, now - 1, now))
+        assertNull(UserStatuses.expirationFor(null, null, now))
+        // 選び直した: 今からの秒数。「なし」は期限を外す
+        assertEquals(now + 3600, UserStatuses.expirationFor(UserStatuses.ExpiryChoice.HOUR_1, now + 900, now))
+        assertNull(UserStatuses.expirationFor(UserStatuses.ExpiryChoice.NONE, now + 900, now))
+    }
+
+    @Test
+    fun edits_over_the_limit_are_refused_but_shortening_is_allowed() {
+        val max = UserStatuses.MAX_LENGTH
+        assertTrue(UserStatuses.acceptsEdit("", "a".repeat(max)))
+        assertFalse(UserStatuses.acceptsEdit("a".repeat(max), "a".repeat(max + 1)))
+        // ほかのアプリで出した長いステータス（120 文字）: 短くするのは通す。同じ長さの置き換え・長くするのは通さない
+        assertTrue(UserStatuses.acceptsEdit("a".repeat(120), "a".repeat(119)))
+        assertFalse(UserStatuses.acceptsEdit("a".repeat(120), "b".repeat(120)))
+        assertFalse(UserStatuses.acceptsEdit("a".repeat(120), "a".repeat(121)))
+    }
+
+    @Test
+    fun expiry_choices_in_order() {
+        assertEquals(
+            listOf(null, 1800L, 3600L, 14400L, 86400L, 604800L),
+            UserStatuses.ExpiryChoice.entries.map { it.seconds },
+        )
+    }
 }

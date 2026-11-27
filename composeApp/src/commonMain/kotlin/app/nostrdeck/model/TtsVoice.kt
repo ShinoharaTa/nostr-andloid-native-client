@@ -5,67 +5,94 @@ package app.nostrdeck.model
  *
  * ライセンス（ZEN-TTS License 1.0）の条件:
  *  - クレジット [CREDIT_JA] / [CREDIT_EN] を、利用者が見つけられる場所にリンク付きで出す（設定の読み上げの節）
- *  - 改変しない・再配布しない。モデル（重み）はアプリに含めず、公式の配布元（[COMMIT] の固定 URL）から端末へダウンロードする。
- *    ランタイム（JS / WASM）はビルド時に同じコミットから取ってきて改変せずに同梱する（scripts/fetch-zen-tts.sh）
+ *  - 改変しない・再配布しない。モデル（重み）はアプリに含めず、公式の配布元から端末へダウンロードする。
+ *    ランタイム（JS / WASM）はビルド時に [COMMIT] から取ってきて改変せずに同梱する（scripts/fetch-zen-tts.sh）
+ *
+ * [#1008] v1.4.0 から、声は 1 声 1 ファイル（`.ztm`）を上流の配布サーバー（[VOICE_BASE]。上流の README の案内どおり）から、
+ * 読みのモデル（G2P。全部の声で共通）は配布サーバーに無いので、全力機械が Hugging Face に置いている公式のもの（[G2P_BASE]。
+ * コミットを固定）から取る。端末は GitHub からは取らない。
  */
 object ZenTts {
-    /** v1.0.0。scripts/fetch-zen-tts.sh の COMMIT と揃える。 */
-    const val COMMIT = "14b404d527a3d074de8e7ef28d44b14514400a40"
-    const val VERSION = "1.0.0"
-    /** モデルの配布元（公式リポジトリの固定コミット）。 */
-    const val MODELS_BASE = "https://raw.githubusercontent.com/zenryokukikai/zen-tts/$COMMIT/models"
+    /** v1.4.0。scripts/fetch-zen-tts.sh の COMMIT と揃える。 */
+    const val COMMIT = "16b12ff6a3eec71ab0bcc7054b5901f5ff3b25cc"
+    const val VERSION = "1.4.0"
+    /** 声の `.ztm` の配布元（ランタイムの ZTM_BASE_URL と同じ。1.4.0 の声は 1.3.0 と同じファイル）。 */
+    const val VOICE_BASE = "https://tts-models.zenryoku.work/v1.3.0"
+    /** 読みのモデルの配布元（全力機械の Hugging Face。中身は GitHub の v1.4.0 の models/g2p/ と同じ）。 */
+    const val G2P_BASE = "https://huggingface.co/Zenryokukikai/zen-tts/resolve/dce5a333277d4198863e577ea6800b9f680bdd1d/g2p"
     const val CREDIT_URL = "https://zenryokukikai.com"
-    const val CREDIT_JA = "音声合成：ZEN-TTS（https://zenryokukikai.com）"
-    const val CREDIT_EN = "Speech synthesis: ZEN-TTS (https://zenryokukikai.com)"
+    const val CREDIT_JA = "音声合成：ZEN-TTS（https://zenryokukikai.com ）"
+    const val CREDIT_EN = "Speech synthesis: ZEN-TTS (https://zenryokukikai.com )"
+
+    /**
+     * 読みのモデル（全部の声で共通）。ランタイムは `<modelsUrl>/g2p/` から読む。
+     * サイズと SHA-256 は g2p.json（`sha256` は g2p.bin の値）と、取ってきたファイルで確かめた値。
+     */
+    val G2P_FILES = listOf(
+        TtsModelFile("g2p/g2p.json", "$G2P_BASE/g2p.json", 55_408, "4a817fda1e8317cce8431c0721ff4d473d94caa70a00f3d0e7d304492c1beb35"),
+        TtsModelFile("g2p/g2p.bin", "$G2P_BASE/g2p.bin", 13_453_312, "6a9716330f1d02968e91bd809022bf040cb7fb665935211713609b83dc004523"),
+    )
+
+    /**
+     * v1.0.0 の声のファイル（1 声 4 ファイル）。新しいランタイムは読めないので、端末に残っていたら消す（[#1008]）。
+     */
+    val LEGACY_FILES: List<String> = listOf("", "voices/hashiro/", "voices/kai/", "voices/kikka/").flatMap { dir ->
+        listOf("tts/own.bin", "tts/own.json", "decoder/nsf.bin", "decoder/nsf.json").map { dir + it }
+    }
 }
 
-/** 声のモデルの 1 ファイル（models/ からの相対パス・バイト数・SHA-256）。値は models/manifest.json（[ZenTts.COMMIT]）。 */
-data class TtsModelFile(val path: String, val bytes: Long, val sha256: String)
+/**
+ * 声のモデルの 1 ファイル。[path] は端末の置き場（WebView には `/models/<path>` で返す）からの相対パス、[url] は取ってくる先。
+ */
+data class TtsModelFile(val path: String, val url: String, val bytes: Long, val sha256: String)
 
-/** [#948] ZEN-TTS の声（声ごとに独立したモデル。1 つ約 31 MB）。 */
-enum class TtsVoice(val id: String, val nameJa: String, val nameEn: String, val files: List<TtsModelFile>) {
-    MARINE(
-        "marine", "全力 マリン", "Zenryoku Marine",
-        listOf(
-            TtsModelFile("tts/own.bin", 11_065_344, "17be4d9b9a1689bd102fc04fb47b12b63c72a8cdcf0a680e37944bf5aca38040"),
-            TtsModelFile("tts/own.json", 83_246, "70d7914d76a40ea2d21d2a85431c672614289ae74e3e41c614ce8b7309b5c674"),
-            TtsModelFile("decoder/nsf.bin", 19_977_220, "f29a067c941b6707e498dacb01204742f062e1b8056f7a62b649537b2a9babd3"),
-            TtsModelFile("decoder/nsf.json", 14_325, "20ee3618c8f2adca88350456a3865a2168434fcc980ee7260dae247615624e2f"),
-        ),
-    ),
-    HASHIRO(
-        "hashiro", "全力 ハシロウ", "Zenryoku Hashiro",
-        listOf(
-            TtsModelFile("voices/hashiro/tts/own.bin", 11_065_344, "734b509d9967bb30b7c294924bfe16c4783f2a657ac0fa6df351e2bc1695e412"),
-            TtsModelFile("voices/hashiro/tts/own.json", 63_212, "61b568f5f8bdf8cb825473878d20b2854a1b4725c6b6758d354a83a3f16a4862"),
-            TtsModelFile("voices/hashiro/decoder/nsf.bin", 19_977_220, "eef9842618bd3488a35f8b50e61d050161a4298f2af100d87008ecc5ac8f9a42"),
-            TtsModelFile("voices/hashiro/decoder/nsf.json", 10_813, "9c451b00ac11bdc84a8f669e47cf374808710e3d4c708c23f195ef27f7452e45"),
-        ),
-    ),
-    KAI(
-        "kai", "全力 カイ", "Zenryoku Kai",
-        listOf(
-            TtsModelFile("voices/kai/tts/own.bin", 11_065_344, "b778fd5beba27c7c8e0ff5cb523ec17747086bbc8c5ed927aa719ad3877a044a"),
-            TtsModelFile("voices/kai/tts/own.json", 63_213, "148b7262df36fd78af27ac32ca441491c29f4f8fb829df335324671d1fbe8354"),
-            TtsModelFile("voices/kai/decoder/nsf.bin", 19_977_220, "1264a80a0b02d3e909a7d43c65bdf4601480f464d8adb5589c2163b334d9b437"),
-            TtsModelFile("voices/kai/decoder/nsf.json", 10_794, "42bf96c64056bb55687b49ce87f31566fe3c2543e954e688833e8d5c88a409f2"),
-        ),
-    ),
-    KIKKA(
-        "kikka", "全力 キッカ", "Zenryoku Kikka",
-        listOf(
-            TtsModelFile("voices/kikka/tts/own.bin", 11_065_344, "497cfabbcd3b0666c963b0f9e33d2671564966d3b109d5d053a59e800017f635"),
-            TtsModelFile("voices/kikka/tts/own.json", 63_215, "09de9481b74df07d52d135fccf67d3709f4a89e6d1ac7a9765a8b724d77b11e3"),
-            TtsModelFile("voices/kikka/decoder/nsf.bin", 19_977_220, "cbc2b70dc43423c6fa12be2e36acde32977b6dce1bd17a068fb09d6f65efcd2a"),
-            TtsModelFile("voices/kikka/decoder/nsf.json", 10_792, "1346fc3ac4066c35bda46ed33e27a2f57d88386d4b4452fdd60079ce5d7727b4"),
-        ),
-    );
+/**
+ * [#948] ZEN-TTS の声（声ごとに独立したモデル）。[#1008] 1 声 1 ファイル（`.ztm`、約 28 MB）。
+ * サイズと SHA-256 は全力機械の Hugging Face（Zenryokukikai/zen-tts）の README の値（配布サーバーのファイルと同じ）。
+ */
+enum class TtsVoice(val id: String, val nameJa: String, val nameEn: String, bytes: Long, sha256: String) {
+    MARINE("marine", "全力 マリン", "Zenryoku Marine", 27_650_080, "c7bdad381540d33f90aa60b255520051b04d6ce84c66e0fbc8d8ed3cdec3a4dd"),
+    HASHIRO("hashiro", "全力 ハシロウ", "Zenryoku Hashiro", 27_650_080, "17d8f69ae8c45c3390ca06f15f30b7bc15c8be74d76c35ca0b9fe30851895433"),
+    KAI("kai", "全力 カイ", "Zenryoku Kai", 27_650_016, "1c9bbd2113900262b8f74dfcfafe2e61fd3a7cf184b91d76edcd96dd4ff6444a"),
+    KIKKA("kikka", "全力 キッカ", "Zenryoku Kikka", 27_650_080, "81f3068e883f83ac5c0e7a84b6e0b06ca6ef1f0de05e7a136d94bed18845437b");
 
-    /** ダウンロードの合計（バイト）。 */
-    val totalBytes: Long get() = files.sumOf { it.bytes }
+    /** 声のファイル（`.ztm`）。ランタイムには `/models/voices/<id>.ztm` で渡す。 */
+    val file = TtsModelFile("voices/$id.ztm", "${ZenTts.VOICE_BASE}/$id.ztm", bytes, sha256)
 
     companion object {
         val DEFAULT = MARINE
         fun fromId(id: String?): TtsVoice = entries.firstOrNull { it.id == id } ?: DEFAULT
+    }
+}
+
+/** [#1008] 読み上げのトーン（ZEN-TTS の感情スタイル。1 つを選ぶ）。[id] はランタイムの `emotion` の名前。 */
+enum class TtsTone(val id: String) {
+    NEUTRAL("neutral"), HAPPY("happy"), SAD("sad"), ANGRY("angry"), APOLOGETIC("apologetic");
+
+    companion object {
+        fun fromId(id: String?): TtsTone = entries.firstOrNull { it.id == id } ?: NEUTRAL
+    }
+}
+
+/**
+ * [#1008] 読み上げの話し方（トーン・速さ・高さ）。端末の中に保存する。
+ * 速さは 0.5〜1.5 倍（0.1 刻み）、高さは −6〜+12 半音（ランタイムの SPEED_MIN/MAX・PITCH_MIN/MAX）。
+ * 既定（ふつう・1 倍・0）なら、ランタイムには何も渡さない（1.0.0 と同じ話し方）。
+ */
+data class TtsStyle(val tone: TtsTone = TtsTone.NEUTRAL, val speedTenths: Int = 10, val pitch: Int = 0) {
+    val speed: Float get() = speedTenths / 10f
+
+    /** 範囲の外は丸める（保存した値が壊れていたとき）。 */
+    fun clamped(): TtsStyle = copy(
+        speedTenths = speedTenths.coerceIn(SPEED_TENTHS_MIN, SPEED_TENTHS_MAX),
+        pitch = pitch.coerceIn(PITCH_MIN, PITCH_MAX),
+    )
+
+    companion object {
+        val DEFAULT = TtsStyle()
+        const val SPEED_TENTHS_MIN = 5
+        const val SPEED_TENTHS_MAX = 15
+        const val PITCH_MIN = -6
+        const val PITCH_MAX = 12
     }
 }

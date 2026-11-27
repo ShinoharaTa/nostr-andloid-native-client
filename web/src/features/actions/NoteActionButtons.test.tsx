@@ -606,7 +606,7 @@ describe("⋯ メニュー", () => {
     act(() => setMuteList(null));
   });
 
-  it("[#963]「このユーザーをブロック」→ 確認 →「ブロック」で blockUser（その投稿を渡す）とトースト。ブロック中は「ブロックを解除」だけ", async () => {
+  it("[#963]「このユーザーをブロック」→ 確認 →「ブロック」で blockUser とトースト。ブロック中は「ブロックを解除」だけ", async () => {
     vi.mocked(muteUser).mockClear();
     vi.mocked(blockUser).mockClear();
     const user = userEvent.setup();
@@ -617,7 +617,8 @@ describe("⋯ メニュー", () => {
     const dialog = screen.getByRole("dialog", { name: "このユーザーをブロックしますか？" });
     expect(dialog).toHaveTextContent("公開のミュートリスト（NIP-51）");
     await user.click(within(dialog).getByRole("button", { name: "ブロック" }));
-    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event);
+    // [#961] 投稿から押したら、開発者への知らせに載せる投稿 id も渡す
+    expect(blockUser).toHaveBeenCalledWith(me, event.pubkey, event.id);
     expect(muteUser).not.toHaveBeenCalled();
     await waitFor(() => expect(useToast.getState().queue).toEqual(["ブロックしました"]));
 
