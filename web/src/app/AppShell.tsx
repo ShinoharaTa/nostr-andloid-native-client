@@ -20,7 +20,7 @@ import { BottomNav } from "../ui/BottomNav";
 import { ConnectionPill } from "../ui/ConnectionPill";
 import { DetailOverlay } from "../ui/DetailOverlay";
 import { NavRail } from "../ui/NavRail";
-import { useLayoutMode, useRailActionsFit } from "../ui/useLayoutMode";
+import { useLayoutMode } from "../ui/useLayoutMode";
 import { useVisualViewportHeight } from "../ui/useVisualViewportHeight";
 import styles from "./AppShell.module.css";
 import { DeckScreen } from "./deck/DeckScreen";
@@ -67,10 +67,9 @@ function DestScreen({ dest }: { dest: Dest }) {
  */
 export function AppShell() {
   const mode = useLayoutMode();
-  // [#1020] 投稿とステータスのボタンをレールに置くのは、デッキの表示（Expanded）で、レールに全部が収まる高さのときだけ。
-  // 1 カラムの表示（Compact / Rail）と、高さの足りない画面では右下に出す（ネイティブ AppScaffold と同じ）
-  const railFits = useRailActionsFit();
-  const railActions = mode === "expanded" && railFits;
+  // [#1020] 投稿とステータスのボタンをレールに置くのは、デッキの表示（Expanded）だけ。1 カラムの表示（Compact / Rail）
+  // では右下に出す（ネイティブ AppScaffold と同じ）
+  const railActions = mode === "expanded";
   const handle = routeHandleOf(useMatches());
   const params = useParams();
   const { key: locationKey } = useLocation();
@@ -168,7 +167,7 @@ export function AppShell() {
             )}
           </DetailOverlay>
         )}
-        {/* [#1001][#1020] レールに投稿とステータスのボタンがある表示（Expanded で高さが足りるとき）では、右下に出さない */}
+        {/* [#1001][#1020] レールに投稿とステータスのボタンがある表示（Expanded）では、右下に出さない */}
         <ComposeHost showFab={!railActions && dest === "home" && overlay === null && !onRoomPage} />
         <KeyboardShortcuts enabled={dest === "home"} hasDetail={overlay !== null} />
         <ConnectionPill />

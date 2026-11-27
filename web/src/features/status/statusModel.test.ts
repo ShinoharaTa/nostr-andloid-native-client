@@ -2,6 +2,7 @@ import { finalizeEvent, generateSecretKey, type NostrEvent } from "nostr-tools/p
 import { describe, expect, it } from "vitest";
 import { t } from "../../i18n";
 import {
+  acceptsStatusEdit,
   expiryLabel,
   generalStatusDraft,
   isStatusVisible,
@@ -10,6 +11,7 @@ import {
   STATUS_MAX_AGE_SEC,
   serviceLabelOf,
   sortStatuses,
+  statusExpirationFor,
   statusTypeOf,
 } from "./statusModel";
 
@@ -153,26 +155,51 @@ describe("自分のステータスを出す", () => {
     expect(oneLineStatus(" \n ")).toBe("");
   });
 
-  it("d=general。期限を選んだら expiration（今 + 秒）", () => {
+  it("d=general。期限があれば expiration", () => {
     expect(generalStatusDraft(" 作業中 ", null, NOW)).toEqual({
       kind: 30315,
       content: "作業中",
       tags: [["d", "general"]],
       created_at: NOW,
     });
-    expect(generalStatusDraft("昼休み", 3600, NOW).tags).toEqual([
+    expect(generalStatusDraft("昼休み", NOW + 3600, NOW).tags).toEqual([
       ["d", "general"],
       ["expiration", String(NOW + 3600)],
     ]);
   });
 
   it("消すのは空の本文。期限は付けない", () => {
-    expect(generalStatusDraft("  ", 86400, NOW)).toEqual({
+    expect(generalStatusDraft("  ", NOW + DAY, NOW)).toEqual({
       kind: 30315,
       content: "",
       tags: [["d", "general"]],
       created_at: NOW,
     });
+  });
+
+  it("created_at は、置き換える版より後にする（同じ秒・時計の進んだ端末で出した版に負けない）", () => {
+    expect(generalStatusDraft("a", null, NOW, NOW - 60).created_at).toBe(NOW);
+    expect(generalStatusDraft("a", null, NOW, NOW).created_at).toBe(NOW + 1);
+    expect(generalStatusDraft("", null, NOW, NOW + 300).created_at).toBe(NOW + 301);
+  });
+
+  it("期限: 選び直していなければ、いまの期限を引き継ぐ（切れていれば・無ければ期限なし）", () => {
+    expect(statusExpirationFor(null, NOW + 900, NOW)).toBe(NOW + 900);
+    expect(statusExpirationFor(null, NOW - 1, NOW)).toBeNull();
+    expect(statusExpirationFor(null, null, NOW)).toBeNull();
+  });
+
+  it("期限: 選び直したら今からの秒数。「なし」は期限を外す", () => {
+    expect(statusExpirationFor("1h", NOW + 900, NOW)).toBe(NOW + 3600);
+    expect(statusExpirationFor("none", NOW + 900, NOW)).toBeNull();
+  });
+
+  it("入力: 上限を超える入力は受け付けないが、短くする編集は通す", () => {
+    expect(acceptsStatusEdit("", "a".repeat(100))).toBe(true);
+    expect(acceptsStatusEdit("a".repeat(100), "a".repeat(101))).toBe(false);
+    expect(acceptsStatusEdit("a".repeat(120), "a".repeat(119))).toBe(true);
+    expect(acceptsStatusEdit("a".repeat(120), "b".repeat(120))).toBe(false);
+    expect(acceptsStatusEdit("a".repeat(120), "a".repeat(121))).toBe(false);
   });
 
   it("期限の選択肢の並び（なし / 30 分 / 1 時間 / 4 時間 / 1 日 / 1 週間）", () => {

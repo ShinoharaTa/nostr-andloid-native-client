@@ -15,7 +15,7 @@ import { useSession } from "../signer/session";
 import { useDeck } from "../store/deck";
 import { installDialogPolyfill } from "../test/dialog";
 import { OTHER_PUBKEY, PUBKEY, resetSession } from "../test/fakeNostr";
-import { clearViewport, mockViewport, setViewportHeight } from "../test/viewport";
+import { clearViewport, mockViewport } from "../test/viewport";
 import { routes } from "./routes";
 
 // カラムの中身（購読・仮想リスト）とダイアログは描かない
@@ -632,18 +632,6 @@ describe("投稿ボタン", () => {
       expect(screen.getByRole("dialog", { name: "ステータスを更新" })).toBeInTheDocument();
       act(() => closeStatusEditor());
       cleanup();
-    }
-  });
-
-  it("[#1020] デッキの表示でも高さが足りなければ（スマホの横向き）、レールに置かず右下に出す。高さが戻るとレールへ", () => {
-    mockViewport(1400, { hover: false, height: 440 });
-    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
-    for (const name of ["投稿", "ステータスを更新"]) {
-      expect(mainNav()).not.toContainElement(screen.getByRole("button", { name }));
-    }
-    setViewportHeight(900);
-    for (const name of ["投稿", "ステータスを更新"]) {
-      expect(mainNav()).toContainElement(screen.getByRole("button", { name }));
     }
   });
 

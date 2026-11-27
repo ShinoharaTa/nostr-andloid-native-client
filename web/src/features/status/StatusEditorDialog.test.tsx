@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -38,11 +38,16 @@ afterEach(() => {
 });
 
 /** 自分のステータスを手元（EventStore）に入れ、その公開鍵を返す。テストごとに別の鍵（前のテストの分が混ざらない） */
-function withStatus(content: string | null, tags: string[][] = [], d = "general"): string {
+function withStatus(
+  content: string | null,
+  tags: string[][] = [],
+  d = "general",
+  createdAt = unixNow() - 120,
+): string {
   const key = generateSecretKey();
   if (content !== null) {
     eventStore.add(
-      finalizeEvent({ kind: 30315, created_at: unixNow() - 120, tags: [["d", d], ...tags], content }, key),
+      finalizeEvent({ kind: 30315, created_at: createdAt, tags: [["d", d], ...tags], content }, key),
     );
   }
   return getPublicKey(key);
@@ -167,4 +172,84 @@ it("「キャンセル」で閉じる（何も送らない）", async () => {
   await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(publishEvent).not.toHaveBeenCalled();
+});
+
+it("[レビュー] 期限つきのステータスは「いまのまま」が選ばれていて、文言だけ直しても期限が変わらない", async () => {
+  const expiration = unixNow() + 900;
+  renderDialog(withStatus("会議", [["expiration", String(expiration)]]));
+  const keep = screen.getByRole("button", { name: "いまのまま（残り 15 分）" });
+  expect(keep).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "なし" })).toHaveAttribute("aria-pressed", "false");
+  await userEvent.type(input(), "中");
+  await userEvent.click(update());
+  expect(vi.mocked(publishEvent).mock.calls[0][0]).toMatchObject({
+    content: "会議中",
+    tags: [
+      ["d", "general"],
+      ["expiration", String(expiration)],
+    ],
+  });
+});
+
+it("[レビュー] 期限つきのステータスで「なし」を選ぶと、期限を外す", async () => {
+  renderDialog(withStatus("会議", [["expiration", String(unixNow() + 900)]]));
+  await userEvent.click(screen.getByRole("button", { name: "なし" }));
+  expect(screen.getByRole("button", { name: /^いまのまま/ })).toHaveAttribute("aria-pressed", "false");
+  await userEvent.click(update());
+  expect(vi.mocked(publishEvent).mock.calls[0][0].tags).toEqual([["d", "general"]]);
+});
+
+it("[レビュー] 期限の無いステータスには「いまのまま」を出さない", () => {
+  renderDialog(withStatus("作業中"));
+  expect(screen.queryByRole("button", { name: /^いまのまま/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "なし" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("[レビュー] created_at は、いま出している版より後にする（時計の進んだ端末で出した版に負けない）", async () => {
+  const ahead = unixNow() + 300;
+  renderDialog(withStatus("作業中", [], "general", ahead));
+  await userEvent.click(screen.getByRole("button", { name: "消す" }));
+  expect(vi.mocked(publishEvent).mock.calls[0][0].created_at).toBe(ahead + 1);
+});
+
+it("[レビュー] 開いたあとに届いたステータスも入れる。書き始めていたら上書きしない", async () => {
+  const key = generateSecretKey();
+  const arrive = (content: string) =>
+    act(() => {
+      eventStore.add(
+        finalizeEvent({ kind: 30315, created_at: unixNow() - 60, tags: [["d", "general"]], content }, key),
+      );
+    });
+  const { unmount } = render(<StatusEditorDialog pubkey={getPublicKey(key)} onClose={() => {}} />);
+  expect(input()).toHaveValue("");
+  arrive("作業中");
+  expect(input()).toHaveValue("作業中");
+  expect(screen.getByRole("button", { name: "消す" })).toBeInTheDocument();
+  unmount();
+
+  const other = generateSecretKey();
+  render(<StatusEditorDialog pubkey={getPublicKey(other)} onClose={() => {}} />);
+  await userEvent.type(input(), "書きかけ");
+  act(() => {
+    eventStore.add(
+      finalizeEvent(
+        { kind: 30315, created_at: unixNow() - 60, tags: [["d", "general"]], content: "古い" },
+        other,
+      ),
+    );
+  });
+  expect(input()).toHaveValue("書きかけ");
+});
+
+it("[レビュー] 送信中は Esc（cancel）で閉じない。ブラウザが閉じてしまったら（close）、開いている印を外す", async () => {
+  vi.mocked(publishEvent).mockImplementation(() => new Promise(() => {}));
+  const onClose = renderDialog(withStatus(null));
+  await userEvent.type(input(), "作業中");
+  await userEvent.click(update());
+  const dialog = screen.getByRole("dialog", { name: "ステータスを更新" });
+  expect(dialog).toHaveAttribute("aria-busy", "true");
+  fireEvent(dialog, new Event("cancel", { cancelable: true }));
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent(dialog, new Event("close"));
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

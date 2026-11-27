@@ -60,18 +60,45 @@ export function oneLineStatus(text: string): string {
 }
 
 /**
+ * 入力欄の編集を受け付けるか。上限（STATUS_MAX_LENGTH）を超える入力は受け付けないが、ほかのアプリで出した長い
+ * ステータスが入っているときも、短くする編集は通す。
+ */
+export function acceptsStatusEdit(old: string, next: string): boolean {
+  return next.length <= STATUS_MAX_LENGTH || next.length < old.length;
+}
+
+/**
  * 自分で出す 1 行のステータス（d=general）の下書き。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
- * now は今の unix 秒（expirySeconds を足して NIP-40 の expiration にする）。
+ * expiration は NIP-40 の期限（unix 秒。null は期限なし）、now は今の unix 秒。
+ * replacing は、いま出している版の created_at（あれば）。置き換え可能イベントは新しい方が残るので、created_at は
+ * それより後にする（時計の進んだ端末で出した版や、同じ秒に出した版に負けない。relayList / muteList などと同じ）。
  */
 export function generalStatusDraft(
   text: string,
-  expirySeconds: number | null,
+  expiration: number | null,
   now: number,
+  replacing: number | null = null,
 ): { kind: number; content: string; tags: string[][]; created_at: number } {
   const content = oneLineStatus(text);
   const tags: string[][] = [["d", "general"]];
-  if (expirySeconds !== null && content !== "") tags.push(["expiration", String(now + expirySeconds)]);
-  return { kind: STATUS_KIND, content, tags, created_at: now };
+  if (expiration !== null && content !== "") tags.push(["expiration", String(expiration)]);
+  return { kind: STATUS_KIND, content, tags, created_at: Math.max(now, (replacing ?? 0) + 1) };
+}
+
+/**
+ * ステータスの画面で選んだ期限 → NIP-40 の期限（unix 秒）。choice が null は「選び直していない」で、いま出している
+ * ステータスに期限（currentExpiration）が残っていればそれを引き継ぐ（文言だけ直したとき、期限つきのステータスを
+ * 期限なしにしない）。
+ */
+export function statusExpirationFor(
+  choice: StatusExpiryId | null,
+  currentExpiration: number | null,
+  now: number,
+): number | null {
+  if (choice === null)
+    return currentExpiration !== null && currentExpiration > now ? currentExpiration : null;
+  const seconds = STATUS_EXPIRY_CHOICES.find((c) => c.id === choice)?.seconds ?? null;
+  return seconds === null ? null : now + seconds;
 }
 
 /** 新しい順。同時刻は id の昇順（並びを安定させる）。元の配列は変えない */

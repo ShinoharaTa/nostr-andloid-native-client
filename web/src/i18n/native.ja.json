@@ -514,6 +514,7 @@
   "status_expiry_1w": "1 週間",
   "status_expiry_30m": "30 分",
   "status_expiry_4h": "4 時間",
+  "status_expiry_keep_fmt": "いまのまま（%1$s）",
   "status_expiry_none": "なし",
   "sub_my_reactions": "自分のリアクション",
   "sync_applied": "適用しました。",

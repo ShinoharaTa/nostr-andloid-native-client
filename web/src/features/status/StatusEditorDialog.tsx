@@ -9,13 +9,16 @@ import { showToast } from "../../ui/toast";
 import { useNow } from "../timeline/useNow";
 import styles from "./StatusEditorDialog.module.css";
 import {
+  acceptsStatusEdit,
+  expiryLabel,
   generalStatusDraft,
   isStatusVisible,
   oneLineStatus,
   STATUS_EXPIRY_CHOICES,
   STATUS_KIND,
-  STATUS_MAX_LENGTH,
   type StatusExpiryId,
+  statusExpirationFor,
+  statusExpirationOf,
 } from "./statusModel";
 
 /** 期限切れをその場で反映する時計（StatusCard と同じ 10 秒） */
@@ -28,6 +31,7 @@ const FETCH_TIMEOUT_MS = 8_000;
  * 開いたとき、いま出しているステータスを入れておく（手元に無ければ自分のリレーへ取りに行く。ステータスのカラムを
  * 置いていない人でも入るように）。「更新」で出し、「消す」（いま出しているときだけ）で空のステータスを出す。
  * 送信はほかの投稿と同じ送信キュー（署名できたら閉じる。受理を確かめられなければキューが送り直す）。
+ * 期限は選び直さなければ、いまのステータスの期限を引き継ぐ（文言だけ直したとき、期限つきを期限なしにしない）。
  * music（Now Playing）には触らない。
  */
 export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClose(): void }) {
@@ -63,7 +67,10 @@ export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClos
 
   const [text, setText] = useState("");
   const [touched, setTouched] = useState(false);
-  const [expiry, setExpiry] = useState<StatusExpiryId>("none");
+  // 期限。null = 選び直していない（いまのステータスに期限が残っていれば引き継ぐ。無ければ「なし」）
+  const [expiry, setExpiry] = useState<StatusExpiryId | null>(null);
+  const expirationNow = current ? statusExpirationOf(current) : null;
+  const currentExpiration = expirationNow !== null && expirationNow > now ? expirationNow : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,9 +88,16 @@ export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClos
     if (busy) return;
     setBusy(true);
     setError(null);
-    const seconds = STATUS_EXPIRY_CHOICES.find((c) => c.id === expiry)?.seconds ?? null;
+    const at = unixNow();
     try {
-      await publishEvent(generalStatusDraft(content, seconds, unixNow()));
+      await publishEvent(
+        generalStatusDraft(
+          content,
+          statusExpirationFor(expiry, currentExpiration, at),
+          at,
+          latest?.created_at ?? null,
+        ),
+      );
     } catch {
       setBusy(false);
       setError(t("web_status_edit_failed"));
@@ -110,6 +124,12 @@ export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClos
         e.stopPropagation();
         if (!busy) onClose();
       }}
+      // 送信中に Esc を続けて押すと、ブラウザが cancel を待たずに閉じることがある。閉じたら開いている印も外す
+      // （外さないと、次にボタンを押しても開かない）
+      onClose={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <h2 id={titleId} className={styles.title}>
         {t("status_edit_title")}
@@ -125,11 +145,9 @@ export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClos
           placeholder={t("status_edit_placeholder")}
           value={text}
           disabled={busy}
-          // 上限を超える入力は受け付けない。ほかのアプリで出した長いステータスが入っているときも、短くする編集は通す
           onChange={(e) => {
-            const next = e.target.value;
-            if (next.length > STATUS_MAX_LENGTH && next.length >= text.length) return;
-            setText(next);
+            if (!acceptsStatusEdit(text, e.target.value)) return;
+            setText(e.target.value);
             setTouched(true);
           }}
         />
@@ -137,8 +155,20 @@ export function StatusEditorDialog({ pubkey, onClose }: { pubkey: string; onClos
           {t("status_edit_expiry")}
         </p>
         <fieldset className={styles.choices} aria-labelledby={expiryId} disabled={busy}>
+          {/* いまのステータスに期限が残っていれば、先頭に「いまのまま」（選び直すまではこれ） */}
+          {currentExpiration !== null && (
+            <button
+              type="button"
+              className={expiry === null ? `${styles.choice} ${styles.active}` : styles.choice}
+              aria-pressed={expiry === null}
+              onClick={() => setExpiry(null)}
+            >
+              {t("status_expiry_keep_fmt", expiryLabel(currentExpiration, now, t))}
+            </button>
+          )}
           {STATUS_EXPIRY_CHOICES.map((choice) => {
-            const active = expiry === choice.id;
+            const active =
+              expiry === choice.id || (expiry === null && currentExpiration === null && choice.id === "none");
             return (
               <button
                 key={choice.id}

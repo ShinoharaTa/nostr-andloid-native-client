@@ -514,6 +514,7 @@
   "status_expiry_1w": "1 week",
   "status_expiry_30m": "30 min",
   "status_expiry_4h": "4 hours",
+  "status_expiry_keep_fmt": "Keep (%1$s)",
   "status_expiry_none": "Never",
   "sub_my_reactions": "My reactions",
   "sync_applied": "Applied.",

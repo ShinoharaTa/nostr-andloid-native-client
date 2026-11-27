@@ -6,20 +6,16 @@ type ChangeListener = (e: MediaQueryListEvent) => void;
 const HOVER_FINE_QUERY = "(hover: hover) and (pointer: fine)";
 
 let width = 0;
-/** [#1020] 既定は十分な高さ（高さを意識しない既存テストの前提を保つ） */
-const DEFAULT_HEIGHT = 900;
-let height = DEFAULT_HEIGHT;
 /** [#648] 既定はホバーあり（PC 相当。hover を意識しない既存テストの前提を保つ） */
 let hover = true;
 const listeners = new Set<{ query: string; listener: ChangeListener; last: boolean }>();
 
-/** `(min-width: Npx)`・`(min-height: Npx)` と [#648] のホバー判定クエリだけを評価する。それ以外のクエリは常に false */
+/** `(min-width: Npx)` と [#648] のホバー判定クエリだけを評価する。それ以外のクエリは常に false */
 function evaluate(query: string): boolean {
   const trimmed = query.trim();
   if (trimmed === HOVER_FINE_QUERY) return hover;
-  const m = /^\(min-(width|height):\s*(\d+)px\)$/.exec(trimmed);
-  if (!m) return false;
-  return (m[1] === "width" ? width : height) >= Number(m[2]);
+  const m = /^\(min-width:\s*(\d+)px\)$/.exec(trimmed);
+  return m ? width >= Number(m[1]) : false;
 }
 
 /** 閾値をまたいだクエリの `change` リスナーを act の中で呼ぶ（setViewportWidth / setViewportHover 共通） */
@@ -36,12 +32,11 @@ function notifyListeners(): void {
 
 /**
  * window.matchMedia を幅 width・ホバー可否 hover のスタブに差し替える（jsdom には matchMedia が無い）。
- * hover 省略時は true（PC 相当）、height 省略時は 900。`change` リスナーは保持し、setViewportWidth /
- * setViewportHeight / setViewportHover で閾値をまたいだものだけ呼ぶ。
+ * hover 省略時は true（PC 相当）。`change` リスナーは保持し、setViewportWidth / setViewportHover で
+ * 閾値をまたいだものだけ呼ぶ。
  */
-export function mockViewport(w: number, options?: { hover?: boolean; height?: number }): void {
+export function mockViewport(w: number, options?: { hover?: boolean }): void {
   width = w;
-  height = options?.height ?? DEFAULT_HEIGHT;
   hover = options?.hover ?? true;
   listeners.clear();
   window.matchMedia = (query: string): MediaQueryList => {
@@ -71,12 +66,6 @@ export function mockViewport(w: number, options?: { hover?: boolean; height?: nu
 /** 幅を変え、閾値をまたいだクエリの `change` リスナーを act の中で呼ぶ */
 export function setViewportWidth(w: number): void {
   width = w;
-  notifyListeners();
-}
-
-/** [#1020] 高さを変え、閾値をまたいだクエリの `change` リスナーを act の中で呼ぶ */
-export function setViewportHeight(h: number): void {
-  height = h;
   notifyListeners();
 }
 
