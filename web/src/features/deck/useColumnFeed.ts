@@ -17,7 +17,7 @@ import {
 } from "../../lib/columnRequest";
 import { type ColumnSpec, encodeReqFilter } from "../../lib/columns";
 import { unixNow } from "../../lib/time";
-import { TimelineCoverage } from "../../lib/timelineCoverage";
+import { type OlderRequest, TimelineCoverage } from "../../lib/timelineCoverage";
 import { authorOutbox$ } from "../../nostr/outbox";
 import {
   type RelayProgress,
@@ -214,21 +214,26 @@ export function useColumnFeed(spec: ColumnSpec, options: { paging?: boolean } = 
       if (counted === null) return;
       // [#955] 下限の近くのリレーにだけ、それぞれの境界を until にして 1 リレーずつ聞く
       const floorBefore = counted.floor();
-      for (const [relay, request] of counted.olderRequests(unixNow())) {
+      const ask = (relay: string, request: OlderRequest) => {
         begin();
         const sub = requestFrom(relay, [{ ...paged, until: request.until }], OLDER_TIMEOUT_MS).subscribe({
           next: (reply) => {
+            let next: OlderRequest | null = null;
             if (typeof reply === "number") counted.onEvent(relay, reply, true);
-            else if (reply === "EOSE") counted.onEose(relay, request.seq);
+            else if (reply === "EOSE") next = counted.onEose(relay, request.seq);
             else counted.onOlderTimeout(relay, request.seq);
             // 張り直しで数え直した後に届いた古い返事で、下限を戻さない
-            if (coverage.current?.coverage === counted) setFloor(counted.floor());
+            if (coverage.current?.coverage !== counted) return;
+            setFloor(counted.floor());
+            // [#962] まだ下限より浅ければ、そのリレーにだけ続けて聞く（TimelineCoverage.onEose。CATCH_UP_LIMIT 回まで）
+            if (next !== null) ask(relay, next);
           },
           complete: finish,
           error: finish,
         });
         state.subs.add(sub);
-      }
+      };
+      for (const [relay, request] of counted.olderRequests(unixNow())) ask(relay, request);
       // 混ぜる通知・リアクションは、これまでどおり下限から全リレーへ（数えない。下限が変わったときだけ）
       const rest = plan.filters.filter((f) => f !== paged);
       if (rest.length === 0 || floorBefore === null || floorBefore === state.oldest) return;
