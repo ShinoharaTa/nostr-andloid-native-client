@@ -2,9 +2,13 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { useT } from "../../i18n";
 import { requestZapInvoice } from "../../lib/lnurl";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { InfoDialog } from "../../ui/InfoDialog";
 import { QrCode } from "../../ui/QrCode";
 import { showToast } from "../../ui/toast";
+import { useOpenAppFallback } from "./useOpenAppFallback";
+import { useInvoicePaid } from "./useZapReceipts";
 import styles from "./ZapDialog.module.css";
+import { isTouchDevice, ZAP_WALLETS } from "./zapWallets";
 
 /** WebLN（Alby 等の拡張がページに注入する window.webln）のうち使うところ */
 type WebLNProvider = {
@@ -39,6 +43,8 @@ function messageOf(e: unknown): string {
  * 経てから呼ぶ）→ window.webln → 外部ウォレット（invoice の QR・`lightning:` リンク・コピーを閉じるまで出す）。
  * eventId が無ければプロフィール Zap。処理中はスピナーで閉じない。
  * 送った後の合計は receipt の購読（#523）で増える（楽観更新はしない）。
+ * [#1012] 外部ウォレットのリンクを押してもアプリが開かなければ、請求書の QR を大きく出すモーダルを重ねる
+ * （PC はボタンでも開ける）。この請求書の receipt が届いたらモーダルだけ閉じる。
  */
 export function ZapDialog({
   recipient,
@@ -71,9 +77,15 @@ export function ZapDialog({
   // 外部ウォレットで払う invoice（出したら閉じるまでそのまま）
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  // [#994] ウォレットの一覧を出すか（開いている間は変えない）
+  const [touchDevice] = useState(isTouchDevice);
   // [#537] NWC の送金確認（毎回）。invoice 取得後、確定で payWithWallet を呼ぶ
   const [confirmInvoice, setConfirmInvoice] = useState<string | null>(null);
   const effectiveAmount = customSats(custom) ?? amount;
+  // [#1012] 請求書の QR を大きく出すモーダル。receipt が届いたら（支払い済み）出さない
+  const [qrOpen, setQrOpen] = useState(false);
+  const paid = useInvoicePaid(eventId, invoice);
+  const startOpenApp = useOpenAppFallback(() => setQrOpen(true));
 
   useEffect(() => {
     const d = dialog.current;
@@ -220,17 +232,39 @@ export function ZapDialog({
               label={t("web_zap_invoice_label", effectiveAmount)}
             />
             <div className={styles.invoiceActions}>
-              <a className={styles.external} href={`lightning:${invoice}`}>
+              <a className={styles.external} href={`lightning:${invoice}`} onClick={startOpenApp}>
                 {t("nwc_open_external")}
               </a>
               <button type="button" className={styles.textButton} onClick={() => void copyInvoice(invoice)}>
                 {t("common_copy")}
               </button>
+              {/* [#1012] PC はスマホで読み取るのが主なので、QR を大きく出せるようにする */}
+              {!touchDevice && (
+                <button type="button" className={styles.textButton} onClick={() => setQrOpen(true)}>
+                  {t("web_zap_qr_enlarge")}
+                </button>
+              )}
             </div>
             {copyStatus && (
               <p role="status" className={styles.status}>
                 {copyStatus}
               </p>
+            )}
+            {/* [#994] スマホのブラウザでは、ウォレットを指定して開ける（iOS の lightning: は選べないため） */}
+            {touchDevice && (
+              <details className={styles.otherWallets}>
+                <summary>{t("web_zap_other_wallets")}</summary>
+                <p className={styles.desc}>{t("web_zap_other_wallets_hint")}</p>
+                <ul className={styles.walletList}>
+                  {ZAP_WALLETS.map((w) => (
+                    <li key={w.id}>
+                      <a className={styles.walletLink} href={`${w.prefix}${invoice}`} onClick={startOpenApp}>
+                        {w.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
         )}
@@ -268,6 +302,29 @@ export function ZapDialog({
           onConfirm={() => void confirmPay(confirmInvoice)}
           onDismiss={() => setConfirmInvoice(null)}
         />
+      )}
+      {invoice !== null && qrOpen && !paid && (
+        <InfoDialog
+          title={t("web_zap_qr_title")}
+          action={{ label: t("common_copy"), onClick: () => void copyInvoice(invoice) }}
+          onDismiss={() => setQrOpen(false)}
+          maxWidth={440}
+        >
+          <div className={styles.qrModal}>
+            <div className={styles.qrLarge}>
+              <QrCode
+                value={`lightning:${invoice}`.toUpperCase()}
+                size={320}
+                label={t("web_zap_invoice_label", effectiveAmount)}
+              />
+            </div>
+            {copyStatus && (
+              <p role="status" className={styles.status}>
+                {copyStatus}
+              </p>
+            )}
+          </div>
+        </InfoDialog>
       )}
     </>
   );

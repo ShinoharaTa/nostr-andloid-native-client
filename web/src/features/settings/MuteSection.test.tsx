@@ -3,10 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { shortNpub } from "../../lib/npub";
+import { publishEvent } from "../../nostr/publish";
 import { currentSigner, useSession } from "../../signer/session";
 import { createCipherSigner } from "../../test/cipherSigner";
 import { useToast } from "../../ui/toast";
-import { reportBlock } from "../mute/block";
+import { blockNoticeText, notifyDeveloper } from "../mute/developerNotice";
 import { EMPTY_MUTE_LIST, type MuteList, setMuteList } from "../mute/muteList";
 import { addMuteWord, MuteListError, saveMuteList } from "../mute/muteSync";
 import { MuteSection, newlyBlocked } from "./MuteSection";
@@ -18,10 +19,16 @@ vi.mock("../mute/muteSync", async (importOriginal) => ({
   saveMuteList: vi.fn(async () => "done" as const),
 }));
 
-// [#963] ブロックの通報（送り先・中身）は block.test.ts。ここは呼び出しだけ
-vi.mock("../mute/block", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mute/block")>()),
-  reportBlock: vi.fn(async () => {}),
+// [#961] ブロックにしても通報（kind:1984）を出さないことを見る（ミュートリストの発行は上で差し替えている）
+vi.mock("../../nostr/publish", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../nostr/publish")>()),
+  publishEvent: vi.fn(async () => ({})),
+}));
+
+// [#961] 開発者への知らせ（暗号化した DM）は developerNotice.test.ts。ここは呼ばれることだけ見る
+vi.mock("../mute/developerNotice", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mute/developerNotice")>()),
+  notifyDeveloper: vi.fn(async () => {}),
 }));
 
 // 署名者は既定で NIP-44 / NIP-04 とも使える（no-cipher のテストだけ差し替える）
@@ -50,7 +57,8 @@ beforeEach(() => {
   vi.mocked(currentSigner).mockReturnValue(createCipherSigner().signer);
   vi.mocked(addMuteWord).mockClear();
   vi.mocked(saveMuteList).mockClear();
-  vi.mocked(reportBlock).mockClear();
+  vi.mocked(publishEvent).mockClear();
+  vi.mocked(notifyDeveloper).mockClear();
 });
 
 afterEach(() => {
@@ -146,7 +154,35 @@ it("[#963] ユーザーの ✕ で外すと解除として保存に渡す（通�
   await waitFor(() => expect(saveMuteList).toHaveBeenCalledTimes(1));
   const [, draft] = vi.mocked(saveMuteList).mock.calls[0];
   expect(draft).toContainEqual({ category: "p", value: muted, isPublic: false, isPrivate: false });
-  expect(reportBlock).not.toHaveBeenCalled();
+  expect(publishEvent).not.toHaveBeenCalled();
+  expect(notifyDeveloper).not.toHaveBeenCalled();
+});
+
+it("[#961] ミュートからブロックに変えて保存したら、開発者に暗号化した DM で知らせる（通報の kind:1984 は出さない）", async () => {
+  const user = userEvent.setup();
+  setMuteList(LIST);
+  render(<MuteSection />);
+
+  await user.click(modeButton(muted, "ブロック"));
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(notifyDeveloper).toHaveBeenCalledTimes(1));
+  expect(notifyDeveloper).toHaveBeenCalledWith(blockNoticeText(muted));
+  expect(publishEvent).not.toHaveBeenCalled();
+});
+
+it("[#961] newlyBlocked: 保存で新たに公開の p になった人だけ（もとからブロックの人・外した人・ミュートは除く）", () => {
+  const before = [
+    { category: "p" as const, value: muted, isPublic: false, isPrivate: true },
+    { category: "p" as const, value: blocked, isPublic: true, isPrivate: false },
+  ];
+  expect(newlyBlocked(before, [{ ...before[0], isPublic: true, isPrivate: false }, before[1]])).toEqual([
+    muted,
+  ]);
+  expect(newlyBlocked(before, before)).toEqual([]);
+  expect(newlyBlocked(before, [{ ...before[1], isPublic: false, isPrivate: false }])).toEqual([]);
+  expect(newlyBlocked([], [{ category: "word", value: "spam", isPublic: true, isPrivate: false }])).toEqual(
+    [],
+  );
 });
 
 it("[#963] 選んでいる方（ミュート）をもう一度押すと解除になり、ブロックを押せばブロックに切り替わる", async () => {
@@ -184,7 +220,7 @@ it("ワードなどは両方のチェックを外すと解除として保存に�
   expect(draft).toContainEqual({ category: "t", value: "nsfw", isPublic: false, isPrivate: false });
 });
 
-it("[#963] ミュート → ブロックに変えて保存すると公開の p だけにし、保存できたらその人だけ 1 回通報する", async () => {
+it("[#963] ミュート → ブロックに変えて保存すると公開の p だけにする（#961: 通報はしない）", async () => {
   const user = userEvent.setup();
   const both = getPublicKey(generateSecretKey());
   setMuteList({
@@ -200,7 +236,7 @@ it("[#963] ミュート → ブロックに変えて保存すると公開の p �
   expect(modeButton(both, "ブロック")).toHaveAttribute("aria-pressed", "true");
   expect(modeButton(both, "ミュート")).toHaveAttribute("aria-pressed", "false");
 
-  // 一度ブロック → ミュートに戻して → またブロック（通報は 1 回）。もとからブロックの人をミュートにしても通報しない
+  // 一度ブロック → ミュートに戻して → またブロック。もとからブロックの人はミュートにする
   await user.click(modeButton(muted, "ブロック"));
   await user.click(modeButton(muted, "ミュート"));
   await user.click(modeButton(muted, "ブロック"));
@@ -213,38 +249,8 @@ it("[#963] ミュート → ブロックに変えて保存すると公開の p �
   expect(draft).toContainEqual({ category: "p", value: muted, isPublic: true, isPrivate: false });
   expect(draft).toContainEqual({ category: "p", value: blocked, isPublic: false, isPrivate: true });
   expect(draft).toContainEqual({ category: "p", value: both, isPublic: true, isPrivate: true });
-  await waitFor(() => expect(reportBlock).toHaveBeenCalledTimes(1));
-  expect(reportBlock).toHaveBeenCalledWith(muted);
-});
-
-it("[#963] 保存に失敗したら通報しない", async () => {
-  const user = userEvent.setup();
-  vi.mocked(saveMuteList).mockRejectedValueOnce(new MuteListError("no-mute-list"));
-  setMuteList(LIST);
-  render(<MuteSection />);
-
-  await user.click(modeButton(muted, "ブロック"));
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(useToast.getState().queue.length).toBe(1));
-  expect(reportBlock).not.toHaveBeenCalled();
-});
-
-it("[#963] newlyBlocked: 前は公開の p に無く、後で公開の p に入った人だけ（重ねない）", () => {
-  const p = (value: string, isPublic: boolean, isPrivate: boolean) => ({
-    category: "p" as const,
-    value,
-    isPublic,
-    isPrivate,
-  });
-  const before = [p(muted, false, true), p(blocked, true, false)];
-  expect(newlyBlocked(before, [p(muted, true, false), p(blocked, true, false)])).toEqual([muted]);
-  expect(newlyBlocked(before, [p(muted, false, true), p(blocked, false, true)])).toEqual([]);
-  expect(
-    newlyBlocked(
-      [],
-      [p(muted, true, false), { category: "t", value: "x", isPublic: true, isPrivate: false }],
-    ),
-  ).toEqual([muted]);
+  await waitFor(() => expect(useToast.getState().queue).toEqual(["ミュートリストを保存しました"]));
+  expect(publishEvent).not.toHaveBeenCalled();
 });
 
 it("保存で最新版と食い違っていたら、その旨をトーストで出し下書きを捨てる", async () => {

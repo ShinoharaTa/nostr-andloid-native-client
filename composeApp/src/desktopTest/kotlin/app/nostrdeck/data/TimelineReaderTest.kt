@@ -6,6 +6,8 @@ import app.nostrdeck.model.MuteList
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.Profile
+import app.nostrdeck.model.TtsStyle
+import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,9 +37,10 @@ class TimelineReaderTest {
     ) : SpeechEngine {
         val loaded = mutableListOf<TtsVoice>()
         val spoken = mutableListOf<String>()
+        val styles = mutableListOf<TtsStyle>()
         @Volatile var closed = false
         override suspend fun load(voice: TtsVoice) { delay(loadDelayMs); if (failLoad) error("load failed"); loaded += voice }
-        override suspend fun speak(text: String) { onSpeak(text); failOn(text)?.let { throw it }; spoken += text; delay(5) }
+        override suspend fun speak(text: String, style: TtsStyle) { onSpeak(text); failOn(text)?.let { throw it }; spoken += text; styles += style; delay(5) }
         override fun stop() {}
         override fun close() { closed = true }
     }
@@ -78,6 +81,7 @@ class TimelineReaderTest {
         clock: () -> Long = { start },
         backgroundReleaseMs: Long = 50,
         personName: suspend (String) -> String? = { null },
+        style: () -> TtsStyle = { TtsStyle.DEFAULT },
     ): Setup {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val mutes = MutableStateFlow<MuteList?>(null)
@@ -96,6 +100,7 @@ class TimelineReaderTest {
             },
             now = clock,
             backgroundReleaseMs = backgroundReleaseMs,
+            style = style,
         )
         s = Setup(reader, engines.orEmpty(), mutes, scope)
         s.render(initial)
@@ -120,6 +125,25 @@ class TimelineReaderTest {
             s.waitSpoken(2)
             assertEquals(listOf("う。一つ目", "い。二つ目"), s.spoken)
             withTimeout(2_000) { s.reader.stats.first { it.read == 2 } }
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    /** [#1008] 話し方は投稿ごとに読む（読み上げ中に変えたら次の投稿から効く）。 */
+    @Test
+    fun each_post_is_read_with_the_style_at_that_time(): Unit = runBlocking {
+        var style = TtsStyle(TtsTone.HAPPY, speedTenths = 12, pitch = 3)
+        val s = setup(style = { style })
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(note("p1", "b", "い", "一つ目", start + 10))
+            s.waitSpoken(1)
+            style = TtsStyle(TtsTone.SAD)
+            s.arrive(note("p2", "c", "う", "二つ目", start + 20))
+            s.waitSpoken(2)
+            assertEquals(listOf(TtsStyle(TtsTone.HAPPY, 12, 3), TtsStyle(TtsTone.SAD)), s.made.single().styles)
         } finally {
             s.reader.stop(); s.scope.cancel()
         }

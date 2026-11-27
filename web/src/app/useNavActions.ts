@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { columnScrollOf } from "../features/deck/columnScroll";
+import { columnScrollOf, NOTIFICATIONS_SCREEN_SCROLL_ID } from "../features/deck/columnScroll";
 import { homeColumnId, notificationsColumnId, useDeck } from "../store/deck";
 import type { LayoutMode } from "../ui/useLayoutMode";
 import { homeTapAction } from "./homeTap";
 import { type Dest, NAV_PATH, type NavKey } from "./navState";
+import { notificationsTapAction } from "./notificationsTap";
 
 export type NavActions = {
   /** 下部ナビ・レールの宛先ボタン */
@@ -61,10 +62,26 @@ export function useNavActions({ mode, dest, hasOverlay }: NavContext): NavAction
         } else if (key === "notifications") {
           // ネイティブ openNotifications: 通知カラムがあればそこへ、無ければ通知画面
           const id = notificationsColumnId(s);
+          // [#992] 1 カラム表示では一番上（最新）まで戻す（ネイティブ tapNotificationsCompact。#991）
+          const action =
+            mode === "expanded"
+              ? "open"
+              : notificationsTapAction({
+                  dest,
+                  hasOverlay,
+                  visibleColumnId: s.visibleColumnId,
+                  notifColumnId: id,
+                });
           if (id) {
+            if (action === "scrollTop") {
+              columnScrollOf(id)?.scrollToTop();
+              return;
+            }
+            if (action === "openAtTop") columnScrollOf(id)?.scrollToTop({ instant: true });
             goDeck();
             s.jumpTo(id);
           } else {
+            if (action === "scrollTop") columnScrollOf(NOTIFICATIONS_SCREEN_SCROLL_ID)?.scrollToTop();
             void navigate(NAV_PATH.notifications, { replace: true });
           }
         } else {

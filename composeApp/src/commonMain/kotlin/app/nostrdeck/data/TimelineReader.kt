@@ -6,6 +6,7 @@ import app.nostrdeck.model.MuteList
 import app.nostrdeck.model.MuteMatcher
 import app.nostrdeck.model.NoteUi
 import app.nostrdeck.model.SpeechText
+import app.nostrdeck.model.TtsStyle
 import app.nostrdeck.model.TtsVoice
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -52,6 +53,8 @@ class TimelineReader(
     private val personName: suspend (String) -> String?,
     private val me: () -> String?,
     private val engineFactory: () -> SpeechEngine? = ::createSpeechEngine,
+    /** [#1008] 話し方（トーン・速さ・高さ）。投稿ごとに読む（読み上げ中に設定を変えたら次の投稿から効く）。 */
+    private val style: () -> TtsStyle = { TtsStyle.DEFAULT },
     private val now: () -> Long = ::currentUnixTime,
     private val backgroundReleaseMs: Long = BACKGROUND_RELEASE_MS,
 ) {
@@ -126,7 +129,7 @@ class TimelineReader(
                     failureEvents.tryEmit(Failure.UNSUPPORTED)
                 } else {
                     e.load(voice)
-                    e.speak(text)
+                    e.speak(text, style())
                 }
             } catch (c: CancellationException) {
                 throw c
@@ -243,7 +246,7 @@ class TimelineReader(
             val result = engineLock.withLock {
                 val e = engine ?: loadEngine(v) ?: return false
                 try {
-                    e.speak(text)
+                    e.speak(text, style())
                     null
                 } catch (c: CancellationException) {
                     throw c
