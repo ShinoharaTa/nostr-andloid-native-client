@@ -148,7 +148,8 @@
     <string name="ui_scale_medium">Large</string>
     <string name="ui_scale_large">Largest</string>
     <string name="text_scale_title">Font size</string>
-    <string name="text_scale_desc">Make only the text larger.</string>
+    <string name="text_scale_desc">Make only the text larger or smaller.</string>
+    <string name="text_scale_hacker">Super hacker</string>
     <string name="text_scale_small">Small</string>
     <string name="text_scale_medium">Medium</string>
     <string name="text_scale_large">Large</string>
@@ -208,6 +209,22 @@
     <string name="status_ref_post">View post</string>
     <string name="status_ref_article">View article</string>
     <string name="status_ref_open">Open</string>
+    <string name="status_edit_title">Update status</string>
+    <string name="status_edit_desc">A short line shown on your profile and in status columns. It is public.</string>
+    <string name="status_edit_placeholder">What are you up to?</string>
+    <string name="status_edit_expiry">Expires</string>
+    <string name="status_expiry_keep_fmt">Keep (%1$s)</string>
+    <string name="status_expiry_none">Never</string>
+    <string name="status_expiry_30m">30 min</string>
+    <string name="status_expiry_1h">1 hour</string>
+    <string name="status_expiry_4h">4 hours</string>
+    <string name="status_expiry_1d">1 day</string>
+    <string name="status_expiry_1w">1 week</string>
+    <string name="status_edit_update">Update</string>
+    <string name="status_edit_clear">Clear</string>
+    <string name="status_edit_updated">Status updated</string>
+    <string name="status_edit_cleared">Status cleared</string>
+    <string name="status_edit_failed">Couldn’t confirm that a relay received it. Please try again.</string>
     <string name="sub_my_reactions">My reactions</string>
     <string name="notif_mention">Mentions</string>
     <string name="notif_reaction">Reactions</string>
@@ -421,8 +438,8 @@
     <string name="terms_title">Terms of Use</string>
     <string name="terms_lead">Before using Nostrism, please read and agree to the Terms of Use.</string>
     <string name="terms_point_conduct">There is no tolerance for objectionable content or abusive behavior, including illegal content, sexual content involving minors, harassment, threats, hate speech, spam and impersonation.</string>
-    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. You can block abusive users from the ⋯ menu: their posts, notifications and direct messages are hidden right away, and a report is sent to your relays and the developer. Blocks are saved publicly in your mute list, so they and others can see it (use Mute to hide someone without them knowing).</string>
-    <string name="terms_point_response">The developer reviews reports and acts on them where it can, for example by removing the content from the developer’s relay.</string>
+    <string name="terms_point_tools">You can report objectionable posts from the ⋯ menu. You can block abusive users from the ⋯ menu: their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list, so they and others can see it (use Mute to hide someone without them knowing). Reports and blocks reach the developer in an encrypted message.</string>
+    <string name="terms_point_response">The developer reviews the reports and blocks it receives and acts on them where it can, for example by removing the content from the developer’s relay.</string>
     <string name="terms_point_nostr">Nostr is a decentralized network. Posts sent to relays are public and may not be fully removable from the network.</string>
     <string name="terms_read_full">Read the full Terms of Use</string>
     <string name="terms_agree">Agree and continue</string>
@@ -592,11 +609,11 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="mute_confirm">Mute</string>
     <string name="muted_toast">Muted</string>
     <string name="block_pending_toast">Blocked (saving to your mute list will be retried once the relays are reachable)</string>
-    <!-- [#963] Block (public p + report), separate from mute (private) -->
+    <!-- [#963] Block (public p), separate from mute (private) -->
     <string name="note_block_user">Block this user</string>
     <string name="note_unblock_user">Unblock</string>
     <string name="block_confirm_title">Block this user?</string>
-    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. A report (NIP-56) is also sent to your relays and the developer. You can undo this anytime from your icon menu → Mute &amp; block.</string>
+    <string name="block_confirm_text">Their posts, notifications and direct messages are hidden right away. Blocks are saved publicly in your mute list (NIP-51), so they and others can see it. The developer is also notified in an encrypted message (they can’t see it). You can undo this anytime from your icon menu → Mute &amp; block.</string>
     <string name="block_confirm">Block</string>
     <string name="blocked_toast">Blocked</string>
     <string name="blocked_badge">Blocked</string>
@@ -605,7 +622,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="note_unblocked_toast">Unblocked</string>
     <string name="mute_mode_mute">Mute</string>
     <string name="mute_mode_block">Block</string>
-    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to block also sends a report (NIP-56). Tap the selected one again to remove.</string>
+    <string name="mute_mode_desc">Mutes are saved privately (only you can tell). Blocks are saved publicly (they and others can tell). Switching to Block notifies the developer in an encrypted message. Tap the selected one again to remove.</string>
     <string name="cw_sensitive">Sensitive content</string>
     <string name="report_title">Report this post</string>
     <string name="report_illegal">Illegal / child safety</string>
@@ -627,6 +644,14 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="zap_to_fmt">To: %1$s</string>
     <string name="zap_invoice_failed">Couldn’t get an invoice. Check lud16 / relay settings.</string>
     <string name="zap_wallet_failed">Couldn’t open a Lightning wallet.</string>
+    <string name="zap_copy_invoice">Copy invoice</string>
+    <string name="zap_wallet_open_failed_fmt">Couldn’t open %1$s. Make sure it’s installed, or copy the invoice and paste it into your wallet.</string>
+    <string name="zap_wallet_title">Wallet for zaps</string>
+    <string name="zap_wallet_desc">When you don’t use Nostr Wallet Connect, zap invoices open in this wallet. With “Ask every time”, you choose from the wallets installed on this device each time you zap.</string>
+    <string name="zap_wallet_system">Device default</string>
+    <string name="zap_wallet_ask">Ask every time</string>
+    <string name="zap_choose_wallet">Choose a wallet to open</string>
+    <string name="zap_wallet_chooser_title">Choose a wallet</string>
     <string name="img_saved">Image saved</string>
     <string name="img_view">View image</string>
     <string name="img_load_failed">Couldn't load the image</string>
@@ -931,7 +956,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="hashtags_unavailable">Sign in to manage pinned tags.</string>
     <!-- [#948] Read aloud (ZEN-TTS) -->
     <string name="section_speech">Read aloud</string>
-    <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Turn it on or off with the button above the post button. You need to download a voice first (about 31 MB each). Voices are downloaded from ZEN-TTS’s official source (GitHub).</string>
+    <string name="speech_desc">Reads aloud new posts from people you follow that arrive while Home (Following) is open. Tap the read-aloud button above the post button to start, stop, or open these settings. You need to download a voice first (about 28 MB each, plus a 13 MB reading model the first time). Voices come from ZEN-TTS’s official sources (Zenryoku Kikai’s model server and its Hugging Face).</string>
     <string name="speech_unsupported">Read aloud is not available on this device (Android, and iOS 16.4 or later).</string>
     <string name="speech_no_runtime">This build does not include the speech engine.</string>
     <string name="speech_voices">Voice</string>
@@ -950,11 +975,9 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="speech_voice_kai_desc">A man in his 40s with a resonant low voice</string>
     <string name="speech_voice_kikka_desc">A simple, clear young female voice</string>
     <string name="speech_credit_prefix">Speech synthesis: ZEN-TTS (</string>
-    <string name="speech_credit_suffix">)</string>
-    <string name="speech_toggle_on">Stop reading aloud</string>
-    <string name="speech_toggle_off">Start reading aloud</string>
+    <string name="speech_credit_suffix"> )</string>
     <string name="speech_confirm_title">Start reading aloud?</string>
-    <string name="speech_confirm_text">New posts from people you follow will be read aloud. Sound will play, so mind your surroundings. Tap this button again to stop.</string>
+    <string name="speech_confirm_text">New posts from people you follow will be read aloud. Sound will play, so mind your surroundings. To stop, tap the read-aloud button and choose “Stop reading aloud”.</string>
     <string name="speech_confirm_ok">Read aloud</string>
     <string name="speech_fail_not_downloaded">No voice downloaded. Download one in Settings > Read aloud</string>
     <string name="speech_fail_unsupported">Read aloud is not available on this device</string>
@@ -963,4 +986,19 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="speech_fail_engine">Couldn’t load the speech engine</string>
     <string name="speech_stats_fmt">Read %1$d posts since turning on (%2$d couldn’t be read, %3$d waiting)</string>
     <string name="speech_stats_error_fmt">Last error: %1$s</string>
+    <string name="speech_menu_start">Start reading aloud</string>
+    <string name="speech_menu_stop">Stop reading aloud</string>
+    <string name="speech_menu_settings">Read-aloud settings</string>
+    <string name="speech_style">Speaking style</string>
+    <string name="speech_tone">Tone</string>
+    <string name="speech_tone_neutral">Neutral</string>
+    <string name="speech_tone_happy">Happy</string>
+    <string name="speech_tone_sad">Sad</string>
+    <string name="speech_tone_angry">Angry</string>
+    <string name="speech_tone_apologetic">Apologetic</string>
+    <string name="speech_speed_fmt">Speed (%1$s×)</string>
+    <string name="speech_pitch_fmt">Pitch (%1$s semitones)</string>
+    <string name="speech_style_reset">Reset to default</string>
+    <string name="speech_style_hint">Preview uses the style you choose here. Changes made while reading apply from the next post.</string>
+    <string name="speech_legacy_removed">The speech engine was updated. Voices downloaded before can’t be used anymore and were removed. Please download the voice you use again.</string>
 </resources>

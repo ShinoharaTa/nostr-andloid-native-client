@@ -241,7 +241,7 @@ private fun RefLink(label: String, modifier: Modifier, onClick: () -> Unit) {
  * それ以上は「M/D HH:mm まで」（端末のタイムゾーン）。
  */
 @Composable
-private fun expiryText(expiration: Long, now: Long): String = when (val x = UserStatuses.expiryOf(expiration, now)) {
+internal fun expiryText(expiration: Long, now: Long): String = when (val x = UserStatuses.expiryOf(expiration, now)) {
     Expiry.Soon -> stringResource(Res.string.status_expires_soon)
     is Expiry.Minutes -> stringResource(Res.string.status_expires_min, x.n)
     is Expiry.Hours -> stringResource(Res.string.status_expires_hour, x.n)

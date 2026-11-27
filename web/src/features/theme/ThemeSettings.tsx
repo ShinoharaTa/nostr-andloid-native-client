@@ -47,8 +47,9 @@ const uiScaleOptions = (): readonly Option<UiScale>[] => [
   { value: "l", label: t("ui_scale_large") },
 ];
 
-/** ネイティブ text_scale_small / medium / large */
+/** ネイティブ text_scale_hacker / small / medium / large（[#985] スーパーハッカーは一番左。4 つは狭い幅で折り返す） */
 const textScaleOptions = (): readonly Option<TextScale>[] => [
+  { value: "xs", label: t("text_scale_hacker") },
   { value: "s", label: t("text_scale_small") },
   { value: "m", label: t("text_scale_medium") },
   { value: "l", label: t("text_scale_large") },
