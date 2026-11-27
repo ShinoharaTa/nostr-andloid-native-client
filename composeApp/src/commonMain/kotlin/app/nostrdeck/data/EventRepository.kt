@@ -5800,7 +5800,7 @@ class EventRepository(
     }
     private fun loadNostrConnectRelay() {
         nostrConnectRelayState.value = q.getSetting(NOSTRCONNECT_RELAY_KEY).executeAsOneOrNull()
-            ?.let(app.nostrdeck.signer::parseNostrConnectRelay) ?: Nip46Manager.DEFAULT_RELAY
+            ?.let { app.nostrdeck.signer.parseNostrConnectRelay(it) } ?: Nip46Manager.DEFAULT_RELAY
     }
 
     // ---- [#351] 開発者モード（既定OFF）----
