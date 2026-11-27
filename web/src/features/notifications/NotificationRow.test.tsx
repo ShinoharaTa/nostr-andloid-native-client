@@ -13,6 +13,8 @@ import { useSession } from "../../signer/session";
 import { installDialogPolyfill } from "../../test/dialog";
 import actionStyles from "../actions/NoteActionButtons.module.css";
 import { useCompose } from "../compose/composeStore";
+import { sendYo, useYoSending } from "../yo/sendYo";
+import { yoDraft } from "../yo/yoModel";
 import { NotificationRow } from "./NotificationRow";
 import { type NotificationItem, toNotification } from "./notificationModel";
 
@@ -28,6 +30,12 @@ vi.mock("../../nostr/publish", async (importOriginal) => {
 vi.mock("../../nostr/pool", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../nostr/pool")>();
   return { ...actual, subscribe: vi.fn(() => NEVER) };
+});
+
+// [#1025] Yo は送らない（押したことだけ見る）
+vi.mock("../yo/sendYo", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../yo/sendYo")>();
+  return { ...actual, sendYo: vi.fn() };
 });
 
 const CARD = { name: "引用元の投稿を開く" } as const;
@@ -505,4 +513,108 @@ it("[#817] 対象が自分のチャット発言（kind:42）なら、行と時�
   await user.click(screen.getByRole("img", { name: "リアクション ❤️" }));
   expect(where()).toBe(time);
   expect(where()).not.toMatch(/^\/channels\//);
+});
+
+describe("[#1025] Yo", () => {
+  /** alice から自分あての Yo の行（count 件ぶんをまとめた形） */
+  function yoItem(yo: { count: number; replied: boolean } = { count: 1, replied: false }) {
+    const alice = withProfile("alice");
+    const event = signed(7, alice, yoDraft(me, "c".repeat(64)).tags, ":yo:");
+    const item = toNotification(event, me, unixNow());
+    if (!item) throw new Error("not a notification");
+    return { item: { ...item, yo }, alice: event.pubkey };
+  }
+
+  beforeEach(() => {
+    vi.mocked(sendYo).mockReset();
+    useYoSending.setState({ sending: new Set(), sentAt: new Map() });
+  });
+
+  it("マークは文字の「Yo」、本体は「Yo ×3」と「Yo を返す」。引用カードも絵文字の画像も出さない", async () => {
+    const { item } = yoItem({ count: 3, replied: false });
+    const { container } = renderRow(item);
+
+    const mark = screen.getByRole("img", { name: "Yo" });
+    expect(mark.querySelector("svg")).toBeNull();
+    expect(mark).toHaveTextContent("Yo");
+    expect(screen.getByText("Yo ×3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Yo を返す" })).toBeEnabled();
+    expect(screen.queryByRole("link", CARD)).toBeNull();
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(screen.queryByRole("group", { name: "操作" })).toBeNull();
+    // 名前も時刻も、相手のプロフィールへ
+    const name = await screen.findByRole("link", { name: "alice" });
+    expect(name.getAttribute("href")).toMatch(/^\/p\/npub1/);
+    expect(container.querySelector("time")?.closest("a")?.getAttribute("href")).toBe(
+      name.getAttribute("href"),
+    );
+  });
+
+  it("1 件だけなら件数を付けない。行を押すと相手のプロフィールを開く", async () => {
+    const user = userEvent.setup();
+    const { item } = yoItem();
+    const { where } = renderRow(item);
+    await user.click(screen.getByText("Yo", { selector: "span:not([aria-hidden])" }));
+    expect(where()).toMatch(/^\/p\/npub1/);
+  });
+
+  it("「Yo を返す」を押すと相手へ送る（行は開かない）。送っている間は押せない", async () => {
+    const user = userEvent.setup();
+    const { item, alice } = yoItem();
+    const { visited } = renderRow(item);
+    await user.click(screen.getByRole("button", { name: "Yo を返す" }));
+    expect(sendYo).toHaveBeenCalledWith(alice);
+    expect(visited).toEqual([]);
+
+    act(() => useYoSending.setState({ sending: new Set([alice]) }));
+    expect(screen.getByRole("button", { name: "Yo を返す" })).toBeDisabled();
+  });
+
+  it("返したあとは「返しました」で、ボタンは無い", () => {
+    const { item } = yoItem({ count: 2, replied: true });
+    renderRow(item);
+    expect(screen.getByText("返しました")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Yo を返す" })).toBeNull();
+  });
+
+  it("送った直後（通知が組み直される前）も「返しました」にする。それより新しい Yo が届いていれば、また押せる", () => {
+    const { item, alice } = yoItem();
+    useYoSending.setState({ sentAt: new Map([[alice, item.createdAt]]) });
+    const { unmount } = renderRow(item);
+    expect(screen.getByText("返しました")).toBeInTheDocument();
+    unmount();
+
+    renderRow({ ...item, createdAt: item.createdAt + 60 });
+    expect(screen.getByRole("button", { name: "Yo を返す" })).toBeEnabled();
+  });
+
+  it("自分のプロフィールへのリアクションは、引用カードの代わりに 1 行。プロフィールの JSON は出さない", async () => {
+    const myProfile = finalizeEvent(
+      {
+        kind: 0,
+        created_at: unixNow() - 3600,
+        tags: [],
+        content: JSON.stringify({ name: "me", about: "json-ish" }),
+      },
+      meKey,
+    );
+    eventStore.add(myProfile);
+    // k タグの無い古い形（対象を取ってから kind:0 と分かる）
+    const reaction = signed(
+      7,
+      withProfile("bob"),
+      [
+        ["e", myProfile.id],
+        ["p", me],
+      ],
+      "🎉",
+    );
+    const { container } = renderRow(itemOf(reaction));
+
+    expect(await screen.findByText("あなたのプロフィールへのリアクション")).toBeInTheDocument();
+    expect(screen.queryByRole("link", CARD)).toBeNull();
+    expect(screen.queryByText(/json-ish/)).toBeNull();
+    expect(screen.getByText("🎉")).toBeInTheDocument();
+    expect(container.querySelector("time")?.closest("a")?.getAttribute("href")).toMatch(/^\/p\/npub1/);
+  });
 });

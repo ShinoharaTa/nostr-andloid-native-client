@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { DmMessageRow } from "../../db/schema";
 import type { DmConversation } from "../dm/dmStore";
 import { dmNotices } from "../notifications/notificationModel";
+import { yoDraft } from "../yo/yoModel";
 import { type FeedRow, type MixInput, mixFollowingFeed } from "./followingMix";
 
 const ME = "a".repeat(64);
@@ -212,5 +213,48 @@ describe("mixFollowingFeed", () => {
       chat.id,
       note.id,
     ]);
+  });
+});
+
+/** [#1025] Yo（nostr-yo） */
+describe("Yo", () => {
+  const NOW = 2_000;
+  const yo = (from: string, to: string, at: number) =>
+    ev({ kind: 7, pubkey: from, created_at: at, content: ":yo:", tags: yoDraft(to, "f".repeat(64)).tags });
+
+  it("自分あての Yo は通知の行で混ぜる（同じ人の分は 1 行）。「自分へのリアクション」を隠すと出ない", () => {
+    const notifications = [yo(STRANGER, ME, 1_100), yo(STRANGER, ME, 1_200), yo(FOLLOW, ME, 1_150)];
+    const rows = mix({ notifications, now: NOW });
+    expect(kinds(rows)).toEqual(["yo", "yo"]);
+    expect(rows.map((r) => (r.type === "notice" ? r.item.yo?.count : null))).toEqual([2, 1]);
+    expect(mix({ notifications, now: NOW, hidden: ["REACTIONS"] })).toEqual([]);
+  });
+
+  it("こちらから Yo を送ってあれば「返した」になる", () => {
+    const rows = mix({
+      notifications: [yo(STRANGER, ME, 1_100)],
+      myReactions: [yo(ME, STRANGER, 1_300)],
+      now: NOW,
+    });
+    expect(kinds(rows)).toEqual(["myReaction", "yo"]);
+    expect(rows[1].type === "notice" && rows[1].item.yo?.replied).toBe(true);
+  });
+
+  it("自分が送った Yo は対象を待たずに混ぜる。Yo でないプロフィールへのリアクションは混ぜない", () => {
+    const mine = yo(ME, STRANGER, 1_300);
+    const toProfile = ev({
+      kind: 7,
+      pubkey: ME,
+      created_at: 1_400,
+      content: "🎉",
+      tags: [
+        ["e", "f".repeat(64)],
+        ["p", STRANGER],
+        ["k", "0"],
+      ],
+    });
+    const rows = mix({ myReactions: [mine, toProfile], now: NOW, hasTarget: () => false });
+    expect(rows.map((r) => r.id)).toEqual([mine.id]);
+    expect(mix({ myReactions: [mine], now: NOW, hidden: ["MY_REACTIONS"] })).toEqual([]);
   });
 });

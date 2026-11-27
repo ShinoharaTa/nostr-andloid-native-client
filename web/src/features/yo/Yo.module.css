@@ -1,0 +1,102 @@
+/* [#1025] Yo の印（文字の「Yo」。ネイティブ YoMark。送り主が指定した画像は使わない） */
+.mark {
+  color: var(--accent);
+  font-size: var(--type-label);
+  font-weight: var(--w-strong);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 通知の Yo の行の本体 = 左に「Yo（×件数）」（残り幅）、右に「Yo を返す」 */
+.body {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: var(--touch-sm);
+}
+
+.count {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: var(--w-strong);
+  white-space: nowrap;
+}
+
+/* ネイティブ DeckGhostButton */
+.back {
+  flex: none;
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--type-body);
+  font-weight: var(--w-link);
+  cursor: pointer;
+}
+
+.back:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+/* 返したあと（ネイティブ HintText） */
+.backed {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+  white-space: nowrap;
+}
+
+/* 自分が送った Yo の行（ネイティブ MyYoRow）=「Yo」の印・アバター・「〇〇 さんに Yo」・時刻 */
+.myRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .myRow:hover {
+    background: var(--surface-2);
+  }
+}
+
+.myMark {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  width: 38px;
+}
+
+.myLine {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.myText {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--type-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.myTime {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}

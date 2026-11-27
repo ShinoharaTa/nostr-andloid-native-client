@@ -147,6 +147,16 @@
 }
 
 /* DM の本体 = 未読の数の 1 行（本文は出さない） */
+/* [#1025] 対象が自分のプロフィールのリアクション（引用カードの代わりの 1 行。ネイティブ HintText） */
+.toProfile {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dmText {
   margin: 0;
   color: var(--text-2);

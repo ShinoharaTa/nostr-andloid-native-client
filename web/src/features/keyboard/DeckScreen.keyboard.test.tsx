@@ -244,6 +244,8 @@ function mixedFeed(): { feed: ColumnFeed; mix: NostrEvent[] } {
     reaction: null,
     zapSats: null,
     dmUnread: 1,
+    targetIsProfile: false,
+    yo: null,
   };
   const rows: FeedRow[] = [
     { type: "post", id: mix[0].id, at: mix[0].created_at, event: mix[0] },

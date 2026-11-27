@@ -2,7 +2,9 @@ import { decode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
 import type { DmConversation } from "../dm/dmStore";
+import { yoDraft } from "../yo/yoModel";
 import {
+  collapseYos,
   dmNotices,
   NOTIFICATIONS_MAX,
   notificationHref,
@@ -264,5 +266,129 @@ describe("[#970] dmNotices", () => {
     expect(dmNotices([conversation(OTHER, 2, true), conversation(Z, 5, false)]).map((n) => n.actor)).toEqual([
       OTHER,
     ]);
+  });
+});
+
+/** [#1025] Yo（nostr-yo）と、プロフィール（kind:0）へのリアクション */
+describe("Yo", () => {
+  const NOW = 1_700_000_500;
+  const PROFILE = "d".repeat(64);
+  /** from が to に送る Yo（nostr-yo が送る形） */
+  function yo(from: string, to: string, at: number): NostrEvent {
+    return ev({ pubkey: from, kind: 7, content: ":yo:", created_at: at, tags: yoDraft(to, PROFILE).tags });
+  }
+
+  it("自分あての Yo は yo の行。対象も絵文字の画像も持たない", () => {
+    const item = toNotification(yo(OTHER, ME, NOW - 10), ME, NOW);
+    expect(item?.kind).toBe("yo");
+    expect(item?.target).toBeNull();
+    expect(item?.reaction).toBeNull();
+    expect(item?.targetIsProfile).toBe(true);
+    expect(item?.yo).toEqual({ count: 1, replied: false });
+  });
+
+  it("me を渡さなければ Yo を見ない。ほかの人あての :yo: はふつうのリアクション（対象は取りに行かない）", () => {
+    expect(toNotification(yo(OTHER, ME, NOW - 10))?.kind).toBe("reaction");
+    const item = toNotification(yo(OTHER, Z, NOW - 10), ME, NOW);
+    expect(item?.kind).toBe("reaction");
+    expect(item?.target).toBeNull();
+    expect(item?.targetIsProfile).toBe(true);
+    expect(item?.yo).toBeNull();
+  });
+
+  it("条件を外れた :yo:（emoji タグが 2 つ）はふつうのリアクション", () => {
+    const tags = [...yoDraft(ME, PROFILE).tags, ["emoji", "x", "https://example.test/x.png"]];
+    const item = toNotification(ev({ kind: 7, content: ":yo:", tags }), ME, NOW);
+    expect(item?.kind).toBe("reaction");
+    expect(item?.targetIsProfile).toBe(true);
+  });
+
+  it("投稿へのリアクションは今まで通り（対象を持つ）", () => {
+    const item = toNotification(
+      ev({
+        kind: 7,
+        content: "+",
+        tags: [
+          ["e", A],
+          ["p", ME],
+          ["k", "1"],
+        ],
+      }),
+      ME,
+      NOW,
+    );
+    expect(item?.kind).toBe("reaction");
+    expect(item?.target).toEqual({ id: A });
+    expect(item?.targetIsProfile).toBe(false);
+  });
+
+  it("同じ人の Yo は 1 行にまとめ、いちばん新しい時刻と件数を持つ", () => {
+    const events = [
+      yo(OTHER, ME, NOW - 300),
+      yo(Z, ME, NOW - 200),
+      yo(OTHER, ME, NOW - 100),
+      yo(OTHER, ME, NOW - 250),
+    ];
+    const items = notificationsFrom(events, ME, { now: NOW });
+    expect(items.map((i) => [i.actor, i.createdAt, i.yo?.count])).toEqual([
+      [OTHER, NOW - 100, 3],
+      [Z, NOW - 200, 1],
+    ]);
+    expect(items.every((i) => i.yo?.replied === false)).toBe(true);
+  });
+
+  it("こちらがそれ以降に Yo を送っていれば「返した」。また届けば戻る", () => {
+    const received = [yo(OTHER, ME, NOW - 300), yo(OTHER, ME, NOW - 100)];
+    const replied = (mineAt: number) =>
+      notificationsFrom(received, ME, { now: NOW, myReactions: [yo(ME, OTHER, mineAt)] })[0].yo?.replied;
+    expect(replied(NOW - 200)).toBe(false);
+    expect(replied(NOW - 100)).toBe(true);
+    expect(replied(NOW - 50)).toBe(true);
+    // ほかの人へ送った Yo は関係ない
+    expect(notificationsFrom(received, ME, { now: NOW, myReactions: [yo(ME, Z, NOW)] })[0].yo?.replied).toBe(
+      false,
+    );
+  });
+
+  it("Yo の無い一覧はそのまま", () => {
+    const item = toNotification(
+      ev({
+        kind: 7,
+        content: "+",
+        tags: [
+          ["e", A],
+          ["p", ME],
+        ],
+      }),
+      ME,
+      NOW,
+    );
+    if (!item) throw new Error("not a notification");
+    expect(collapseYos([item], new Map([[OTHER, 1]]))).toEqual([item]);
+  });
+
+  it("Yo とプロフィールへのリアクションは、行を押すと相手のプロフィール", () => {
+    const yoItem = toNotification(yo(OTHER, ME, NOW - 10), ME, NOW);
+    if (!yoItem) throw new Error("not a notification");
+    const href = notificationHref(yoItem);
+    expect(href.startsWith("/")).toBe(true);
+    expect(href).not.toContain("/e/");
+    // k タグの無い古い形: 取れた対象が kind:0 なら同じ扱い
+    const old = toNotification(
+      ev({
+        kind: 7,
+        content: "🎉",
+        tags: [
+          ["e", PROFILE],
+          ["p", ME],
+        ],
+      }),
+      ME,
+      NOW,
+    );
+    if (!old) throw new Error("not a notification");
+    const profileEvent = ev({ id: PROFILE, pubkey: ME, kind: 0, content: "{}", tags: [] });
+    expect(notificationHref(old, profileEvent)).toBe(href);
+    expect(notificationHref(old)).not.toBe(href);
   });
 });
