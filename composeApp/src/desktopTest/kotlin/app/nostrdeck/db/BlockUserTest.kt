@@ -153,10 +153,14 @@ class BlockUserTest {
         }
     }
 
-    /** [#965] 規約の同意が今の版なら、保存待ちは今の版で押したブロック（公開で保存する）。同意が無い（入れたばかり）ときも移さない。 */
+    /**
+     * [#965] 規約の同意が、ブロックが公開になった版（2026-10-31）以降なら、保存待ちは公開のブロック（公開で保存する）。
+     * 今の版より古くても移さない（v0.6.30〜v0.6.32 で同意した端末。規約を更新しても、公開のブロックを非公開にしない）。
+     * 同意が無い（入れたばかり）ときも移さない。
+     */
     @Test
     fun pending_blocks_stay_public_blocks_when_the_terms_are_current_or_never_accepted(): Unit = runBlocking {
-        for (accepted in listOf(EventRepository.TERMS_VERSION, null)) {
+        for (accepted in listOf(EventRepository.TERMS_VERSION, EventRepository.BLOCK_PUBLIC_TERMS_VERSION, null)) {
             val dbFile = File.createTempFile("block-terms", ".db").apply { deleteOnExit() }
             val seed = listOfNotNull(accepted?.let { EventRepository.TERMS_ACCEPTED_KEY to it }, EventRepository.BLOCK_PENDING_KEY to target)
             seedSettings(dbFile, *seed.toTypedArray())

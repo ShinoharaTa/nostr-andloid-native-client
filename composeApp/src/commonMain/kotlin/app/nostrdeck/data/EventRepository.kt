@@ -4138,10 +4138,11 @@ class EventRepository(
             ?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
         val blocks = pubkeys(BLOCK_PENDING_KEY)
         val legacy = pubkeys(MUTE_PENDING_LEGACY_KEY)
-        // [#965] 同意した規約の版が今の版（[TERMS_VERSION]）と違えば、保存待ちは rc3 までの版が残したもの。
-        // [acceptTerms] が KV を上書きする前の値で見分け、非公開で保存する方へ移す（移したあとは block_pending が空なので一度きり）。
+        // [#965] 同意した規約の版が、ブロックが公開になった版（[BLOCK_PUBLIC_TERMS_VERSION]）より前なら、保存待ちは rc3 までの版が
+        // 残したもの。[acceptTerms] が KV を上書きする前の値で見分け、非公開で保存する方へ移す（移したあとは block_pending が空なので一度きり）。
+        // 「今の版（[TERMS_VERSION]）と違う」では見分けない（規約を更新するたびに、公開のブロックの保存待ちまで非公開に移してしまう）。
         val accepted = q.getSetting(TERMS_ACCEPTED_KEY).executeAsOneOrNull()
-        if (accepted != null && accepted != TERMS_VERSION && blocks.isNotEmpty()) {
+        if (accepted != null && accepted < BLOCK_PUBLIC_TERMS_VERSION && blocks.isNotEmpty()) {
             pendingBlocks.value = emptySet()
             legacyMutes.value = legacy + blocks
             putSettingAsync(MUTE_PENDING_LEGACY_KEY, legacyMutes.value.joinToString("\n"))
@@ -7129,6 +7130,12 @@ class EventRepository(
 
         /** [#951] まだミュートリストに保存できていないブロック（pubkey の改行区切り）の KV キー。 */
         const val BLOCK_PENDING_KEY = "block_pending"
+        /**
+         * [#965] ブロックが公開になった規約の版（[#963]）。これより前の版に同意した端末の保存待ちは、非公開（ミュート）で保存する。
+         * 版は日付（yyyy-MM-dd）なので、文字列の大小で前後を比べられる。
+         */
+        const val BLOCK_PUBLIC_TERMS_VERSION = "2026-10-31"
+
         /** [#965] rc3 までの版が残した保存待ちのブロック（非公開で保存する。pubkey の改行区切り）の KV キー。 */
         const val MUTE_PENDING_LEGACY_KEY = "mute_pending_legacy"
         const val MODERATION_RETRY_FIRST_MS = 15_000L
