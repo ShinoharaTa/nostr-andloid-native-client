@@ -590,6 +590,7 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                             is FeedEntry.Post -> matcher.muted(it.note)
                             is FeedEntry.Notice -> matcher.muted(it.notif)
                             is FeedEntry.MyReaction -> matcher.muted(it.target)
+                            is FeedEntry.MyYo -> matcher.mutedUser(it.to.pubkey)   // [#1024]
                         }
                     }
                     // [#793] チャットの発言の行き先（そのチャンネルのルーム）。今は通知のチャット行と同じく
@@ -635,7 +636,10 @@ private fun RenderColumn(spec: ColumnSpec, state: DeckState, listState: LazyList
                     // [#12] ふぁぼ欄: 自分がリアクションした投稿を「あなたがリアクション」＋対象で表示。
                     val all = remember(spec.id) { repo!!.favsFeed() }.collectAsState().value
                     val entries = if (revealed) all
-                    else all.filterNot { it is FeedEntry.MyReaction && matcher.muted(it.target) }
+                    else all.filterNot {
+                        (it is FeedEntry.MyReaction && matcher.muted(it.target)) ||
+                            (it is FeedEntry.MyYo && matcher.mutedUser(it.to.pubkey))   // [#1024]
+                    }
                     SubscribeZaps(repo, spec.id, all.filterIsInstance<FeedEntry.MyReaction>().map { it.target.event.id })
                     val selIdx = kbColumnSelection(
                         state, spec.id, entries.size, listState,

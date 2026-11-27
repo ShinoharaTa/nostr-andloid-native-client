@@ -34,6 +34,7 @@ class FeedNoticeCategoryTest {
     @Test
     fun notices_map_by_kind() {
         assertEquals(FeedNoticeCategory.REACTIONS, feedNoticeCategoryOf(notice(NotificationKind.REACTION)))
+        assertEquals(FeedNoticeCategory.REACTIONS, feedNoticeCategoryOf(notice(NotificationKind.YO)))   // [#1024]
         assertEquals(FeedNoticeCategory.REPLIES, feedNoticeCategoryOf(notice(NotificationKind.REPLY)))
         assertEquals(FeedNoticeCategory.REPLIES, feedNoticeCategoryOf(notice(NotificationKind.MENTION)))
         assertEquals(FeedNoticeCategory.REPOSTS, feedNoticeCategoryOf(notice(NotificationKind.REPOST)))

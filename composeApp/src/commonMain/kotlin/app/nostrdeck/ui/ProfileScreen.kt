@@ -691,6 +691,9 @@ private fun ProfileHeaderCard(
     var confirmMute by remember { mutableStateOf(false) }
     var confirmBlock by remember { mutableStateOf(false) }   // [#963] ブロック / ブロック解除の確認
     var showReport by remember { mutableStateOf(false) }
+    // [#1024] 「Yo を送る」はログインしているときだけ。送っている間は押せなくする（結果は App がトーストで知らせる）。
+    val loggedIn = repo?.let { r -> remember(r) { r.loggedInPubkey() }.collectAsState(null).value } != null
+    val yoSending = repo?.let { r -> remember(r) { r.yoSendingFlow() }.collectAsState().value }.orEmpty()
     var showZap by remember { mutableStateOf(false) }
     val muted = social?.muted == true
     val blocked = social?.blocked == true
@@ -763,6 +766,14 @@ private fun ProfileHeaderCard(
                                 }
                             },
                         )
+                        // [#1024] Yo を送る（nostr-yo。相手のプロフィールへの `:yo:` のリアクション）。自分には出さない。
+                        if (!isMe && loggedIn) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(Res.string.yo_send)) },
+                                enabled = pubkey !in yoSending,
+                                onClick = { moreMenu = false; repo?.sendYo(pubkey) },
+                            )
+                        }
                         if (!isMe) {
                             // [#963] ミュート（非公開）とブロック（公開）の両方。ブロック中なら解除だけ
                             if (blocked) {
