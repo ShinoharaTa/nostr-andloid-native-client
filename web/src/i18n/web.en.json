@@ -309,6 +309,7 @@
   "web_shortcuts_hint": "Press Esc or tap the screen to close",
   "web_shortcuts_title": "Keyboard shortcuts",
   "web_signer_no_cipher": "The extension doesn’t support this encryption method",
+  "web_status_edit_failed": "Couldn’t update your status. Please try again.",
   "web_status_empty": "No one you follow has a status right now",
   "web_status_empty_music": "No one you follow is playing anything right now",
   "web_status_expires_at": "Until %1$s",

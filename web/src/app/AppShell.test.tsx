@@ -8,6 +8,7 @@ import { saveDraft } from "../features/compose/storage";
 import { NOTIFICATIONS_SCREEN_SCROLL_ID, registerColumnScroll } from "../features/deck/columnScroll";
 import { useDmSeen } from "../features/dm/dmSeen";
 import { useDm } from "../features/dm/dmStore";
+import { closeStatusEditor } from "../features/status/statusEditorStore";
 import type { ColumnSpec } from "../lib/columns";
 import { DEFAULT_COLUMNS, roomColumnFor } from "../lib/columns";
 import { useSession } from "../signer/session";
@@ -105,7 +106,6 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
-      "投稿",
       "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
@@ -123,7 +123,6 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
-      "投稿",
       "アカウントのメニュー",
     ]);
     expect(screen.getAllByRole("navigation", { name: "メイン" })).toHaveLength(1);
@@ -156,6 +155,7 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
+      "ステータスを更新",
       "投稿",
       "アカウントのメニュー",
     ]);
@@ -171,6 +171,7 @@ describe("骨格", () => {
       "検索",
       "パブリックチャット",
       "通知",
+      "ステータスを更新",
       "投稿",
       "アカウントのメニュー",
     ]);
@@ -594,7 +595,7 @@ describe("投稿ボタン", () => {
     expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
   });
 
-  it("[#1001] レールの表示（Rail / Expanded）では右下の投稿ボタンを出さず、レールの「投稿」から開く", async () => {
+  it("[#1001] デッキの表示（Expanded）では右下の投稿ボタンを出さず、レールの「投稿」から開く", async () => {
     installDialogPolyfill();
     renderAt(["/"], 1400);
     const buttons = screen.getAllByRole("button", { name: "投稿" });
@@ -606,9 +607,32 @@ describe("投稿ボタン", () => {
   });
 
   it("[#1001] レールの「投稿」は検索などほかの画面でも出す", async () => {
-    renderAt(["/search"], 700);
+    renderAt(["/search"], 1400);
     expect(await screen.findByRole("heading", { name: "検索" })).toBeInTheDocument();
     expect(within(mainNav()).getByRole("button", { name: "投稿" })).toBeInTheDocument();
+  });
+
+  it("[#1020] 1 カラム + レールの表示（Rail）では、投稿とステータスはレールではなく右下に出す", () => {
+    renderAt(["/"], 700);
+    for (const name of ["投稿", "ステータスを更新"]) {
+      const buttons = screen.getAllByRole("button", { name });
+      expect(buttons).toHaveLength(1);
+      expect(mainNav()).not.toContainElement(buttons[0]);
+    }
+  });
+
+  it("[#1020] ステータスのボタンは投稿ボタンの上（右下でもレールでも）。押すとステータスの画面が開く", async () => {
+    installDialogPolyfill();
+    for (const width of [400, 1400]) {
+      renderAt(["/"], width);
+      const status = screen.getByRole("button", { name: "ステータスを更新" });
+      const compose = screen.getByRole("button", { name: "投稿" });
+      expect(status.compareDocumentPosition(compose) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await userEvent.click(status);
+      expect(screen.getByRole("dialog", { name: "ステータスを更新" })).toBeInTheDocument();
+      act(() => closeStatusEditor());
+      cleanup();
+    }
   });
 
   it("検索では出さない", async () => {
