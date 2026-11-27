@@ -1,5 +1,7 @@
 package app.nostrdeck.data
 
+import app.nostrdeck.model.TtsStyle
+import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +41,33 @@ class HostedSpeechEngineTest {
     private fun chunk(id: Int, index: Int, bytes: Int) =
         """{"type":"chunk","id":$id,"index":$index,"sampleRate":44100,"pcm":"${Base64.encode(ByteArray(bytes))}"}"""
 
+    /** [#1008] 話し方 → ZEN-TTS の speak のオプション。既定の値は渡さない（渡さなければ 1.0.0 と同じ話し方）。 */
+    @Test
+    fun speak_options_carry_only_what_differs_from_the_default() {
+        assertEquals("{}", HostedSpeechEngine.speakOptions(TtsStyle.DEFAULT).toString())
+        assertEquals(
+            """{"emotion":{"happy":1},"speed":1.2,"pitch":-3}""",
+            HostedSpeechEngine.speakOptions(TtsStyle(TtsTone.HAPPY, speedTenths = 12, pitch = -3)).toString(),
+        )
+        assertEquals("""{"speed":0.5}""", HostedSpeechEngine.speakOptions(TtsStyle(speedTenths = 5)).toString())
+        // 範囲の外は丸める（速さ 0.5〜1.5・高さ −6〜+12）
+        assertEquals("""{"speed":1.5,"pitch":12}""", HostedSpeechEngine.speakOptions(TtsStyle(speedTenths = 30, pitch = 40)).toString())
+    }
+
+    @Test
+    fun speak_passes_the_style_to_the_page() = runBlocking {
+        val e = FakeEngine { s ->
+            val id = idOf(s)
+            when {
+                s.startsWith("nostrismTtsLoad") -> onHostMessage("""{"type":"loaded","id":$id}""")
+                s.startsWith("nostrismTtsSpeak") -> onHostMessage("""{"type":"end","id":$id}""")
+            }
+        }
+        e.load(TtsVoice.MARINE)
+        e.speak("やあ", TtsStyle(TtsTone.APOLOGETIC, pitch = 2))
+        assertEquals("""nostrismTtsSpeak(2, "やあ", {"emotion":{"apologetic":1},"pitch":2})""", e.scripts[1])
+    }
+
     @Test
     fun load_then_speak_plays_each_sentence_in_order() = runBlocking {
         val e = FakeEngine { s ->
@@ -53,7 +82,7 @@ class HostedSpeechEngineTest {
         e.load(TtsVoice.KAI)
         assertEquals("nostrismTtsLoad(1, \"kai\")", e.scripts[0])
         e.speak("こんにちは。\"引用\"です")
-        assertEquals("nostrismTtsSpeak(2, \"こんにちは。\\\"引用\\\"です\")", e.scripts[1])
+        assertEquals("nostrismTtsSpeak(2, \"こんにちは。\\\"引用\\\"です\", {})", e.scripts[1])   // [#1008] 既定の話し方は {}
         assertEquals(listOf(4 to 44100, 6 to 44100), e.played)
         // 2 回目の読み込みでページは開き直さない
         e.load(TtsVoice.MARINE)

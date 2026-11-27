@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,12 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.NoteUi
+import app.nostrdeck.wallet.ZapWallet
 import app.nostrdeck.theme.DeckColors
 import nostr_deck_client.composeapp.generated.resources.Res
 import nostr_deck_client.composeapp.generated.resources.*
@@ -49,6 +50,10 @@ private val ZAP_PRESETS = listOf(21L, 100L, 500L, 1000L, 5000L, 10000L)
 /**
  * [M13] NIP-57 Zap シート。金額(sats)を選び、任意コメントを添えて Zap を作成する。
  * 送信は「invoice を取得 → `lightning:` URI で外部ウォレットを起動」。ウォレット側で支払う。
+ * [#993] iOS は設定で選んだウォレットの URL で開く（[app.nostrdeck.wallet.ZapWallet]）。開けなかったときや
+ * ほかのウォレットで払いたいときのために「請求書をコピー」を出す。
+ * [#1011] iOS の設定が「毎回選ぶ」（既定）なら、入っているウォレットが 2 つ以上のとき、請求書を取ってからシートの中に
+ * 一覧を出して選ばせる。Android は OS の選ぶ画面（[rememberLightningOpener]）。
  * lud16 が無い相手には呼び出し側で出さない（⚡自体を非表示）。
  */
 @Composable
@@ -84,9 +89,14 @@ private fun ZapSheetImpl(
     eventId: String?, targetKind: Int?, onDismiss: () -> Unit,
 ) {
     val repo = LocalRepository.current
-    val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
+    val clipboard = rememberClipboardCopy()
+    // [#993] 請求書を開くウォレット（iOS だけ設定で選べる。ほかは端末の既定）。[#1011] null は「毎回選ぶ」
+    val openLightning = rememberLightningOpener()
+    val savedWallet by (repo?.zapWalletFlow()?.collectAsState()
+        ?: remember { mutableStateOf<ZapWallet?>(null) })
+    val wallet: ZapWallet? = if (zapWalletChoiceSupported) savedWallet else ZapWallet.SYSTEM
 
     var amount by remember { mutableStateOf(100L) }
     var custom by remember { mutableStateOf("") }
@@ -99,6 +109,53 @@ private fun ZapSheetImpl(
     var lastInvoice by remember { mutableStateOf<String?>(null) }
 
     val effectiveAmount = custom.toLongOrNull()?.takeIf { it > 0 } ?: amount
+    // [#993] 取った請求書。金額とコメントが同じ間は使い回す（コピーしてから ⚡ を押しても取り直さない）
+    var fetched by remember { mutableStateOf<Pair<String, String>?>(null) }
+    suspend fun invoiceNow(): String? {
+        val key = "$effectiveAmount\n$comment"
+        fetched?.takeIf { it.first == key }?.let { return it.second }
+        val invoice = repo?.requestZapInvoice(
+            recipientPubkey = recipientPubkey, lud16 = lud16,
+            amountSats = effectiveAmount, comment = comment,
+            eventId = eventId, targetKind = targetKind,
+        )
+        if (!invoice.isNullOrBlank()) fetched = key to invoice
+        return invoice
+    }
+
+    // [#1011] 開くウォレットを選んでいる請求書と、選べるウォレット（iOS の「毎回選ぶ」）。金額やコメントを変えたら閉じる
+    var choosing by remember { mutableStateOf<Pair<String, List<ZapWallet>>?>(null) }
+    LaunchedEffect(effectiveAmount, comment) { choosing = null }
+
+    /** 請求書を [w] で開く。開けたらシートを閉じ、開けなければ理由を出す（請求書のコピーで払えるようシートは残す）。 */
+    suspend fun openIn(invoice: String, w: ZapWallet) {
+        if (openLightning(w.uriFor(invoice))) {
+            choosing = null
+            onDismiss()
+        } else {
+            error = if (w == ZapWallet.SYSTEM) getString(Res.string.zap_wallet_failed)
+            else getString(Res.string.zap_wallet_open_failed_fmt, w.displayName)
+        }
+    }
+
+    /**
+     * 請求書を外部のウォレットで開く。設定で決めてあればそのウォレット。「毎回選ぶ」なら、入っているウォレットが
+     * 2 つ以上のときだけ一覧を出す（1 つならそれ、無ければ端末の既定で開く）。
+     */
+    suspend fun openExternal(invoice: String) {
+        val w = wallet ?: installedZapWallets().let { installed ->
+            when (installed.size) {
+                0 -> ZapWallet.SYSTEM
+                1 -> installed.single()
+                else -> {
+                    error = null
+                    choosing = invoice to installed
+                    return
+                }
+            }
+        }
+        openIn(invoice, w)
+    }
 
     Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(
@@ -146,9 +203,48 @@ private fun ZapSheetImpl(
                 lastInvoice?.let { inv ->
                     Spacer(Modifier.size(DeckSpace.Sm))
                     DeckTextButton(stringResource(Res.string.nwc_open_external), onClick = {
-                        runCatching { uri.openUri("lightning:$inv") }
+                        scope.launch { openExternal(inv) }
                     })
                 }
+            }
+            // [#1011] 開くウォレットを選ぶ（iOS の「毎回選ぶ」。入っているものと端末の既定）
+            choosing?.let { (inv, installed) ->
+                Spacer(Modifier.size(DeckSpace.Md))
+                Text(stringResource(Res.string.zap_choose_wallet), color = DeckColors.Text2, fontSize = DeckType.Label)
+                Spacer(Modifier.size(DeckSpace.Xs))
+                Column(verticalArrangement = Arrangement.spacedBy(DeckSpace.Xs)) {
+                    (installed + ZapWallet.SYSTEM).forEach { w ->
+                        Text(
+                            if (w == ZapWallet.SYSTEM) stringResource(Res.string.zap_wallet_system) else w.displayName,
+                            color = DeckColors.Text, fontSize = DeckType.Sub,
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(DeckRadius.Md))
+                                .background(DeckColors.Surface2)
+                                .clickable { scope.launch { openIn(inv, w) } }
+                                .padding(horizontal = DeckSpace.Md, vertical = DeckSpace.Sm),
+                        )
+                    }
+                }
+            }
+            // [#993] 請求書をコピー（ほかのウォレットに貼り付けて払う）。取っていなければ取ってからコピーする。
+            if (!busy) {
+                Spacer(Modifier.size(DeckSpace.Sm))
+                DeckTextButton(
+                    stringResource(Res.string.zap_copy_invoice),
+                    color = DeckColors.Accent,
+                    onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            val invoice = invoiceNow()
+                            busy = false
+                            if (invoice.isNullOrBlank()) {
+                                error = getString(Res.string.zap_invoice_failed)
+                            } else {
+                                clipboard(invoice)
+                                toast(getString(Res.string.copied))
+                            }
+                        }
+                    },
+                )
             }
             // [#7] ウォレット接続済みならアプリ内送金であることを示す（送金は毎回確認）。
             if (nwc != null) {
@@ -168,11 +264,7 @@ private fun ZapSheetImpl(
                     DeckButton("⚡ $effectiveAmount", onClick = {
                         busy = true; error = null
                         scope.launch {
-                            val invoice = repo?.requestZapInvoice(
-                                recipientPubkey = recipientPubkey, lud16 = lud16,
-                                amountSats = effectiveAmount, comment = comment,
-                                eventId = eventId, targetKind = targetKind,
-                            )
+                            val invoice = invoiceNow()
                             busy = false
                             if (invoice.isNullOrBlank()) {
                                 error = getString(Res.string.zap_invoice_failed)
@@ -181,9 +273,8 @@ private fun ZapSheetImpl(
                                 lastInvoice = invoice
                                 confirmInvoice = invoice
                             } else {
-                                // 外部の Lightning ウォレットへ。対応アプリが無い環境では失敗する。
-                                val opened = runCatching { uri.openUri("lightning:$invoice") }.isSuccess
-                                if (opened) onDismiss() else error = getString(Res.string.zap_wallet_failed)
+                                // 外部の Lightning ウォレットへ（[#993] iOS は設定で選んだウォレット。[#1011] 毎回選ぶ）
+                                openExternal(invoice)
                             }
                         }
                     })

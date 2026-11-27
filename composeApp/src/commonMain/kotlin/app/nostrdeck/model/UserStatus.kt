@@ -107,6 +107,49 @@ object UserStatuses {
         return host.removePrefix("www.")
     }
 
+    // ---- [#1019] 自分のステータス（general）を出す ----
+
+    /** 入力できる長さの上限（1 行のステータス。NIP-38 に決まりは無い）。Web と同じ。 */
+    const val MAX_LENGTH = 100
+
+    /** 期限の選択肢（[seconds] が null は期限なし）。Web と同じ並び。 */
+    enum class ExpiryChoice(val seconds: Long?) {
+        NONE(null), MIN_30(30 * 60L), HOUR_1(3600L), HOUR_4(4 * 3600L), DAY_1(86400L), WEEK_1(7 * 86400L),
+    }
+
+    /** 1 行にする（改行・タブは空白 1 つに。前後の空白は取る）。 */
+    fun oneLine(text: String): String = text.replace(Regex("[\\r\\n\\t]+"), " ").trim()
+
+    /**
+     * 入力欄の編集を受け付けるか。上限（[MAX_LENGTH]）を超える入力は受け付けないが、ほかのアプリで出した長い
+     * ステータスが入っているときも、短くする編集は通す。
+     */
+    fun acceptsEdit(old: String, new: String): Boolean = new.length <= MAX_LENGTH || new.length < old.length
+
+    /**
+     * 自分で出す 1 行のステータス（`d=general`）。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
+     * [expiration] は NIP-40 の期限（unix 秒。null は期限なし）、[now] は今の unix 秒。
+     * [replacing] は、いま出している版の created_at（あれば）。置き換え可能イベントは新しい方が残るので、created_at は
+     * それより後にする（時計の進んだ端末で出した版や、同じ秒に出した版に負けない。ほかの置き換え可能イベントの発行と同じ）。
+     */
+    fun generalEvent(text: String, expiration: Long?, now: Long, replacing: Long? = null): UnsignedEvent {
+        val content = oneLine(text)
+        val expirationTag = expiration?.takeIf { content.isNotEmpty() }?.let { listOf("expiration", it.toString()) }
+        return UnsignedEvent(
+            kind = KIND, content = content,
+            tags = listOfNotNull(listOf("d", Type.GENERAL.d), expirationTag),
+            createdAt = maxOf(now, (replacing ?: 0L) + 1),
+        )
+    }
+
+    /**
+     * ステータスの画面で選んだ期限 → NIP-40 の期限（unix 秒）。[choice] が null は「選び直していない」で、いま出している
+     * ステータスに期限（[currentExpiration]）が残っていればそれを引き継ぐ（文言だけ直したとき、期限つきのステータスを
+     * 期限なしにしない）。
+     */
+    fun expirationFor(choice: ExpiryChoice?, currentExpiration: Long?, now: Long): Long? =
+        if (choice == null) currentExpiration?.takeIf { it > now } else choice.seconds?.let { now + it }
+
     /** 期限の表示の種類（文言は UI が付ける）。 */
     sealed interface Expiry {
         /** 60 秒未満「まもなく終了」 */

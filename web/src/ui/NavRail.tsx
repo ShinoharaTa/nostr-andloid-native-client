@@ -6,7 +6,16 @@ import { columnDisplayTitle } from "../i18n/columnTitles";
 import type { ColumnKind } from "../lib/columns";
 import { AccountAvatar } from "./AccountAvatar";
 import { badgeText } from "./badge";
-import { AddIcon, ChatIcon, ColumnKindIcon, HomeIcon, NotificationsIcon, SearchIcon } from "./icons";
+import {
+  AddIcon,
+  ChatIcon,
+  ColumnKindIcon,
+  EditIcon,
+  HomeIcon,
+  MoodIcon,
+  NotificationsIcon,
+  SearchIcon,
+} from "./icons";
 import styles from "./NavRail.module.css";
 import { RelayIndicator } from "./RelayIndicator";
 
@@ -15,7 +24,10 @@ export type RailPinned = { id: string; title: string; kind: ColumnKind; active: 
 /**
  * Expanded の左レール（ネイティブ DeckRail）。表示だけで、押したら各コールバック。
  * ブランド → ホーム ｜ ピン留めの目次（ここだけ縦スクロール）→ カラム追加 ｜ 検索 → パブリックチャット →
- * （通知カラムが無いときだけ）通知 ｜ 接続表示 → 自分。投稿ボタンはレールに無い。
+ * （通知カラムが無いときだけ）通知 → 新規投稿 ｜ 接続表示 → 自分。
+ * [#1001] 新規投稿は接続表示の上の区切りの上（ネイティブ DeckRail #1000）。右下の投稿ボタン（FAB）の代わり。
+ * [#1020] その上に自分のステータスを更新するボタン。onCompose / onStatus が無ければ出さない（1 カラムの表示では、
+ * AppShell が右下に出す）。固定の項目が収まらない高さ（スマホの横向きなど）では、レール全体が縦スクロールする。
  * badges = 宛先のアイコンの右上に重ねる未読数（0・未指定は出さない）。
  * [#797] 自分のアイコンは押すとメニュー（AccountMenu。レールの右へ出す。未ログインなら onSelect("account") で設定へ）。
  */
@@ -28,6 +40,8 @@ export function NavRail({
   onSelect,
   onOpenColumn,
   onAddColumn,
+  onCompose,
+  onStatus,
 }: {
   selected: Record<NavKey, boolean>;
   badges?: Partial<Record<NavKey, number>>;
@@ -37,6 +51,8 @@ export function NavRail({
   onSelect(key: NavKey): void;
   onOpenColumn(id: string): void;
   onAddColumn(): void;
+  onCompose?: () => void;
+  onStatus?: () => void;
 }) {
   const t = useT();
   const accountBadge = badges?.account ?? 0;
@@ -106,6 +122,30 @@ export function NavRail({
         {dest("channels", selected.channels, <ChatIcon className={styles.icon} />)}
         {showNotifications &&
           dest("notifications", selected.notifications, <NotificationsIcon className={styles.icon} />)}
+        {/* [#1020] 自分のステータスを更新する（投稿ボタンの上） */}
+        {onStatus && (
+          <button
+            type="button"
+            className={styles.slot}
+            aria-label={t("status_edit_title")}
+            title={t("status_edit_title")}
+            onClick={onStatus}
+          >
+            <MoodIcon className={styles.icon} />
+          </button>
+        )}
+        {/* [#1001] 新規投稿（投稿ボタンと同じ塗り。キーボードの n は今まで通り） */}
+        {onCompose && (
+          <button
+            type="button"
+            className={`${styles.slot} ${styles.compose}`}
+            aria-label={t("fab_post")}
+            title={t("fab_post")}
+            onClick={onCompose}
+          >
+            <EditIcon className={styles.icon} />
+          </button>
+        )}
       </div>
       <div className={styles.divider} />
       <div className={`${styles.block} ${styles.bottom}`}>

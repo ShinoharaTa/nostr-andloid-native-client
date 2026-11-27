@@ -5,9 +5,10 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCompose } from "../features/compose/composeStore";
 import { saveDraft } from "../features/compose/storage";
-import { registerColumnScroll } from "../features/deck/columnScroll";
+import { NOTIFICATIONS_SCREEN_SCROLL_ID, registerColumnScroll } from "../features/deck/columnScroll";
 import { useDmSeen } from "../features/dm/dmSeen";
 import { useDm } from "../features/dm/dmStore";
+import { closeStatusEditor } from "../features/status/statusEditorStore";
 import type { ColumnSpec } from "../lib/columns";
 import { DEFAULT_COLUMNS, roomColumnFor } from "../lib/columns";
 import { useSession } from "../signer/session";
@@ -154,6 +155,8 @@ describe("骨格", () => {
       "カラム追加",
       "検索",
       "パブリックチャット",
+      "ステータスを更新",
+      "投稿",
       "アカウントのメニュー",
     ]);
 
@@ -168,6 +171,8 @@ describe("骨格", () => {
       "検索",
       "パブリックチャット",
       "通知",
+      "ステータスを更新",
+      "投稿",
       "アカウントのメニュー",
     ]);
   });
@@ -392,6 +397,58 @@ describe("ナビ", () => {
     });
   });
 
+  describe("[#992] 1 カラム表示の通知", () => {
+    /** 通知の一覧のスクロールの窓口を差し替える。jump した先を集める（描いたあとに呼ぶ） */
+    function setup(id: string) {
+      const scrollToTop = vi.fn();
+      const unregister = registerColumnScroll(id, { atTop: () => false, scrollToTop });
+      const targets: string[] = [];
+      const unsubscribe = useDeck.subscribe((s, prev) => {
+        if (s.jumpTarget !== null && s.jumpTarget !== prev.jumpTarget) targets.push(s.jumpTarget);
+      });
+      return {
+        scrollToTop,
+        targets,
+        dispose() {
+          unsubscribe();
+          unregister();
+        },
+      };
+    }
+
+    it("ほかのカラムから押すと、通知カラムをすぐ先頭へ置き直してから移る", async () => {
+      renderAt(["/"]);
+      act(() => useDeck.setState({ visibleColumnId: "c_hashtag" }));
+      const t = setup("c_notif");
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith({ instant: true });
+      expect(t.targets).toEqual(["c_notif"]);
+    });
+
+    it("通知カラムを見ているときに押すと、滑らせて先頭へ戻し、移らない", async () => {
+      renderAt(["/"]);
+      act(() => useDeck.setState({ visibleColumnId: "c_notif" }));
+      const t = setup("c_notif");
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith();
+      expect(t.targets).toEqual([]);
+    });
+
+    it("通知カラムが無ければ、見ている通知画面を先頭へ戻す", async () => {
+      act(() => {
+        useDeck.getState().removeColumn("c_notif");
+      });
+      const router = renderAt(["/notifications"]);
+      const t = setup(NOTIFICATIONS_SCREEN_SCROLL_ID);
+      await userEvent.click(within(mainNav()).getByRole("button", { name: "通知" }));
+      t.dispose();
+      expect(t.scrollToTop).toHaveBeenCalledExactlyOnceWith();
+      expect(router.state.location.pathname).toBe("/notifications");
+    });
+  });
+
   it("expanded: レールの目次はデッキへ戻ってそのカラムへ jump する", async () => {
     const targets: string[] = [];
     const unsubscribe = useDeck.subscribe((s) => {
@@ -536,6 +593,46 @@ describe("投稿ボタン", () => {
   it("デッキ（/）には「投稿」を出す", () => {
     renderAt(["/"]);
     expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
+  });
+
+  it("[#1001] デッキの表示（Expanded）では右下の投稿ボタンを出さず、レールの「投稿」から開く", async () => {
+    installDialogPolyfill();
+    renderAt(["/"], 1400);
+    const buttons = screen.getAllByRole("button", { name: "投稿" });
+    expect(buttons).toHaveLength(1);
+    expect(mainNav()).toContainElement(buttons[0]);
+    await userEvent.click(buttons[0]);
+    expect(screen.getByRole("dialog", { name: "投稿" })).toBeInTheDocument();
+    act(() => useCompose.setState({ request: null }));
+  });
+
+  it("[#1001] レールの「投稿」は検索などほかの画面でも出す", async () => {
+    renderAt(["/search"], 1400);
+    expect(await screen.findByRole("heading", { name: "検索" })).toBeInTheDocument();
+    expect(within(mainNav()).getByRole("button", { name: "投稿" })).toBeInTheDocument();
+  });
+
+  it("[#1020] 1 カラム + レールの表示（Rail）では、投稿とステータスはレールではなく右下に出す", () => {
+    renderAt(["/"], 700);
+    for (const name of ["投稿", "ステータスを更新"]) {
+      const buttons = screen.getAllByRole("button", { name });
+      expect(buttons).toHaveLength(1);
+      expect(mainNav()).not.toContainElement(buttons[0]);
+    }
+  });
+
+  it("[#1020] ステータスのボタンは投稿ボタンの上（右下でもレールでも）。押すとステータスの画面が開く", async () => {
+    installDialogPolyfill();
+    for (const width of [400, 1400]) {
+      renderAt(["/"], width);
+      const status = screen.getByRole("button", { name: "ステータスを更新" });
+      const compose = screen.getByRole("button", { name: "投稿" });
+      expect(status.compareDocumentPosition(compose) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await userEvent.click(status);
+      expect(screen.getByRole("dialog", { name: "ステータスを更新" })).toBeInTheDocument();
+      act(() => closeStatusEditor());
+      cleanup();
+    }
   });
 
   it("検索では出さない", async () => {

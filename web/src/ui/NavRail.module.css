@@ -1,3 +1,5 @@
+/* [#1020] 固定の項目が収まらない高さ（スマホの横向きなど）では、レール全体を縦スクロールさせる
+   （以前は下の「接続表示・自分」が画面からはみ出して押せなかった）。目次（.index）が先に縮み、それでも足りないときだけ動く */
 .rail {
   flex: none;
   display: flex;
@@ -6,6 +8,12 @@
   width: var(--rail-w);
   height: 100%;
   background: var(--bg);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
 }
 
 .block {
@@ -34,6 +42,11 @@
   gap: var(--sp-1);
   overflow-y: auto;
   scrollbar-width: none;
+}
+
+/* [#1020] 高さが足りなくても、目次は 1 項目ぶんは残す（0 まで縮むと、ピン留めのカラムへ飛べなくなる） */
+.index:not(:empty) {
+  min-height: var(--rail-item);
 }
 
 .divider {
@@ -71,6 +84,12 @@
 .add {
   background: var(--accent-weak);
   color: var(--accent);
+}
+
+/* [#1001] 新規投稿（投稿ボタン ComposeHost の .fab と同じ塗り） */
+.compose {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .slot:focus-visible {
