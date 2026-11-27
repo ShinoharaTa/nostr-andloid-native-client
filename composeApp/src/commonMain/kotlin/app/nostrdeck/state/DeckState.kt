@@ -233,6 +233,9 @@ class DeckState(
     /** ノート投稿シートの表示状態。 */
     var showCompose by mutableStateOf(false)
 
+    /** [#1019] 自分のステータス（NIP-38 の 1 行）を更新する画面の表示状態。 */
+    var showStatusEditor by mutableStateOf(false)
+
     /** [#100] コンポーザーの初期テキスト（共有ターゲット経由）。閉じたらクリアする。 */
     var composeInitialText by mutableStateOf<String?>(null)
 

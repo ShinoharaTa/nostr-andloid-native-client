@@ -103,6 +103,9 @@ fun AppScaffold(state: DeckState) {
         // 縦の短い画面で下部ナビの72dpは高くつくので、ナビだけ Deck と同じ左レールにする。
         // 本文・戻る処理・詳細オーバーレイは isCompact のまま（変わるのはナビの器だけ）。
         val railCompact = isCompact && maxWidth.value >= RAIL_COMPACT_MIN_WIDTH_DP
+        // [#1019] 投稿とステータスのボタンをレールに置くのは、デッキの表示で、レールに全部が収まる高さのときだけ。
+        // シングルカラムと、高さの足りない画面（スマホの横向き。レールの下がはみ出す）では右下に出す。
+        val composeInRail = !isCompact && maxHeight.value >= RAIL_COMPOSE_MIN_HEIGHT_DP
 
         // Android 戻る: まず全幅詳細(プロフィール/スレッド)を閉じ、無ければ宛先ごとの処理。
         val backEnabled = state.hasDetail || when (state.navDest) {
@@ -128,9 +131,10 @@ fun AppScaffold(state: DeckState) {
             // [#332] 左レール + シングルカラム。BottomBar が無いので、Expanded と同じく
             // ここで下端インセットを確保する（インジケータ帯に潜らないように）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
-                DeckRail(state, compact = true)
+                DeckRail(state, compact = true, composeButtons = false)
                 CompositionLocalProvider(LocalHasNavRail provides true) {
-                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder, hasRail = true)
+                    // [#1019] シングルカラムでは、レールがあっても投稿とステータスのボタンは右下（指に近い）
+                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder, composeInRail = false)
                 }
             }
         } else if (isCompact) {
@@ -146,7 +150,7 @@ fun AppScaffold(state: DeckState) {
                     state, isCompact = true,
                     Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bottomBarHeight)),
                     detailStateHolder,
-                    hasRail = false,
+                    composeInRail = false,
                 )
                 Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
                     BottomBar(state)
@@ -156,8 +160,8 @@ fun AppScaffold(state: DeckState) {
             // Expanded は下部 BottomBar が無い（左 DeckRail）。ルートで下端を確保しなくなったぶん、
             // ここで下端インセットを padding して内容がインジケータ帯に潜らないようにする（従来挙動を維持）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
-                DeckRail(state)
-                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder, hasRail = true)
+                DeckRail(state, composeButtons = composeInRail)
+                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder, composeInRail = composeInRail)
             }
         }
 
@@ -185,6 +189,12 @@ fun AppScaffold(state: DeckState) {
             )
         }
 
+        // [#1019] 自分のステータスを更新する画面（右下・レールのボタンから開く）
+        if (state.showStatusEditor) {
+            val me by (LocalRepository.current?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+            me?.let { StatusEditorDialog(it, onDismiss = { state.showStatusEditor = false }) }
+        }
+
         // 上部中央の「接続中…」インジケータ（全リレー未接続の待機中だけ表示）。
         ConnectionIndicator()
     }
@@ -196,6 +206,10 @@ private const val COMPACT_BREAKPOINT_DP = 600  // WindowSizeClass の Compact �
 // それより上、コンパクト上限(600)より下に置く。Fold 8 カバー画面の実測で要調整（1箇所の定数）。
 private const val RAIL_COMPACT_MIN_WIDTH_DP = 440
 
+// [#1019] レールに投稿とステータスのボタンを置く最小の高さ。レールの固定の項目は最大 10 個（48dp ずつ）+ 区切りで
+// 約 550dp。これより低い画面（スマホの横向きは 360〜440dp）では、下の「接続ステータス・自分」がはみ出す。
+private const val RAIL_COMPOSE_MIN_HEIGHT_DP = 600
+
 /** [#332] 左レールが出ているか。CompactPager が自前の接続ステータスを重複表示しないために見る。 */
 val LocalHasNavRail = staticCompositionLocalOf { false }
 
@@ -203,8 +217,9 @@ val LocalHasNavRail = staticCompositionLocalOf { false }
  * 宛先の内容 + 投稿 FAB を重ねる。FAB は内容領域の右下に置く（= Compact では
  * BottomBar の上に浮く）ので、下部ナビの「設定」等を覆わない。投稿はタイムライン
  * （Home Deck）の操作なので HOME でのみ表示する。
- * [#1000] 左レールが出ている表示（[hasRail]）では、投稿はレールのボタンから開くので FAB は出さない
- * （読み上げの ON / OFF は右下に残す）。
+ * [#1000][#1019] レールに投稿とステータスのボタンがある表示（[composeInRail]。デッキで、高さが足りるとき）では、
+ * 右下には出さない（読み上げの ON / OFF は右下に残す）。シングルカラムでは、レールがあっても右下に出す。
+ * 右下は上から「読み上げ → ステータス → 投稿」。
  */
 @Composable
 private fun ContentWithCompose(
@@ -212,7 +227,7 @@ private fun ContentWithCompose(
     isCompact: Boolean,
     modifier: Modifier,
     detailStateHolder: SaveableStateHolder,
-    hasRail: Boolean,
+    composeInRail: Boolean,
 ) {
     Box(modifier.fillMaxSize()) {
         Destination(state, isCompact = isCompact)
@@ -231,7 +246,10 @@ private fun ContentWithCompose(
                 verticalArrangement = Arrangement.spacedBy(DeckSpace.Md),
             ) {
                 SpeechToggle(onOpenSettings = { state.openSettingsSection("speech") })   // [#1008] メニューの「読み上げの設定」
-                if (!hasRail) {
+                if (!composeInRail) {
+                    // [#1019] 投稿ボタンの上に、自分のステータスを更新するボタン（ログイン中だけ）
+                    val me by (LocalRepository.current?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+                    StatusFab(me, onClick = { state.showStatusEditor = true })
                     FloatingActionButton(onClick = { state.showCompose = true }) {
                         Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
                     }

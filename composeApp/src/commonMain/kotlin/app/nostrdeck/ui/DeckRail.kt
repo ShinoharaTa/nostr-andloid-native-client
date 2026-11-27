@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import nostr_deck_client.composeapp.generated.resources.nav_home
 import nostr_deck_client.composeapp.generated.resources.nav_public_chat
 import nostr_deck_client.composeapp.generated.resources.nav_notifications
 import nostr_deck_client.composeapp.generated.resources.nav_search
+import nostr_deck_client.composeapp.generated.resources.status_edit_title
 import app.nostrdeck.i18n.stringResource
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckDimens
@@ -59,7 +61,7 @@ import app.nostrdeck.theme.DeckType
  * 左 NavigationRail（展開時の常設）。3 ブロック構成:
  *  1. 上部固定 : ブランド + グローバルナビ
  *  2. 中央     : ピン留めカラムの目次（**ここだけがスクロール対象**）
- *  3. 下部固定 : 検索 / パブリックチャット / 通知 / 新規投稿 ｜ 接続ステータス / 自分
+ *  3. 下部固定 : 検索 / パブリックチャット / 通知 / ステータス / 新規投稿（後ろ 2 つは composeButtons のときだけ） ｜ 接続ステータス / 自分
  *
  * すべての項目を [RailSlot]（[DeckDimens.RailItem] の同一タップ領域＋中央寄せ）に通し、
  * グリフは [DeckDimens.RailIcon] に統一。ブロック境界は 1px の [RailDivider] で分ける。
@@ -69,6 +71,11 @@ fun DeckRail(
     state: DeckState,
     /** [#917] スマホ表示（シングルカラム）の横に出すレールか。ホームのタップで表示中のカラムを先頭へ戻す。 */
     compact: Boolean = false,
+    /**
+     * [#1000][#1019] 新規投稿とステータスのボタンを置くか。シングルカラムと、高さの足りない画面では置かない
+     * （AppScaffold が右下に出す）。
+     */
+    composeButtons: Boolean = !compact,
 ) {
     val repo = LocalRepository.current
     // [#9] DM の未読バッジ（最終閲覧時刻方式）。[#416] 既読化は会話を開いたときに行う
@@ -148,9 +155,16 @@ fun DeckRail(
                     if (compact) state.tapNotificationsCompact() else state.openNotifications()
                 }
             }
-            // [#1000] 新規投稿（接続ステータスの上の区切りの上）。レールが出ている表示では右下の投稿ボタン（FAB）の
-            // 代わりにここから開く（AppScaffold の ContentWithCompose はレールのとき FAB を出さない）。`n` は今まで通り。
-            RailComposeButton { state.showCompose = true }
+            // [#1000] 新規投稿（接続ステータスの上の区切りの上）。デッキの表示では右下の投稿ボタン（FAB）の
+            // 代わりにここから開く（AppScaffold の ContentWithCompose はデッキのとき FAB を出さない）。`n` は今まで通り。
+            // [#1019] その上に自分のステータスを更新するボタン（ログイン中だけ）。[composeButtons] が false なら、
+            // どちらも右下に出すのでレールには置かない。
+            if (composeButtons) {
+                if (myPubkey != null) {
+                    NavIcon(Icons.Outlined.Mood, stringResource(Res.string.status_edit_title), active = false) { state.showStatusEditor = true }
+                }
+                RailComposeButton { state.showCompose = true }
+            }
         }
 
         RailDivider()

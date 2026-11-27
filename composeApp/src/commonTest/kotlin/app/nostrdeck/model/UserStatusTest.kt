@@ -145,4 +145,40 @@ class UserStatusTest {
         assertNull(UserStatuses.pointerOf(status(extra = listOf(listOf("a", "30023:short:x")))))
         assertNull(UserStatuses.pointerOf(status()))
     }
+
+    // ---- [#1019] 自分のステータスを出す（Web #1020 の statusModel.test.ts と同じ例）----
+
+    @Test
+    fun one_line_replaces_line_breaks_and_trims() {
+        assertEquals("作業中 です", UserStatuses.oneLine("  作業中\n\nです\t "))
+        assertEquals("a  b", UserStatuses.oneLine("a  b"), "行の中の空白はそのまま")
+        assertEquals("", UserStatuses.oneLine(" \n "))
+    }
+
+    @Test
+    fun general_event_has_d_and_optional_expiration() {
+        val plain = UserStatuses.generalEvent(" 作業中 ", UserStatuses.ExpiryChoice.NONE, now)
+        assertEquals(UserStatuses.KIND, plain.kind)
+        assertEquals("作業中", plain.content)
+        assertEquals(listOf(listOf("d", "general")), plain.tags)
+        assertEquals(now, plain.createdAt)
+
+        val timed = UserStatuses.generalEvent("昼休み", UserStatuses.ExpiryChoice.HOUR_1, now)
+        assertEquals(listOf(listOf("d", "general"), listOf("expiration", (now + 3600).toString())), timed.tags)
+    }
+
+    @Test
+    fun clearing_is_an_empty_content_without_expiration() {
+        val cleared = UserStatuses.generalEvent("  ", UserStatuses.ExpiryChoice.DAY_1, now)
+        assertEquals("", cleared.content)
+        assertEquals(listOf(listOf("d", "general")), cleared.tags)
+    }
+
+    @Test
+    fun expiry_choices_in_order() {
+        assertEquals(
+            listOf(null, 1800L, 3600L, 14400L, 86400L, 604800L),
+            UserStatuses.ExpiryChoice.entries.map { it.seconds },
+        )
+    }
 }

@@ -107,6 +107,29 @@ object UserStatuses {
         return host.removePrefix("www.")
     }
 
+    // ---- [#1019] 自分のステータス（general）を出す ----
+
+    /** 入力できる長さの上限（1 行のステータス。NIP-38 に決まりは無い）。Web と同じ。 */
+    const val MAX_LENGTH = 100
+
+    /** 期限の選択肢（[seconds] が null は期限なし）。Web と同じ並び。 */
+    enum class ExpiryChoice(val seconds: Long?) {
+        NONE(null), MIN_30(30 * 60L), HOUR_1(3600L), HOUR_4(4 * 3600L), DAY_1(86400L), WEEK_1(7 * 86400L),
+    }
+
+    /** 1 行にする（改行・タブは空白 1 つに。前後の空白は取る）。 */
+    fun oneLine(text: String): String = text.replace(Regex("[\\r\\n\\t]+"), " ").trim()
+
+    /**
+     * 自分で出す 1 行のステータス（`d=general`）。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
+     * [now] は今の unix 秒（[ExpiryChoice.seconds] を足して NIP-40 の `expiration` にする）。
+     */
+    fun generalEvent(text: String, expiry: ExpiryChoice, now: Long): UnsignedEvent {
+        val content = oneLine(text)
+        val expiration = expiry.seconds?.takeIf { content.isNotEmpty() }?.let { listOf("expiration", (now + it).toString()) }
+        return UnsignedEvent(kind = KIND, content = content, tags = listOfNotNull(listOf("d", Type.GENERAL.d), expiration), createdAt = now)
+    }
+
     /** 期限の表示の種類（文言は UI が付ける）。 */
     sealed interface Expiry {
         /** 60 秒未満「まもなく終了」 */

@@ -4212,6 +4212,20 @@ class EventRepository(
         requestProfile(e.pubkey)
     }
 
+    /**
+     * [#1019] 自分の 1 行のステータス（`d=general`）を出す。[text] が空なら消す（NIP-38: 空の本文でクリア）。
+     * 書き込みリレーへ送り、どれかが受理するのを待つ（受理を確かめられなければ false）。DB と未送信の再送には載せない
+     * （ステータスはメモリだけで持ち、古いものをあとから送り直さない）。送ったものは手元のステータスにすぐ反映する。
+     * `music`（Now Playing）には触らない。
+     */
+    suspend fun publishUserStatus(text: String, expiry: UserStatuses.ExpiryChoice): Boolean = runCatching {
+        val signed = SignerProvider.current().sign(UserStatuses.generalEvent(text, expiry, currentUnixTime()))
+        registerAck(signed.id)
+        publishTo(RelayProtocol.event(signed))
+        captureStatus(signed)
+        awaitAck(signed.id)
+    }.getOrElse { false }
+
     /** [#772] ステータスカラムの「表示」（カラム別。端末だけに保存し、同期しない）。無ければすべて。 */
     private val columnStatusTypesState = MutableStateFlow<Map<String, UserStatuses.Type>>(emptyMap())
     fun columnStatusTypesFlow(): StateFlow<Map<String, UserStatuses.Type>> = columnStatusTypesState
