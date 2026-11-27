@@ -518,6 +518,7 @@ class EventRepository(
         discardDeveloperOutbox()   // [#961]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
+        loadNostrConnectRelay()   // [#886]
         loadTtsVoice()   // [#948]
         loadDeveloperMode()   // [#351]
         loadShowReactionCounts()   // [#932]
@@ -5811,6 +5812,23 @@ class EventRepository(
         timeDisplayState.value = app.nostrdeck.model.TimeDisplay.fromId(q.getSetting(TIME_DISPLAY_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#886] nostrconnect:// の中継リレー（既定 relay.nsec.app）----
+    // Web（#899）の nostrism.nip46.relay と同じく端末ローカル設定で、#374 の SettingsSync ホワイトリストには入れない。
+    // 値は wss:// の URL（末尾の / なし）。読めなければ既定。保存済みの接続（Nip46Store）はこの値で張り直さない。
+    private val nostrConnectRelayState = MutableStateFlow(Nip46Manager.DEFAULT_RELAY)
+    fun nostrConnectRelayFlow(): StateFlow<String> = nostrConnectRelayState
+    /** 中継リレーを変える。wss:// の URL でなければ保存せず false。 */
+    fun setNostrConnectRelay(input: String): Boolean {
+        val relay = app.nostrdeck.signer.parseNostrConnectRelay(input) ?: return false
+        nostrConnectRelayState.value = relay
+        putSettingAsync(NOSTRCONNECT_RELAY_KEY, relay)
+        return true
+    }
+    private fun loadNostrConnectRelay() {
+        nostrConnectRelayState.value = q.getSetting(NOSTRCONNECT_RELAY_KEY).executeAsOneOrNull()
+            ?.let { app.nostrdeck.signer.parseNostrConnectRelay(it) } ?: Nip46Manager.DEFAULT_RELAY
+    }
+
     // ---- [#351] 開発者モード（既定OFF）----
     // ON にすると投稿/チャットの ⋯ メニューに「イベントJSONを表示」が出る。
     private val developerModeState = MutableStateFlow(false)
@@ -7140,6 +7158,7 @@ class EventRepository(
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
+        const val NOSTRCONNECT_RELAY_KEY = "nip46:relay"   // [#886] nostrconnect:// の中継リレー（wss:// の URL）
         const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
         const val TTS_TONE_KEY = "tts:tone"     // [#1008] 読み上げのトーン（neutral/happy/sad/angry/apologetic）
         const val TTS_SPEED_KEY = "tts:speed"   // [#1008] 読み上げの速さ（10 分の 1 倍。5〜15）
