@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { t } from "../../i18n";
 import {
   expiryLabel,
+  generalStatusDraft,
   isStatusVisible,
+  oneLineStatus,
+  STATUS_EXPIRY_CHOICES,
   STATUS_MAX_AGE_SEC,
   serviceLabelOf,
   sortStatuses,
@@ -139,5 +142,40 @@ describe("expiryLabel", () => {
     const at = `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     expect(expiryLabel(expiration, NOW, t)).toBe(`${at} まで`);
     expect(expiryLabel(expiration, NOW, t)).toMatch(/^\d{1,2}\/\d{1,2} \d{2}:\d{2} まで$/);
+  });
+});
+
+// [#1020] 自分のステータスを出す（ネイティブ UserStatusTest #1019 と同じ例）
+describe("自分のステータスを出す", () => {
+  it("1 行にする: 改行・タブは空白 1 つ、前後の空白は取る。行の中の空白はそのまま", () => {
+    expect(oneLineStatus("  作業中\n\nです\t ")).toBe("作業中 です");
+    expect(oneLineStatus("a  b")).toBe("a  b");
+    expect(oneLineStatus(" \n ")).toBe("");
+  });
+
+  it("d=general。期限を選んだら expiration（今 + 秒）", () => {
+    expect(generalStatusDraft(" 作業中 ", null, NOW)).toEqual({
+      kind: 30315,
+      content: "作業中",
+      tags: [["d", "general"]],
+      created_at: NOW,
+    });
+    expect(generalStatusDraft("昼休み", 3600, NOW).tags).toEqual([
+      ["d", "general"],
+      ["expiration", String(NOW + 3600)],
+    ]);
+  });
+
+  it("消すのは空の本文。期限は付けない", () => {
+    expect(generalStatusDraft("  ", 86400, NOW)).toEqual({
+      kind: 30315,
+      content: "",
+      tags: [["d", "general"]],
+      created_at: NOW,
+    });
+  });
+
+  it("期限の選択肢の並び（なし / 30 分 / 1 時間 / 4 時間 / 1 日 / 1 週間）", () => {
+    expect(STATUS_EXPIRY_CHOICES.map((c) => c.seconds)).toEqual([null, 1800, 3600, 14400, 86400, 604800]);
   });
 });

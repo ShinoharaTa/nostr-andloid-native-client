@@ -37,6 +37,43 @@ export function isStatusVisible(event: NostrEvent, filter: StatusType | null, no
   return event.created_at >= now - STATUS_MAX_AGE_SEC;
 }
 
+// ---- [#1020] 自分のステータス（general）を出す（ネイティブ UserStatuses と同じ規則。#1019） ----
+
+/** 入力できる長さの上限（1 行のステータス。NIP-38 に決まりは無い） */
+export const STATUS_MAX_LENGTH = 100;
+
+/** 期限の選択肢（seconds が null は期限なし）。ネイティブ ExpiryChoice と同じ並び。文言は画面が付ける */
+export const STATUS_EXPIRY_CHOICES = [
+  { id: "none", seconds: null },
+  { id: "30m", seconds: 30 * 60 },
+  { id: "1h", seconds: 3600 },
+  { id: "4h", seconds: 4 * 3600 },
+  { id: "1d", seconds: 86400 },
+  { id: "1w", seconds: 7 * 86400 },
+] as const;
+
+export type StatusExpiryId = (typeof STATUS_EXPIRY_CHOICES)[number]["id"];
+
+/** 1 行にする（改行・タブは空白 1 つに。前後の空白は取る） */
+export function oneLineStatus(text: string): string {
+  return text.replace(/[\r\n\t]+/g, " ").trim();
+}
+
+/**
+ * 自分で出す 1 行のステータス（d=general）の下書き。本文が空なら「消す」（NIP-38: 空の本文でクリア）で、期限は付けない。
+ * now は今の unix 秒（expirySeconds を足して NIP-40 の expiration にする）。
+ */
+export function generalStatusDraft(
+  text: string,
+  expirySeconds: number | null,
+  now: number,
+): { kind: number; content: string; tags: string[][]; created_at: number } {
+  const content = oneLineStatus(text);
+  const tags: string[][] = [["d", "general"]];
+  if (expirySeconds !== null && content !== "") tags.push(["expiration", String(now + expirySeconds)]);
+  return { kind: STATUS_KIND, content, tags, created_at: now };
+}
+
 /** 新しい順。同時刻は id の昇順（並びを安定させる）。元の配列は変えない */
 export function sortStatuses(events: readonly NostrEvent[]): NostrEvent[] {
   return [...events].sort((a, b) =>

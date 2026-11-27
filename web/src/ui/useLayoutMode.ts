@@ -13,19 +13,21 @@ function currentUiScale(): number {
   return UI_SCALE_FACTOR[useThemePrefs.getState().uiScale];
 }
 
+type Axis = "width" | "height";
+
 /** [#596] ネイティブは dp の閾値に density * uiScale を掛けて px 判定するのと同じ結果になるよう、閾値(dp)側に uiScale を掛ける */
-function queryFor(breakpointDp: number, uiScale: number): string {
-  return `(min-width: ${Math.round(breakpointDp * uiScale)}px)`;
+function queryFor(breakpointDp: number, uiScale: number, axis: Axis = "width"): string {
+  return `(min-${axis}: ${Math.round(breakpointDp * uiScale)}px)`;
 }
 
 /**
  * [#596] 幅の変化（matchMedia の change）と表示サイズの変化（uiScale）の両方で再評価する。
  * uiScale が変わったら閾値の px が変わるため、古い matchMedia を解除して新しい閾値で張り直す。
  */
-function subscribeAtBreakpoint(breakpointDp: number, onChange: () => void): () => void {
+function subscribeAtBreakpoint(breakpointDp: number, onChange: () => void, axis: Axis = "width"): () => void {
   if (!hasMatchMedia()) return () => {};
   let uiScale = currentUiScale();
-  let mql = window.matchMedia(queryFor(breakpointDp, uiScale));
+  let mql = window.matchMedia(queryFor(breakpointDp, uiScale, axis));
   mql.addEventListener("change", onChange);
   const unsubscribeTheme = useThemePrefs.subscribe((prefs) => {
     const nextUiScale = UI_SCALE_FACTOR[prefs.uiScale];
@@ -33,7 +35,7 @@ function subscribeAtBreakpoint(breakpointDp: number, onChange: () => void): () =
     mql.removeEventListener("change", onChange);
     uiScale = nextUiScale;
     if (!hasMatchMedia()) return;
-    mql = window.matchMedia(queryFor(breakpointDp, uiScale));
+    mql = window.matchMedia(queryFor(breakpointDp, uiScale, axis));
     mql.addEventListener("change", onChange);
     onChange();
   });
@@ -43,9 +45,9 @@ function subscribeAtBreakpoint(breakpointDp: number, onChange: () => void): () =
   };
 }
 
-function getMatchesAtBreakpoint(breakpointDp: number): boolean {
+function getMatchesAtBreakpoint(breakpointDp: number, axis: Axis = "width"): boolean {
   if (!hasMatchMedia()) return false;
-  return window.matchMedia(queryFor(breakpointDp, currentUiScale())).matches;
+  return window.matchMedia(queryFor(breakpointDp, currentUiScale(), axis)).matches;
 }
 
 /**
@@ -102,6 +104,29 @@ function getSnapshot(): LayoutMode {
  */
 export function useLayoutMode(): LayoutMode {
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/**
+ * [#1020] レールに投稿とステータスのボタンを置ける高さ（ネイティブ RAIL_COMPOSE_MIN_HEIGHT_DP = 600 に --web-base を掛けた値。
+ * 標準で 690px）。レールの固定の項目は最大 10 個で、標準で約 630px。これより低い画面（スマホの横向きなど）では、
+ * 下の「接続表示・自分」がはみ出す。
+ */
+export const RAIL_ACTIONS_MIN_HEIGHT_DP = Math.round(600 * WEB_BASE);
+
+function subscribeRailActions(onChange: () => void): () => void {
+  return subscribeAtBreakpoint(RAIL_ACTIONS_MIN_HEIGHT_DP, onChange, "height");
+}
+
+function getRailActionsFit(): boolean {
+  return getMatchesAtBreakpoint(RAIL_ACTIONS_MIN_HEIGHT_DP, "height");
+}
+
+/**
+ * [#1020] レールに投稿とステータスのボタンを置ける高さか。足りなければ、Expanded でも右下に出す（AppShell）。
+ * matchMedia が無い環境（jsdom 等）は false。
+ */
+export function useRailActionsFit(): boolean {
+  return useSyncExternalStore(subscribeRailActions, getRailActionsFit);
 }
 
 /** OS の「視差効果を減らす」 */

@@ -1,9 +1,17 @@
-/* 投稿ボタン（#453 の D）。56px はネイティブの FAB */
-.fab {
+/* [#1020] 右下のボタンの列（上からステータス → 投稿。ネイティブ ContentWithCompose の Column、間隔 Md） */
+.fabs {
   position: absolute;
   right: var(--sp-4);
   bottom: var(--sp-4);
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* 投稿ボタン（#453 の D）。56px はネイティブの FAB */
+.fab {
   display: grid;
   place-items: center;
   width: 56px;
@@ -16,7 +24,22 @@
   cursor: pointer;
 }
 
-.fab:focus-visible {
+/* [#1020] ステータスのボタン（ネイティブ SmallFloatingActionButton 40dp・Surface2 / Text） */
+.statusFab {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.fab:focus-visible,
+.statusFab:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }

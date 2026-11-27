@@ -1,8 +1,21 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { DEFAULT_THEME_PREFS, useThemePrefs } from "../features/theme/themePrefs";
-import { clearViewport, mockViewport, setViewportHover, setViewportWidth } from "../test/viewport";
-import { EXPANDED_BREAKPOINT_DP, prefersReducedMotion, scrollBehavior, useLayoutMode } from "./useLayoutMode";
+import {
+  clearViewport,
+  mockViewport,
+  setViewportHeight,
+  setViewportHover,
+  setViewportWidth,
+} from "../test/viewport";
+import {
+  EXPANDED_BREAKPOINT_DP,
+  prefersReducedMotion,
+  RAIL_ACTIONS_MIN_HEIGHT_DP,
+  scrollBehavior,
+  useLayoutMode,
+  useRailActionsFit,
+} from "./useLayoutMode";
 
 afterEach(() => {
   // uiScale を戻す購読の再評価が matchMedia を使うため、外す前に戻す
@@ -120,4 +133,28 @@ it("[#596][#661] 700px のまま表示サイズを標準→最大に変えると
 
 it("[#661] Rail⇄Expanded の閾値は designs/tokens.css の基準値と一致する（EXPANDED_BREAKPOINT_DP）", () => {
   expect(EXPANDED_BREAKPOINT_DP).toBe(891);
+});
+
+it("[#1020] レールに投稿とステータスを置ける高さは 690px（ネイティブの 600dp × --web-base）から", () => {
+  expect(RAIL_ACTIONS_MIN_HEIGHT_DP).toBe(690);
+  mockViewport(1400, { height: 689 });
+  expect(renderHook(() => useRailActionsFit()).result.current).toBe(false);
+  mockViewport(1400, { height: 690 });
+  expect(renderHook(() => useRailActionsFit()).result.current).toBe(true);
+});
+
+it("[#1020] 高さが変わると再評価する。表示サイズ「最大」では閾値も伸びる（690 × 1.3 = 897）", () => {
+  mockViewport(1400, { height: 440 });
+  const { result } = renderHook(() => useRailActionsFit());
+  expect(result.current).toBe(false);
+  setViewportHeight(800);
+  expect(result.current).toBe(true);
+  act(() => useThemePrefs.setState({ uiScale: "l" }));
+  expect(result.current).toBe(false);
+  setViewportHeight(897);
+  expect(result.current).toBe(true);
+});
+
+it("[#1020] matchMedia が無い環境では置かない（右下に出す）", () => {
+  expect(renderHook(() => useRailActionsFit()).result.current).toBe(false);
 });
