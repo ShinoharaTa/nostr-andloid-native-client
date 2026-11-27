@@ -359,8 +359,8 @@ export function NoteMoreMenu({ event }: { event: NostrEvent }) {
     const pk = event.pubkey;
     switch (action) {
       case "block":
-        // [#963] ブロック（すぐ隠し、通報し、ミュートリストに公開で保存する。保存できなくても失敗にはしない）
-        void blockUser(me, pk, event).then((result) =>
+        // [#963] ブロック（すぐ隠し、ミュートリストに公開で保存する。保存できなくても失敗にはしない。#961 通報は送らない）
+        void blockUser(me, pk, event.id).then((result) =>
           showToast(result === "saved" ? t("blocked_toast") : t("block_pending_toast")),
         );
         return;

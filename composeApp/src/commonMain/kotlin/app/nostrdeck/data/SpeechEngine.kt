@@ -1,5 +1,7 @@
 package app.nostrdeck.data
 
+import app.nostrdeck.model.TtsStyle
+import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
@@ -11,6 +13,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -19,8 +24,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 interface SpeechEngine {
     /** 声のモデルを読み込む（ダウンロード済みであること）。失敗したら例外。 */
     suspend fun load(voice: TtsVoice)
-    /** 合成して再生する。再生し終わるか、[stop] されたら戻る。失敗したら例外。 */
-    suspend fun speak(text: String)
+    /** 合成して再生する（[style] はトーン・速さ・高さ。#1008）。再生し終わるか、[stop] されたら戻る。失敗したら例外。 */
+    suspend fun speak(text: String, style: TtsStyle = TtsStyle.DEFAULT)
     /** いまの読み上げを止める（再生中の音も止める）。 */
     fun stop()
     /** 片付ける（以後は使わない）。 */
@@ -100,13 +105,13 @@ abstract class HostedSpeechEngine : SpeechEngine {
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    override suspend fun speak(text: String) = mutex.withLock {
+    override suspend fun speak(text: String, style: TtsStyle) = mutex.withLock {
         check(ready) { "tts not loaded" }
         if (lost) throw SpeechEngineLost("tts host lost")
         stopped = false
         val id = ++seq
         speaking = id
-        evaluate("nostrismTtsSpeak($id, ${JsonPrimitive(text)})")
+        evaluate("nostrismTtsSpeak($id, ${JsonPrimitive(text)}, ${speakOptions(style)})")
         while (!stopped) {
             // 1 文の合成は 1 秒もかからないが、端末が遅いときのために長めに待つ（それでも来なければエンジンが止まっている）
             val m = await(SENTENCE_TIMEOUT_MS) { it.id == id }
@@ -154,6 +159,17 @@ abstract class HostedSpeechEngine : SpeechEngine {
         private const val STOPPED = "stopped"
         /** [onHostLost] がこちらで流す知らせ（ページからは来ない）。 */
         private const val LOST = "lost"
+
+        /**
+         * [#1008] ページへ渡す話し方（ZEN-TTS の speak のオプション）。既定の値は渡さない（既定のままなら `{}`。
+         * ランタイムは渡さなければ 1.0.0 と同じ話し方になる）。トーンは 1 つだけを 100% で混ぜる。
+         */
+        internal fun speakOptions(style: TtsStyle): JsonObject = buildJsonObject {
+            val s = style.clamped()
+            if (s.tone != TtsTone.NEUTRAL) putJsonObject("emotion") { put(s.tone.id, 1) }
+            if (s.speedTenths != TtsStyle.DEFAULT.speedTenths) put("speed", s.speed)
+            if (s.pitch != TtsStyle.DEFAULT.pitch) put("pitch", s.pitch)
+        }
 
         /** ページからの知らせ（JSON）を読む。読めないものは null。 */
         internal fun parse(json: String): HostMessage? {

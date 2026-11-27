@@ -2,7 +2,8 @@
 # [#948] ZEN-TTS（https://github.com/zenryokukikai/zen-tts）のブラウザ用ランタイムを、固定したコミットから取ってきて
 # ビルドし、アプリのリソース（composeApp/src/commonMain/composeResources/files/zen-tts/）へ置く。
 #
-# - 声のモデル（重み）は入れない。アプリが設定画面から公式の配布元（同じコミット）をダウンロードする
+# - 声のモデル（重み）・読みのモデル（G2P）は入れない。アプリが設定画面から公式の配布元をダウンロードする
+#   （声は配布サーバー、G2P は全力機械の Hugging Face。composeApp の ZenTts / TtsVoice。#1008）
 # - ZEN-TTS License 1.0: 改変せずに依存として取り込み、バンドルするのは可。再配布は不可なので、
 #   取ってきたものはこのリポジトリには入れない（.gitignore）。ビルドのたびにここで取ってくる
 # - ソースは改変しない。TypeScript を JavaScript に変換（tsc）するだけ
@@ -10,7 +11,7 @@
 # 使い方: scripts/fetch-zen-tts.sh（同じコミットを取ってあれば何もしない）。Node.js（npx）と git が要る。
 set -euo pipefail
 
-COMMIT=14b404d527a3d074de8e7ef28d44b14514400a40   # v1.0.0
+COMMIT=16b12ff6a3eec71ab0bcc7054b5901f5ff3b25cc   # v1.4.0（#1008）
 TS_VERSION=7.0.2                                  # zen-tts の devDependencies（typescript ^7.0.2）
 REPO_URL=https://github.com/zenryokukikai/zen-tts.git
 
@@ -24,7 +25,7 @@ fi
 WORK="$ROOT/build/zen-tts"
 rm -rf "$WORK"
 mkdir -p "$WORK/src"
-# 重み（models/。約 120 MB）は取らない: ソース・CPU カーネル・ライセンスだけを取り出す
+# 重み（models/g2p/）は取らない: ソース・CPU カーネル・ライセンスだけを取り出す
 git -C "$WORK/src" init -q
 git -C "$WORK/src" remote add origin "$REPO_URL"
 git -C "$WORK/src" fetch -q --depth 1 --filter=blob:none origin "$COMMIT"

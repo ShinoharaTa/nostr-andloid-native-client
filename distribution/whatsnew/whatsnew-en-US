@@ -1,7 +1,11 @@
-- Read aloud new posts from people you follow (Android / iOS). Speech: ZEN-TTS
-- Block from ⋯ on posts and profiles: hides them and reports them to the developer. Blocks are public; Mute stays private
-- Reports now show "Reported"
-- Delete your account in Settings > Account (wipes this device)
-- Added a Terms of Use screen
-- Fixed gaps when scrolling back; Following now loads more at the bottom
-- DMs from people you don't follow go to Others, without notifications. Muted words apply to DMs
+- Read aloud (ZEN-TTS): pick voice, tone, speed, pitch; re-download voices
+- Block from ⋯ (public; tells the developer privately). Mute is private
+- Reports also go privately to the developer
+- Account deletion in Settings
+- Terms of Use screen
+- Fixed gaps when scrolling back
+- DMs from non-follows go to Others
+- "Super hacker" font size
+- Chat actions in ⋯; tap avatars for profiles
+- Notifications tab jumps to top; post button in the side rail
+- Pick a wallet on each zap; copy invoices

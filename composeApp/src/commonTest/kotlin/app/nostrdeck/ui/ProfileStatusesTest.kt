@@ -84,4 +84,17 @@ class ProfileStatusesTest {
         val old = status("general", "30 日より前", createdAt = now - UserStatuses.MAX_AGE_SEC - 1)
         assertTrue(profileStatusesOf(listOf(old), now).isEmpty())
     }
+
+    // ---- [#1019] ステータスの画面に入れておく「いまのステータス」----
+
+    @Test
+    fun editor_prefills_the_visible_general_status_only() {
+        val general = status("general", "作業中")
+        val music = status("music", "曲 - 歌手")
+        assertEquals(general, currentGeneralStatus(listOf(music, general), now))
+        // 消してある（最新版が空）・期限切れ・music だけ、は「無い」
+        assertEquals(null, currentGeneralStatus(listOf(general, status("general", "", createdAt = now - 10)), now))
+        assertEquals(null, currentGeneralStatus(listOf(status("general", "会議", expiration = now - 1)), now))
+        assertEquals(null, currentGeneralStatus(listOf(music), now))
+    }
 }

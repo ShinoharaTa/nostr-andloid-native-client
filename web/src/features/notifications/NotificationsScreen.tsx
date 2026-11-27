@@ -3,6 +3,7 @@ import { type ColumnSpec, defaultFilter } from "../../lib/columns";
 import { Icon } from "../../ui/icons";
 import { ScreenHeader } from "../../ui/ScreenHeader";
 import { SingleColumnPane } from "../../ui/SingleColumnPane";
+import { NOTIFICATIONS_SCREEN_SCROLL_ID } from "../deck/columnScroll";
 import { useColumnFeed } from "../deck/useColumnFeed";
 import { NotificationList } from "./NotificationList";
 import styles from "./NotificationsScreen.module.css";
@@ -41,6 +42,7 @@ export function NotificationsScreen() {
           loading={loading}
           columnId={NOTIFICATIONS_SCREEN_SPEC.id}
           onRefresh={refresh}
+          scrollId={NOTIFICATIONS_SCREEN_SCROLL_ID}
         />
       </div>
     </SingleColumnPane>

@@ -1,0 +1,174 @@
+/* 枠は ZapDialog / ConfirmDialog と同じ（560px はネイティブ AlertDialog の最大幅。余白は Lg） */
+.dialog {
+  box-sizing: border-box;
+  width: min(560px, calc(100% - var(--sp-5) * 2));
+  padding: var(--sp-4);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-display);
+  font-weight: var(--w-strong);
+}
+
+.desc {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--sp-3);
+}
+
+/* ネイティブ DeckTextField（1 行 = 角丸 Full・高さ 40dp） */
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--touch-sm);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  /* 16px 未満だと iOS Safari がフォーカス時に拡大する */
+  font-size: 16px;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.label {
+  margin: var(--sp-3) 0 var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--type-label);
+}
+
+/* 期限の選択肢（ネイティブ FlowRow、間隔 8dp）。fieldset の既定の枠・余白は消す */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--type-sub);
+  font-weight: var(--w-body);
+  cursor: pointer;
+}
+
+.choice.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: var(--w-strong);
+}
+
+.error {
+  margin: var(--sp-2) 0 0;
+  color: var(--warn);
+  font-size: var(--type-caption);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ネイティブの DeckTextButton */
+.textButton {
+  flex: none;
+  min-height: var(--touch-xs);
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--type-body);
+  font-weight: var(--w-link);
+  cursor: pointer;
+}
+
+.clear {
+  color: var(--warn);
+}
+
+@media (hover: hover) {
+  .textButton:hover {
+    background: var(--surface-3);
+  }
+}
+
+/* ネイティブの DeckButton（Text の面に Bg の文字・角丸 Full・高さ 40dp。押せないときは Surface3） */
+.primary {
+  flex: none;
+  min-height: var(--touch-sm);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--text);
+  color: var(--bg);
+  font: inherit;
+  font-size: var(--type-body);
+  font-weight: var(--w-strong);
+  cursor: pointer;
+}
+
+.primary:disabled {
+  background: var(--surface-3);
+  cursor: default;
+}
+
+/* 処理中（ネイティブ CircularProgressIndicator 18dp・線 2dp・Text2） */
+.spinner {
+  box-sizing: border-box;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-2);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

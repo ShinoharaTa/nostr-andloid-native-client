@@ -1,20 +1,14 @@
-import type { NostrEvent } from "nostr-tools/pure";
-import { publishEvent } from "../../nostr/publish";
 import { useSession } from "../../signer/session";
-import { reportTargets } from "../actions/reactions";
+import { blockNoticeText, notifyDeveloper } from "./developerNotice";
 import { setPendingBlocks, useMute } from "./muteList";
 import { removeMuteEntry, saveBlockedUser } from "./muteSync";
 
 /**
- * [#957 / #963] ブロック = ミュートリストの公開の p（saveBlockedUser）＋ 通報（NIP-56）。ミュート（非公開の p・通報なし）は
- * muteSync.ts の muteUser。ネイティブ EventRepository.kt の blockUser / saveBlock / pendingBlocks（#951・#963）の Web 版。
+ * [#957 / #963] ブロック = ミュートリストの公開の p（saveBlockedUser）。ミュート（非公開の p）は muteSync.ts の muteUser。
+ * ネイティブ EventRepository.kt の blockUser / saveBlock / pendingBlocks（#951・#963）の Web 版。
+ * [#961] ブロックでは通報（NIP-56）を送らない（Damus / Amethyst / Primal / Nostur と同じ。通報は ⋯ の「通報」から別に送る）。
+ * 開発者には暗号化した DM で知らせる（App Store 1.2。developerNotice.ts）。
  */
-
-/** 開発者のリレー。通報（ブロックの通報を含む）はいつもの送り先に加えてここにも送る（ネイティブ MODERATION_RELAY。reportTargets） */
-export const MODERATION_RELAY = "wss://relay-jp.shino3.net";
-
-/** ブロックの通報の content（ネイティブ BLOCK_REPORT_REASON） */
-export const BLOCK_REPORT_REASON = "blocked";
 
 /** saved = ミュートリストに保存できた（すでに入っていた場合も）。pending = 隠したが、まだ保存できていない（あとでやり直す） */
 export type BlockResult = "saved" | "pending";
@@ -103,34 +97,13 @@ export async function retryPendingBlocks(me: string): Promise<void> {
 }
 
 /**
- * ブロックしたことを通報（NIP-56 kind:1984、content "blocked"）で知らせる。送り先は ⋯ の通報と同じ
- * （書き込みリレー ∪ 開発者のリレー。reportTargets）。ブロックは公開の意思表示なので、届かなければ送信キューが
- * 送り直し、未送信のトーストも出す。note を渡せばその投稿を、無ければ人を通報する。
+ * ユーザーをブロックする。押したらすぐ隠し（保存待ち）、ミュートリストに公開の p だけで保存する
+ * （ミュート中なら非公開の p を外してブロックに上げる）。throw しない。
+ * [#961] 開発者には暗号化した DM で知らせる（developerNotice.ts。post = 投稿から押したときの投稿 id。結果は待たない）
  */
-export async function reportBlock(pubkey: string, note?: NostrEvent): Promise<void> {
-  await publishEvent(
-    {
-      kind: 1984,
-      content: BLOCK_REPORT_REASON,
-      tags: note
-        ? [
-            ["e", note.id, "other"],
-            ["p", note.pubkey],
-          ]
-        : [["p", pubkey, "other"]],
-    },
-    { relays: reportTargets() },
-  );
-}
-
-/**
- * ユーザーをブロックする。押したらすぐ隠し（保存待ち）、通報し、ミュートリストに公開の p だけで保存する
- * （ミュート中なら非公開の p を外してブロックに上げる）。通報はミュートリストの保存とは別に送る
- * （保存できなくても届くように）。通報の失敗はブロックの失敗にしない。throw しない。
- */
-export function blockUser(me: string, pubkey: string, note?: NostrEvent): Promise<BlockResult> {
+export function blockUser(me: string, pubkey: string, post?: string | null): Promise<BlockResult> {
   updatePendingBlocks(me, (pending) => new Set(pending).add(pubkey));
-  reportBlock(pubkey, note).catch((e) => console.warn("[block] Failed to report the block", e));
+  void notifyDeveloper(blockNoticeText(pubkey, post));
   return saveBlock(me, pubkey).then((saved) => (saved ? "saved" : "pending"));
 }
 

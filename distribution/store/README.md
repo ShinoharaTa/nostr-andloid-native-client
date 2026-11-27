@@ -169,9 +169,9 @@ How to try the app:
 
 User-generated content:
 - Terms of Use: shown before choosing a login method. Users must tap "Agree and continue". Full text: https://nostrism.shino3.net/terms.html
-- Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile.
-- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. The block is saved publicly in the user's NIP-51 mute list, and a report (NIP-56) is sent to the user's relays and to the developer's relay (relay-jp.shino3.net); if it can't be delivered, the app keeps it and sends it again until the relay accepts it. The developer reviews the reports.
-- Mute: "..." menu on every post or profile > "Mute this user". Hides their posts, notifications and direct messages too, but the entry is saved privately and no report is sent (for users who don't want the other person to know).
+- Report: "..." menu on every post > "Report" (NIP-56). Users can also be reported from the "..." menu on their profile. The report is published to the user's relays, and the developer is notified at the same time with an encrypted message (NIP-17) that only the developer can read. The developer reviews these notices.
+- Block: "..." menu on every post or profile > "Block this user". Their posts, notifications and direct messages are hidden immediately, even if the relays can't be reached. The block is saved publicly in the user's NIP-51 mute list, and the developer is notified with an encrypted message (NIP-17), so the blocked user can't see who notified the developer. No public report is published for a block (the same as other Nostr clients such as Damus and Amethyst).
+- Mute: "..." menu on every post or profile > "Mute this user". Hides their posts, notifications and direct messages too, but the entry is saved privately (for users who don't want the other person to know).
 - Users can review and switch mutes/blocks, and also mute words and hashtags, in the account menu (tap your own icon) > "Mute & block".
 - Posts marked with a content warning are collapsed until tapped.
 - Contact: tshinoharawork@gmail.com
@@ -216,4 +216,6 @@ Google Play も、アカウントを作れるアプリにアプリ内と Web の
 
 **利用者が作るコンテンツ（App Store 1.2）。**
 2026-10-30 の初回の審査で指摘された（#951）。ログインの前の利用規約の同意、ブロック（ミュートリスト＋通報を開発者のリレーへ）を足した。
+2026-11-04〜05 に、公開の通報は他のクライアント（Damus / Amethyst / Primal / Nostur）に合わせ、ブロックでは出さず、⋯ の通報も利用者のリレーにだけ送るように変えた（#961）。
+1.2 の指摘（ブロックしたら開発者にも知らせる）は、ブロックと通報のたびに開発者のアカウント（npub1l60d6h…）へ暗号化した DM（NIP-17）を送ることで満たす。NIP-44 を使えない署名者（一部の外部署名）では送れない（諦める。2026-11-05 決定）。開発者は DM の「その他」のタブ（フォローしていない人から）で受け取るので、そこを確認する。
 通報・ブロック・内容の警告の折りたたみ・連絡先の場所を審査メモで説明し、実機の画面録画（規約の同意 → 通報 → ブロック）を審査メモ欄に付ける。

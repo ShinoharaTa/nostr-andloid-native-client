@@ -20,7 +20,13 @@ const PINNED: RailPinned[] = [
 ];
 
 function renderRail(props: Partial<Parameters<typeof NavRail>[0]> = {}) {
-  const handlers = { onSelect: vi.fn(), onOpenColumn: vi.fn(), onAddColumn: vi.fn() };
+  const handlers = {
+    onSelect: vi.fn(),
+    onOpenColumn: vi.fn(),
+    onAddColumn: vi.fn(),
+    onCompose: vi.fn(),
+    onStatus: vi.fn(),
+  };
   // 自分のアイコンのメニューが画面を移るので Router の中で描く
   render(
     <MemoryRouter>
@@ -45,7 +51,7 @@ function railItems() {
   );
 }
 
-it("ブランド → ホーム → 目次 → カラム追加 → 検索 → パブリックチャット → 自分のアイコンの順（通知カラムがあれば通知は出さない）", () => {
+it("ブランド → ホーム → 目次 → カラム追加 → 検索 → パブリックチャット → ステータス → 投稿 → 自分のアイコンの順（通知カラムがあれば通知は出さない）", () => {
   renderRail();
   expect(railItems()).toEqual([
     "img:Nostrism",
@@ -56,15 +62,54 @@ it("ブランド → ホーム → 目次 → カラム追加 → 検索 → パ
     "カラム追加",
     "検索",
     "パブリックチャット",
+    "ステータスを更新",
+    "投稿",
     "アカウントのメニュー",
   ]);
   const nav = screen.getByRole("navigation", { name: "メイン" });
   expect(within(nav).getByRole("button", { name: /^リレー接続 / })).toBeInTheDocument();
 });
 
-it("通知カラムが無ければ検索・パブリックチャット・通知の順に出す", () => {
+it("通知カラムが無ければ検索・パブリックチャット・通知の順に出す（ステータスと投稿はその後ろ）", () => {
   renderRail({ pinned: PINNED.slice(0, 2), showNotifications: true });
-  expect(railItems().slice(-4)).toEqual(["検索", "パブリックチャット", "通知", "アカウントのメニュー"]);
+  expect(railItems().slice(-6)).toEqual([
+    "検索",
+    "パブリックチャット",
+    "通知",
+    "ステータスを更新",
+    "投稿",
+    "アカウントのメニュー",
+  ]);
+});
+
+it("[#1001] 投稿は接続表示の上の区切りの上。押すと onCompose", async () => {
+  const handlers = renderRail();
+  const nav = screen.getByRole("navigation", { name: "メイン" });
+  const compose = within(nav).getByRole("button", { name: "投稿" });
+  const relay = within(nav).getByRole("button", { name: /^リレー接続 / });
+  // 投稿と接続表示のあいだに区切りが 1 本だけある（同じブロックには入れない）
+  expect(compose.parentElement).not.toBe(relay.closest("div"));
+  expect(compose.compareDocumentPosition(relay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await userEvent.click(compose);
+  expect(handlers.onCompose).toHaveBeenCalledTimes(1);
+});
+
+it("[#1020] ステータスは投稿のすぐ上。押すと onStatus", async () => {
+  const handlers = renderRail();
+  const nav = screen.getByRole("navigation", { name: "メイン" });
+  const status = within(nav).getByRole("button", { name: "ステータスを更新" });
+  const compose = within(nav).getByRole("button", { name: "投稿" });
+  expect(status.nextElementSibling).toBe(compose);
+  await userEvent.click(status);
+  expect(handlers.onStatus).toHaveBeenCalledTimes(1);
+  expect(handlers.onCompose).not.toHaveBeenCalled();
+});
+
+it("[#1020] onCompose / onStatus が無ければ、投稿とステータスは出さない（右下に出す表示）", () => {
+  renderRail({ onCompose: undefined, onStatus: undefined });
+  const nav = screen.getByRole("navigation", { name: "メイン" });
+  expect(within(nav).queryByRole("button", { name: "投稿" })).toBeNull();
+  expect(within(nav).queryByRole("button", { name: "ステータスを更新" })).toBeNull();
 });
 
 it("目次の選択は aria-current=true、ホームの選択は aria-current=page", () => {

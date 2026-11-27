@@ -71,6 +71,21 @@ function toasts(): string[] {
   return useToast.getState().queue;
 }
 
+describe("[#1005] 相手のアイコン・名前", () => {
+  it("押すと相手のプロフィール（/p/npub…）へ。アイコンのリンクは読み上げ・Tab から外す", () => {
+    useDm.getState().upsertMessages([dm("m1", PEER, "やあ")]);
+    const { container } = renderWithRouter(<ConversationView peer={PEER} />);
+    expect(screen.getByText("やあ")).toBeInTheDocument();
+    const profile = `/p/${npubEncode(PEER)}`;
+    const avatars = [...container.querySelectorAll('a[aria-hidden="true"]')];
+    expect(avatars).toHaveLength(1);
+    expect(avatars[0]).toHaveAttribute("href", profile);
+    expect(avatars[0]).toHaveAttribute("tabindex", "-1");
+    // 見出しの相手のリンク（前から）と、発言の名前のリンク（#1005）
+    expect(screen.getAllByRole("link").filter((a) => a.getAttribute("href") === profile)).toHaveLength(2);
+  });
+});
+
 describe("入力欄", () => {
   it("送信で入力が空になり吹き出しが出る。送信中は入力と送信を止める。空白だけでは押せない", async () => {
     let finish: (result: DmSendResult) => void = () => {};
