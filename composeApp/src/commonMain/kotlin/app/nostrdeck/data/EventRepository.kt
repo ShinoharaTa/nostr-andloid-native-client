@@ -46,6 +46,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.nostrdeck.ui.extractMedia
 import app.nostrdeck.model.ProfileEdit
 import app.nostrdeck.model.UserStatuses
+import app.nostrdeck.model.Yo
 import app.nostrdeck.model.ChannelMessage
 import app.nostrdeck.model.ColumnKind
 import app.nostrdeck.model.ColumnRenderer
@@ -953,6 +954,7 @@ class EventRepository(
 
             // 旧アカウント依存の解決済み状態をリセット。
             follows.value = emptyList(); followsAt = 0L; ownContacts = null; myProfileAt = 0L
+            yoSentAt.value = emptyMap()   // [#1024] 前のアカウントで送った Yo を「返しました」に数えない
             // [#396] 自分のリスト（10002/10030/30015）は State・at・KV ごと空に戻す（旧アカウントの版を見せない）。
             resetOwnLists()
             wiping = false
@@ -1750,7 +1752,8 @@ class EventRepository(
             //（リプライ/メンションは本文ノートとして既に流れるため重複させない）。
             val notices = notifs.filter { n ->
                 when (n.kind) {
-                    NotificationKind.REACTION -> true
+                    // [#1024] Yo は相手のプロフィールへのリアクション。リアクションと同じく出す。
+                    NotificationKind.REACTION, NotificationKind.YO -> true
                     // リポスト/返信はフォロー中の人のものだと本文側で展開表示され重複するので、フォロー外のみ。
                     NotificationKind.REPOST -> n.actor.pubkey !in followSet
                     NotificationKind.REPLY, NotificationKind.MENTION -> n.actor.pubkey !in followSet
@@ -1782,12 +1785,21 @@ class EventRepository(
             q.myReactionsAll(me).asFlow().mapToList(Dispatchers.Default), profilesFlow, noteMetaFlow,
         ) { rows, profiles, meta ->
             val byPk = profiles.associateBy { it.pubkey }
+            val now = currentUnixTime()
             rows.mapNotNull { r ->
+                val rowTags = parseTags(r.tags_json)
+                // [#1024] 自分が送った Yo。対象は相手のプロフィール（kind:0）で投稿ではないので「〇〇 さんに Yo」の行にする。
+                Yo.recipientOf(NostrEvent(r.id, me, 7, r.created_at, r.content, rowTags), now)?.let { to ->
+                    if (to !in byPk) requestProfile(to)
+                    return@mapNotNull FeedEntry.MyYo(r.id, profileFor(to, byPk), r.created_at)
+                }
+                // プロフィール（kind:0）へのリアクションは、対象を投稿として出せない（event テーブルに無い）。取りにも行かない。
+                if (Yo.reactsToProfile(rowTags)) return@mapNotNull null
                 val targetId = r.target_id ?: return@mapNotNull null
                 val targetRow = q.eventById(targetId).executeAsOneOrNull()
                 if (targetRow == null) { requestEvent(targetId); return@mapNotNull null }  // 未取得なら取りに行く
                 val target = applyMeta(withQuoteAndReply(toNoteUi(targetRow, byPk[targetRow.pubkey]), targetRow, byPk), meta)
-                FeedEntry.MyReaction(normalizeReaction(r.content, parseTags(r.tags_json)), target, r.created_at)
+                FeedEntry.MyReaction(normalizeReaction(r.content, rowTags), target, r.created_at)
             }
         }.flowOn(Dispatchers.Default)
     }
@@ -2183,16 +2195,44 @@ class EventRepository(
                 profilesFlow,
                 noteMetaFlow,  // [#403] 自分の♡/リポスト状態。無いと通知内の投稿でボタン押下が反映されない
                 dmConversationsCache,  // [#419] 未読のある DM 会話を1件ずつ混ぜる
-            ) { rows, profiles, meta, convos ->
+                // [#1024] 自分が送った Yo（「返しました」の判定）。event テーブルが変わるたびに流れてくるので、中身が同じなら止める
+                //（止めないと、取り込みのたびに通知を 2 回組み直す）。
+                q.yoEventsBy(me).asFlow().mapToList(Dispatchers.Default).distinctUntilChanged(),
+            ) { rows, profiles, meta, convos, myYos ->
                 val byPubkey = profiles.associateBy { it.pubkey }
-                (rows.map { toNotification(it, byPubkey, meta) } + dmNotices(convos.orEmpty()))
-                    .sortedByDescending { it.createdAt }
+                val now = currentUnixTime()
+                // [#1024] 同じ人からの Yo は 1 行にまとめ、こちらがそれ以降に Yo を送っていれば「返しました」にする。
+                val notices = Yo.collapse(rows.map { toNotification(it, byPubkey, meta, me, now) }, myLatestYoTo(myYos, now))
+                (notices + dmNotices(convos.orEmpty())).sortedByDescending { it.createdAt }
             }.flowOn(Dispatchers.Default)
         }
 
-    /** 自分宛イベント1件を通知行へ整形。種別は kind と #e の有無で判定（NIP-10/18/25）。 */
-    private fun toNotification(row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>, meta: NoteMeta): NotificationUi {
+    /** [#1024] 自分が送った Yo（[Yo.recipientOf] を満たすもの）の、相手ごとのいちばん新しい時刻。 */
+    private fun myLatestYoTo(rows: List<Event>, now: Long): Map<String, Long> {
+        val latest = mutableMapOf<String, Long>()
+        rows.forEach { r ->
+            val to = Yo.recipientOf(r.toNostrEvent(), now) ?: return@forEach
+            if (r.created_at > (latest[to] ?: Long.MIN_VALUE)) latest[to] = r.created_at
+        }
+        return latest
+    }
+
+    private fun Event.toNostrEvent(): NostrEvent =
+        NostrEvent(id, pubkey, kind.toInt(), created_at, content, parseTags(tags_json), sig)
+
+    /**
+     * 自分宛イベント1件を通知行へ整形。種別は kind と #e の有無で判定（NIP-10/18/25）。
+     * [#1024] [me] 宛ての Yo は YO の行にする（[now] は Yo の判定に使う時計）。
+     */
+    private fun toNotification(
+        row: Event, byPubkey: Map<String, app.nostrdeck.db.Profile>, meta: NoteMeta, me: String, now: Long,
+    ): NotificationUi {
         val tags = parseTags(row.tags_json)
+        // [#1024] Yo（nostr-yo）。対象は自分のプロフィールなので、引用カードも対象の解決も要らない。
+        // 送り主が指定した絵文字の画像 URL は持たない（取りに行かない）。
+        if (row.kind.toInt() == Yo.KIND && Yo.recipientOf(row.toNostrEvent(), now) == me) {
+            return NotificationUi(row.id, NotificationKind.YO, profileFor(row.pubkey, byPubkey), row.created_at, targetIsProfile = true)
+        }
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
         // 9735(Zap 受領) の「相手」は receipt 発行者(LNURLサーバ)ではなく Zap 送信者(P タグ/描述)。
@@ -2203,7 +2243,11 @@ class EventRepository(
         // 対象イベント本体（抜粋＋種別判定に使う）。
         // [#901] 対象が自分のリアクション（kind:7）なら、その e タグを辿った元の投稿（P）を本体にし、
         // リアクションの絵文字は [NotificationUi.targetReaction] に分けて持つ（kind:7 を投稿として描かない）。
-        val rawTarget = target?.let { q.eventById(it).executeAsOneOrNull() }
+        // [#1024] 対象が自分のプロフィール（kind:0）のリアクションは、対象を出さない。自分の kind:0 は発行のとき event テーブルに
+        // 入るので、そのままだと引用カードにプロフィールの JSON が出てしまう。
+        val found = target?.let { q.eventById(it).executeAsOneOrNull() }
+        val targetIsProfile = row.kind.toInt() == 7 && (found?.kind?.toInt() == 0 || (found == null && Yo.reactsToProfile(tags)))
+        val rawTarget = found?.takeUnless { targetIsProfile }
         val targetReaction = rawTarget?.takeIf { it.kind.toInt() == 7 }?.let { normalizeReaction(it.content, parseTags(it.tags_json)) }
         val targetEvent = if (rawTarget != null && rawTarget.kind.toInt() == 7) {
             val postId = parseTags(rawTarget.tags_json).lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
@@ -2251,6 +2295,7 @@ class EventRepository(
                     targetNoteId = target, targetSnippet = snippet, targetChannelId = channelId,
                     targetAuthor = targetAuthor, note = selfNote, targetNote = targetNote,
                     targetReaction = targetReaction,
+                    targetIsProfile = targetIsProfile,   // [#1024]
                     // [#875] リアクションそのもの（kind:7）。行からリアクション・リポストする対象。押した状態も載せる。
                     reactionNote = applyMeta(toNoteUi(row, byPubkey[row.pubkey]), meta))
             }
@@ -2787,6 +2832,119 @@ class EventRepository(
     data class ReactionSent(val emoji: String, val made: Boolean = false)
     private val reactionSent = MutableSharedFlow<ReactionSent>(extraBufferCapacity = 4)
     fun reactionSentFlow(): SharedFlow<ReactionSent> = reactionSent.asSharedFlow()
+
+    // ---- [#1024] Yo（nostr-yo）を送る・返す ----
+
+    /** [#1024] Yo を送った結果。App がトーストで知らせる（通知の行はスクロールで消えるので、行では待たない）。 */
+    enum class YoResult {
+        /** 署名して送信待ちに積んだ（ほかのリアクションと同じ。受理できなければ未送信の再送に載る） */
+        SENT,
+        /** 相手の kind:0 が見つからなかった（Yo の対象が無いので送らない） */
+        NO_PROFILE,
+        /** 署名できなかった・ログインしていない など */
+        FAILED,
+    }
+    private val yoResults = MutableSharedFlow<YoResult>(extraBufferCapacity = 4)
+    fun yoResultFlow(): SharedFlow<YoResult> = yoResults.asSharedFlow()
+
+    /** [#1024] いま Yo を送っている相手（ボタンを押せなくする）。 */
+    private val yoSending = MutableStateFlow<Set<String>>(emptySet())
+    fun yoSendingFlow(): StateFlow<Set<String>> = yoSending.asStateFlow()
+
+    /**
+     * [#1024] このセッションで Yo を送った相手 → その Yo の `created_at`。
+     * 「返しました」は通知の組み直し（DB の変化 → 最大 200 行の整形）を待って付くので、送った直後は間が空く。その間に
+     * 「Yo を返す」がまた押せると二重に返せてしまう。発行できた時点でここに入れ、ボタンはこれも見て「返しました」にする。
+     */
+    private val yoSentAt = MutableStateFlow<Map<String, Long>>(emptyMap())
+    fun yoSentAtFlow(): StateFlow<Map<String, Long>> = yoSentAt.asStateFlow()
+
+    /**
+     * [#1024] [recipient] に Yo を送る（通知の「Yo を返す」・プロフィールの「Yo を送る」）。押したときだけ送る（自動では返さない）。
+     * 処理は Repository のスコープで続け、結果は [yoResultFlow] に流す。同じ相手へ送っている間の 2 回目は無視する。
+     */
+    fun sendYo(recipient: String) {
+        var started = false
+        yoSending.update { started = recipient !in it; if (started) it + recipient else it }
+        if (!started) return
+        scope.launch {
+            val result = try {
+                sendYoNow(recipient)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                YoResult.FAILED
+            } finally {
+                yoSending.update { it - recipient }
+            }
+            yoResults.emit(result)
+        }
+    }
+
+    /**
+     * [#1024] 相手の最新の kind:0 を取りに行き、それへのリアクションとして Yo を発行する（SPEC: 対象は「署名の通る最新の kind:0」）。
+     * 手元の DB は kind:0 を profile の表に展開して持ち、イベントの id を持っていないので、送るたびに取り直す。
+     */
+    internal suspend fun sendYoNow(recipient: String, fetchTimeoutMs: Long = Yo.FETCH_TIMEOUT_MS): YoResult {
+        val me = myPubkey ?: return YoResult.FAILED
+        if (recipient == me) return YoResult.FAILED
+        val (profile, seenOn) = fetchLatestProfileEvent(recipient, fetchTimeoutMs) ?: return YoResult.NO_PROFILE
+        // 取りに行っている間（数秒）にログアウト・アカウントの切り替えがあったら送らない（別の鍵で署名しない）。
+        if (myPubkey != me) return YoResult.FAILED
+        publishYo(recipient, profile.id, seenOn)
+        return YoResult.SENT
+    }
+
+    /**
+     * [#1024] Yo を署名して発行する。ほかのリアクションと同じ経路（[publishSigned]: DB に入れ、送信待ちに積む。`client` タグも付く）。
+     *  - リレーヒントは、対象の kind:0 を受け取ったリレー（[seenOn]。公開のリレーのときだけ）。無ければ相手の書き込みリレー
+     *  - `created_at` は、その人から届いているいちばん新しい Yo より前にしない（[Yo.replyCreatedAt]）。相手の時計が進んでいる
+     *    ときだけ未来の時刻になる（最大 10 分）。未来の時刻を受け付けないリレーでは、未送信の再送に回る
+     */
+    internal suspend fun publishYo(recipient: String, profileEventId: String, seenOn: String? = null): NostrEvent {
+        val me = myPubkey
+        val now = currentUnixTime()
+        val receivedAt = withContext(Dispatchers.Default) {
+            q.yoEventsBy(recipient).executeAsList().firstOrNull { Yo.recipientOf(it.toNostrEvent(), now) == me }?.created_at
+        }
+        val seenHint = seenOn?.let { normalizeRelayUrl(it) }?.takeIf { RelayHints.isPublic(it) }
+        val hint = seenHint ?: withRelayHints(listOf(listOf("p", recipient))).first().getOrNull(2).orEmpty()
+        val signed = publishSigned(Yo.unsigned(recipient, profileEventId, hint, Yo.replyCreatedAt(now, receivedAt)))
+        yoSentAt.update { it + (recipient to signed.createdAt) }
+        return signed
+    }
+
+    /**
+     * [#1024] [pubkey] の最新の kind:0（署名を確かめたもの）と、それを届けたリレー。見つからなければ null。
+     * 送り先は 自分の読み込みリレー ∪ インデクサ ∪ 相手の書き込みリレー（手元に NIP-65 があれば）。
+     * 1 件届いたら [Yo.FETCH_SETTLE_MS] だけ他のリレーを待ち、全リレーの EOSE が揃うか [timeoutMs] で打ち切る。
+     * 届いた版は通常の取り込み経路にも流れる（プロフィールの表も新しくなる）。
+     */
+    private suspend fun fetchLatestProfileEvent(pubkey: String, timeoutMs: Long): Pair<NostrEvent, String?>? {
+        val subId = "yo_profile_${pubkey.take(8)}_${Random.nextInt(1_000_000)}"
+        val collector = OwnRefetchCollector()
+        val mine = withContext(Dispatchers.Default) { q.allRelays().executeAsList().filter { it.read != 0L }.map { it.url } }
+        val theirs = withContext(relayDispatcher) { nip65WriteByAuthor[pubkey].orEmpty().take(YO_AUTHOR_RELAYS) }
+        val targets = (mine + INDEXER_RELAYS + theirs).map { normalizeRelayUrl(it) }.filter { it.isNotBlank() }.toSet()
+        ownRefetches.update { it + (subId to collector) }
+        try {
+            subscribeTargeted(subId, targets, Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 1))
+            withTimeoutOrNull(timeoutMs) {
+                // 「1 件届いた」は、その人の kind:0 の形をしたものだけ数える（関係ないイベントを返すリレーで早く打ち切らない）
+                combine(collector.events, collector.eose) { events, eose ->
+                    events.any { it.kind == 0 && it.pubkey == pubkey } to (eose.size >= targets.size)
+                }.first { (got, done) -> got || done }
+                withTimeoutOrNull(Yo.FETCH_SETTLE_MS) { collector.eose.first { it.size >= targets.size } }
+            }
+        } finally {
+            ownRefetches.update { it - subId }
+            scheduleTransientCleanup(subId, delayMs = 3_000L)   // REQ と、インデクサなどへの一時接続を閉じる
+        }
+        val latest = withContext(Dispatchers.Default) {
+            Yo.latestProfile(collector.events.value, pubkey) { EventCrypto.verify(it) }
+        } ?: return null
+        return latest to collector.seenOn.value[latest.id]
+    }
 
     /**
      * [#775] ピッカーの「絵文字を作る」で作った絵文字でリアクションする（NIP-25 / NIP-30: content `:shortcode:` + emoji タグ）。
@@ -3852,7 +4010,10 @@ class EventRepository(
                     )
                 }
                 // [#478] 取り直しの一時 REQ は結果を直接集める（取り込み経路にも流すので手元の状態も追いつく）。
-                ownRefetches.value[msg.subscriptionId]?.events?.update { it + msg.event }
+                ownRefetches.value[msg.subscriptionId]?.let { c ->
+                    c.seenOn.update { if (msg.event.id in it) it else it + (msg.event.id to client.url) }   // [#1024]
+                    c.events.update { it + msg.event }
+                }
             }
             // [NIP-42][#887] AUTH は relayDispatcher(直列)で処理し、同じチャレンジへの重複応答を防ぐ。
             is RelayMessage.Auth -> scope.launch(relayDispatcher) {
@@ -3891,6 +4052,8 @@ class EventRepository(
     private class OwnRefetchCollector {
         val events = MutableStateFlow<List<NostrEvent>>(emptyList())
         val eose = MutableStateFlow<Set<String>>(emptySet())
+        /** [#1024] イベント id → 最初に届けたリレー（Yo のリレーヒントに使う） */
+        val seenOn = MutableStateFlow<Map<String, String>>(emptyMap())
     }
     private val ownRefetches = MutableStateFlow<Map<String, OwnRefetchCollector>>(emptyMap())
 
@@ -4026,7 +4189,10 @@ class EventRepository(
                 q.insertEvent(e.id, e.pubkey, e.kind.toLong(), e.createdAt, content, tagsToJson(e.tags), e.sig)
                 indexTags(e)
                 // [M16] 自分のリアクションは宛先ノートも TL に出すため、対象イベントの取得を促す。
-                if (e.pubkey == myPubkey) e.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)?.let { requestEvent(it) }
+                // [#1024] 対象がプロフィール（kind:0。Yo など）なら取りに行かない（event テーブルに入らないので、出せない）。
+                if (e.pubkey == myPubkey && !Yo.reactsToProfile(e.tags)) {
+                    e.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)?.let { requestEvent(it) }
+                }
             }
             // [M8-repost] NIP-18 リポスト(kind:6) / 汎用リポスト(kind:16)。
             //   本体を保存し q/e を索引、リポスト主の profile を要求。content に元イベント JSON が
@@ -7048,6 +7214,9 @@ class EventRepository(
 
         /** 引用/返信ヒント + インデクサで一時接続するリレーの上限（接続数の暴発防止）。 */
         const val HINT_RELAY_CAP = 16
+
+        /** [#1024] Yo の対象（相手の kind:0）を取りに行くとき、相手の書き込みリレーから足す本数の上限。 */
+        const val YO_AUTHOR_RELAYS = 3
 
         /** [#411] 受信元リレーの記録（event id / 著者）を保持する上限。画面に出ている分が入れば足りる。 */
         const val SEEN_ON_CAP = 4096

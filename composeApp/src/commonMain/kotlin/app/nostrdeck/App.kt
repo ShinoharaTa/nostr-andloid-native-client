@@ -11,6 +11,9 @@ import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplica
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
 import nostr_deck_client.composeapp.generated.resources.blocked_toast
 import nostr_deck_client.composeapp.generated.resources.block_pending_toast
+import nostr_deck_client.composeapp.generated.resources.yo_failed
+import nostr_deck_client.composeapp.generated.resources.yo_no_profile
+import nostr_deck_client.composeapp.generated.resources.yo_sent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -149,6 +152,19 @@ fun App(
                 val r = nostr_deck_client.composeapp.generated.resources.Res.string
                 toast(app.nostrdeck.i18n.getString(
                     if (result == app.nostrdeck.data.EventRepository.BlockResult.SAVED) r.blocked_toast else r.block_pending_toast,
+                ))
+            }
+        }
+        // [#1024] Yo を送った結果を知らせる（通知の行はスクロールで消え、プロフィールのメニューは閉じているので、ここで出す）。
+        LaunchedEffect(repository) {
+            repository?.yoResultFlow()?.collect { result ->
+                val r = nostr_deck_client.composeapp.generated.resources.Res.string
+                toast(app.nostrdeck.i18n.getString(
+                    when (result) {
+                        app.nostrdeck.data.EventRepository.YoResult.SENT -> r.yo_sent
+                        app.nostrdeck.data.EventRepository.YoResult.NO_PROFILE -> r.yo_no_profile
+                        app.nostrdeck.data.EventRepository.YoResult.FAILED -> r.yo_failed
+                    },
                 ))
             }
         }

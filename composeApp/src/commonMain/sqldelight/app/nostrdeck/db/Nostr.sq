@@ -582,6 +582,11 @@ WHERE e.kind = 7 AND e.pubkey = ?
   AND et.rowid = (SELECT MAX(et2.rowid) FROM event_tag et2 WHERE et2.event_id = e.id AND et2.tag = 'e')
 ORDER BY e.created_at DESC LIMIT 100;
 
+-- [#1024] ある人が送った `:yo:` のリアクション（Yo の候補。新しい順）。Yo かどうかは Kotlin 側（Yo.recipientOf）で決める。
+-- 自分が送った Yo（返したか・「〇〇 さんに Yo」）と、相手から届いた Yo の時刻を引くのに使う。
+yoEventsBy:
+SELECT * FROM event WHERE kind = 7 AND pubkey = ? AND content = ':yo:' ORDER BY created_at DESC LIMIT 200;
+
 -- 自分が各ノートに付けたリアクションの内容（絵文字表示用）。note_id→content/tags。
 myReactionsForNotes:
 SELECT et.value AS note_id, e.content, e.tags_json FROM event e

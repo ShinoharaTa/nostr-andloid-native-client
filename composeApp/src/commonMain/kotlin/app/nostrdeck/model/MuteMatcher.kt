@@ -71,6 +71,9 @@ class MuteMatcher(
     /** 通知がミュート対象か（相手＝actor がミュート中ユーザー）。 */
     fun muted(notif: NotificationUi): Boolean = !isEmpty && notif.actor.pubkey in users
 
+    /** [#1024] その人をミュート・ブロックしているか（自分が送った Yo の行のように、投稿の無い行に使う）。 */
+    fun mutedUser(pubkey: String): Boolean = !isEmpty && pubkey in users
+
     /**
      * [#971] DM の本文がミュートワードに該当するか（送り主のミュート・ブロックは会話ごと隠すので別で見る）。
      * 自分が送った DM には使わない（呼び出し側で除く）。Web の isDmTextMuted と同じ。

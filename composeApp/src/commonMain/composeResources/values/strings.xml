@@ -232,6 +232,13 @@
     <string name="notif_repost">Reposts</string>
     <string name="notif_dm_received">Sent you a message</string>
     <string name="notif_your_reaction">Your reaction</string>
+    <string name="notif_reaction_to_profile">Reaction to your profile</string>
+    <string name="yo_back">Yo back</string>
+    <string name="yo_backed">Yo sent back</string>
+    <string name="yo_send">Send Yo</string>
+    <string name="yo_sent">Yo sent</string>
+    <string name="yo_no_profile">Couldn’t find their profile, so the Yo wasn’t sent</string>
+    <string name="yo_failed">Couldn’t send the Yo</string>
     <string name="notif_dm_received_n">Sent you %1$d messages</string>
     <string name="col_pin">Pin</string>
     <string name="col_unpin">Unpin</string>
@@ -712,6 +719,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="feed_empty">No posts</string>
     <string name="feed_loading_older">Loading older posts…</string>
     <string name="feed_you_reacted">You reacted</string>
+    <string name="feed_you_yo_fmt">Yo to %1$s</string>
     <string name="quality_low">Low</string>
     <string name="quality_mid">Medium</string>
     <string name="quality_high">High</string>
