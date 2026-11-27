@@ -1,18 +1,16 @@
-import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publishEvent } from "../../nostr/publish";
 import { useSession } from "../../signer/session";
-import { reportTargets } from "../actions/reactions";
 import {
-  BLOCK_REPORT_REASON,
   blockUser,
   loadPendingBlocks,
-  MODERATION_RELAY,
   removePendingBlock,
   resetBlocksForTest,
   retryPendingBlocks,
   unblockUser,
 } from "./block";
+import { blockNoticeText, notifyDeveloper } from "./developerNotice";
 import { EMPTY_MUTE_LIST, setMuteList, setPendingBlocks, useMute, userMuteStateOf } from "./muteList";
 import { MuteListError, removeMuteEntry, saveBlockedUser } from "./muteSync";
 
@@ -23,6 +21,12 @@ vi.mock("../../nostr/publish", async (importOriginal) => ({
 }));
 
 // ミュートリストの取り直し・発行（公開の p だけにする等）は muteSync.test.ts。ここでは結果だけ差し替える
+// [#961] 開発者への知らせ（暗号化した DM）は developerNotice.test.ts。ここは呼ばれることだけ見る
+vi.mock("./developerNotice", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./developerNotice")>()),
+  notifyDeveloper: vi.fn(async () => {}),
+}));
+
 vi.mock("./muteSync", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./muteSync")>()),
   saveBlockedUser: vi.fn(async () => "done"),
@@ -42,6 +46,7 @@ function storedPending(account = me): string[] {
 }
 
 beforeEach(() => {
+  vi.mocked(notifyDeveloper).mockClear();
   vi.mocked(publishEvent).mockReset();
   vi.mocked(publishEvent).mockResolvedValue({} as never);
   vi.mocked(saveBlockedUser).mockReset();
@@ -59,43 +64,21 @@ afterEach(() => {
   useSession.setState({ status: "loading", method: null, pubkey: null });
 });
 
-describe("通報（#963: ⋯ の通報と同じ送り先）", () => {
-  it("送り先は書き込みリレー ∪ 開発者のリレー（reportTargets）", () => {
-    expect(reportTargets()).toContain(MODERATION_RELAY);
-  });
-
-  it("投稿から: kind:1984・content blocked・e（other）と p。送り先は reportTargets（未送信なら知らせる）", async () => {
-    const note = finalizeEvent({ kind: 1, created_at: 1, tags: [], content: "x" }, generateSecretKey());
-    await blockUser(me, note.pubkey, note);
-    expect(vi.mocked(publishEvent).mock.calls).toEqual([
-      [
-        {
-          kind: 1984,
-          content: BLOCK_REPORT_REASON,
-          tags: [
-            ["e", note.id, "other"],
-            ["p", note.pubkey],
-          ],
-        },
-        { relays: reportTargets() },
-      ],
-    ]);
-    expect(BLOCK_REPORT_REASON).toBe("blocked");
-  });
-
-  it("プロフィールから（投稿なし）: p に other", async () => {
-    await blockUser(me, BOB);
-    expect(vi.mocked(publishEvent).mock.calls).toEqual([
-      [{ kind: 1984, content: "blocked", tags: [["p", BOB, "other"]] }, { relays: reportTargets() }],
-    ]);
-  });
-
-  it("通報に失敗してもブロックは失敗にしない", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.mocked(publishEvent).mockRejectedValue(new Error("no signer"));
+describe("[#961] ブロックでは通報しない", () => {
+  it("kind:1984 を発行せず、ミュートリストへの保存だけをする", async () => {
     expect(await blockUser(me, BOB)).toBe("saved");
-    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
-    warn.mockRestore();
+    expect(vi.mocked(saveBlockedUser)).toHaveBeenCalledWith(me, BOB);
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
+  });
+
+  it("開発者には暗号化した DM で知らせる（投稿から押したら投稿も。保存できなくても知らせる）", async () => {
+    const post = "cd".repeat(32);
+    expect(await blockUser(me, BOB, post)).toBe("saved");
+    expect(notifyDeveloper).toHaveBeenCalledWith(blockNoticeText(BOB, post));
+    vi.mocked(saveBlockedUser).mockRejectedValueOnce(new Error("offline"));
+    await blockUser(me, CAROL);
+    expect(notifyDeveloper).toHaveBeenLastCalledWith(blockNoticeText(CAROL));
+    expect(vi.mocked(publishEvent)).not.toHaveBeenCalled();
   });
 });
 

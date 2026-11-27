@@ -37,6 +37,21 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>lightning</string>
+		<string>strike</string>
+		<string>muun</string>
+		<string>bluewallet</string>
+		<string>walletofsatoshi</string>
+		<string>zebedee</string>
+		<string>zeusln</string>
+		<string>phoenix</string>
+		<string>breez</string>
+		<string>blink</string>
+		<string>river</string>
+		<string>alby</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

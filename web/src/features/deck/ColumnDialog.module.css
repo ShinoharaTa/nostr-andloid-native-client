@@ -147,36 +147,6 @@
   font-size: var(--type-caption);
 }
 
-/* ピン留め・最近使ったタグのチップ（#536） */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--touch-xs);
-  padding: 0 var(--sp-3);
-  border: 0;
-  border-radius: var(--r-full);
-  background: var(--surface-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--type-label);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .chip:hover {
-    background: var(--surface-3);
-  }
-}
-
 .caption {
   color: var(--text-3);
   font-size: var(--type-label);

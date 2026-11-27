@@ -609,16 +609,21 @@ function ReplyButton({ onClick }: { onClick(): void }) {
   );
 }
 
+/** [#1005] 押すとプロフィール（パブリックチャットと同じ。読み上げ・Tab は名前のリンクだけ） */
 function SenderAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
   const picture = pictureOf(profile);
   return (
-    <span className={styles.avatar}>
+    <Link className={styles.avatar} to={hrefForProfile(pubkey)} tabIndex={-1} aria-hidden="true">
       <Avatar key={picture} url={picture} size="md" seed={displayName(profile, pubkey)} pubkey={pubkey} />
-    </span>
+    </Link>
   );
 }
 
 function SenderName({ pubkey }: { pubkey: string }) {
-  return <span className={styles.sender}>{displayName(useProfile(pubkey), pubkey)}</span>;
+  return (
+    <Link className={styles.sender} to={hrefForProfile(pubkey)}>
+      {displayName(useProfile(pubkey), pubkey)}
+    </Link>
+  );
 }

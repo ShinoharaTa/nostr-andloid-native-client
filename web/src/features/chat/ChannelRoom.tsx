@@ -9,8 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router";
 import { t, useT } from "../../i18n";
-import { oneLine } from "../../lib/content/labels";
+import { hrefForProfile, oneLine } from "../../lib/content/labels";
 import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { extractMedia } from "../../lib/media";
 import { timeLabel } from "../../lib/time";
@@ -20,9 +21,7 @@ import { useSession } from "../../signer/session";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { EventJsonDialog } from "../../ui/EventJsonDialog";
 import {
-  AddReactionIcon,
   ArrowBackIcon,
-  BoltIcon,
   CloseIcon,
   FavoriteBorderIcon,
   FavoriteIcon,
@@ -44,6 +43,7 @@ import {
   publishReaction,
   reactWithDefault,
   reportNote,
+  requestDelete,
   useIsReacted,
 } from "../actions/reactions";
 import { registerColumnScroll } from "../deck/columnScroll";
@@ -333,6 +333,7 @@ function MessageRow({
   const media = extractMedia(message);
   const hasMedia = media.images.length + media.videos.length + media.youtube.length > 0;
   const unsent = useIsUnsent(message.id);
+  const profileHref = hrefForProfile(message.pubkey);
   return (
     <article
       className={styles.message}
@@ -341,14 +342,19 @@ function MessageRow({
       data-highlight={highlighted || undefined}
     >
       <span className={styles.avatarSlot}>
+        {/* [#1005] アイコン・名前を押すとプロフィール（タイムライン NoteItem と同じ。読み上げ・Tab は名前のリンクだけ） */}
         {!continuation && (
-          <Avatar key={picture} url={picture} size="md" seed={name} pubkey={message.pubkey} />
+          <Link className={styles.avatarLink} to={profileHref} tabIndex={-1} aria-hidden="true">
+            <Avatar key={picture} url={picture} size="md" seed={name} pubkey={message.pubkey} />
+          </Link>
         )}
       </span>
       <div className={styles.main}>
         {!continuation && (
           <div className={styles.meta}>
-            <span className={styles.name}>{name}</span>
+            <Link className={styles.name} to={profileHref}>
+              {name}
+            </Link>
             <span className={styles.time}>{timeLabel(message.created_at, now, timeDisplay)}</span>
           </div>
         )}
@@ -458,9 +464,12 @@ function warn(message: string) {
 }
 
 /**
- * 吹き出しの横の常設アクション（ネイティブ MessageActions）: リプライ → 既定リアクション → 絵文字 → ⚡ → ⋯
- * （テキストをコピー・このユーザーをミュート / ブロック（#963）・通報、開発者モード中は末尾に「イベントJSONを表示」。CH3）。
- * [#538] ⚡ は発言者の kind:0 に lud16 があるときだけ。
+ * 吹き出しの横の ⋯（ネイティブ MessageMenu）。[#989] 以前は横にリプライ・既定リアクション・絵文字・⚡ も常設していて、
+ * 狭いカラムや大きい表示ではそのぶん吹き出しが数文字の幅まで細くなっていたので、すべて ⋯ のメニューに入れた。
+ * 並び: リプライ → リアクション（既定。押してあれば取り消し）→ 絵文字でリアクション → Zap →
+ * テキストをコピー・このユーザーをミュート / ブロック（#963）・通報、開発者モード中は末尾に「イベントJSONを表示」（CH3）。
+ * [#538] Zap は発言者の kind:0 に lud16 があるときだけ。
+ * [#1016] 自分の kind:42 は「削除をリクエスト」（ネイティブ #974。投稿の ⋯ と同じ確認・トースト・NIP-09 kind:5）。
  */
 function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine: boolean; onReply(): void }) {
   const t = useT();
@@ -468,24 +477,22 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
   const author = useProfile(message.pubkey);
   const lud16 = typeof author?.lud16 === "string" ? author.lud16.trim() : "";
   const content = useDefaultReaction((s) => s.content);
-  const isStar = content === "⭐" || content === "★";
   const reacted = useIsReacted(message.id);
   const muteState = useUserMuteState(message.pubkey);
   const developerMode = useDeveloperMode((s) => s.enabled);
   const [dialog, setDialog] = useState<
-    "picker" | "unreact" | "mute" | "block" | "report" | "zap" | "json" | null
+    "picker" | "unreact" | "mute" | "block" | "report" | "delete" | "zap" | "json" | null
   >(null);
   // [#537] ウォレット接続（NWC）済みなら Zap ダイアログの受け口へアプリ内送金を渡す
   const walletConnected = useNwc((s) => s.connection !== null);
-  const Glyph = isStar ? (reacted ? StarIcon : StarBorderIcon) : reacted ? FavoriteIcon : FavoriteBorderIcon;
 
   function mute(action: "mute" | "unmute" | "block" | "unblock") {
     if (!me) return;
     const pk = message.pubkey;
     switch (action) {
       case "block":
-        // [#963] ブロック（すぐ隠し、通報し、ミュートリストに公開で保存する。保存できなくても失敗にはしない）
-        void blockUser(me, pk, message).then((result) =>
+        // [#963] ブロック（すぐ隠し、ミュートリストに公開で保存する。保存できなくても失敗にはしない。#961 通報は送らない）
+        void blockUser(me, pk, message.id).then((result) =>
           showToast(result === "saved" ? t("blocked_toast") : t("block_pending_toast")),
         );
         return;
@@ -510,9 +517,41 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
     }
   }
 
+  // 既定リアクションは投稿の ♡ ボタン（DefaultReactionButton）と同じく、⭐ / ★ なら ☆、それ以外は ♡ を右端に添える
+  // （カスタム絵文字でもショートコードを文言に出さない）。押してあれば塗りつぶして「取り消す」にする。
+  const isStar = content === "⭐" || content === "★";
+  const Glyph = isStar ? (reacted ? StarIcon : StarBorderIcon) : reacted ? FavoriteIcon : FavoriteBorderIcon;
+  const glyph = (
+    <span className={styles.menuGlyph} data-shape={isStar ? "star" : "heart"} data-on={reacted || undefined}>
+      <Glyph />
+    </span>
+  );
   const entries: MenuEntry[] = [
-    { type: "item", label: t("note_copy_text"), onSelect: () => void copyText(plainTextOf(message)) },
+    { type: "item", label: t("chat_reply"), onSelect: onReply },
+    reacted
+      ? { type: "item", label: t("web_unreact"), trailing: glyph, onSelect: () => setDialog("unreact") }
+      : {
+          type: "item",
+          label: t("section_reaction"),
+          trailing: glyph,
+          onSelect: () => void reactWithDefault(message).catch(warn("Failed to react")),
+        },
+    { type: "item", label: t("web_emoji_reaction"), onSelect: () => setDialog("picker") },
   ];
+  if (lud16 !== "") entries.push({ type: "item", label: "Zap", onSelect: () => setDialog("zap") });
+  entries.push(
+    { type: "separator" },
+    { type: "item", label: t("note_copy_text"), onSelect: () => void copyText(plainTextOf(message)) },
+  );
+  // [#1016] 削除リクエストは自分のパブリックチャット発言（kind:42）だけ（DM は署名済みイベントではないので対象外）
+  if (mine && me !== null && message.kind === 42) {
+    entries.push({
+      type: "item",
+      label: t("note_request_delete"),
+      onSelect: () => setDialog("delete"),
+      tone: "danger",
+    });
+  }
   if (!mine) {
     entries.push(
       ...muteMenuEntries(muteState, {
@@ -533,47 +572,6 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
 
   return (
     <div className={styles.actions}>
-      <button
-        type="button"
-        className={styles.action}
-        aria-label={t("chat_reply")}
-        title={t("chat_reply")}
-        onClick={onReply}
-      >
-        <ReplyIcon className={styles.actionIcon} />
-      </button>
-      <button
-        type="button"
-        className={styles.action}
-        aria-label={t("note_kind_reaction")}
-        aria-pressed={reacted}
-        data-shape={isStar ? "star" : "heart"}
-        onClick={() => {
-          if (reacted) setDialog("unreact");
-          else reactWithDefault(message).catch(warn("Failed to react"));
-        }}
-      >
-        <Glyph className={styles.actionIcon} />
-      </button>
-      <button
-        type="button"
-        className={styles.action}
-        aria-label={t("web_emoji_reaction")}
-        onClick={() => setDialog("picker")}
-      >
-        <AddReactionIcon className={styles.actionIcon} />
-      </button>
-      {lud16 !== "" && (
-        <button
-          type="button"
-          className={styles.action}
-          aria-label="Zap"
-          title="Zap"
-          onClick={() => setDialog("zap")}
-        >
-          <BoltIcon className={styles.actionIcon} />
-        </button>
-      )}
       <MenuButton label={t("web_more_actions")} triggerClassName={styles.action} entries={entries}>
         <MoreHorizIcon className={styles.actionIcon} />
       </MenuButton>
@@ -635,6 +633,22 @@ function MessageActions({ message, mine, onReply }: { message: NostrEvent; mine:
           onConfirm={() => {
             setDialog(null);
             mute("block");
+          }}
+          onDismiss={() => setDialog(null)}
+        />
+      )}
+      {dialog === "delete" && (
+        <ConfirmDialog
+          title={t("note_delete_title")}
+          text={t("note_delete_text")}
+          confirmLabel={t("note_delete_confirm")}
+          destructive
+          onConfirm={() => {
+            setDialog(null);
+            // 手元からは kind:5 を store に入れたところで消え、削除の記録（#579）で取り直しても戻らない
+            void requestDelete(message).then((ok) =>
+              showToast(ok ? t("note_delete_sent") : t("note_delete_failed")),
+            );
           }}
           onDismiss={() => setDialog(null)}
         />

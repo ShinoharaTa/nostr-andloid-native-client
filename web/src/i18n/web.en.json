@@ -20,7 +20,7 @@
   "web_chat_empty": "No messages yet",
   "web_more_actions": "More actions",
   "web_emoji_reaction": "React with an emoji",
-  "web_columnform_chips": "Pinned and recent tags",
+  "web_unreact": "Remove reaction",
   "web_columnform_npub_required": "Enter an npub or hex",
   "web_columnform_relay_add": "Add a relay to publish to",
   "web_columnform_relay_placeholder": "wss://… (optional)",
@@ -309,6 +309,7 @@
   "web_shortcuts_hint": "Press Esc or tap the screen to close",
   "web_shortcuts_title": "Keyboard shortcuts",
   "web_signer_no_cipher": "The extension doesn’t support this encryption method",
+  "web_status_edit_failed": "Couldn’t update your status. Please try again.",
   "web_status_empty": "No one you follow has a status right now",
   "web_status_empty_music": "No one you follow is playing anything right now",
   "web_status_expires_at": "Until %1$s",
@@ -361,5 +362,9 @@
   "web_x_post_open": "Open on X",
   "web_zap_amount": "Amount",
   "web_zap_invoice_label": "Zap invoice (%1$d sats)",
-  "web_zap_pay_confirm_text": "Send ⚡ %2$d sats to %1$s. Continue?"
+  "web_zap_pay_confirm_text": "Send ⚡ %2$d sats to %1$s. Continue?",
+  "web_zap_other_wallets": "Open in another wallet",
+  "web_zap_other_wallets_hint": "Pick a wallet you have installed (others won’t open).",
+  "web_zap_qr_title": "Scan this with a wallet on your phone",
+  "web_zap_qr_enlarge": "Show larger QR"
 }

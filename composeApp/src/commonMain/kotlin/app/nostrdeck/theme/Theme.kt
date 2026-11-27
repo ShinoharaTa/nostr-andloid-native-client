@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,16 +55,37 @@ object DeckDimens {
 
 /**
  * タイプスケール（Option C: ハイブリッド）。近接値を7段に集約し、半端値(12.5/13.5/11.5)を廃止。
- * sp 指定なのでフォント拡大設定に追従。tokens.css の --type-* と 1対1。
+ * sp 指定なのでフォント拡大設定に追従。tokens.css の --type-* と 1対1（#984 の段の整理と最小 8 は Web も #985 で揃えた）。
+ *
+ * [#984] 1 行の中の文字を 14 / 12 / 10 の 3 段にまとめた。名前（[Sub]）は本文と同じ 14 にして太さで分け、
+ * 時刻・ラベル（[Label]）は補足（[Caption]）と同じ 12。役割の名前は残している（使う側を書き換えずに段だけ変えられる）。
+ *
+ * [#984] 文字の最小（[MIN_TEXT_SP]）。文字サイズのスーパーハッカー（×0.75）や端末の文字サイズの設定で縮めても、
+ * 画面上の大きさ（sp × fontScale）が 8 を下回る役割だけ 8 に持ち上げる。fontScale は App が [apply] で渡す
+ * （DeckWeight と同じく snapshot state。noteAnnotated など Composable でないところからも読むため）。
  */
 object DeckType {
-    val Display = 20.sp   // ダイアログ見出し等
-    val Title   = 15.sp   // 画面/カラムのタイトル
-    val Body    = 14.sp   // 本文（ノート/チャット）
-    val Sub     = 13.sp   // 著者名/小見出し
-    val Caption = 12.sp   // 補足テキスト
-    val Label   = 11.sp   // 時刻/ハンドル/ラベル
-    val Micro   = 10.sp   // バッジ/最小メタ
+    /** 文字の最小（画面上の大きさ。sp × fontScale）。 */
+    const val MIN_TEXT_SP = 8f
+
+    private val fontScale = mutableStateOf(1f)
+
+    /** App が LocalDensity の fontScale（端末の設定 × 文字サイズの倍率）を渡す。値が変わる時のみ代入。 */
+    fun apply(scale: Float) { if (fontScale.value != scale) fontScale.value = scale }
+
+    /** [base] に今の fontScale を掛けて [MIN_TEXT_SP] を下回るなら、ちょうど最小になる sp を返す。 */
+    fun atLeastMin(base: TextUnit): TextUnit {
+        val scale = fontScale.value
+        return if (scale <= 0f || base.value * scale >= MIN_TEXT_SP) base else (MIN_TEXT_SP / scale).sp
+    }
+
+    val Display: TextUnit get() = atLeastMin(20.sp)   // ダイアログ見出し等
+    val Title: TextUnit   get() = atLeastMin(15.sp)   // 画面/カラムのタイトル
+    val Body: TextUnit    get() = atLeastMin(14.sp)   // 本文（ノート/チャット）
+    val Sub: TextUnit     get() = atLeastMin(14.sp)   // 著者名/小見出し（[#984] 13 → 14。本文と同じ大きさ）
+    val Caption: TextUnit get() = atLeastMin(12.sp)   // 補足テキスト
+    val Label: TextUnit   get() = atLeastMin(12.sp)   // 時刻/ハンドル/ラベル（[#984] 11 → 12。補足と同じ大きさ）
+    val Micro: TextUnit   get() = atLeastMin(10.sp)   // バッジ/最小メタ
     val Emoji   = 18.sp   // リアクション絵文字グリフ（本文スケール外）
     val EmojiLg = 22.sp   // [#59] リアクションを主役に見せる拡大絵文字（Body の約1.5倍）
 
