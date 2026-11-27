@@ -60,7 +60,7 @@ internal fun YoNoticeBody(n: NotificationUi) {
             color = DeckColors.Text, fontSize = DeckType.Body, fontWeight = DeckWeight.Strong, maxLines = 1,
         )
         Spacer(Modifier.width(DeckSpace.Sm))
-        YoBackButton(n.actor.pubkey, replied = n.yoReplied)
+        YoBackButton(n.actor.pubkey, replied = n.yoReplied, receivedAt = n.createdAt)
     }
 }
 
@@ -68,16 +68,21 @@ internal fun YoNoticeBody(n: NotificationUi) {
  * [#1024] 「Yo を返す」。押したときだけ送る。送っている間は押せず、返したあと（[replied]）は「返しました」にして押せなくする
  * （二重に返さない。相手からまた Yo が届けば、また押せる）。
  * 送る処理は Repository のスコープで続き、結果は App がトーストで知らせる（行はスクロールで消えるので、ここでは待たない）。
+ *
+ * [replied] は通知の組み直しを待って付くので、送った直後は間が空く。その間にまた押せないよう、このセッションで送った時刻
+ * （[app.nostrdeck.data.EventRepository.yoSentAtFlow]）が受け取った Yo（[receivedAt]）以降なら、それも「返しました」にする。
  */
 @Composable
-internal fun YoBackButton(pubkey: String, replied: Boolean) {
+internal fun YoBackButton(pubkey: String, replied: Boolean, receivedAt: Long) {
     val repo = LocalRepository.current ?: return
     val sending by remember(repo) { repo.yoSendingFlow() }.collectAsState()
+    val sentAt by remember(repo) { repo.yoSentAtFlow() }.collectAsState()
+    val done = replied || (sentAt[pubkey] ?: Long.MIN_VALUE) >= receivedAt
     Box(Modifier.heightIn(min = DeckDimens.TouchTargetSm), contentAlignment = Alignment.Center) {
         when {
             pubkey in sending ->
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = DeckColors.Text2)
-            replied -> HintText(stringResource(Res.string.yo_backed), maxLines = 1)
+            done -> HintText(stringResource(Res.string.yo_backed), maxLines = 1)
             else -> DeckGhostButton(stringResource(Res.string.yo_back), onClick = { repo.sendYo(pubkey) })
         }
     }

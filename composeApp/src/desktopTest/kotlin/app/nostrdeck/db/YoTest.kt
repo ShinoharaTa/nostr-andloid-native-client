@@ -97,6 +97,8 @@ class YoTest {
             assertTrue(sent.createdAt >= t + 5, "受け取った Yo より前の時刻にしない")
             // ほかのリアクションと同じ送信の経路（未送信の再送に載る）
             assertTrue(db.nostrQueries.pendingPublishes().executeAsList().any { sent.id in it.payload })
+            // 発行できた時点で、送った時刻を覚える（通知が組み直されるまでの間、ボタンをまた押せないようにする）
+            assertEquals(sent.createdAt, repo.yoSentAtFlow().value[bob.pubkey])
 
             val replied = withTimeout(5_000) { repo.notificationsFeed().first { n -> n.any { it.yoReplied } } }
             assertEquals(listOf(true, false), replied.map { it.yoReplied }, "返したのは bob だけ")
@@ -165,6 +167,47 @@ class YoTest {
             val toNote = rows.single { it.actor.pubkey == carol.pubkey }
             assertFalse(toNote.targetIsProfile)
             assertEquals(note.id, toNote.targetNote?.event?.id)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** 相手の時計が進んでいても、返した Yo が受け取った Yo より前にならない（「返しました」にならなくなる）。 */
+    @Test
+    fun a_reply_to_a_yo_from_a_fast_clock_is_not_dated_before_it(): Unit = runBlocking {
+        val db = newDb("yo-fast-clock")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(scope, db)
+            val ahead = System.currentTimeMillis() / 1000 + 120
+            repo.ingestLocal(listOf(yo(bob, me, ahead)))
+            withTimeout(5_000) { repo.notificationsFeed().first { it.isNotEmpty() } }
+
+            val sent = repo.publishYo(bob.pubkey, "d".repeat(64))
+            assertEquals(ahead, sent.createdAt)
+            assertEquals(bob.pubkey, Yo.recipientOf(sent, System.currentTimeMillis() / 1000), "10 分以内なので Yo のまま")
+            val row = withTimeout(5_000) { repo.notificationsFeed().first { n -> n.any { it.yoReplied } } }.single()
+            assertTrue(row.yoReplied)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** 自分がしたプロフィールへのリアクション（Yo でないもの）は、対象を投稿として出せないので行にしない。 */
+    @Test
+    fun my_own_non_yo_reaction_to_a_profile_is_not_listed(): Unit = runBlocking {
+        val db = newDb("yo-own-profile-reaction")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(scope, db)
+            val note = event(bob, 1, "hello", emptyList(), t)
+            repo.ingestLocal(listOf(
+                note,
+                event(me, 7, "🎉", listOf(listOf("e", "c".repeat(64)), listOf("p", bob.pubkey), listOf("k", "0")), t + 1),
+                event(me, 7, "+", listOf(listOf("e", note.id), listOf("p", bob.pubkey), listOf("k", "1")), t + 2),
+            ))
+            val mine = withTimeout(5_000) { repo.favsFeed().first { it.isNotEmpty() } }
+            assertEquals(note.id, (mine.single() as FeedEntry.MyReaction).target.event.id)
         } finally {
             scope.cancel()
         }

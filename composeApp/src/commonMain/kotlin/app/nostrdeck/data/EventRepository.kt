@@ -949,6 +949,7 @@ class EventRepository(
 
             // 旧アカウント依存の解決済み状態をリセット。
             follows.value = emptyList(); followsAt = 0L; ownContacts = null; myProfileAt = 0L
+            yoSentAt.value = emptyMap()   // [#1024] 前のアカウントで送った Yo を「返しました」に数えない
             // [#396] 自分のリスト（10002/10030/30015）は State・at・KV ごと空に戻す（旧アカウントの版を見せない）。
             resetOwnLists()
             wiping = false
@@ -2851,6 +2852,14 @@ class EventRepository(
     fun yoSendingFlow(): StateFlow<Set<String>> = yoSending.asStateFlow()
 
     /**
+     * [#1024] このセッションで Yo を送った相手 → その Yo の `created_at`。
+     * 「返しました」は通知の組み直し（DB の変化 → 最大 200 行の整形）を待って付くので、送った直後は間が空く。その間に
+     * 「Yo を返す」がまた押せると二重に返せてしまう。発行できた時点でここに入れ、ボタンはこれも見て「返しました」にする。
+     */
+    private val yoSentAt = MutableStateFlow<Map<String, Long>>(emptyMap())
+    fun yoSentAtFlow(): StateFlow<Map<String, Long>> = yoSentAt.asStateFlow()
+
+    /**
      * [#1024] [recipient] に Yo を送る（通知の「Yo を返す」・プロフィールの「Yo を送る」）。押したときだけ送る（自動では返さない）。
      * 処理は Repository のスコープで続け、結果は [yoResultFlow] に流す。同じ相手へ送っている間の 2 回目は無視する。
      */
@@ -2880,6 +2889,8 @@ class EventRepository(
         val me = myPubkey ?: return YoResult.FAILED
         if (recipient == me) return YoResult.FAILED
         val (profile, seenOn) = fetchLatestProfileEvent(recipient, fetchTimeoutMs) ?: return YoResult.NO_PROFILE
+        // 取りに行っている間（数秒）にログアウト・アカウントの切り替えがあったら送らない（別の鍵で署名しない）。
+        if (myPubkey != me) return YoResult.FAILED
         publishYo(recipient, profile.id, seenOn)
         return YoResult.SENT
     }
@@ -2887,7 +2898,8 @@ class EventRepository(
     /**
      * [#1024] Yo を署名して発行する。ほかのリアクションと同じ経路（[publishSigned]: DB に入れ、送信待ちに積む。`client` タグも付く）。
      *  - リレーヒントは、対象の kind:0 を受け取ったリレー（[seenOn]。公開のリレーのときだけ）。無ければ相手の書き込みリレー
-     *  - `created_at` は、その人から届いているいちばん新しい Yo より前にしない（[Yo.replyCreatedAt]）
+     *  - `created_at` は、その人から届いているいちばん新しい Yo より前にしない（[Yo.replyCreatedAt]）。相手の時計が進んでいる
+     *    ときだけ未来の時刻になる（最大 10 分）。未来の時刻を受け付けないリレーでは、未送信の再送に回る
      */
     internal suspend fun publishYo(recipient: String, profileEventId: String, seenOn: String? = null): NostrEvent {
         val me = myPubkey
@@ -2897,7 +2909,9 @@ class EventRepository(
         }
         val seenHint = seenOn?.let { normalizeRelayUrl(it) }?.takeIf { RelayHints.isPublic(it) }
         val hint = seenHint ?: withRelayHints(listOf(listOf("p", recipient))).first().getOrNull(2).orEmpty()
-        return publishSigned(Yo.unsigned(recipient, profileEventId, hint, Yo.replyCreatedAt(now, receivedAt)))
+        val signed = publishSigned(Yo.unsigned(recipient, profileEventId, hint, Yo.replyCreatedAt(now, receivedAt)))
+        yoSentAt.update { it + (recipient to signed.createdAt) }
+        return signed
     }
 
     /**
@@ -2916,8 +2930,10 @@ class EventRepository(
         try {
             subscribeTargeted(subId, targets, Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 1))
             withTimeoutOrNull(timeoutMs) {
-                combine(collector.events, collector.eose) { events, eose -> events.isNotEmpty() to (eose.size >= targets.size) }
-                    .first { (got, done) -> got || done }
+                // 「1 件届いた」は、その人の kind:0 の形をしたものだけ数える（関係ないイベントを返すリレーで早く打ち切らない）
+                combine(collector.events, collector.eose) { events, eose ->
+                    events.any { it.kind == 0 && it.pubkey == pubkey } to (eose.size >= targets.size)
+                }.first { (got, done) -> got || done }
                 withTimeoutOrNull(Yo.FETCH_SETTLE_MS) { collector.eose.first { it.size >= targets.size } }
             }
         } finally {

@@ -766,8 +766,8 @@ private fun ProfileHeaderCard(
                                 }
                             },
                         )
-                        // [#1024] Yo を送る（nostr-yo。相手のプロフィールへの `:yo:` のリアクション）。自分には出さない。
-                        if (!isMe && loggedIn) {
+                        // [#1024] Yo を送る（nostr-yo。相手のプロフィールへの `:yo:` のリアクション）。自分と、ブロック中の人には出さない。
+                        if (!isMe && loggedIn && !blocked) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(Res.string.yo_send)) },
                                 enabled = pubkey !in yoSending,
