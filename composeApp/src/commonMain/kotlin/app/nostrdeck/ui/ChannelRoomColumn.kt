@@ -473,6 +473,7 @@ private fun Modifier.bubbleColumnWidth(): Modifier = layout { measurable, constr
  * [#989] 発言の ⋯（吹き出しの長押しでも開く）。以前は吹き出しの横に常設していたリプライ・リアクション・Zap もここに入れる。
  * 並びは Web の ⋯ と同じ（リプライ → リアクション → Zap → コピー → ミュート / ブロック → 通報 → JSON）。
  * ミュート・ブロック・通報はパブリックチャット（kind:42）の他人の発言だけ（DM の発言は署名済みのイベントではない）。
+ * [#321] 自分のパブリックチャットの発言（kind:42）には「削除をリクエスト」（JSON の前。Web #1016 と同じ並び）。
  */
 @Composable
 private fun MessageMenu(
@@ -488,6 +489,8 @@ private fun MessageMenu(
     val devMode by (repo?.developerModeFlow()?.collectAsState()
         ?: remember { mutableStateOf(false) })
     val canModerate = repo != null && !m.isMine && m.event.kind == 42
+    // [#321] 自分のパブリックチャット発言（kind:42）だけ NIP-09 削除リクエストを出せる（DM の発言は署名済みのイベントではない）。
+    val canDelete = repo != null && m.isMine && m.event.kind == 42
     val clipboard = rememberClipboardCopy()
     val toast = rememberToaster()
     val scope = rememberCoroutineScope()
@@ -495,6 +498,7 @@ private fun MessageMenu(
     var confirmBlock by remember { mutableStateOf(false) }
     var showReport by remember { mutableStateOf(false) }
     var showJson by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val close = { onExpandedChange(false) }
     Box(Modifier.padding(horizontal = MENU_BUTTON_PADDING)) {
         Box(
@@ -553,6 +557,13 @@ private fun MessageMenu(
                     onClick = { close(); showReport = true },
                 )
             }
+            // [#321] 削除リクエスト。投稿の ⋯ と同じく Warn 色・確認ダイアログ付き。
+            if (canDelete) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.note_request_delete), color = DeckColors.Warn) },
+                    onClick = { close(); confirmDelete = true },
+                )
+            }
             if (devMode) {
                 HorizontalDivider(color = DeckColors.Border)
                 DropdownMenuItem(
@@ -608,6 +619,26 @@ private fun MessageMenu(
     }
     if (showJson) {
         EventJsonDialog(m.event.id, onDismiss = { showJson = false })
+    }
+    // [#321] 投稿の削除（NoteItem）と同じダイアログ・トースト。消える保証はないことを本文で明示する。
+    // 手元からは requestDelete が DB から消すので、チャンネルの一覧（messagesByChannel）からもそのまま消える。
+    // 消えるとこの行も無くなるので、トーストまでは最後までやりきる（ミュートと同じ）。
+    if (confirmDelete) {
+        DeckConfirmDialog(
+            title = stringResource(Res.string.note_delete_title),
+            text = stringResource(Res.string.note_delete_text),
+            confirmLabel = stringResource(Res.string.note_delete_confirm), destructive = true,
+            onConfirm = {
+                confirmDelete = false
+                scope.launch {
+                    withContext(NonCancellable) {
+                        val ok = repo?.requestDelete(m.event) == true
+                        toast(getString(if (ok) Res.string.note_delete_sent else Res.string.note_delete_failed))
+                    }
+                }
+            },
+            onDismiss = { confirmDelete = false },
+        )
     }
 }
 
