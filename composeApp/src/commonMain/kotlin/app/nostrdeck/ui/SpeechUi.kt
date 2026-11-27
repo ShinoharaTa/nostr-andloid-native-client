@@ -2,7 +2,10 @@ package app.nostrdeck.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +19,9 @@ import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +46,10 @@ import app.nostrdeck.data.TimelineReader
 import app.nostrdeck.data.TtsModels
 import app.nostrdeck.data.speechSupported
 import app.nostrdeck.i18n.stringResource
+import app.nostrdeck.model.TtsStyle
+import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
+import kotlin.math.roundToInt
 import app.nostrdeck.model.ZenTts
 import app.nostrdeck.theme.DeckColors
 import app.nostrdeck.theme.DeckSpace
@@ -57,11 +66,13 @@ private fun rememberSpeechAvailable(): Boolean {
 }
 
 /**
- * [#948] 投稿ボタンの上の、読み上げの ON / OFF。選んだ声をダウンロード済みのときだけ出す。
- * OFF から押すと確認を出してから始める。ON（準備中を含む）で押すとすぐ止める。
+ * [#948] 投稿ボタンの上の、読み上げのボタン。選んだ声をダウンロード済みのときだけ出す（[#1008] で決めたとおり、
+ * ダウンロードしていない人には出さない）。
+ * [#1008] 押すとメニュー: 「読み上げを開始する」（OFF のとき。確認を出してから始める）／「読み上げを終了する」（ON・準備中）／
+ * 「読み上げの設定」（設定 → 読み上げ を開く。[onOpenSettings]）。
  */
 @Composable
-fun SpeechToggle(modifier: Modifier = Modifier) {
+fun SpeechToggle(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
     val repo = LocalRepository.current ?: return
     if (!rememberSpeechAvailable()) return
     val reader = remember(repo) { repo.timelineReader }
@@ -72,17 +83,36 @@ fun SpeechToggle(modifier: Modifier = Modifier) {
     if (status == TimelineReader.Status.OFF && states[voice] != TtsModels.State.Ready) return
 
     var confirm by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     val on = status != TimelineReader.Status.OFF
-    SmallFloatingActionButton(
-        onClick = { if (on) reader.stop() else confirm = true },
-        modifier = modifier,
-        containerColor = if (on) DeckColors.Accent else DeckColors.Surface2,
-        contentColor = if (on) DeckColors.Bg else DeckColors.Text,
-    ) {
-        when (status) {
-            TimelineReader.Status.PREPARING -> CircularProgressIndicator(Modifier.size(18.dp), color = DeckColors.Bg, strokeWidth = 2.dp)
-            TimelineReader.Status.ON -> Icon(Icons.AutoMirrored.Outlined.VolumeUp, stringResource(Res.string.speech_toggle_on))
-            TimelineReader.Status.OFF -> Icon(Icons.AutoMirrored.Outlined.VolumeOff, stringResource(Res.string.speech_toggle_off))
+    Box(modifier) {
+        SmallFloatingActionButton(
+            onClick = { menu = true },
+            containerColor = if (on) DeckColors.Accent else DeckColors.Surface2,
+            contentColor = if (on) DeckColors.Bg else DeckColors.Text,
+        ) {
+            when (status) {
+                TimelineReader.Status.PREPARING -> CircularProgressIndicator(Modifier.size(18.dp), color = DeckColors.Bg, strokeWidth = 2.dp)
+                TimelineReader.Status.ON -> Icon(Icons.AutoMirrored.Outlined.VolumeUp, stringResource(Res.string.section_speech))
+                TimelineReader.Status.OFF -> Icon(Icons.AutoMirrored.Outlined.VolumeOff, stringResource(Res.string.section_speech))
+            }
+        }
+        DeckDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (on) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.speech_menu_stop)) },
+                    onClick = { menu = false; reader.stop() },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.speech_menu_start)) },
+                    onClick = { menu = false; confirm = true },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.speech_menu_settings)) },
+                onClick = { menu = false; onOpenSettings() },
+            )
         }
     }
     if (confirm) {
@@ -123,6 +153,7 @@ fun SpeechSettings() {
     val available = rememberSpeechAvailable()
     LaunchedEffect(repo) { repo.ttsModels.refresh() }
     SpeechFailureToasts(remember(repo) { repo.timelineReader })
+    val legacyRemoved by repo.ttsModels.legacyRemoved.collectAsState()
     Column(Modifier.fillMaxWidth()) {
         Text(stringResource(Res.string.speech_desc), color = DeckColors.Text3, fontSize = DeckType.Label)
         Spacer(Modifier.height(DeckSpace.Md))
@@ -130,7 +161,14 @@ fun SpeechSettings() {
             !speechSupported -> Text(stringResource(Res.string.speech_unsupported), color = DeckColors.Warn, fontSize = DeckType.Label)
             !available -> Text(stringResource(Res.string.speech_no_runtime), color = DeckColors.Warn, fontSize = DeckType.Label)
             else -> {
+                // [#1008] v1.0.0 の声のデータを消したとき（新しいランタイムでは読めない）
+                if (legacyRemoved) {
+                    Text(stringResource(Res.string.speech_legacy_removed), color = DeckColors.Warn, fontSize = DeckType.Label)
+                    Spacer(Modifier.height(DeckSpace.Md))
+                }
                 VoiceList()
+                Spacer(Modifier.height(DeckSpace.Lg))
+                StyleSettings()
                 ReaderStats()
             }
         }
@@ -172,8 +210,9 @@ private fun VoiceList() {
             Spacer(Modifier.height(DeckSpace.Xs))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
                 when (state) {
+                    // [#1008] 声と、まだ無ければ読みのモデルの分
                     TtsModels.State.Missing -> DeckButton(
-                        stringResource(Res.string.speech_download_fmt, ((voice.totalBytes + 500_000) / 1_000_000).toInt()),
+                        stringResource(Res.string.speech_download_fmt, ((repo.ttsModels.bytesToDownload(voice) + 500_000) / 1_000_000).toInt()),
                         onClick = { repo.ttsModels.download(voice) },
                     )
                     is TtsModels.State.Downloading -> {
@@ -228,6 +267,77 @@ private fun VoiceList() {
         )
     }
 }
+
+/**
+ * [#1008] 話し方: トーン（5 つから 1 つ）・速さ（0.5〜1.5 倍、0.1 刻み）・高さ（−6〜+12 半音）。
+ * 動かしている間は手元だけで変え、指を離したら保存する（つまみを動かすたびに書き込まない）。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StyleSettings() {
+    val repo = LocalRepository.current ?: return
+    val saved by repo.ttsStyleFlow().collectAsState()
+    var speed by remember(saved.speedTenths) { mutableStateOf(saved.speedTenths.toFloat()) }
+    var pitch by remember(saved.pitch) { mutableStateOf(saved.pitch.toFloat()) }
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = DeckColors.Accent, activeTrackColor = DeckColors.Accent, inactiveTrackColor = DeckColors.Surface2,
+        activeTickColor = DeckColors.Bg, inactiveTickColor = DeckColors.Text3,
+    )
+    SectionCaption(stringResource(Res.string.speech_style))
+    Spacer(Modifier.height(DeckSpace.Xs))
+    Text(stringResource(Res.string.speech_style_hint), color = DeckColors.Text3, fontSize = DeckType.Label)
+    Spacer(Modifier.height(DeckSpace.Md))
+    Text(stringResource(Res.string.speech_tone), color = DeckColors.Text2, fontSize = DeckType.Label)
+    Spacer(Modifier.height(DeckSpace.Xs))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm), verticalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+        TtsTone.entries.forEach { tone ->
+            ChoiceChip(toneLabel(tone), selected = tone == saved.tone) { repo.setTtsStyle(saved.copy(tone = tone)) }
+        }
+    }
+    Spacer(Modifier.height(DeckSpace.Md))
+    Text(stringResource(Res.string.speech_speed_fmt, formatSpeed(speed.roundToInt())), color = DeckColors.Text2, fontSize = DeckType.Label)
+    Slider(
+        value = speed,
+        onValueChange = { speed = it },
+        onValueChangeFinished = { repo.setTtsStyle(saved.copy(speedTenths = speed.roundToInt())) },
+        valueRange = TtsStyle.SPEED_TENTHS_MIN.toFloat()..TtsStyle.SPEED_TENTHS_MAX.toFloat(),
+        steps = TtsStyle.SPEED_TENTHS_MAX - TtsStyle.SPEED_TENTHS_MIN - 1,
+        colors = sliderColors,
+    )
+    Text(stringResource(Res.string.speech_pitch_fmt, formatPitch(pitch.roundToInt())), color = DeckColors.Text2, fontSize = DeckType.Label)
+    Slider(
+        value = pitch,
+        onValueChange = { pitch = it },
+        onValueChangeFinished = { repo.setTtsStyle(saved.copy(pitch = pitch.roundToInt())) },
+        valueRange = TtsStyle.PITCH_MIN.toFloat()..TtsStyle.PITCH_MAX.toFloat(),
+        steps = TtsStyle.PITCH_MAX - TtsStyle.PITCH_MIN - 1,
+        colors = sliderColors,
+    )
+    if (saved != TtsStyle.DEFAULT) {
+        DeckTextButton(stringResource(Res.string.speech_style_reset), onClick = { repo.setTtsStyle(TtsStyle.DEFAULT) }, color = DeckColors.Text3)
+    }
+}
+
+/** 速さ（10 分の 1 倍）→「1.2」。 */
+internal fun formatSpeed(tenths: Int): String = "${tenths / 10}.${tenths % 10}"
+
+/** 高さ（半音）→「+3」「0」「−2」。 */
+internal fun formatPitch(semitones: Int): String = when {
+    semitones > 0 -> "+$semitones"
+    semitones < 0 -> "−${-semitones}"
+    else -> "0"
+}
+
+@Composable
+private fun toneLabel(tone: TtsTone): String = stringResource(
+    when (tone) {
+        TtsTone.NEUTRAL -> Res.string.speech_tone_neutral
+        TtsTone.HAPPY -> Res.string.speech_tone_happy
+        TtsTone.SAD -> Res.string.speech_tone_sad
+        TtsTone.ANGRY -> Res.string.speech_tone_angry
+        TtsTone.APOLOGETIC -> Res.string.speech_tone_apologetic
+    },
+)
 
 /** いまの ON の間に読んだ・読めなかった投稿の数（読まれないときの手がかり）。読み上げを始めてからだけ出す。 */
 @Composable

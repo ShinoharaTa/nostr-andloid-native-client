@@ -13,6 +13,7 @@ import { unixNow } from "../../lib/time";
 import { useReadRelays } from "../../nostr/pool";
 import { useSession } from "../../signer/session";
 import { useDeck } from "../../store/deck";
+import { HashtagChipRows, toggleTagPin } from "../compose/HashtagChipRows";
 import { loadUsedHashtags, recentHashtagChips, usePinnedHashtags } from "../compose/storage";
 import styles from "./ColumnDialog.module.css";
 
@@ -20,14 +21,6 @@ import styles from "./ColumnDialog.module.css";
 function normalizeCustomRelay(value: string): string | null {
   const url = value.trim();
   return url.startsWith("wss://") ? url : null;
-}
-
-/** SEARCH の入力へ #tag を足す（スペース区切り。既にあれば足さない） */
-function appendSearchTag(text: string, tag: string): string {
-  const token = `#${tag}`;
-  if (text.trim() === "") return token;
-  if (text.split(/\s+/).includes(token)) return text;
-  return `${text.trimEnd()} ${token}`;
 }
 
 /**
@@ -137,25 +130,20 @@ export function ColumnConfigForm({
               {t("web_columnform_npub_required")}
             </p>
           )}
-          {(template.template === "HASHTAG" || template.template === "SEARCH") &&
-            (pinnedTags.length > 0 || recentTags.length > 0) && (
-              <ul className={styles.chips} aria-label={t("web_columnform_chips")}>
-                {[...pinnedTags, ...recentTags].map((tag) => (
-                  <li key={tag}>
-                    <button
-                      type="button"
-                      className={styles.chip}
-                      onClick={() => {
-                        setText(template.template === "HASHTAG" ? tag : appendSearchTag(text, tag));
-                        setInvalid(false);
-                      }}
-                    >
-                      #{tag}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          {/* [#642] ハッシュタグのときだけ投稿画面と同じ 2 段のチップ（ネイティブ AddColumnSheet。編集は Web 独自） */}
+          {template.template === "HASHTAG" && (
+            <div>
+              <HashtagChipRows
+                pinned={pinnedTags}
+                recent={recentTags}
+                onTap={(tag) => {
+                  setText(tag);
+                  setInvalid(false);
+                }}
+                onToggle={(tag, pin) => toggleTagPin(me, pinnedTags, tag, pin)}
+              />
+            </div>
+          )}
         </div>
       )}
       {template.config === "NOTIF_FILTER" && (

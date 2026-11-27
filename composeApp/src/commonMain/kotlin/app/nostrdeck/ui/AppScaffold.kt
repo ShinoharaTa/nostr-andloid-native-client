@@ -130,7 +130,8 @@ fun AppScaffold(state: DeckState) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state, compact = true)
                 CompositionLocalProvider(LocalHasNavRail provides true) {
-                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder)
+                    // [#1019] シングルカラムでは、レールがあっても投稿とステータスのボタンは右下（指に近い）
+                    ContentWithCompose(state, isCompact = true, Modifier.weight(1f), detailStateHolder, composeInRail = false)
                 }
             }
         } else if (isCompact) {
@@ -146,6 +147,7 @@ fun AppScaffold(state: DeckState) {
                     state, isCompact = true,
                     Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bottomBarHeight)),
                     detailStateHolder,
+                    composeInRail = false,
                 )
                 Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
                     BottomBar(state)
@@ -156,7 +158,7 @@ fun AppScaffold(state: DeckState) {
             // ここで下端インセットを padding して内容がインジケータ帯に潜らないようにする（従来挙動を維持）。
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
                 DeckRail(state)
-                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder)
+                ContentWithCompose(state, isCompact = false, Modifier.weight(1f), detailStateHolder, composeInRail = true)
             }
         }
 
@@ -184,6 +186,12 @@ fun AppScaffold(state: DeckState) {
             )
         }
 
+        // [#1019] 自分のステータスを更新する画面（右下・レールのボタンから開く）
+        if (state.showStatusEditor) {
+            val me by (LocalRepository.current?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+            me?.let { StatusEditorDialog(it, onDismiss = { state.showStatusEditor = false }) }
+        }
+
         // 上部中央の「接続中…」インジケータ（全リレー未接続の待機中だけ表示）。
         ConnectionIndicator()
     }
@@ -202,6 +210,9 @@ val LocalHasNavRail = staticCompositionLocalOf { false }
  * 宛先の内容 + 投稿 FAB を重ねる。FAB は内容領域の右下に置く（= Compact では
  * BottomBar の上に浮く）ので、下部ナビの「設定」等を覆わない。投稿はタイムライン
  * （Home Deck）の操作なので HOME でのみ表示する。
+ * [#1000][#1019] デッキの表示（[composeInRail]）では、投稿とステータスはレールのボタンから開くので右下には出さない
+ * （読み上げの ON / OFF は右下に残す）。シングルカラムでは、レールがあっても右下に出す。
+ * 右下は上から「読み上げ → ステータス → 投稿」。
  */
 @Composable
 private fun ContentWithCompose(
@@ -209,6 +220,7 @@ private fun ContentWithCompose(
     isCompact: Boolean,
     modifier: Modifier,
     detailStateHolder: SaveableStateHolder,
+    composeInRail: Boolean,
 ) {
     Box(modifier.fillMaxSize()) {
         Destination(state, isCompact = isCompact)
@@ -226,9 +238,14 @@ private fun ContentWithCompose(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(DeckSpace.Md),
             ) {
-                SpeechToggle()
-                FloatingActionButton(onClick = { state.showCompose = true }) {
-                    Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                SpeechToggle(onOpenSettings = { state.openSettingsSection("speech") })   // [#1008] メニューの「読み上げの設定」
+                if (!composeInRail) {
+                    // [#1019] 投稿ボタンの上に、自分のステータスを更新するボタン（ログイン中だけ）
+                    val me by (LocalRepository.current?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
+                    StatusFab(me, onClick = { state.showStatusEditor = true })
+                    FloatingActionButton(onClick = { state.showCompose = true }) {
+                        Icon(Icons.Outlined.Edit, stringResource(Res.string.fab_post))
+                    }
                 }
             }
         }
@@ -364,10 +381,10 @@ private fun BottomBar(state: DeckState) {
             state, NavDest.CHANNELS, Icons.AutoMirrored.Outlined.Chat, stringResource(Res.string.nav_public_chat),
             onClick = { state.openPublicChat() },
         )
-        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。
+        // [#405] 通知カラムがあればそこへジャンプ、無ければ従来の通知画面。[#991] どちらも一番上（最新）まで戻す。
         NavItem(
             state, NavDest.NOTIFICATIONS, Icons.Outlined.Notifications, stringResource(Res.string.nav_notifications),
-            selected = state.notificationsActive, onClick = { state.openNotifications() },
+            selected = state.notificationsActive, onClick = { state.tapNotificationsCompact() },
         )
         val pk = myPubkey
         // [#794][#806] タップで自分のメニュー（よく使う / Nostr の設定 / 設定 / ログアウト）。未ログインは今までどおり設定へ。
