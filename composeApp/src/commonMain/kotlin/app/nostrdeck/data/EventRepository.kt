@@ -520,6 +520,7 @@ class EventRepository(
         discardDeveloperOutbox()   // [#961]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
+        loadYoStyle()   // [#1024]
         loadTtsVoice()   // [#948]
         loadDeveloperMode()   // [#351]
         loadShowReactionCounts()   // [#932]
@@ -5951,6 +5952,18 @@ class EventRepository(
         timeDisplayState.value = app.nostrdeck.model.TimeDisplay.fromId(q.getSetting(TIME_DISPLAY_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#1024] Yo の通知の見た目（モノクロ / 紫。既定はモノクロ）----
+    // 端末ローカル設定（時刻の表示と同じく、SettingsSync ホワイトリストには入れない）。
+    private val yoStyleState = MutableStateFlow(app.nostrdeck.model.YoStyle.BLOCK)
+    fun yoStyleFlow(): StateFlow<app.nostrdeck.model.YoStyle> = yoStyleState
+    fun setYoStyle(style: app.nostrdeck.model.YoStyle) {
+        yoStyleState.value = style
+        putSettingAsync(YO_STYLE_KEY, style.id)
+    }
+    private fun loadYoStyle() {
+        yoStyleState.value = app.nostrdeck.model.YoStyle.fromId(q.getSetting(YO_STYLE_KEY).executeAsOneOrNull())
+    }
+
     // ---- [#351] 開発者モード（既定OFF）----
     // ON にすると投稿/チャットの ⋯ メニューに「イベントJSONを表示」が出る。
     private val developerModeState = MutableStateFlow(false)
@@ -7275,6 +7288,7 @@ class EventRepository(
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
+        const val YO_STYLE_KEY = "ui:yo_style"   // [#1024] Yo の通知の見た目（block/color）
         const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
         const val TTS_TONE_KEY = "tts:tone"     // [#1008] 読み上げのトーン（neutral/happy/sad/angry/apologetic）
         const val TTS_SPEED_KEY = "tts:speed"   // [#1008] 読み上げの速さ（10 分の 1 倍。5〜15）

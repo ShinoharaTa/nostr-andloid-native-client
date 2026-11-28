@@ -289,6 +289,10 @@ fun App(
         val timeDisplay by (repository?.timeDisplayFlow()?.collectAsState()
             ?: remember { mutableStateOf(app.nostrdeck.model.TimeDisplay.RELATIVE) })
         app.nostrdeck.ui.TimeDisplaySetting.apply(timeDisplay)
+        // [#1024] Yo の通知の見た目。YoStyleSetting も snapshot state（Yo の行と通知の見出しが読む）。
+        val yoStyle by (repository?.yoStyleFlow()?.collectAsState()
+            ?: remember { mutableStateOf(app.nostrdeck.model.YoStyle.BLOCK) })
+        app.nostrdeck.ui.YoStyleSetting.apply(yoStyle)
         val density = LocalDensity.current
         // [#196] スケール込み density を1つ作り、LocalDensity と（Dialog へ伝播させる用の）
         // LocalDeckDensity の両方へ供給する。Dialog/Popup 内では DeckScaled で再適用する。
