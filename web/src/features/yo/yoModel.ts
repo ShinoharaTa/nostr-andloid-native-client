@@ -158,9 +158,12 @@ export function reactsToProfile(tags: readonly string[][]): boolean {
   return tags.some((tag) => tag[0] === "k" && tag[1] === "0");
 }
 
-/** 件数つきの表示（同じ人から 2 件以上届いているとき「Yo ×3」） */
-export function yoCountLabel(count: number): string {
-  return count > 1 ? `${YO_LABEL} ×${count}` : YO_LABEL;
+/** スタンプの文字（nostr-yo のロゴと同じ「Yo!」。ネイティブ YoUi.kt YO_STAMP_TEXT） */
+export const YO_STAMP_TEXT = "Yo!";
+
+/** Yo の件数（同じ人から 2 件以上届いているとき「×3」。1 件なら出さない） */
+export function yoCountLabel(count: number): string | null {
+  return count > 1 ? `×${count}` : null;
 }
 
 /** 自分が送った Yo のうち、相手ごとのいちばん新しい時刻（「返しました」の判定） */

@@ -530,14 +530,15 @@ describe("[#1025] Yo", () => {
     useYoSending.setState({ sending: new Set(), sentAt: new Map() });
   });
 
-  it("マークは文字の「Yo」、本体は「Yo ×3」と「Yo を返す」。引用カードも絵文字の画像も出さない", async () => {
+  it("マークは手を振るアイコン、本体は「Yo!」のスタンプ・「×3」・「Yo を返す」。引用カードも絵文字の画像も出さない", async () => {
     const { item } = yoItem({ count: 3, replied: false });
     const { container } = renderRow(item);
 
     const mark = screen.getByRole("img", { name: "Yo" });
-    expect(mark.querySelector("svg")).toBeNull();
-    expect(mark).toHaveTextContent("Yo");
-    expect(screen.getByText("Yo ×3")).toBeInTheDocument();
+    expect(mark.querySelector("svg")).not.toBeNull();
+    // まだ返していない Yo のスタンプは沈めない
+    expect(screen.getByText("Yo!")).not.toHaveAttribute("data-dimmed");
+    expect(screen.getByText("×3")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Yo を返す" })).toBeEnabled();
     expect(screen.queryByRole("link", CARD)).toBeNull();
     expect(container.querySelectorAll("img")).toHaveLength(0);
@@ -554,7 +555,8 @@ describe("[#1025] Yo", () => {
     const user = userEvent.setup();
     const { item } = yoItem();
     const { where } = renderRow(item);
-    await user.click(screen.getByText("Yo", { selector: "span:not([aria-hidden])" }));
+    expect(screen.queryByText(/^×/)).toBeNull();
+    await user.click(screen.getByText("Yo!"));
     expect(where()).toMatch(/^\/p\/npub1/);
   });
 
@@ -570,10 +572,11 @@ describe("[#1025] Yo", () => {
     expect(screen.getByRole("button", { name: "Yo を返す" })).toBeDisabled();
   });
 
-  it("返したあとは「返しました」で、ボタンは無い", () => {
+  it("返したあとは「返しました」で、ボタンは無い。スタンプは沈める", () => {
     const { item } = yoItem({ count: 2, replied: true });
     renderRow(item);
     expect(screen.getByText("返しました")).toBeInTheDocument();
+    expect(screen.getByText("Yo!")).toHaveAttribute("data-dimmed");
     expect(screen.queryByRole("button", { name: "Yo を返す" })).toBeNull();
   });
 
@@ -582,6 +585,7 @@ describe("[#1025] Yo", () => {
     useYoSending.setState({ sentAt: new Map([[alice, item.createdAt]]) });
     const { unmount } = renderRow(item);
     expect(screen.getByText("返しました")).toBeInTheDocument();
+    expect(screen.getByText("Yo!")).toHaveAttribute("data-dimmed");
     unmount();
 
     renderRow({ ...item, createdAt: item.createdAt + 60 });

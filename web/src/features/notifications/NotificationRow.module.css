@@ -43,7 +43,8 @@
   color: var(--zap);
 }
 
-[data-kind="dm"] .markIcon {
+[data-kind="dm"] .markIcon,
+[data-kind="yo"] .markIcon {
   color: var(--accent);
 }
 

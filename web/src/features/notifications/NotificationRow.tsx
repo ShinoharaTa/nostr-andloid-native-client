@@ -11,6 +11,7 @@ import {
   MailOutlineIcon,
   RepeatIcon,
   ReplyIcon,
+  WavingHandIcon,
 } from "../../ui/icons";
 import { ReactionEventActions } from "../actions/NoteActionButtons";
 import { ReactionDisplay } from "../actions/ReactionDisplay";
@@ -21,9 +22,7 @@ import { Avatar, NoteItem } from "../timeline/NoteItem";
 import { QuoteCard } from "../timeline/QuoteCard";
 import { useNow } from "../timeline/useNow";
 import { useOpenOnClick } from "../timeline/useOpenOnClick";
-import yoStyles from "../yo/Yo.module.css";
-import { YoBackButton } from "../yo/YoBackButton";
-import { YO_LABEL, yoCountLabel } from "../yo/yoModel";
+import { YoNoticeBody } from "../yo/YoNoticeBody";
 import styles from "./NotificationRow.module.css";
 import {
   type NotificationItem,
@@ -36,15 +35,16 @@ import {
 
 /**
  * 種別マーク（ネイティブの kindIcon）。[#878] リアクションも ♡ のアイコン（絵文字は本体の 1 行）。
- * [#1025] Yo はアイコンではなく文字の印（KindMark）
+ * [#1025] Yo は手を振るアイコン（ネイティブ YoMark。送り主が指定した画像は使わない）
  */
-const KIND_ICON: Record<Exclude<NotificationKind, "yo">, typeof ReplyIcon> = {
+const KIND_ICON: Record<NotificationKind, typeof ReplyIcon> = {
   reply: ReplyIcon,
   mention: AlternateEmailIcon,
   reaction: FavoriteBorderIcon,
   repost: RepeatIcon,
   zap: BoltIcon,
   dm: MailOutlineIcon,
+  yo: WavingHandIcon,
 };
 
 /**
@@ -57,7 +57,7 @@ const KIND_ICON: Record<Exclude<NotificationKind, "yo">, typeof ReplyIcon> = {
  * [#904] リアクションの行は通知そのもの（相手の kind:7）を開く（スレッド画面が元の投稿に付け替えて光らせる）。
  * 対象が自分のリアクション（kind:7）なら、kind:7 を投稿として描かず「あなたのリアクション 👍」の 1 行 +
  * そのリアクションが付いた元の投稿（P）の引用カードにする（ネイティブ #901 の NoticeRow の targetReaction）。
- * [#1025] Yo = 見出しは相手と時刻、本体は「Yo（×件数）」と「Yo を返す」。引用カードは無く、行を押すと相手のプロフィール。
+ * [#1025] Yo = 見出しは相手と時刻、本体は「Yo!」のスタンプ（と件数）と「Yo を返す」。引用カードは無く、行を押すと相手のプロフィール。
  * プロフィール（kind:0）へのリアクションも引用カードを出さない（プロフィールの JSON がそのまま出ていた）。
  */
 export const NotificationRow = memo(function NotificationRow({ item }: { item: NotificationItem }) {
@@ -132,10 +132,12 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
       item.kind === "dm" ? (
         <p className={styles.dmText}>{dmReceivedText(t, item.dmUnread ?? 0)}</p>
       ) : item.kind === "yo" ? (
-        <div className={yoStyles.body}>
-          <span className={yoStyles.count}>{yoCountLabel(item.yo?.count ?? 1)}</span>
-          <YoBackButton pubkey={item.actor} replied={item.yo?.replied ?? false} receivedAt={item.createdAt} />
-        </div>
+        <YoNoticeBody
+          pubkey={item.actor}
+          count={item.yo?.count ?? 1}
+          replied={item.yo?.replied ?? false}
+          receivedAt={item.createdAt}
+        />
       ) : (
         <>
           {item.kind === "reaction" && <ReactionLine item={item} />}
@@ -176,16 +178,6 @@ function dmReceivedText(t: ReturnType<typeof useT>, unread: number): string {
 /** 左端の種別マーク。[#878] リアクションも ♡ のアイコン（読み上げは「リアクション 絵文字」のまま） */
 function KindMark({ item }: { item: NotificationItem }) {
   const t = useT();
-  // [#1025] Yo は文字の印（送り主が指定した画像は使わない）
-  if (item.kind === "yo") {
-    return (
-      <span className={styles.markInner} role="img" aria-label={YO_LABEL}>
-        <span className={yoStyles.mark} aria-hidden="true">
-          {YO_LABEL}
-        </span>
-      </span>
-    );
-  }
   const Icon = KIND_ICON[item.kind];
   const label =
     item.kind === "reaction"

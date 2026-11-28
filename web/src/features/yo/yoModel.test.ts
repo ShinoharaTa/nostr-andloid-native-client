@@ -235,8 +235,8 @@ describe("そのほか", () => {
   });
 
   it("件数は 2 件以上のときだけ付ける", () => {
-    expect(yoCountLabel(1)).toBe("Yo");
-    expect(yoCountLabel(3)).toBe("Yo ×3");
+    expect(yoCountLabel(1)).toBeNull();
+    expect(yoCountLabel(3)).toBe("×3");
   });
 
   it("自分が送った Yo の、相手ごとのいちばん新しい時刻", () => {

@@ -1,13 +1,11 @@
-/* [#1025] Yo の印（文字の「Yo」。ネイティブ YoMark。送り主が指定した画像は使わない） */
-.mark {
+/* [#1025] 自分が送った Yo の行の印（手を振るアイコン。ネイティブ YoMark。通知の種別マークと同じ大きさ） */
+.markIcon {
+  width: var(--icon-md);
+  height: var(--icon-md);
   color: var(--accent);
-  font-size: var(--type-label);
-  font-weight: var(--w-strong);
-  line-height: 1;
-  white-space: nowrap;
 }
 
-/* 通知の Yo の行の本体 = 左に「Yo（×件数）」（残り幅）、右に「Yo を返す」 */
+/* 通知の Yo の行の本体 = 左に「Yo!」のスタンプ（と件数）、右に「Yo を返す」 */
 .body {
   display: flex;
   align-items: center;
@@ -16,13 +14,43 @@
   min-height: var(--touch-sm);
 }
 
-.count {
-  flex: 1;
-  min-width: 0;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--w-strong);
+/*
+ * 「Yo!」のスタンプ（ネイティブ YoStamp）。主ボタンと同じ塗り（文字の色の面に背景の色の文字）を少し傾ける。
+ * 太さ 900 はネイティブの FontWeight.Black（スタンプだけの太さなので、役割のトークンには無い）。
+ */
+.stamp {
+  flex: none;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--type-title);
+  font-weight: 900;
+  line-height: 1.25;
   white-space: nowrap;
+  transform: rotate(-6deg);
+}
+
+/* 返したあとは面を沈める（まだ返していない Yo と見分ける） */
+.stamp[data-dimmed] {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.count {
+  flex: none;
+  color: var(--text-2);
+  font-size: var(--type-body);
+  font-weight: var(--w-name);
+  white-space: nowrap;
+}
+
+/* 右端の「Yo を返す」/「返しました」 */
+.action {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 /* ネイティブ DeckGhostButton */
@@ -45,15 +73,24 @@
   cursor: default;
 }
 
-/* 返したあと（ネイティブ HintText） */
+/* 返したあと（ネイティブ HintText。前にチェックの印） */
 .backed {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   color: var(--text-3);
   font-size: var(--type-label);
   white-space: nowrap;
 }
 
-/* 自分が送った Yo の行（ネイティブ MyYoRow）=「Yo」の印・アバター・「〇〇 さんに Yo」・時刻 */
+.backedIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* 自分が送った Yo の行（ネイティブ MyYoRow）= 手を振るアイコン・アバター・「〇〇 さんに Yo」・時刻 */
 .myRow {
   display: flex;
   align-items: center;
