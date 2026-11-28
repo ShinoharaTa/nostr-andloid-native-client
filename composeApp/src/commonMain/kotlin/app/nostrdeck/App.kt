@@ -11,6 +11,9 @@ import nostr_deck_client.composeapp.generated.resources.picker_make_save_duplica
 import nostr_deck_client.composeapp.generated.resources.reaction_sent_made
 import nostr_deck_client.composeapp.generated.resources.blocked_toast
 import nostr_deck_client.composeapp.generated.resources.block_pending_toast
+import nostr_deck_client.composeapp.generated.resources.yo_failed
+import nostr_deck_client.composeapp.generated.resources.yo_no_profile
+import nostr_deck_client.composeapp.generated.resources.yo_sent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -152,6 +155,19 @@ fun App(
                 ))
             }
         }
+        // [#1024] Yo を送った結果を知らせる（通知の行はスクロールで消え、プロフィールのメニューは閉じているので、ここで出す）。
+        LaunchedEffect(repository) {
+            repository?.yoResultFlow()?.collect { result ->
+                val r = nostr_deck_client.composeapp.generated.resources.Res.string
+                toast(app.nostrdeck.i18n.getString(
+                    when (result) {
+                        app.nostrdeck.data.EventRepository.YoResult.SENT -> r.yo_sent
+                        app.nostrdeck.data.EventRepository.YoResult.NO_PROFILE -> r.yo_no_profile
+                        app.nostrdeck.data.EventRepository.YoResult.FAILED -> r.yo_failed
+                    },
+                ))
+            }
+        }
         // [#732] 絵文字ピッカーからリアクションを送ったことを知らせる（投稿の行には出さない方針）。
         LaunchedEffect(repository) {
             repository?.reactionSentFlow()?.collect { sent ->
@@ -273,6 +289,10 @@ fun App(
         val timeDisplay by (repository?.timeDisplayFlow()?.collectAsState()
             ?: remember { mutableStateOf(app.nostrdeck.model.TimeDisplay.RELATIVE) })
         app.nostrdeck.ui.TimeDisplaySetting.apply(timeDisplay)
+        // [#1024] Yo の通知の見た目。YoStyleSetting も snapshot state（Yo の行と通知の見出しが読む）。
+        val yoStyle by (repository?.yoStyleFlow()?.collectAsState()
+            ?: remember { mutableStateOf(app.nostrdeck.model.YoStyle.BLOCK) })
+        app.nostrdeck.ui.YoStyleSetting.apply(yoStyle)
         val density = LocalDensity.current
         // [#196] スケール込み density を1つ作り、LocalDensity と（Dialog へ伝播させる用の）
         // LocalDeckDensity の両方へ供給する。Dialog/Popup 内では DeckScaled で再適用する。

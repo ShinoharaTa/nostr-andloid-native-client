@@ -228,6 +228,15 @@
     <string name="notif_repost">リポスト</string>
     <string name="notif_dm_received">メッセージが届きました</string>
     <string name="notif_your_reaction">あなたのリアクション</string>
+    <string name="notif_reaction_to_profile">あなたのプロフィールへのリアクション</string>
+    <string name="yo_back">Yo を返す</string>
+    <string name="yo_backed">返しました</string>
+    <string name="yo_sending">送信中</string>
+    <string name="yo_received">Yo が届きました</string>
+    <string name="yo_send">Yo を送る</string>
+    <string name="yo_sent">Yo を送りました</string>
+    <string name="yo_no_profile">プロフィールが見つからないので Yo を送れません</string>
+    <string name="yo_failed">Yo を送れませんでした</string>
     <string name="notif_dm_received_n">%1$d件のメッセージが届いています</string>
     <string name="col_pin">固定</string>
     <string name="col_unpin">固定を解除</string>
@@ -708,6 +717,7 @@
     <string name="feed_empty">投稿がありません</string>
     <string name="feed_loading_older">過去を読み込み中…</string>
     <string name="feed_you_reacted">あなたがリアクション</string>
+    <string name="feed_you_yo_fmt">%1$s さんに Yo</string>
     <string name="quality_low">低</string>
     <string name="quality_mid">中</string>
     <string name="quality_high">高</string>
@@ -867,6 +877,10 @@
     <!-- [#930] 時刻の表示 -->
     <string name="time_display_title">時刻の表示</string>
     <string name="time_display_desc">投稿・通知・チャット・記事・ステータスの時刻を、経過時間（5m など）と日時のどちらで出すかを選びます。日時は、今日なら時刻だけ、今年なら月日と時刻を出します。「秒まで」は投稿の詳細の日時にも効きます。</string>
+    <string name="yo_style_title">Yo の表示</string>
+    <string name="yo_style_desc">Yo（nostr-yo のあいさつ）が届いたときの、通知の見た目を選びます。「モノクロ」は、まだ返していない Yo の行を白黒反転で出します。「紫」は、紫のタイルとボタンで出し、通知の見出しにまだ返していない数を出します。</string>
+    <string name="yo_style_block">モノクロ</string>
+    <string name="yo_style_color">紫</string>
     <string name="time_display_relative">経過時間</string>
     <string name="time_display_absolute">日時</string>
     <string name="time_display_absolute_seconds">日時（秒まで）</string>

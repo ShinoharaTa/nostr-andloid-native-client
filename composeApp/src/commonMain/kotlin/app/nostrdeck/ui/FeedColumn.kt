@@ -257,6 +257,8 @@ fun FollowingFeedColumn(
                             onReply = { onReply(entry.target) }, onQuote = { onQuote(entry.target) },
                             onAuthorClick = onAuthorClick,
                         )
+                        // [#1024] 自分が送った Yo。押すと相手のプロフィール。
+                        is FeedEntry.MyYo -> MyYoRow(entry, onClick = { onAuthorClick(entry.to.pubkey) })
                     }
                 }
                 if (loadingOlder && entries.isNotEmpty()) item("load_older") { LoadMoreFooter() }
@@ -290,6 +292,7 @@ private fun feedEntryKey(e: FeedEntry): String = when (e) {
     is FeedEntry.Post -> e.note.repostId?.let { "rp_$it" } ?: "p_${e.note.event.id}"
     is FeedEntry.Notice -> "n_${e.notif.id}"
     is FeedEntry.MyReaction -> "r_${e.target.event.id}_${e.reactedAt}"
+    is FeedEntry.MyYo -> "y_${e.id}"   // [#1024]
 }
 
 /**

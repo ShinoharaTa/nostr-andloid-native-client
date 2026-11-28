@@ -232,6 +232,15 @@
     <string name="notif_repost">Reposts</string>
     <string name="notif_dm_received">Sent you a message</string>
     <string name="notif_your_reaction">Your reaction</string>
+    <string name="notif_reaction_to_profile">Reaction to your profile</string>
+    <string name="yo_back">Yo back</string>
+    <string name="yo_backed">Yo sent back</string>
+    <string name="yo_sending">Sending</string>
+    <string name="yo_received">Sent you a Yo</string>
+    <string name="yo_send">Send Yo</string>
+    <string name="yo_sent">Yo sent</string>
+    <string name="yo_no_profile">Couldn’t find their profile, so the Yo wasn’t sent</string>
+    <string name="yo_failed">Couldn’t send the Yo</string>
     <string name="notif_dm_received_n">Sent you %1$d messages</string>
     <string name="col_pin">Pin</string>
     <string name="col_unpin">Unpin</string>
@@ -712,6 +721,7 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="feed_empty">No posts</string>
     <string name="feed_loading_older">Loading older posts…</string>
     <string name="feed_you_reacted">You reacted</string>
+    <string name="feed_you_yo_fmt">Yo to %1$s</string>
     <string name="quality_low">Low</string>
     <string name="quality_mid">Medium</string>
     <string name="quality_high">High</string>
@@ -871,6 +881,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <!-- [#930] Time display -->
     <string name="time_display_title">Time display</string>
     <string name="time_display_desc">Show the time of posts, notifications, chat messages, articles and statuses as elapsed time (such as 5m) or as a date. Today shows only the time, and this year shows the month and day. “Date + seconds” also adds seconds to the date in post details.</string>
+    <string name="yo_style_title">Yo style</string>
+    <string name="yo_style_desc">Choose how a Yo (the nostr-yo greeting) looks in notifications. “Monochrome” shows a Yo you haven’t answered as an inverted block. “Purple” shows it with a purple tile and button, and puts the number you haven’t answered in the notifications header.</string>
+    <string name="yo_style_block">Monochrome</string>
+    <string name="yo_style_color">Purple</string>
     <string name="time_display_relative">Elapsed</string>
     <string name="time_display_absolute">Date</string>
     <string name="time_display_absolute_seconds">Date + seconds</string>

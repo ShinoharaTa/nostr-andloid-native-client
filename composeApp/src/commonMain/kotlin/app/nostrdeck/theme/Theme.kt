@@ -86,6 +86,8 @@ object DeckType {
     val Caption: TextUnit get() = atLeastMin(12.sp)   // 補足テキスト
     val Label: TextUnit   get() = atLeastMin(12.sp)   // 時刻/ハンドル/ラベル（[#984] 11 → 12。補足と同じ大きさ）
     val Micro: TextUnit   get() = atLeastMin(10.sp)   // バッジ/最小メタ
+    val YoLg: TextUnit    get() = atLeastMin(34.sp)   // [#1024] 大きな「Yo!」（まだ返していない Yo の行）
+    val YoMd: TextUnit    get() = atLeastMin(20.sp)   // [#1024] 小さな「Yo!」（返したあとの印）
     val Emoji   = 18.sp   // リアクション絵文字グリフ（本文スケール外）
     val EmojiLg = 22.sp   // [#59] リアクションを主役に見せる拡大絵文字（Body の約1.5倍）
 

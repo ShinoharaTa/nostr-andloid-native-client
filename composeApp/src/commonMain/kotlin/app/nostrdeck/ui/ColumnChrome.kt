@@ -135,6 +135,8 @@ fun ColumnHeader(
     titleClickLabel: String? = null,
     /** [#421] デッキの外（[menu] が null）で ⋯ に出す操作。空なら ⋯ を出さない。 */
     overflow: List<HeaderMenuItem> = emptyList(),
+    /** [#1024] タイトルの右（⋯ などの操作の左）に置く表示。通知の「Yo! 件数」など。 */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     // [#324] シングルカラムではタブが名前を持つのでヘッダは描かない。ただし onBack がある
     // 画面（設定配下など単体で開くもの）は戻る導線が消えると詰むため残す。
@@ -169,6 +171,10 @@ fun ColumnHeader(
                 lineHeight = DeckType.LineTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(columnDisplaySubtitle(subtitle), color = DeckColors.Text3, fontSize = DeckType.Label,
                 lineHeight = DeckType.LineDesc, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(DeckSpace.Sm))
+            trailing()
         }
         if (menu != null) {
             // デッキカラム: ⋯ に集約（移動 ◀▶ / フィルター編集 / 削除）。

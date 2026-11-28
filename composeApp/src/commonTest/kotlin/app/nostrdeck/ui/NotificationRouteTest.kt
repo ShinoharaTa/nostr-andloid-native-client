@@ -121,4 +121,26 @@ class NotificationRouteTest {
         assertEquals(actor.pubkey, state.dmThread)
         assertTrue(asked.isEmpty())
     }
+
+    /** [#1024] Yo の対象は自分のプロフィール。行を押したら送り主のプロフィールを開く（対象を取りに行かない）。 */
+    @Test
+    fun yo_notice_opens_the_senders_profile() {
+        val state = DeckState(emptyList())
+        val asked = mutableListOf<String>()
+        val yo = NotificationUi(notifId, NotificationKind.YO, actor, 1_700_000_100L, targetIsProfile = true)
+        openNotificationTarget(state, yo, openEvent = { asked += it })
+        assertEquals(listOf<DetailRoute>(DetailRoute.ProfileView(actor.pubkey)), state.detailStack.toList())
+        assertTrue(asked.isEmpty())
+    }
+
+    /** [#1024] プロフィール（kind:0）へのふつうのリアクションも同じ（kind:0 をスレッドとして開かない）。 */
+    @Test
+    fun reaction_to_my_profile_opens_the_senders_profile() {
+        val state = DeckState(emptyList())
+        val asked = mutableListOf<String>()
+        val n = notice().copy(targetIsProfile = true)
+        openNotificationTarget(state, n, openEvent = { asked += it })
+        assertEquals(listOf<DetailRoute>(DetailRoute.ProfileView(actor.pubkey)), state.detailStack.toList())
+        assertTrue(asked.isEmpty())
+    }
 }

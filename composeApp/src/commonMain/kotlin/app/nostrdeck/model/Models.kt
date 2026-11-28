@@ -211,7 +211,8 @@ data class UsedEmoji(val content: String, val imageUrl: String?)
 
 /** [M10-notif] 通知の種別。 */
 // [#419] DM = 自分宛の NIP-17/NIP-04 メッセージ受信（復号後の kind:14）。
-enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP, DM }
+// [#1024] YO = 自分宛の Yo（nostr-yo。プロフィールへの `:yo:` のリアクション。判定は [Yo.recipientOf]）。
+enum class NotificationKind { REPLY, MENTION, REACTION, REPOST, ZAP, DM, YO }
 
 /**
  * [NIP-42] リレーの AUTH 要求への応答ポリシー。
@@ -268,6 +269,15 @@ data class NotificationUi(
      * 元の投稿になる（「あなたのリアクション 👍」の 1 行を添えて出す）。対象が投稿なら null。
      */
     val targetReaction: ReactionUi? = null,
+    /**
+     * [#1024] リアクションの対象が自分のプロフィール（kind:0）。引用カードは出さず（プロフィールの JSON をそのまま出さない）、
+     * 行を押したら相手のプロフィールを開く。
+     */
+    val targetIsProfile: Boolean = false,
+    /** [#1024] YO のとき、同じ人から届いている Yo の数（1 行にまとめている。[Yo.collapse]）。 */
+    val yoCount: Int = 0,
+    /** [#1024] YO のとき、いちばん新しい Yo より後に、こちらから Yo を送ってある（「返しました」）。 */
+    val yoReplied: Boolean = false,
 )
 
 /**
@@ -288,6 +298,10 @@ sealed interface FeedEntry {
     data class MyReaction(val reaction: ReactionUi, val target: NoteUi, val reactedAt: Long) : FeedEntry {
         override val sortAt: Long get() = reactedAt
     }
+    /** [#1024] 自分が送った Yo（[id] = その kind:7）。対象は相手のプロフィールなので、投稿ではなく「〇〇 さんに Yo」と出す。 */
+    data class MyYo(val id: String, val to: Profile, val sentAt: Long) : FeedEntry {
+        override val sortAt: Long get() = sentAt
+    }
 }
 
 /**
@@ -296,13 +310,14 @@ sealed interface FeedEntry {
  */
 fun feedNoticeCategoryOf(entry: FeedEntry): FeedNoticeCategory? = when (entry) {
     is FeedEntry.Notice -> when (entry.notif.kind) {
-        NotificationKind.REACTION -> FeedNoticeCategory.REACTIONS
+        // [#1024] Yo は kind:7。「リアクション」と一緒に出し入れする。
+        NotificationKind.REACTION, NotificationKind.YO -> FeedNoticeCategory.REACTIONS
         NotificationKind.REPLY, NotificationKind.MENTION -> FeedNoticeCategory.REPLIES
         NotificationKind.REPOST -> FeedNoticeCategory.REPOSTS
         NotificationKind.DM -> FeedNoticeCategory.DMS  // [#419]
         else -> null
     }
-    is FeedEntry.MyReaction -> FeedNoticeCategory.MY_REACTIONS
+    is FeedEntry.MyReaction, is FeedEntry.MyYo -> FeedNoticeCategory.MY_REACTIONS
     // [#793] パブリックチャットの発言は投稿と同じ Post で流し、発言先のチャンネルを持つかで見分ける。
     is FeedEntry.Post -> if (entry.note.chatChannel != null) FeedNoticeCategory.CHAT else null
 }

@@ -140,6 +140,11 @@ object DeckColors {
     val Verified get() = palette.value.verified
     val Warn get() = palette.value.warn
 
+    // [#1024] Yo の色（紫のベタ塗り 1 色）と、その上に載せる文字の色。テーマに依らず同じ（tokens.css の --yo / --on-yo）。
+    // 白い文字とのコントラストは約 5:1。Yo の表示が「紫」のときだけ使う。
+    val Yo = androidx.compose.ui.graphics.Color(0xFF8B3DFF)
+    val OnYo = androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+
     // [#256][#257] ノート種別の識別色。
     val KindRepost get() = palette.value.kindRepost
     val KindQuote get() = palette.value.kindQuote
