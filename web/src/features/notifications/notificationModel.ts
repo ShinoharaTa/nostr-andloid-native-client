@@ -146,6 +146,26 @@ export function notificationsFrom(
 }
 
 /**
+ * [#1025] この Yo の行に、もう返したか（ネイティブ Yo.isReplied）。通知の組み直し（yo.replied）を待つと送った直後に
+ * 間が空くので、このセッションで送った時刻（sentAt = その相手へ送った Yo の created_at）が受け取った Yo 以降なら、
+ * それも返したものとする。
+ */
+export function isYoReplied(item: NotificationItem, sentAt: number | undefined): boolean {
+  return item.yo?.replied === true || (sentAt !== undefined && sentAt >= item.createdAt);
+}
+
+/**
+ * [#1025] まだ返していない Yo の行の数（ネイティブ Yo.unrepliedCount。相手の数。同じ人の Yo は 1 行にまとまっている）。
+ * 通知の見出しに出す。sentAt = 相手の公開鍵 → このセッションで送った Yo の created_at
+ */
+export function unrepliedYoCount(
+  items: readonly NotificationItem[],
+  sentAt: ReadonlyMap<string, number>,
+): number {
+  return items.filter((item) => item.kind === "yo" && !isYoReplied(item, sentAt.get(item.actor))).length;
+}
+
+/**
  * [#1025] 通知の束ね（ネイティブ Yo.collapse）: 同じ人からの Yo を 1 行にする（Yo は続けて届きやすく、1 件ずつ出すと
  * 通知が埋まる）。いちばん新しい Yo を残して件数を載せ、こちらがそれ以降に Yo を送っていれば「返した」にする。
  * myLatest = 相手の公開鍵 → 自分がその人へ送ったいちばん新しい Yo の時刻。Yo 以外の行はそのまま（順番は呼び出し側で並べる）

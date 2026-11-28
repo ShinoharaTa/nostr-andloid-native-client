@@ -1,6 +1,6 @@
 import { npubEncode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useCloseMenuOnBack } from "../../app/history";
@@ -42,6 +42,7 @@ import { isStatusVisible, type StatusType, sortStatuses } from "../status/status
 import { NoteItem } from "../timeline/NoteItem";
 import { Timeline } from "../timeline/Timeline";
 import { useNow } from "../timeline/useNow";
+import { YoHeaderPill } from "../yo/YoHeaderPill";
 import { useZapReceipts, zapTargetIds } from "../zap/useZapReceipts";
 import styles from "./DeckColumn.module.css";
 import type { FeedRow } from "./followingMix";
@@ -202,7 +203,13 @@ function FeedColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: boolea
   const profileHeader = profilePubkey ? <ProfileColumnHeader pubkey={profilePubkey} /> : undefined;
   return (
     <section className={styles.column} aria-label={columnLabel(spec)} aria-busy={loading}>
-      {showHeader && <ColumnHeader spec={spec} />}
+      {showHeader && (
+        <ColumnHeader
+          spec={spec}
+          // [#1025] 通知カラムの見出しに、まだ返していない Yo の数（Yo の表示が「紫」のときだけ）
+          trailing={spec.kind === "NOTIFICATIONS" ? <YoHeaderPill events={events} /> : undefined}
+        />
+      )}
       <div className={styles.body}>
         {loading && (
           <div className={styles.progress} role="progressbar" aria-label={t("web_deck_loading_aria")} />
@@ -297,9 +304,10 @@ function StatusColumn({ spec, showHeader }: { spec: ColumnSpec; showHeader: bool
 
 /**
  * カラムヘッダ（ネイティブの ColumnHeader）。先頭 40px のアイコン、タイトル + 説明、末尾に ⋯。
+ * [#1025] trailing = タイトルの右（⋯ の左）に置く表示（通知カラムの「Yo! 件数」）。
  * PROFILE はプロフィール（kind:0）の名前をタイトルにする（ネイティブ ProfileColumn.kt:66-71。未取得なら spec.title）。
  */
-function ColumnHeader({ spec }: { spec: ColumnSpec }) {
+function ColumnHeader({ spec, trailing }: { spec: ColumnSpec; trailing?: ReactNode }) {
   useT();
   const profilePubkey = spec.kind === "PROFILE" ? spec.filter.authors[0] : undefined;
   const profile = useProfile(profilePubkey);
@@ -319,6 +327,7 @@ function ColumnHeader({ spec }: { spec: ColumnSpec }) {
         <h2 className={styles.title}>{title}</h2>
         <p className={styles.subtitle}>{subtitle}</p>
       </div>
+      {trailing}
       <ColumnMenu spec={spec} />
     </header>
   );

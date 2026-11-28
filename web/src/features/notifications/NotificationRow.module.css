@@ -43,8 +43,7 @@
   color: var(--zap);
 }
 
-[data-kind="dm"] .markIcon,
-[data-kind="yo"] .markIcon {
+[data-kind="dm"] .markIcon {
   color: var(--accent);
 }
 
@@ -199,4 +198,54 @@
 
 :root[data-density="dense"] .main > *:not(.head):not(.snippet) {
   grid-column: 1 / -1;
+}
+
+/*
+ * ===== [#1025] Yo の行（ネイティブ YoUi.kt YoNoticeRow）。data-yo = block / color（まだ返していない）/ done（返したあと） =====
+ * 印は列の上端に詰める（アイコン用の上の余白は要らない）。
+ */
+.row[data-yo] .mark {
+  padding-top: 0;
+}
+
+/*
+ * モノクロ・まだ返していない Yo: 行まるごと反転（文字の色の面に、背景の色の文字）。
+ * article を付けて詳細度を上げ、キーボード選択の背景（KbList の .row[data-kb-selected] > *）に塗り替えられないようにする。
+ */
+article.row[data-yo="block"] {
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* 大きな「Yo!」は列の幅を超えるので、幅を固定しない */
+.row[data-yo="block"] .mark {
+  justify-content: flex-start;
+  width: auto;
+  min-width: calc(var(--avatar-size) + var(--sp-3));
+}
+
+.row[data-yo="block"] .main {
+  gap: var(--sp-1);
+}
+
+.row[data-yo="block"] .name {
+  color: var(--bg);
+}
+
+/* 反転した面の上の時刻。--text-3 のままだと面との差が小さいので、反転の色を薄めて使う（ネイティブ YO_INVERSE_SUB_ALPHA） */
+.row[data-yo="block"] .time {
+  color: var(--bg);
+  opacity: 0.7;
+}
+
+/* キーボード選択中の印（反転した面の上なので、線も反転の色） */
+[data-kb-selected] > .row[data-yo="block"] {
+  box-shadow: inset 3px 0 0 var(--bg);
+}
+
+/* 紫・まだ返していない Yo: 行の左端に紫の線 */
+.row[data-yo="color"] {
+  box-shadow: inset var(--sp-1) 0 0 var(--yo);
 }

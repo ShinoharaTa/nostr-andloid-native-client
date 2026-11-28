@@ -158,8 +158,11 @@ export function reactsToProfile(tags: readonly string[][]): boolean {
   return tags.some((tag) => tag[0] === "k" && tag[1] === "0");
 }
 
-/** スタンプの文字（nostr-yo のロゴと同じ「Yo!」。ネイティブ YoUi.kt YO_STAMP_TEXT） */
-export const YO_STAMP_TEXT = "Yo!";
+/** 「Yo!」の文字（nostr-yo のロゴと同じ表記。ネイティブ YoUi.kt YO_WORD） */
+export const YO_WORD = "Yo!";
+
+/** 届いたばかりとみなす秒数。この間に初めて描く行だけ動かす（ネイティブ YoUi.kt YO_FRESH_SEC） */
+export const YO_FRESH_SEC = 15;
 
 /** Yo の件数（同じ人から 2 件以上届いているとき「×3」。1 件なら出さない） */
 export function yoCountLabel(count: number): string | null {

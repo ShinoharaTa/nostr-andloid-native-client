@@ -6,12 +6,14 @@ import { yoDraft } from "../yo/yoModel";
 import {
   collapseYos,
   dmNotices,
+  isYoReplied,
   NOTIFICATIONS_MAX,
   notificationHref,
   notificationSnippet,
   notificationsFrom,
   targetPointerOf,
   toNotification,
+  unrepliedYoCount,
 } from "./notificationModel";
 
 const ME = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -335,6 +337,39 @@ describe("Yo", () => {
       [Z, NOW - 200, 1],
     ]);
     expect(items.every((i) => i.yo?.replied === false)).toBe(true);
+  });
+
+  it("このセッションで送った直後も「返した」とみなす（通知の組み直しを待たない）", () => {
+    const [item] = notificationsFrom([yo(OTHER, ME, NOW - 100)], ME, { now: NOW });
+    expect(isYoReplied(item, undefined)).toBe(false);
+    expect(isYoReplied(item, NOW - 100)).toBe(true);
+    // それより新しい Yo が届いていれば、まだ返していない
+    expect(isYoReplied(item, NOW - 101)).toBe(false);
+    expect(isYoReplied({ ...item, yo: { count: 1, replied: true } }, undefined)).toBe(true);
+  });
+
+  it("見出しの件数は、まだ返していない相手の数（同じ人の Yo は 1 人。返した人と Yo 以外は数えない）", () => {
+    const events = [
+      yo(OTHER, ME, NOW - 300),
+      yo(OTHER, ME, NOW - 100),
+      yo(Z, ME, NOW - 200),
+      yo(A, ME, NOW - 150),
+      ev({
+        pubkey: B,
+        kind: 7,
+        content: "+",
+        tags: [
+          ["e", "e".repeat(64)],
+          ["p", ME],
+        ],
+        created_at: NOW - 50,
+      }),
+    ];
+    // A には返してある
+    const items = notificationsFrom(events, ME, { now: NOW, myReactions: [yo(ME, A, NOW - 120)] });
+    expect(unrepliedYoCount(items, new Map())).toBe(2);
+    expect(unrepliedYoCount(items, new Map([[Z, NOW - 200]]))).toBe(1);
+    expect(unrepliedYoCount([], new Map())).toBe(0);
   });
 
   it("こちらがそれ以降に Yo を送っていれば「返した」。また届けば戻る", () => {

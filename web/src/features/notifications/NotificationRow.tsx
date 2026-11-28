@@ -22,7 +22,7 @@ import { Avatar, NoteItem } from "../timeline/NoteItem";
 import { QuoteCard } from "../timeline/QuoteCard";
 import { useNow } from "../timeline/useNow";
 import { useOpenOnClick } from "../timeline/useOpenOnClick";
-import { YoNoticeBody } from "../yo/YoNoticeBody";
+import { useYoRowState, YoNoticeBody, YoNoticeMark } from "../yo/YoNotice";
 import styles from "./NotificationRow.module.css";
 import {
   type NotificationItem,
@@ -35,7 +35,7 @@ import {
 
 /**
  * 種別マーク（ネイティブの kindIcon）。[#878] リアクションも ♡ のアイコン（絵文字は本体の 1 行）。
- * [#1025] Yo は手を振るアイコン（ネイティブ YoMark。送り主が指定した画像は使わない）
+ * [#1025] Yo の行は「Yo!」の印（YoNoticeMark）を出すので、ここのアイコンは使わない（表を埋めるだけ）
  */
 const KIND_ICON: Record<NotificationKind, typeof ReplyIcon> = {
   reply: ReplyIcon,
@@ -57,12 +57,16 @@ const KIND_ICON: Record<NotificationKind, typeof ReplyIcon> = {
  * [#904] リアクションの行は通知そのもの（相手の kind:7）を開く（スレッド画面が元の投稿に付け替えて光らせる）。
  * 対象が自分のリアクション（kind:7）なら、kind:7 を投稿として描かず「あなたのリアクション 👍」の 1 行 +
  * そのリアクションが付いた元の投稿（P）の引用カードにする（ネイティブ #901 の NoticeRow の targetReaction）。
- * [#1025] Yo = 見出しは相手と時刻、本体は「Yo!」のスタンプ（と件数）と「Yo を返す」。引用カードは無く、行を押すと相手のプロフィール。
+ * [#1025] Yo = 行そのものが「Yo!」だと分かる見た目にする（設定でモノクロ / 紫。ネイティブ YoUi.kt YoNoticeRow）。
+ * まだ返していない Yo は目立たせ（モノクロ = 行まるごと反転 / 紫 = 紫のタイル・ボタン・左端の線）、返したあとは普通の行に戻す。
+ * 見出しは相手と時刻、本体は件数と「Yo を返す」（返したあとは「✓ 返しました」）。引用カードは無く、行を押すと相手のプロフィール。
  * プロフィール（kind:0）へのリアクションも引用カードを出さない（プロフィールの JSON がそのまま出ていた）。
  */
 export const NotificationRow = memo(function NotificationRow({ item }: { item: NotificationItem }) {
   const t = useT();
   const isReply = item.kind === "reply" || item.kind === "mention";
+  // [#1025] Yo の行の状態（まだ返していない = 設定の見た目 / 返したあと = done）。Yo でなければ null
+  const yoState = useYoRowState(item);
   const profile = useProfile(item.actor);
   const picture = pictureOf(profile);
   const now = useNow();
@@ -132,12 +136,7 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
       item.kind === "dm" ? (
         <p className={styles.dmText}>{dmReceivedText(t, item.dmUnread ?? 0)}</p>
       ) : item.kind === "yo" ? (
-        <YoNoticeBody
-          pubkey={item.actor}
-          count={item.yo?.count ?? 1}
-          replied={item.yo?.replied ?? false}
-          receivedAt={item.createdAt}
-        />
+        yoState && <YoNoticeBody item={item} state={yoState} />
       ) : (
         <>
           {item.kind === "reaction" && <ReactionLine item={item} />}
@@ -158,9 +157,9 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
   }
 
   return (
-    <article ref={ref} className={styles.row} data-kind={item.kind}>
+    <article ref={ref} className={styles.row} data-kind={item.kind} data-yo={yoState ?? undefined}>
       <div className={styles.mark}>
-        <KindMark item={item} />
+        {yoState ? <YoNoticeMark state={yoState} createdAt={item.createdAt} /> : <KindMark item={item} />}
       </div>
       <div className={styles.main}>
         {head}

@@ -10,6 +10,7 @@ import { setDensity, useThemePrefs } from "../theme/themePrefs";
 import { ReactionCountsSettings } from "./ReactionCountsSettings";
 import styles from "./SettingsSections.module.css";
 import { TimeDisplaySettings } from "./TimeDisplaySettings";
+import { YoStyleSettings } from "./YoStyleSettings";
 
 /**
  * 表示（先頭に言語（#542, Web 追加）。以降はネイティブ設定 > 表示と同じ順: テーマ・種別の視覚表示・表示サイズ・文字サイズ・太字（#464。
@@ -25,6 +26,7 @@ export function DisplaySection() {
         <ThemeSettings />
       </div>
       <TimeDisplaySettings />
+      <YoStyleSettings />
       <NyanModeBlock />
       <KansaiBlock />
       <DensityBlock />

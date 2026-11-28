@@ -5,72 +5,195 @@
   color: var(--accent);
 }
 
-/* 通知の Yo の行の本体 = 左に「Yo!」のスタンプ（と件数）、右に「Yo を返す」 */
-.body {
-  display: flex;
+/* ===== 通知の Yo の行の印（ネイティブ YoWord / YoTile） ===== */
+
+.markWrap {
+  display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-  min-height: var(--touch-sm);
 }
 
-/*
- * 「Yo!」のスタンプ（ネイティブ YoStamp）。主ボタンと同じ塗り（文字の色の面に背景の色の文字）を少し傾ける。
- * 太さ 900 はネイティブの FontWeight.Black（スタンプだけの太さなので、役割のトークンには無い）。
- */
-.stamp {
+/* 「Yo!」の文字。太さは Yo だけのもの（--w-yo） */
+.word {
   flex: none;
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-sm);
-  background: var(--text);
-  color: var(--bg);
-  font-size: var(--type-title);
-  font-weight: 900;
-  line-height: 1.25;
+  font-weight: var(--w-yo);
+  line-height: 1;
+  letter-spacing: -0.02em;
   white-space: nowrap;
+}
+
+/* モノクロ・まだ返していない Yo: 大きな「Yo!」（色は行の反転に従う） */
+.wordLg {
+  font-size: var(--type-yo-lg);
   transform: rotate(-6deg);
 }
 
-/* 返したあとは面を沈める（まだ返していない Yo と見分ける） */
-.stamp[data-dimmed] {
+/* モノクロ・返したあと: 沈めた小さな「Yo!」 */
+.wordSm {
+  color: var(--text-3);
+  font-size: var(--type-yo-md);
+  transform: rotate(-6deg);
+}
+
+/* 紫のタイル（種別マークの列いっぱい。返したあとは面を沈める） */
+.tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--r-sm);
+  background: var(--yo);
+  color: var(--on-yo);
+  font-size: var(--type-title);
+  transform: rotate(-8deg);
+}
+
+.tile[data-dimmed] {
   background: var(--surface-3);
   color: var(--text-2);
 }
 
-.count {
-  flex: none;
-  color: var(--text-2);
+/* 廃人モード: 列が細いので文字を 1 段下げる（ネイティブ YoUi.kt の isDense の分岐と同じ） */
+:root[data-density="dense"] .wordLg {
+  font-size: var(--type-yo-md);
+}
+
+:root[data-density="dense"] .wordSm {
   font-size: var(--type-body);
-  font-weight: var(--w-name);
+}
+
+:root[data-density="dense"] .tile {
+  font-size: var(--type-label);
+}
+
+/* 届いた瞬間の動き（一度だけ）。モノクロは「Yo!」が弾む、紫はタイルが揺れる（行き 160ms・戻り 260ms） */
+@keyframes yoBounce {
+  0% {
+    transform: rotate(-6deg) scale(1);
+  }
+  38% {
+    transform: rotate(-6deg) scale(1.15);
+  }
+  100% {
+    transform: rotate(-6deg) scale(1);
+  }
+}
+
+@keyframes yoWobble {
+  0% {
+    transform: rotate(-8deg);
+  }
+  38% {
+    transform: rotate(-16deg);
+  }
+  100% {
+    transform: rotate(-8deg);
+  }
+}
+
+.wordLg[data-fresh] {
+  animation: yoBounce 420ms ease-out 1;
+}
+
+.tile[data-fresh] {
+  animation: yoWobble 420ms ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordLg[data-fresh],
+  .tile[data-fresh] {
+    animation: none;
+  }
+}
+
+/* ===== 通知の Yo の行の本体（見出しの下の 1 行） ===== */
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 件数「×3」（1 件なら空。残り幅を取って、ボタンを右端へ寄せる） */
+.count {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--type-title);
+  font-weight: var(--w-yo);
   white-space: nowrap;
 }
 
-/* 右端の「Yo を返す」/「返しました」 */
-.action {
-  flex: none;
-  display: flex;
-  align-items: center;
-  margin-left: auto;
+/* 返したあとの「Yo が届きました」 */
+.hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--type-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ネイティブ DeckGhostButton */
+/* 「Yo を返す」（ネイティブ YoBackButton）。色は行の見た目で決める */
 .back {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
   min-height: var(--touch-sm);
   padding: 0 var(--sp-4);
   border: 0;
   border-radius: var(--r-full);
-  background: var(--surface-2);
-  color: var(--text);
   font: inherit;
   font-size: var(--type-body);
-  font-weight: var(--w-link);
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .back:disabled {
-  color: var(--text-3);
   cursor: default;
+}
+
+/* モノクロ: 反転した面の上なので、ボタンは元の面の色に戻す */
+.back[data-variant="block"] {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: var(--w-strong);
+}
+
+.back[data-variant="block"]:disabled {
+  color: var(--text-2);
+}
+
+/* 紫: 紫のベタ塗り。送っている間は面を沈める */
+.back[data-variant="color"] {
+  background: var(--yo);
+  color: var(--on-yo);
+  font-weight: var(--w-yo);
+}
+
+.back[data-variant="color"]:disabled {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+/* 送信中の印 */
+.spin {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: yoSpin 0.8s linear infinite;
+}
+
+@keyframes yoSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 返したあと（ネイティブ HintText。前にチェックの印） */
@@ -88,6 +211,21 @@
   flex: none;
   width: var(--icon-sm);
   height: var(--icon-sm);
+}
+
+/* 通知の見出しの「Yo! 件数」（紫の表示のときだけ。ネイティブ YoHeaderPill） */
+.pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--touch-xs) - var(--sp-1));
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--yo);
+  color: var(--on-yo);
+  font-size: var(--type-caption);
+  font-weight: var(--w-yo);
+  white-space: nowrap;
 }
 
 /* 自分が送った Yo の行（ネイティブ MyYoRow）= 手を振るアイコン・アバター・「〇〇 さんに Yo」・時刻 */
