@@ -1274,6 +1274,13 @@ private fun themeModeLabel(m: app.nostrdeck.model.ThemeMode): String = when (m) 
     app.nostrdeck.model.ThemeMode.CUSTOM -> stringResource(Res.string.theme_custom)
 }
 
+// [#1024] Yo の表示のラベル。
+@Composable
+private fun yoStyleLabel(s: app.nostrdeck.model.YoStyle): String = when (s) {
+    app.nostrdeck.model.YoStyle.BLOCK -> stringResource(Res.string.yo_style_block)
+    app.nostrdeck.model.YoStyle.COLOR -> stringResource(Res.string.yo_style_color)
+}
+
 // [#930] 時刻の表示のラベル。
 @Composable
 private fun timeDisplayLabel(m: app.nostrdeck.model.TimeDisplay): String = when (m) {
@@ -1530,6 +1537,24 @@ private fun AppearanceSettings() {
         Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
             app.nostrdeck.model.TimeDisplay.entries.forEach { m ->
                 ChoiceChip(timeDisplayLabel(m), selected = timeDisplay == m) { repo.setTimeDisplay(m) }
+            }
+        }
+    }
+    Spacer(Modifier.size(DeckSpace.Xl))
+
+    // [#1024] Yo の通知の見た目（モノクロ / 紫）。
+    SectionCaption(stringResource(Res.string.yo_style_title))
+    Spacer(Modifier.height(DeckSpace.Xs))
+    Text(
+        stringResource(Res.string.yo_style_desc),
+        color = DeckColors.Text3, fontSize = DeckType.Label,
+    )
+    Spacer(Modifier.size(DeckSpace.Md))
+    run {
+        val yoStyle by repo.yoStyleFlow().collectAsState()
+        Row(horizontalArrangement = Arrangement.spacedBy(DeckSpace.Sm)) {
+            app.nostrdeck.model.YoStyle.entries.forEach { s ->
+                ChoiceChip(yoStyleLabel(s), selected = yoStyle == s) { repo.setYoStyle(s) }
             }
         }
     }

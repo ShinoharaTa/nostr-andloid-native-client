@@ -8,6 +8,7 @@ import app.nostrdeck.model.FeedEntry
 import app.nostrdeck.model.NostrEvent
 import app.nostrdeck.model.NotificationKind
 import app.nostrdeck.model.Yo
+import app.nostrdeck.model.YoStyle
 import app.nostrdeck.signer.InMemoryKeyVault
 import app.nostrdeck.signer.LocalSigner
 import app.nostrdeck.signer.SignerProvider
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -226,6 +228,30 @@ class YoTest {
             assertTrue(db.nostrQueries.pendingPublishes().executeAsList().isEmpty())
         } finally {
             scope.cancel()
+        }
+    }
+
+    /** Yo の通知の見た目（モノクロ / 紫）は端末に覚えて、起動し直しても同じ。既定はモノクロ。 */
+    @Test
+    fun the_yo_style_is_remembered_across_restarts(): Unit = runBlocking {
+        val db = newDb("yo-style")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(scope, db)
+            assertEquals(YoStyle.BLOCK, repo.yoStyleFlow().value)
+            repo.setYoStyle(YoStyle.COLOR)
+            assertEquals(YoStyle.COLOR, repo.yoStyleFlow().value)
+            withTimeout(2_000) {
+                while (db.nostrQueries.getSetting(EventRepository.YO_STYLE_KEY).executeAsOneOrNull() != YoStyle.COLOR.id) delay(50)
+            }
+        } finally {
+            scope.cancel()
+        }
+        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            assertEquals(YoStyle.COLOR, openRepo(scope2, db).yoStyleFlow().value)
+        } finally {
+            scope2.cancel()
         }
     }
 }

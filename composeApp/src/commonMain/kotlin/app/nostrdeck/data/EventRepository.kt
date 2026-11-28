@@ -518,6 +518,7 @@ class EventRepository(
         loadTermsAccepted()   // [#951]
         loadPendingBlocks()   // [#951]
         discardDeveloperOutbox()   // [#961]
+        loadYoStyle()   // [#1024]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
         loadTtsVoice()   // [#948]
@@ -5939,6 +5940,18 @@ class EventRepository(
         nyanModeState.value = NyanMode.fromId(q.getSetting(NYAN_MODE_KEY).executeAsOneOrNull())
     }
 
+    // ---- [#1024] Yo の通知の見た目（モノクロ / 紫。既定はモノクロ）----
+    // 端末ローカル設定（時刻の表示と同じく、SettingsSync ホワイトリストには入れない）。
+    private val yoStyleState = MutableStateFlow(app.nostrdeck.model.YoStyle.BLOCK)
+    fun yoStyleFlow(): StateFlow<app.nostrdeck.model.YoStyle> = yoStyleState
+    fun setYoStyle(style: app.nostrdeck.model.YoStyle) {
+        yoStyleState.value = style
+        putSettingAsync(YO_STYLE_KEY, style.id)
+    }
+    private fun loadYoStyle() {
+        yoStyleState.value = app.nostrdeck.model.YoStyle.fromId(q.getSetting(YO_STYLE_KEY).executeAsOneOrNull())
+    }
+
     // ---- [#930] 時刻の表示（経過時間 / 日時 / 日時を秒まで。既定は経過時間）----
     // 端末ローカル設定（#374 の SettingsSync ホワイトリストには入れない）。
     private val timeDisplayState = MutableStateFlow(app.nostrdeck.model.TimeDisplay.RELATIVE)
@@ -7273,6 +7286,7 @@ class EventRepository(
         const val UI_SCALE_KEY = "ui:ui_scale"
         const val BOLD_TEXT_KEY = "appearance_bold_text"   // [#327]       // [#appearance] 表示サイズ（s/m/l）
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
+        const val YO_STYLE_KEY = "ui:yo_style"   // [#1024] Yo の通知の見た目（block/color）
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
         const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）
