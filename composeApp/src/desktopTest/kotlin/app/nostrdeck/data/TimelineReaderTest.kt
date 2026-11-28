@@ -9,6 +9,7 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.TtsStyle
 import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -82,8 +83,10 @@ class TimelineReaderTest {
         backgroundReleaseMs: Long = 50,
         personName: suspend (String) -> String? = { null },
         style: () -> TtsStyle = { TtsStyle.DEFAULT },
+        /** 読む側が動く場所。アプリと同じく既定は別スレッド。 */
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
     ): Setup {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val mutes = MutableStateFlow<MuteList?>(null)
         lateinit var s: Setup
         val reader = TimelineReader(
@@ -331,6 +334,25 @@ class TimelineReaderTest {
         }
     }
 
+    /**
+     * 待ちの件数は、スロットへ入れる前に数える。入れてから数えると、読む側が先に取り出して引いた分
+     *（0 より下へは引けない）が消え、読み終えても待ちが残る。別スレッドだとたまにしか起きない順序なので、
+     * 読む側をその場で動かして（Unconfined。スロットへ入れた呼び出しの中で、取り出して引くところまで進む）必ず起こす。
+     */
+    @Test
+    fun waiting_returns_to_zero_when_a_post_is_taken_the_moment_it_is_queued(): Unit = runBlocking {
+        val s = setup(dispatcher = Dispatchers.Unconfined)
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(note("p2", "c", "う", "二つ目", start + 2), note("p1", "b", "い", "一つ目", start + 1))
+            val done = withTimeout(2_000) { s.reader.stats.first { it.read == 2 } }
+            assertEquals(TimelineReader.Stats(read = 2), done)
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
     @Test
     fun a_burst_is_read_in_order_without_dropping(): Unit = runBlocking {
         val s = setup()
@@ -456,6 +478,30 @@ class TimelineReaderTest {
             s.reader.stop()
             withTimeout(2_000) { s.reader.status.first { it == TimelineReader.Status.OFF } }
             assertTrue(s.made.single().closed)
+        } finally {
+            s.scope.cancel()
+        }
+    }
+
+    /**
+     * 止めるのと同時に描かれた投稿が、OFF の後に待ちとして残らない。読む側をその場で動かし（Unconfined）、
+     * 1 件目をスロットへ入れた呼び出しの中で止めて片付けまで済ませる（残りの 2 件はその後に入れようとする）。
+     */
+    @Test
+    fun posts_shown_at_the_moment_of_stop_are_not_left_waiting(): Unit = runBlocking {
+        lateinit var s: Setup
+        // failOn は読み始めに呼ばれる。ここでは止めるだけで、投げない（null）
+        s = setup(engines = listOf(FakeEngine(failOn = { s.reader.stop(); null })), dispatcher = Dispatchers.Unconfined)
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(
+                note("p3", "d", "え", "三つ目", start + 3),
+                note("p2", "c", "う", "二つ目", start + 2),
+                note("p1", "b", "い", "一つ目", start + 1),
+            )
+            withTimeout(2_000) { s.reader.status.first { it == TimelineReader.Status.OFF } }
+            assertEquals(0, s.reader.stats.value.waiting)
         } finally {
             s.scope.cancel()
         }
