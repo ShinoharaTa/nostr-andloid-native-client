@@ -1546,7 +1546,7 @@ private fun AppearanceSettings() {
     }
     Spacer(Modifier.size(DeckSpace.Xl))
 
-    // [#1024] Yo の通知の見た目（モノクロ / 紫）。
+    // [#1024] Yo の通知の見た目（紫 / 白黒）。既定は紫。
     SectionCaption(stringResource(Res.string.yo_style_title))
     Spacer(Modifier.height(DeckSpace.Xs))
     Text(
@@ -1562,6 +1562,10 @@ private fun AppearanceSettings() {
             }
         }
     }
+    Spacer(Modifier.size(DeckSpace.Xl))
+
+    // [#1024] Yo に付ける絵文字（標準 / 自分のカスタム絵文字）。
+    YoEmojiSettings()
     Spacer(Modifier.size(DeckSpace.Xl))
 
     // [#378] にゃにゃにゃウイルス（オフ/自分のみ/全員）。この端末の表示だけの猫化演出。

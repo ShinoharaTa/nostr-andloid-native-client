@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -66,7 +68,7 @@ import nostr_deck_client.composeapp.generated.resources.yo_sending
  * Yo の行と通知の見出しが描画中に読むので、設定を変えるとそこだけが描き直される。
  */
 object YoStyleSetting {
-    private val state = mutableStateOf(YoStyle.BLOCK)
+    private val state = mutableStateOf(YoStyle.COLOR)
     val style: YoStyle get() = state.value
 
     /** 値が変わる時のみ代入（DeckWeight.apply と同じ作法）。 */
@@ -75,8 +77,14 @@ object YoStyleSetting {
     }
 }
 
-/** 「Yo!」の文字（nostr-yo のロゴと同じ表記）。送り主が `emoji` タグで指定した画像は使わない（SPEC: 取りに行かない）。 */
+/**
+ * 「Yo!」の文字（nostr-yo のロゴと同じ表記）。受け取った Yo の絵（送り主が付けた絵文字の画像）を読み込めるまで・
+ * 読み込めなかったときに、代わりに出す。
+ */
 private const val YO_WORD = "Yo!"
+
+/** 返したあとの Yo の絵の濃さ（まだ返していない Yo より沈める）。 */
+private const val YO_DONE_IMAGE_ALPHA = 0.45f
 
 /** 文字の「Yo!」の傾き（度。左上がり）と、紫のタイルの傾き。 */
 private const val YO_WORD_TILT = -6f
@@ -141,9 +149,11 @@ private fun rememberYoArrival(n: NotificationUi): Animatable<Float, *> {
 /**
  * [#1024] 通知の Yo の 1 行。ほかの通知の行（NoticeRow）とは別の骨格で、行そのものが「Yo!」だと分かるようにする。
  * 見た目は設定（[YoStyleSetting]）で選ぶ。
- *  - モノクロ: まだ返していない Yo は、行まるごと白黒を反転した塊にして、大きな「Yo!」で受ける
- *  - 紫: 紫のタイル「Yo!」と紫の「Yo を返す」、行の左端に紫の線
- * 返したあとはどちらも普通の行に戻し、沈めた「Yo!」と「✓ 返しました」にする（相手からまた届けば、また目立つ行になる）。
+ *  - 紫（既定）: 紫の「Yo を返す」と、行の左端に紫の線
+ *  - 白黒（強調）: まだ返していない Yo は、行まるごと白黒を反転した塊にして、絵を大きく置く
+ * 左の印は、送り主が Yo に付けた絵文字の画像（[NotificationUi.yoImageUrl]。画像プロキシ経由でだけ読み込む。[YoImage]）。
+ * 読み込めるまで・読み込めなかったときは、描いた「Yo!」を出す。
+ * 返したあとはどちらも普通の行に戻し、絵を沈めて「✓ 返しました」にする（相手からまた届けば、また目立つ行になる）。
  * 引用カードは無い（対象は自分のプロフィール）。行を押すと相手のプロフィール。
  */
 @Composable
@@ -175,15 +185,15 @@ private fun YoBlockRow(n: NotificationUi, selected: Boolean, onClick: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.widthIn(min = DeckDensity.AvatarSize + DeckSpace.Md), contentAlignment = Alignment.CenterStart) {
-            YoWord(
-                size = if (DeckDensity.isDense) DeckType.YoMd else DeckType.YoLg, color = content,
+            YoImage(
+                n.yoImageUrl, size = if (DeckDensity.isDense) DeckDimens.TouchTargetXs else DeckDimens.TouchTarget,
                 modifier = Modifier.graphicsLayer {
                     rotationZ = YO_WORD_TILT
                     val scale = 1f + YO_BOUNCE * pulse.value
                     scaleX = scale
                     scaleY = scale
                 },
-            )
+            ) { YoWord(size = if (DeckDensity.isDense) DeckType.YoMd else DeckType.YoLg, color = content) }
         }
         Spacer(Modifier.width(DeckSpace.Md))
         Column(Modifier.weight(1f)) {
@@ -206,7 +216,7 @@ private fun YoBlockRow(n: NotificationUi, selected: Boolean, onClick: () -> Unit
 private fun YoColorRow(n: NotificationUi, selected: Boolean, onClick: () -> Unit, onActorClick: () -> Unit) {
     val bar = DeckColors.Yo
     val pulse = rememberYoArrival(n)
-    YoPlainRow(selected, onClick, edge = bar, mark = { YoTile(dimmed = false, pulse = pulse) }) {
+    YoPlainRow(selected, onClick, edge = bar, mark = { YoTile(n.yoImageUrl, dimmed = false, pulse = pulse) }) {
         YoHead(n, onActorClick, nameColor = DeckColors.Text, timeColor = DeckColors.Text3)
         Spacer(Modifier.size(DeckDensity.NoteGap))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -226,11 +236,14 @@ private fun YoDoneRow(n: NotificationUi, style: YoStyle, selected: Boolean, onCl
     YoPlainRow(
         selected, onClick, edge = null,
         mark = {
-            if (style == YoStyle.COLOR) YoTile(dimmed = true, pulse = null)
-            else YoWord(
-                size = if (DeckDensity.isDense) DeckType.Body else DeckType.YoMd, color = DeckColors.Text3,
-                modifier = Modifier.graphicsLayer { rotationZ = YO_WORD_TILT },
-            )
+            if (style == YoStyle.COLOR) {
+                YoTile(n.yoImageUrl, dimmed = true, pulse = null)
+            } else {
+                YoImage(
+                    n.yoImageUrl, size = DeckDensity.AvatarSize, alpha = YO_DONE_IMAGE_ALPHA,
+                    modifier = Modifier.graphicsLayer { rotationZ = YO_WORD_TILT },
+                ) { YoWord(size = if (DeckDensity.isDense) DeckType.Body else DeckType.YoMd, color = DeckColors.Text3) }
+            }
         },
     ) {
         YoHead(n, onActorClick, nameColor = DeckColors.Text, timeColor = DeckColors.Text3)
@@ -309,22 +322,50 @@ private fun YoCount(count: Int, color: Color, modifier: Modifier) {
 }
 
 /**
- * 紫のタイル「Yo!」（種別マークの列に置く。幅 = アバター）。返したあと（[dimmed]）は面を沈める。
- * [pulse] があれば、届いた瞬間に一度だけ揺らす。
+ * 受け取った Yo の絵（送り主が付けた絵文字の画像。[url]）。[size] の正方形に収める（縦横比はそのまま）。
+ * 読み込めるまで・読み込めなかったとき・[url] が無いときは、[fallback]（描いた「Yo!」）を出す。
+ *
+ * 画像は**画像プロキシ経由でだけ**読み込む（[ImageProxy.viaProxy]）。URL は送り主が選んだもので、SPEC は「受け取る側は
+ * 取りに行かないほうがよい」としている（送り主のサーバーに、見た時刻と IP アドレスが伝わるため）。プロキシ経由なら
+ * 送り主のサーバーにつなぐのはプロキシなので、それは伝わらない。プロキシが受け付けないホストの絵は読み込まず、
+ * 描いた「Yo!」のままにする（ほかのカスタム絵文字のように、配信元へ直接取りに行くことはしない）。
  */
 @Composable
-private fun YoTile(dimmed: Boolean, pulse: Animatable<Float, *>?) {
-    Box(
-        Modifier.size(DeckDensity.AvatarSize)
-            .graphicsLayer { rotationZ = YO_TILE_TILT + YO_WOBBLE * (pulse?.value ?: 0f) }
-            .clip(RoundedCornerShape(DeckRadius.Sm))
-            .background(if (dimmed) DeckColors.Surface3 else DeckColors.Yo),
-        contentAlignment = Alignment.Center,
+private fun YoImage(
+    url: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f,
+    fallback: @Composable () -> Unit,
+) {
+    val image = url?.takeIf { ImageProxy.viaProxy(it) }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (image == null || !EmojiAspect.isLoaded(image)) fallback()
+        if (image != null) AnimatedEmoji(image, contentDescription = YO_WORD, modifier = Modifier.size(size).alpha(alpha))
+    }
+}
+
+/**
+ * 種別マークの列に置く Yo の印（幅 = アバター）。送り主の絵文字の画像（[imageUrl]）を出し、読み込めるまでは紫のタイル
+ * 「Yo!」を出す。返したあと（[dimmed]）は沈める。[pulse] があれば、届いた瞬間に一度だけ揺らす。
+ */
+@Composable
+private fun YoTile(imageUrl: String?, dimmed: Boolean, pulse: Animatable<Float, *>?) {
+    YoImage(
+        imageUrl, size = DeckDensity.AvatarSize, alpha = if (dimmed) YO_DONE_IMAGE_ALPHA else 1f,
+        modifier = Modifier.graphicsLayer { rotationZ = YO_TILE_TILT + YO_WOBBLE * (pulse?.value ?: 0f) },
     ) {
-        YoWord(
-            size = if (DeckDensity.isDense) DeckType.Label else DeckType.Title,
-            color = if (dimmed) DeckColors.Text2 else DeckColors.OnYo,
-        )
+        Box(
+            Modifier.size(DeckDensity.AvatarSize)
+                .clip(RoundedCornerShape(DeckRadius.Sm))
+                .background(if (dimmed) DeckColors.Surface3 else DeckColors.Yo),
+            contentAlignment = Alignment.Center,
+        ) {
+            YoWord(
+                size = if (DeckDensity.isDense) DeckType.Label else DeckType.Title,
+                color = if (dimmed) DeckColors.Text2 else DeckColors.OnYo,
+            )
+        }
     }
 }
 
@@ -397,7 +438,10 @@ internal fun MyYoRow(entry: FeedEntry.MyYo, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(DeckSpace.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(DeckDimens.AvatarSize), contentAlignment = Alignment.Center) { YoMark() }
+        // 左の印は、そのとき付けた絵文字の画像（読み込めるまでは手を振るアイコン）
+        Box(Modifier.width(DeckDimens.AvatarSize), contentAlignment = Alignment.Center) {
+            YoImage(entry.imageUrl, size = DeckDimens.IconLg) { YoMark() }
+        }
         Spacer(Modifier.width(DeckSpace.Sm))
         Avatar(seed = entry.to.pubkey, pictureUrl = entry.to.pictureUrl, size = 16.dp)
         Spacer(Modifier.width(DeckSpace.Xs))

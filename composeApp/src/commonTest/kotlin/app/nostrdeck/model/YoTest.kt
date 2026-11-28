@@ -244,10 +244,60 @@ class YoTest {
     }
 
     @Test
-    fun the_yo_style_defaults_to_monochrome() {
-        assertEquals(YoStyle.BLOCK, YoStyle.fromId(null))
-        assertEquals(YoStyle.BLOCK, YoStyle.fromId("unknown"))
+    fun the_yo_style_defaults_to_purple() {
+        assertEquals(YoStyle.COLOR, YoStyle.fromId(null))
+        assertEquals(YoStyle.COLOR, YoStyle.fromId("unknown"))
         assertEquals(YoStyle.COLOR, YoStyle.fromId(YoStyle.COLOR.id))
         assertEquals(YoStyle.BLOCK, YoStyle.fromId(YoStyle.BLOCK.id))
+        // 設定の並びも紫が先
+        assertEquals(YoStyle.COLOR, YoStyle.entries.first())
+    }
+
+    @Test
+    fun a_yo_can_carry_a_custom_emoji_image_and_still_be_a_yo() {
+        val custom = "https://emoji.example/mine.webp"
+        val e = Yo.unsigned(me, profileId, imageUrl = custom)
+        assertEquals(listOf("emoji", "yo", custom), e.tags.single { it[0] == "emoji" })
+        assertEquals(":yo:", e.content, "ショートコードは yo のまま、画像だけが替わる")
+        assertEquals(me, Yo.recipientOf(yo(e.tags), now))
+    }
+
+    @Test
+    fun an_unusable_image_url_falls_back_to_the_standard_one() {
+        assertEquals(Yo.IMAGE_URL, Yo.sendImageUrl(null))
+        assertEquals(Yo.IMAGE_URL, Yo.sendImageUrl(""))
+        assertEquals(Yo.IMAGE_URL, Yo.sendImageUrl("http://emoji.example/a.png"), "https でない")
+        assertEquals(Yo.IMAGE_URL, Yo.sendImageUrl("https://user:pw@emoji.example/a.png"), "認証情報つき")
+        assertEquals("https://emoji.example/a.png", Yo.sendImageUrl("https://emoji.example/a.png"))
+        // 使えない URL を渡しても、送るイベントは標準の絵になる（受け取る側で Yo と認識されなくならない）
+        val e = Yo.unsigned(me, profileId, imageUrl = "http://emoji.example/a.png")
+        assertEquals(Yo.IMAGE_URL, e.tags.single { it[0] == "emoji" }[2])
+    }
+
+    @Test
+    fun the_received_emoji_image_is_read_from_the_yo() {
+        val custom = "https://emoji.example/theirs.png"
+        assertEquals(custom, Yo.imageUrlOf(yo(Yo.unsigned(me, profileId, imageUrl = custom).tags)))
+        assertEquals(Yo.IMAGE_URL, Yo.imageUrlOf(yo(Yo.unsigned(me, profileId).tags)))
+        // emoji が 2 つ・ショートコード違い・使えない URL は出さない
+        assertNull(Yo.imageUrlOf(yo(tagsWith("emoji", listOf("emoji", "yo", custom), listOf("emoji", "x", custom)))))
+        assertNull(Yo.imageUrlOf(yo(tagsWith("emoji", listOf("emoji", "yoo", custom)))))
+        assertNull(Yo.imageUrlOf(yo(tagsWith("emoji", listOf("emoji", "yo", "http://emoji.example/a.png")))))
+    }
+
+    @Test
+    fun the_emoji_choices_always_start_with_the_standard_one() {
+        assertEquals(listOf(CustomEmoji("yo", Yo.IMAGE_URL)), Yo.emojiChoices(emptyList()))
+        val mine = listOf(
+            CustomEmoji("wave", "https://emoji.example/wave.png"),
+            CustomEmoji("bad", "http://emoji.example/bad.png"),          // Yo に使えない URL は並べない
+            CustomEmoji("yo_again", Yo.IMAGE_URL),                         // 標準と同じ画像は 1 つにまとめる
+            CustomEmoji("wave2", "https://emoji.example/wave.png"),       // 同じ画像も 1 つ
+            CustomEmoji("cat", "https://emoji.example/cat.gif"),
+        )
+        assertEquals(
+            listOf("yo" to Yo.IMAGE_URL, "wave" to "https://emoji.example/wave.png", "cat" to "https://emoji.example/cat.gif"),
+            Yo.emojiChoices(mine).map { it.shortcode to it.url },
+        )
     }
 }

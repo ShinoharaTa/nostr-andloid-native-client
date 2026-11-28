@@ -882,9 +882,15 @@ It will be removed from the list and reflected in the next published kind:10002.
     <string name="time_display_title">Time display</string>
     <string name="time_display_desc">Show the time of posts, notifications, chat messages, articles and statuses as elapsed time (such as 5m) or as a date. Today shows only the time, and this year shows the month and day. “Date + seconds” also adds seconds to the date in post details.</string>
     <string name="yo_style_title">Yo style</string>
-    <string name="yo_style_desc">Choose how a Yo (the nostr-yo greeting) looks in notifications. “Monochrome” shows a Yo you haven’t answered as an inverted block. “Purple” shows it with a purple tile and button, and puts the number you haven’t answered in the notifications header.</string>
-    <string name="yo_style_block">Monochrome</string>
+    <string name="yo_style_desc">Choose how a Yo (the nostr-yo greeting) looks in notifications. “Purple” shows it with a purple button and a line on the left edge, and puts the number you haven’t answered in the notifications header. “Black &amp; white (emphasis)” shows a Yo you haven’t answered as a large inverted block.</string>
+    <string name="yo_style_block">Black &amp; white (emphasis)</string>
     <string name="yo_style_color">Purple</string>
+    <string name="yo_emoji_title">Yo emoji</string>
+    <string name="yo_emoji_desc">The emoji attached when you send a Yo. It shows on the recipient’s screen. The default is the nostr-yo emoji, and you can switch to one of your custom emoji.</string>
+    <string name="yo_emoji_standard">Default</string>
+    <string name="yo_emoji_custom">Custom emoji</string>
+    <string name="yo_emoji_pick_title">Choose the Yo emoji</string>
+    <string name="yo_emoji_pick_hint">Add custom emoji (Settings → Emoji) to choose from them here.</string>
     <string name="time_display_relative">Elapsed</string>
     <string name="time_display_absolute">Date</string>
     <string name="time_display_absolute_seconds">Date + seconds</string>

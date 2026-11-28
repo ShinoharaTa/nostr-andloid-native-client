@@ -878,9 +878,15 @@
     <string name="time_display_title">時刻の表示</string>
     <string name="time_display_desc">投稿・通知・チャット・記事・ステータスの時刻を、経過時間（5m など）と日時のどちらで出すかを選びます。日時は、今日なら時刻だけ、今年なら月日と時刻を出します。「秒まで」は投稿の詳細の日時にも効きます。</string>
     <string name="yo_style_title">Yo の表示</string>
-    <string name="yo_style_desc">Yo（nostr-yo のあいさつ）が届いたときの、通知の見た目を選びます。「モノクロ」は、まだ返していない Yo の行を白黒反転で出します。「紫」は、紫のタイルとボタンで出し、通知の見出しにまだ返していない数を出します。</string>
-    <string name="yo_style_block">モノクロ</string>
+    <string name="yo_style_desc">Yo（nostr-yo のあいさつ）が届いたときの、通知の見た目を選びます。「紫」は、紫のボタンと左端の線で出し、通知の見出しにまだ返していない数を出します。「白黒（強調）」は、まだ返していない Yo の行を白黒反転で大きく出します。</string>
+    <string name="yo_style_block">白黒（強調）</string>
     <string name="yo_style_color">紫</string>
+    <string name="yo_emoji_title">Yo の絵文字</string>
+    <string name="yo_emoji_desc">Yo を送るときに付ける絵文字です。受け取った人の画面に出ます。標準は nostr-yo の絵文字で、自分のカスタム絵文字にも替えられます。</string>
+    <string name="yo_emoji_standard">標準</string>
+    <string name="yo_emoji_custom">カスタム絵文字</string>
+    <string name="yo_emoji_pick_title">Yo の絵文字を選ぶ</string>
+    <string name="yo_emoji_pick_hint">自分のカスタム絵文字（設定 → 絵文字）を足すと、ここから選べます。</string>
     <string name="time_display_relative">経過時間</string>
     <string name="time_display_absolute">日時</string>
     <string name="time_display_absolute_seconds">日時（秒まで）</string>
