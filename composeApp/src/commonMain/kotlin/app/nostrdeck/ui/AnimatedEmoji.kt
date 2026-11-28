@@ -36,6 +36,9 @@ object EmojiAspect {
 
     fun of(url: String): Float = ratios[url] ?: 1f
 
+    /** この URL の絵文字を、このプロセスで読み込めたことがあるか（読み込めたら縦横比が記録される）。 */
+    fun isLoaded(url: String): Boolean = url in ratios
+
     fun record(url: String, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
         val ratio = width.toFloat() / height

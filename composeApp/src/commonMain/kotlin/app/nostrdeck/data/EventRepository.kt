@@ -519,6 +519,7 @@ class EventRepository(
         loadPendingBlocks()   // [#951]
         discardDeveloperOutbox()   // [#961]
         loadYoStyle()   // [#1024]
+        loadYoEmojiUrl()   // [#1024]
         loadNyanMode()   // [#378]
         loadTimeDisplay()   // [#930]
         loadTtsVoice()   // [#948]
@@ -1790,9 +1791,10 @@ class EventRepository(
             rows.mapNotNull { r ->
                 val rowTags = parseTags(r.tags_json)
                 // [#1024] 自分が送った Yo。対象は相手のプロフィール（kind:0）で投稿ではないので「〇〇 さんに Yo」の行にする。
-                Yo.recipientOf(NostrEvent(r.id, me, 7, r.created_at, r.content, rowTags), now)?.let { to ->
+                val asEvent = NostrEvent(r.id, me, 7, r.created_at, r.content, rowTags)
+                Yo.recipientOf(asEvent, now)?.let { to ->
                     if (to !in byPk) requestProfile(to)
-                    return@mapNotNull FeedEntry.MyYo(r.id, profileFor(to, byPk), r.created_at)
+                    return@mapNotNull FeedEntry.MyYo(r.id, profileFor(to, byPk), r.created_at, Yo.imageUrlOf(asEvent))
                 }
                 // プロフィール（kind:0）へのリアクションは、対象を投稿として出せない（event テーブルに無い）。取りにも行かない。
                 if (Yo.reactsToProfile(rowTags)) return@mapNotNull null
@@ -2232,7 +2234,10 @@ class EventRepository(
         // [#1024] Yo（nostr-yo）。対象は自分のプロフィールなので、引用カードも対象の解決も要らない。
         // 送り主が指定した絵文字の画像 URL は持たない（取りに行かない）。
         if (row.kind.toInt() == Yo.KIND && Yo.recipientOf(row.toNostrEvent(), now) == me) {
-            return NotificationUi(row.id, NotificationKind.YO, profileFor(row.pubkey, byPubkey), row.created_at, targetIsProfile = true)
+            return NotificationUi(
+                row.id, NotificationKind.YO, profileFor(row.pubkey, byPubkey), row.created_at, targetIsProfile = true,
+                yoImageUrl = Yo.imageUrlOf(row.toNostrEvent()),
+            )
         }
         // 直接の対象ノート＝最後の #e（NIP-10 では末尾が reply 先になりがち）。
         val target = tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
@@ -2899,6 +2904,7 @@ class EventRepository(
     /**
      * [#1024] Yo を署名して発行する。ほかのリアクションと同じ経路（[publishSigned]: DB に入れ、送信待ちに積む。`client` タグも付く）。
      *  - リレーヒントは、対象の kind:0 を受け取ったリレー（[seenOn]。公開のリレーのときだけ）。無ければ相手の書き込みリレー
+     *  - 絵文字の画像は、設定の「Yo の絵文字」で選んだもの（[yoEmojiUrlFlow]。標準は nostr-yo の絵）
      *  - `created_at` は、その人から届いているいちばん新しい Yo より前にしない（[Yo.replyCreatedAt]）。相手の時計が進んでいる
      *    ときだけ未来の時刻になる（最大 10 分）。未来の時刻を受け付けないリレーでは、未送信の再送に回る
      */
@@ -2910,7 +2916,9 @@ class EventRepository(
         }
         val seenHint = seenOn?.let { normalizeRelayUrl(it) }?.takeIf { RelayHints.isPublic(it) }
         val hint = seenHint ?: withRelayHints(listOf(listOf("p", recipient))).first().getOrNull(2).orEmpty()
-        val signed = publishSigned(Yo.unsigned(recipient, profileEventId, hint, Yo.replyCreatedAt(now, receivedAt)))
+        val signed = publishSigned(
+            Yo.unsigned(recipient, profileEventId, hint, Yo.replyCreatedAt(now, receivedAt), imageUrl = yoEmojiUrlState.value),
+        )
         yoSentAt.update { it + (recipient to signed.createdAt) }
         return signed
     }
@@ -5940,9 +5948,9 @@ class EventRepository(
         nyanModeState.value = NyanMode.fromId(q.getSetting(NYAN_MODE_KEY).executeAsOneOrNull())
     }
 
-    // ---- [#1024] Yo の通知の見た目（モノクロ / 紫。既定はモノクロ）----
+    // ---- [#1024] Yo の通知の見た目（紫 / 白黒。既定は紫）----
     // 端末ローカル設定（時刻の表示と同じく、SettingsSync ホワイトリストには入れない）。
-    private val yoStyleState = MutableStateFlow(app.nostrdeck.model.YoStyle.BLOCK)
+    private val yoStyleState = MutableStateFlow(app.nostrdeck.model.YoStyle.COLOR)
     fun yoStyleFlow(): StateFlow<app.nostrdeck.model.YoStyle> = yoStyleState
     fun setYoStyle(style: app.nostrdeck.model.YoStyle) {
         yoStyleState.value = style
@@ -5950,6 +5958,19 @@ class EventRepository(
     }
     private fun loadYoStyle() {
         yoStyleState.value = app.nostrdeck.model.YoStyle.fromId(q.getSetting(YO_STYLE_KEY).executeAsOneOrNull())
+    }
+
+    // ---- [#1024] Yo に付ける絵文字の画像（標準は nostr-yo の絵。自分のカスタム絵文字に替えられる）----
+    // 端末ローカル設定。値は画像の URL（ショートコードは Yo の決まりで `yo` のまま）。使えない URL は標準に戻す。
+    private val yoEmojiUrlState = MutableStateFlow(Yo.IMAGE_URL)
+    fun yoEmojiUrlFlow(): StateFlow<String> = yoEmojiUrlState
+    fun setYoEmojiUrl(url: String) {
+        val next = Yo.sendImageUrl(url)
+        yoEmojiUrlState.value = next
+        putSettingAsync(YO_EMOJI_URL_KEY, next)
+    }
+    private fun loadYoEmojiUrl() {
+        yoEmojiUrlState.value = Yo.sendImageUrl(q.getSetting(YO_EMOJI_URL_KEY).executeAsOneOrNull())
     }
 
     // ---- [#930] 時刻の表示（経過時間 / 日時 / 日時を秒まで。既定は経過時間）----
@@ -7287,6 +7308,7 @@ class EventRepository(
         const val BOLD_TEXT_KEY = "appearance_bold_text"   // [#327]       // [#appearance] 表示サイズ（s/m/l）
         const val DEVELOPER_MODE_KEY = "developer_mode"   // [#351]
         const val YO_STYLE_KEY = "ui:yo_style"   // [#1024] Yo の通知の見た目（block/color）
+        const val YO_EMOJI_URL_KEY = "ui:yo_emoji_url"   // [#1024] Yo に付ける絵文字の画像の URL
         const val NYAN_MODE_KEY = "ui:nyan_mode"   // [#378] にゃにゃにゃウイルス（off/self/all）
         const val TIME_DISPLAY_KEY = "ui:time_display"   // [#930] 時刻の表示（relative/absolute/absolute_seconds）
         const val TTS_VOICE_KEY = "tts:voice"   // [#948] 読み上げの声（marine/hashiro/kai/kikka）

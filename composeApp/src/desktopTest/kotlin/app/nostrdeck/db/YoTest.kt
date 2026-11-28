@@ -81,10 +81,11 @@ class YoTest {
             assertEquals(2, fromBob.yoCount)
             assertEquals(t + 5, fromBob.createdAt, "時刻はいちばん新しい Yo")
             assertFalse(fromBob.yoReplied)
-            // 対象（自分のプロフィール）も、送り主が指定した絵文字の画像も持たない
+            // 対象（自分のプロフィール）は持たない。送り主が付けた絵は、Yo の絵として持つ（リアクションの絵文字としては持たない）
             assertNull(fromBob.targetNote)
             assertNull(fromBob.targetNoteId)
             assertNull(fromBob.reactionImageUrl)
+            assertEquals(Yo.IMAGE_URL, fromBob.yoImageUrl)
             assertTrue(fromBob.targetIsProfile)
             assertEquals(1, rows.last().yoCount)
 
@@ -231,25 +232,74 @@ class YoTest {
         }
     }
 
-    /** Yo の通知の見た目（モノクロ / 紫）は端末に覚えて、起動し直しても同じ。既定はモノクロ。 */
+    /** Yo の通知の見た目（紫 / 白黒）は端末に覚えて、起動し直しても同じ。既定は紫。 */
     @Test
     fun the_yo_style_is_remembered_across_restarts(): Unit = runBlocking {
         val db = newDb("yo-style")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val repo = openRepo(scope, db)
-            assertEquals(YoStyle.BLOCK, repo.yoStyleFlow().value)
-            repo.setYoStyle(YoStyle.COLOR)
             assertEquals(YoStyle.COLOR, repo.yoStyleFlow().value)
+            repo.setYoStyle(YoStyle.BLOCK)
+            assertEquals(YoStyle.BLOCK, repo.yoStyleFlow().value)
             withTimeout(2_000) {
-                while (db.nostrQueries.getSetting(EventRepository.YO_STYLE_KEY).executeAsOneOrNull() != YoStyle.COLOR.id) delay(50)
+                while (db.nostrQueries.getSetting(EventRepository.YO_STYLE_KEY).executeAsOneOrNull() != YoStyle.BLOCK.id) delay(50)
             }
         } finally {
             scope.cancel()
         }
         val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            assertEquals(YoStyle.COLOR, openRepo(scope2, db).yoStyleFlow().value)
+            assertEquals(YoStyle.BLOCK, openRepo(scope2, db).yoStyleFlow().value)
+        } finally {
+            scope2.cancel()
+        }
+    }
+
+    /**
+     * 「Yo の絵文字」で選んだ画像を付けて送る。選んだ画像は端末に覚える。標準は nostr-yo の絵。
+     * 受け取った Yo の行には、送り主が付けた画像の URL を持たせる（行にその絵を出す）。
+     */
+    @Test
+    fun the_chosen_emoji_image_is_sent_and_the_received_one_is_shown(): Unit = runBlocking {
+        val db = newDb("yo-emoji")
+        val custom = "https://emoji.example/mine.webp"
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val repo = openRepo(scope, db)
+            assertEquals(Yo.IMAGE_URL, repo.yoEmojiUrlFlow().value)
+            fun emojiOf(e: NostrEvent) = e.tags.single { it[0] == "emoji" }
+
+            assertEquals(listOf("emoji", "yo", Yo.IMAGE_URL), emojiOf(repo.publishYo(bob.pubkey, "d".repeat(64))))
+
+            repo.setYoEmojiUrl(custom)
+            assertEquals(listOf("emoji", "yo", custom), emojiOf(repo.publishYo(bob.pubkey, "d".repeat(64))))
+
+            // 使えない URL（https でない）は標準に戻す
+            repo.setYoEmojiUrl("http://emoji.example/a.png")
+            assertEquals(Yo.IMAGE_URL, repo.yoEmojiUrlFlow().value)
+            repo.setYoEmojiUrl(custom)
+            withTimeout(2_000) {
+                while (db.nostrQueries.getSetting(EventRepository.YO_EMOJI_URL_KEY).executeAsOneOrNull() != custom) delay(50)
+            }
+
+            // 受け取った Yo: 送り主が付けた画像を行に持つ（まとめた行は、いちばん新しい Yo のもの）
+            val theirs = "https://emoji.example/theirs.png"
+            repo.ingestLocal(listOf(
+                yo(carol, me, t + 1),
+                event(carol, 7, Yo.CONTENT, Yo.unsigned(me.pubkey, "c".repeat(64), imageUrl = theirs).tags, t + 9),
+            ))
+            val row = withTimeout(5_000) {
+                repo.notificationsFeed().first { list -> list.any { it.kind == NotificationKind.YO && it.yoCount == 2 } }
+            }.single { it.kind == NotificationKind.YO }
+            assertEquals(carol.pubkey, row.actor.pubkey)
+            assertEquals(theirs, row.yoImageUrl)
+        } finally {
+            scope.cancel()
+        }
+        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            assertEquals(custom, openRepo(scope2, db).yoEmojiUrlFlow().value)
         } finally {
             scope2.cancel()
         }
