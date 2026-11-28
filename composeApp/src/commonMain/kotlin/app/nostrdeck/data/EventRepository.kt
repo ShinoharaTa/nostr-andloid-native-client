@@ -4418,9 +4418,34 @@ class EventRepository(
      * ときにそのリレーへ届くことがある（リレーごとの送信待ちに残るため）。そのときは購読から戻ってきて手元に反映される。
      * `music`（Now Playing）には触らない。
      */
-    suspend fun publishUserStatus(text: String, expiration: Long?): Boolean = runCatching {
-        val replacing = myPubkey?.let { statuses.value["$it:${UserStatuses.Type.GENERAL.d}"]?.createdAt }
-        val signed = SignerProvider.current().sign(UserStatuses.generalEvent(text, expiration, currentUnixTime(), replacing))
+    suspend fun publishUserStatus(text: String, expiration: Long?): Boolean =
+        publishStatus(UserStatuses.Type.GENERAL) { replacing ->
+            UserStatuses.generalEvent(text, expiration, currentUnixTime(), replacing)
+        }
+
+    /**
+     * [#1021] 聴いている曲を、自分のステータス（`d=music`）として出す。利用者がボタンを押して選んだときだけ呼ぶ
+     * （自動では出さない）。期限は曲が終わる時刻（[app.nostrdeck.model.NowPlaying.expiration]）。
+     * 送り方は [publishUserStatus] と同じ。`general`（手で打つ 1 行）には触らない。
+     */
+    suspend fun publishMusicStatus(track: app.nostrdeck.model.NowPlayingTrack): Boolean =
+        publishStatus(UserStatuses.Type.MUSIC) { replacing ->
+            app.nostrdeck.model.NowPlaying.statusEvent(track, currentUnixTime(), replacing)
+        }
+
+    /** [#1021] 聴いている曲のステータス（`d=music`）を消す（NIP-38: 空の本文でクリア）。`general` には触らない。 */
+    suspend fun clearMusicStatus(): Boolean =
+        publishStatus(UserStatuses.Type.MUSIC) { replacing ->
+            app.nostrdeck.model.NowPlaying.clearEvent(currentUnixTime(), replacing)
+        }
+
+    /**
+     * 自分のステータスを 1 つ出す（[type] ごとに置き換え）。[build] には、いま手元にある同じ種類の版の created_at を渡す
+     * （それより後の時刻で出すため）。書き込みリレーへ送り、どれかの受理を確かめてから手元に反映する。
+     */
+    private suspend fun publishStatus(type: UserStatuses.Type, build: (replacing: Long?) -> UnsignedEvent): Boolean = runCatching {
+        val replacing = myPubkey?.let { statuses.value["$it:${type.d}"]?.createdAt }
+        val signed = SignerProvider.current().sign(build(replacing))
         registerAck(signed.id)
         publishTo(RelayProtocol.event(signed))
         awaitAck(signed.id).also { ok -> if (ok) captureStatus(signed) }

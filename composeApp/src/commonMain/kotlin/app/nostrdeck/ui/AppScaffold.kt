@@ -189,7 +189,22 @@ fun AppScaffold(state: DeckState) {
         // [#1019] 自分のステータスを更新する画面（右下・レールのボタンから開く）
         if (state.showStatusEditor) {
             val me by (LocalRepository.current?.loggedInPubkey()?.collectAsState(null) ?: remember { mutableStateOf<String?>(null) })
-            me?.let { StatusEditorDialog(it, onDismiss = { state.showStatusEditor = false }) }
+            me?.let { pubkey ->
+                StatusEditorDialog(
+                    pubkey, onDismiss = { state.showStatusEditor = false },
+                    // [#1021] Now Playing の「投稿する」: #NowPlaying の文面を投稿欄に入れて開く
+                    onPost = { text -> state.openComposeWith(text) },
+                )
+            }
+        }
+
+        // [#1021] 音楽アプリの「共有」で受け取ったとき: 投稿するか、ステータス（音楽）に出すかを選ぶ
+        state.sharedMusic?.let { shared ->
+            SharedMusicDialog(
+                shared,
+                onPost = { state.sharedMusic = null; state.openComposeWith(shared.text) },
+                onDismiss = { state.sharedMusic = null },
+            )
         }
 
         // 上部中央の「接続中…」インジケータ（全リレー未接続の待機中だけ表示）。

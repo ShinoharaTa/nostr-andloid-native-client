@@ -80,10 +80,13 @@ fun StatusFab(me: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
  * 「更新」で出し、「消す」（いま出しているときだけ）で空のステータスを出す。受理を確かめられなければ画面を残す。
  * 期限は選び直さなければ、いまのステータスの期限を引き継ぐ（文言だけ直したとき、期限つきを期限なしにしない）。
  * `music`（Now Playing）には触らない。
+ *
+ * [#1021] Android / iOS では、下に「Now Playing」の欄（[NowPlayingSection]）を出す。押したときだけ再生中の曲を読み、
+ * `music` のステータスに出すか、投稿にする（[onPost] に #NowPlaying の文面を渡して投稿欄を開く）。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
+fun StatusEditorDialog(me: String, onDismiss: () -> Unit, onPost: (String) -> Unit = {}) {
     val repo = LocalRepository.current ?: return
     val scope = rememberCoroutineScope()
     val toast = rememberToaster()
@@ -184,6 +187,15 @@ fun StatusEditorDialog(me: String, onDismiss: () -> Unit) {
                         enabled = canUpdate,
                     )
                 }
+            }
+            // [#1021] Now Playing（再生中の曲を読める端末だけ）
+            if (nowPlayingSupported) {
+                Spacer(Modifier.size(DeckSpace.Lg))
+                NowPlayingSection(
+                    statuses = all, now = now, locked = busy,
+                    onPost = { post -> onDismiss(); onPost(post) },
+                    onDone = onDismiss,
+                )
             }
         }
     }
