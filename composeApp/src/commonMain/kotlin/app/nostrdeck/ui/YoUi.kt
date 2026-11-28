@@ -151,8 +151,8 @@ private fun rememberYoArrival(n: NotificationUi): Animatable<Float, *> {
  * 見た目は設定（[YoStyleSetting]）で選ぶ。
  *  - 紫（既定）: 紫の「Yo を返す」と、行の左端に紫の線
  *  - 白黒（強調）: まだ返していない Yo は、行まるごと白黒を反転した塊にして、絵を大きく置く
- * 左の印は、送り主が Yo に付けた絵文字の画像（[NotificationUi.yoImageUrl]。ほかのカスタム絵文字と同じく画像プロキシ経由で
- * 読み込む）。読み込めるまで・読み込めなかったときは、描いた「Yo!」を出す。
+ * 左の印は、送り主が Yo に付けた絵文字の画像（[NotificationUi.yoImageUrl]。画像プロキシ経由でだけ読み込む。[YoImage]）。
+ * 読み込めるまで・読み込めなかったときは、描いた「Yo!」を出す。
  * 返したあとはどちらも普通の行に戻し、絵を沈めて「✓ 返しました」にする（相手からまた届けば、また目立つ行になる）。
  * 引用カードは無い（対象は自分のプロフィール）。行を押すと相手のプロフィール。
  */
@@ -324,7 +324,11 @@ private fun YoCount(count: Int, color: Color, modifier: Modifier) {
 /**
  * 受け取った Yo の絵（送り主が付けた絵文字の画像。[url]）。[size] の正方形に収める（縦横比はそのまま）。
  * 読み込めるまで・読み込めなかったとき・[url] が無いときは、[fallback]（描いた「Yo!」）を出す。
- * 画像は、ほかのカスタム絵文字と同じ経路（[AnimatedEmoji]。画像プロキシ経由）で読み込む。
+ *
+ * 画像は**画像プロキシ経由でだけ**読み込む（[ImageProxy.viaProxy]）。URL は送り主が選んだもので、SPEC は「受け取る側は
+ * 取りに行かないほうがよい」としている（送り主のサーバーに、見た時刻と IP アドレスが伝わるため）。プロキシ経由なら
+ * 送り主のサーバーにつなぐのはプロキシなので、それは伝わらない。プロキシが受け付けないホストの絵は読み込まず、
+ * 描いた「Yo!」のままにする（ほかのカスタム絵文字のように、配信元へ直接取りに行くことはしない）。
  */
 @Composable
 private fun YoImage(
@@ -334,9 +338,10 @@ private fun YoImage(
     alpha: Float = 1f,
     fallback: @Composable () -> Unit,
 ) {
+    val image = url?.takeIf { ImageProxy.viaProxy(it) }
     Box(modifier, contentAlignment = Alignment.Center) {
-        if (url == null || !EmojiAspect.isLoaded(url)) fallback()
-        if (url != null) AnimatedEmoji(url, contentDescription = YO_WORD, modifier = Modifier.size(size).alpha(alpha))
+        if (image == null || !EmojiAspect.isLoaded(image)) fallback()
+        if (image != null) AnimatedEmoji(image, contentDescription = YO_WORD, modifier = Modifier.size(size).alpha(alpha))
     }
 }
 

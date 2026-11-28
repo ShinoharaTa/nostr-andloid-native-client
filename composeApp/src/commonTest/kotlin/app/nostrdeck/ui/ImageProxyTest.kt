@@ -65,4 +65,19 @@ class ImageProxyTest {
         // 別ホストは引き続きプロキシ経由。
         assertTrue(ImageProxy.proxied("https://ok.testonly.org/c.jpg").startsWith("https://wsrv.nl/?url="))
     }
+
+    @Test
+    fun viaProxy_is_false_when_the_image_would_be_loaded_from_its_source() {
+        // [#1024] Yo に付いた絵（送り主が選んだ URL）は、プロキシ経由で読み込めるときだけ読み込む。
+        assertTrue(ImageProxy.viaProxy("https://kojira.github.io/nostr-yo/yo.png"))
+        // 手元のサーバーはプロキシを通さない（配信元へ直接つなぐことになる）
+        assertTrue(!ImageProxy.viaProxy("http://localhost:8080/a.png"))
+        assertTrue(!ImageProxy.viaProxy(""))
+        // プロキシに拒否されたホストは、以後は元 URL を直接使う → Yo の絵としては読み込まない
+        val blocked = "https://blocked-by-proxy.example/yo.png"
+        assertTrue(ImageProxy.viaProxy(blocked))
+        ImageProxy.markProxyBlocked(blocked)
+        assertTrue(!ImageProxy.viaProxy(blocked))
+        assertTrue(!ImageProxy.viaProxy("https://blocked-by-proxy.example/other.png"))
+    }
 }
