@@ -105,9 +105,12 @@ class TimelineReader(
         val fresh = picker.pick(posts)
         if (fresh.isEmpty() || sleeping) return
         val s = slot ?: return
-        var added = 0
-        for (note in fresh) if (s.trySend(note).isSuccess) added++
-        if (added > 0) statsState.update { it.copy(waiting = it.waiting + added) }
+        // 待ちは入れる前に数える。入れてから数えると、読む側（別スレッド）が先に取り出して引いてしまい
+        //（0 より下へは引けないので引いた分が消える）、後から足した分が引かれずに残る（読み終えても待ちが 0 に戻らない）
+        statsState.update { it.copy(waiting = it.waiting + fresh.size) }
+        // 入らなかった分（止めてスロットを閉じた後）は待ちに数えない
+        val rejected = fresh.count { !s.trySend(it).isSuccess }
+        if (rejected > 0) statsState.update { it.copy(waiting = (it.waiting - rejected).coerceAtLeast(0)) }
     }
 
     /** フォロー中のカラムが画面から消えた。次に描かれる一覧は「前からある投稿」として覚え、読まない。 */
@@ -154,6 +157,9 @@ class TimelineReader(
             try {
                 run()
             } finally {
+                // スロットは閉じてから手放す。止めるのと同時に描かれた投稿（onFeedRendered が手放す前のスロットを掴んでいた分）は
+                // 閉じたスロットに入らず、待ちにも数えない（下で 0 にした後に数えられて、OFF なのに待ちが残る、を防ぐ）
+                slot?.close()
                 slot = null
                 sleeping = false
                 releaseEngine()
