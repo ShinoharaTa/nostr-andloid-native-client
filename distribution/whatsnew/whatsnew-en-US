@@ -1,11 +1,9 @@
-- Read aloud (ZEN-TTS): pick voice, tone, speed, pitch; re-download voices
-- Block from ⋯ (public; tells the developer privately). Mute is private
-- Reports also go privately to the developer
-- Account deletion in Settings
-- Terms of Use screen
-- Fixed gaps when scrolling back
-- DMs from non-follows go to Others
-- "Super hacker" font size
-- Chat actions in ⋯; tap avatars for profiles
-- Notifications tab jumps to top; post button in the side rail
-- Pick a wallet on each zap; copy invoices
+- Status button: set a one-line status, or share what you're listening to (Now Playing) as a status or a post
+- Yo (nostr-yo): shows in notifications, Yo back, send from a profile, pick the emoji
+- Request deletion of your own public chat messages
+- Choose the nostrconnect relay
+- Fixed timeline rows disappearing; read-aloud skips old posts
+- No reconnecting in the background (Android)
+- Read aloud (ZEN-TTS)
+- Block and report from ⋯
+- Pick a wallet on each zap
