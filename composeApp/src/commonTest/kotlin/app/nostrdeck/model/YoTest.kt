@@ -217,4 +217,37 @@ class YoTest {
         val items = listOf(notice("r1", NotificationKind.REACTION, sender, 150))
         assertEquals(items, Yo.collapse(items, mapOf(sender to 1L)))
     }
+
+    @Test
+    fun a_row_also_counts_as_replied_right_after_i_send_one_this_session() {
+        val theirs = notice("a", NotificationKind.YO, "alice", 100)
+        assertFalse(Yo.isReplied(theirs, emptyMap()))
+        assertTrue(Yo.isReplied(theirs.copy(yoReplied = true), emptyMap()))
+        // 通知の組み直しを待たずに、このセッションで送った時刻でも判定する
+        assertTrue(Yo.isReplied(theirs, mapOf("alice" to 100L)))
+        assertFalse(Yo.isReplied(theirs, mapOf("alice" to 99L)), "それより新しい Yo が届いていれば、まだ返していない")
+        assertFalse(Yo.isReplied(theirs, mapOf("bob" to 500L)), "別の人に送った Yo では返したことにならない")
+    }
+
+    @Test
+    fun the_header_counts_the_senders_i_have_not_answered() {
+        val items = listOf(
+            notice("a", NotificationKind.YO, "alice", 100).copy(yoCount = 3),
+            notice("b", NotificationKind.YO, "bob", 90).copy(yoReplied = true),
+            notice("c", NotificationKind.YO, "carol", 80),
+            notice("r", NotificationKind.REACTION, "dave", 70),
+        )
+        // 同じ人の Yo は 1 行（1 人）と数える。返した人と Yo でない通知は数えない
+        assertEquals(2, Yo.unrepliedCount(items, emptyMap()))
+        assertEquals(1, Yo.unrepliedCount(items, mapOf("carol" to 80L)))
+        assertEquals(0, Yo.unrepliedCount(emptyList(), emptyMap()))
+    }
+
+    @Test
+    fun the_yo_style_defaults_to_monochrome() {
+        assertEquals(YoStyle.BLOCK, YoStyle.fromId(null))
+        assertEquals(YoStyle.BLOCK, YoStyle.fromId("unknown"))
+        assertEquals(YoStyle.COLOR, YoStyle.fromId(YoStyle.COLOR.id))
+        assertEquals(YoStyle.BLOCK, YoStyle.fromId(YoStyle.BLOCK.id))
+    }
 }

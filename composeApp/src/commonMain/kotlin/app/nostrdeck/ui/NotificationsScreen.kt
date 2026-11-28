@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -95,6 +96,7 @@ fun NotificationsScreen(state: DeckState) {
         ColumnHeader(
             title = stringResource(Res.string.tpl_notifications), subtitle = stringResource(Res.string.notif_subtitle),
             leadingIcon = Icons.Outlined.Notifications, pinned = false,
+            trailing = { YoHeaderPill(items) },   // [#1024]
         )
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
@@ -210,6 +212,7 @@ fun NotificationsColumn(
             title = spec.title, subtitle = columnSubtitleFor(spec),
             leadingIcon = columnIcon(spec.kind), pinned = spec.pinned,
             onPin = onPin, onClose = onClose, menu = menu,
+            trailing = { YoHeaderPill(items) },   // [#1024]
         )
         HorizontalDivider(color = DeckColors.Border)
         NotificationsBody(
@@ -315,6 +318,11 @@ fun NoticeRow(
     onReply: ((NoteUi) -> Unit)? = null,
     onQuote: ((NoteUi) -> Unit)? = null,
 ) {
+    // [#1024] Yo（nostr-yo）は別の骨格の行（行そのものが「Yo!」だと分かる見た目。設定でモノクロ / 紫）。
+    if (n.kind == NotificationKind.YO) {
+        YoNoticeRow(n, selected, onClick, onActorClick)
+        return
+    }
     // [#222] キーボード選択ハイライト（NoteItem と同じ: 背景 Surface2 + 左 3dp アクセントバー）。
     val selFill = DeckColors.Surface2
     val selBar = DeckColors.Accent
@@ -422,9 +430,6 @@ fun NoticeRow(
                     color = DeckColors.Text2,
                     fontSize = DeckType.Caption, fontWeight = DeckWeight.Body, maxLines = 1,
                 )
-            } else if (n.kind == NotificationKind.YO) {
-                // [#1024] Yo（nostr-yo）。「Yo（×件数）」と「Yo を返す」だけ（対象は自分のプロフィールなので、引用カードは無い）。
-                YoNoticeBody(n)
             } else {
                 // [#875] リアクションは「見出し → 絵文字 → 元の投稿」。絵文字は 1 行を取り（横長・文字数のあるものも見やすく）、
                 // 右にそのリアクションへの操作（リポスト・リアクション）を出す。
@@ -469,7 +474,6 @@ fun NoticeRow(
  */
 @Composable
 private fun KindMark(n: NotificationUi) {
-    if (n.kind == NotificationKind.YO) { YoMark(); return }   // [#1024] Yo は文字の印（送り主の画像は使わない）
     Icon(kindIcon(n.kind), null, tint = kindTint(n.kind), modifier = Modifier.size(17.dp))
 }
 
@@ -480,7 +484,7 @@ private fun kindIcon(k: NotificationKind): ImageVector = when (k) {
     NotificationKind.REPOST -> Icons.Outlined.Repeat
     NotificationKind.ZAP -> Icons.Outlined.Bolt
     NotificationKind.DM -> Icons.Outlined.MailOutline
-    NotificationKind.YO -> Icons.Outlined.Favorite   // [#1024] 使わない（[KindMark] が文字の印を出す）
+    NotificationKind.YO -> Icons.Outlined.WavingHand   // [#1024] 使わない（Yo の行は [YoNoticeRow] が描く）
 }
 
 private fun kindTint(k: NotificationKind): Color = when (k) {

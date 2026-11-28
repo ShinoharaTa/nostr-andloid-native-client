@@ -235,6 +235,8 @@
     <string name="notif_reaction_to_profile">Reaction to your profile</string>
     <string name="yo_back">Yo back</string>
     <string name="yo_backed">Yo sent back</string>
+    <string name="yo_sending">Sending</string>
+    <string name="yo_received">Sent you a Yo</string>
     <string name="yo_send">Send Yo</string>
     <string name="yo_sent">Yo sent</string>
     <string name="yo_no_profile">Couldn’t find their profile, so the Yo wasn’t sent</string>
@@ -879,6 +881,10 @@ It will be removed from the list and reflected in the next published kind:10002.
     <!-- [#930] Time display -->
     <string name="time_display_title">Time display</string>
     <string name="time_display_desc">Show the time of posts, notifications, chat messages, articles and statuses as elapsed time (such as 5m) or as a date. Today shows only the time, and this year shows the month and day. “Date + seconds” also adds seconds to the date in post details.</string>
+    <string name="yo_style_title">Yo style</string>
+    <string name="yo_style_desc">Choose how a Yo (the nostr-yo greeting) looks in notifications. “Monochrome” shows a Yo you haven’t answered as an inverted block. “Purple” shows it with a purple tile and button, and puts the number you haven’t answered in the notifications header.</string>
+    <string name="yo_style_block">Monochrome</string>
+    <string name="yo_style_color">Purple</string>
     <string name="time_display_relative">Elapsed</string>
     <string name="time_display_absolute">Date</string>
     <string name="time_display_absolute_seconds">Date + seconds</string>

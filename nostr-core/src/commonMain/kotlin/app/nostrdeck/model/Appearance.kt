@@ -147,6 +147,20 @@ enum class TimeDisplay(val id: String) {
 }
 
 /**
+ * [#1024] Yo（nostr-yo）の通知の見た目（設定 > 表示）。既定はモノクロ。端末ローカル設定。
+ *  - BLOCK: モノクロ。まだ返していない Yo は、行まるごと白黒を反転した塊にして大きな「Yo!」で受ける
+ *  - COLOR: 紫。紫のタイルとボタンで出し、通知の見出しにまだ返していない数を出す
+ */
+enum class YoStyle(val id: String) {
+    BLOCK("block"),
+    COLOR("color");
+
+    companion object {
+        fun fromId(id: String?): YoStyle = entries.firstOrNull { it.id == id } ?: BLOCK
+    }
+}
+
+/**
  * [#152] テーマ（設定 > 表示）。既定はダーク（従来挙動そのまま）。
  * SYSTEM は OS のダークモード設定に追従する。
  */

@@ -141,4 +141,15 @@ object Yo {
         }
         return others + rows
     }
+
+    /**
+     * この Yo の行に、もう返したか。通知の組み直し（[NotificationUi.yoReplied]）を待つと送った直後に間が空くので、
+     * このセッションで送った時刻（[sentAt]。相手 → 送った Yo の created_at）が受け取った Yo 以降なら、それも返したものとする。
+     */
+    fun isReplied(n: NotificationUi, sentAt: Map<String, Long>): Boolean =
+        n.yoReplied || (sentAt[n.actor.pubkey] ?: Long.MIN_VALUE) >= n.createdAt
+
+    /** まだ返していない Yo の行の数（相手の数。同じ人の Yo は 1 行にまとまっている）。通知の見出しに出す。 */
+    fun unrepliedCount(items: List<NotificationUi>, sentAt: Map<String, Long>): Int =
+        items.count { it.kind == NotificationKind.YO && !isReplied(it, sentAt) }
 }
