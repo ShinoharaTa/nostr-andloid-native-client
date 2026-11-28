@@ -6,6 +6,9 @@ import { displayName, pictureOf, useProfile } from "../../nostr/loaders";
 import { FavoriteBorderIcon } from "../../ui/icons";
 import { useReactionTarget } from "../deck/useReactionTarget";
 import { Avatar } from "../timeline/NoteItem";
+import { useNow } from "../timeline/useNow";
+import { MyYoRow } from "../yo/MyYoRow";
+import { reactsToProfile, yoRecipientOf } from "../yo/yoModel";
 import styles from "./MyReactionRow.module.css";
 import { plainTextOf } from "./noteLinks";
 import { ReactionDisplay } from "./ReactionDisplay";
@@ -18,6 +21,15 @@ import { reactionDisplay } from "./reactions";
  * （仮想リストは高さ 0 の行を扱えない）。
  */
 export function MyReactionRow({ reaction }: { reaction: NostrEvent }) {
+  // [#1025] 自分が送った Yo は「〇〇 さんに Yo」の行。対象は相手のプロフィール（kind:0）なので、投稿としては出さない
+  const yoTo = yoRecipientOf(reaction, useNow());
+  if (yoTo !== null) return <MyYoRow reaction={reaction} to={yoTo} />;
+  // プロフィール（kind:0）へのリアクションは、対象を投稿として出せない（取りにも行かない）
+  if (reactsToProfile(reaction.tags)) return <div className={styles.pending} aria-hidden="true" />;
+  return <NoteReactionRow reaction={reaction} />;
+}
+
+function NoteReactionRow({ reaction }: { reaction: NostrEvent }) {
   const target = useReactionTarget(reaction);
   if (!target) return <div className={styles.pending} aria-hidden="true" />;
   return <ResolvedRow reaction={reaction} target={target} />;

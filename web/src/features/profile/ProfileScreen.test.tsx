@@ -15,6 +15,7 @@ import { reportUser } from "../actions/reactions";
 import { blockUser, unblockUser } from "../mute/block";
 import { EMPTY_MUTE_LIST, EMPTY_MUTE_MATCHER, setMuteList, useMute } from "../mute/muteList";
 import { muteUser, unmuteUser } from "../mute/muteSync";
+import { sendYo } from "../yo/sendYo";
 import { FollowError, toggleFollow } from "./follow";
 import type { FollowersState } from "./followers";
 import { useFollowers } from "./followers";
@@ -52,6 +53,12 @@ vi.mock("./followers", () => ({ useFollowers: vi.fn() }));
 vi.mock("./useProfileLists", () => ({ useProfileLists: vi.fn(() => ({ loading: false, sets: [] })) }));
 
 // ミュートの発行・通報は署名・送信しない
+// [#1025] Yo は送らない（押したことだけ見る）
+vi.mock("../yo/sendYo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../yo/sendYo")>()),
+  sendYo: vi.fn(),
+}));
+
 vi.mock("../mute/muteSync", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mute/muteSync")>()),
   muteUser: vi.fn(async () => "done"),
@@ -702,6 +709,27 @@ describe("フォロワー", () => {
     await user.click(screen.getByRole("button", { name: "フォロワーを確認" }));
     expect(screen.getByText("見つかりませんでした")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "さらに読み込む" })).not.toBeInTheDocument();
+  });
+});
+
+describe("[#1025] Yo を送る", () => {
+  it("他人のプロフィールの ⋯ に「Yo を送る」。押すとその人へ送る", async () => {
+    const user = userEvent.setup();
+    alice();
+    renderScreen();
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("menuitem", { name: "Yo を送る" }));
+    expect(vi.mocked(sendYo)).toHaveBeenCalledWith(them);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("ブロック中の人には出さない", async () => {
+    const user = userEvent.setup();
+    alice();
+    muteThem("blocked");
+    renderScreen();
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(screen.queryByRole("menuitem", { name: "Yo を送る" })).not.toBeInTheDocument();
   });
 });
 

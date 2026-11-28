@@ -12,11 +12,14 @@ export function ScreenHeader({
   subtitle,
   onBack,
   icon,
+  trailing,
 }: {
   title: string;
   subtitle?: string;
   onBack?: () => void;
   icon?: ReactNode;
+  /** [#1025] タイトルの右に置く表示（通知画面の「Yo! 件数」） */
+  trailing?: ReactNode;
 }) {
   const t = useT();
   return (
@@ -32,6 +35,7 @@ export function ScreenHeader({
         <h1 className={styles.title}>{title}</h1>
         {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
       </div>
+      {trailing}
     </header>
   );
 }

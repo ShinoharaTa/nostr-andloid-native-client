@@ -167,6 +167,17 @@ it("[#985] 文字の段は DeckType と同じ基準値（本文・名前 14 / �
   }
 });
 
+/** [#1025] Yo の色・太さ・文字の大きさは Compose（DeckColors.Yo / OnYo、FontWeight.Black、DeckType.YoLg / YoMd）と同じ */
+it("[#1025] Yo のトークンはネイティブと同じ（紫 #8b3dff に白い文字・太さ 900・「Yo!」は 34 / 20）", () => {
+  expect(readVar(darkBlock, "yo")).toBe("#8b3dff");
+  expect(readVar(darkBlock, "on-yo")).toBe("#ffffff");
+  expect(readVar(darkBlock, "w-yo")).toBe("900");
+  // テーマに依らず同じ色（ライトの配色ブロックでは上書きしない）
+  expect(lightBlock).not.toMatch(/--yo:|--on-yo:/);
+  expect(evalCalc(readVar(darkBlock, "type-yo-lg"), STANDARD_VARS)).toBeCloseTo(34 * 1.15);
+  expect(evalCalc(readVar(darkBlock, "type-yo-md"), STANDARD_VARS)).toBeCloseTo(20 * 1.15);
+});
+
 /** [#985] スーパーハッカー（×0.75）。全 --type-* は max(8px, ...) で、縮めても 8px を下回らない */
 it("[#985] --type-* は max(8px, ...) で、スーパーハッカー（×0.75）でも 8px を下回らない", () => {
   const typeNames = [...darkBlock.matchAll(/--(type-[\w-]+):/g)].map((m) => m[1]);

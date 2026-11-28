@@ -11,6 +11,7 @@ import { reportUser } from "../actions/reactions";
 import { blockUser, unblockUser } from "../mute/block";
 import type { UserMuteState } from "../mute/muteList";
 import { MuteListError, muteUser, unmuteUser } from "../mute/muteSync";
+import { sendYo, useYoSending } from "../yo/sendYo";
 import styles from "./ProfileHeaderCard.module.css";
 
 /** ミュート・解除の失敗の文言（ネイティブ note_mute_locked。NoteActionButtons と同じ） */
@@ -29,6 +30,8 @@ function muteFailureMessage(e: unknown): string {
  * 開閉は ColumnMenu と同じ（外側のクリック・Escape・戻るで閉じる。#540）。
  * me が非 null（他人のプロフィール）なら、ミュート・ブロック / 解除（確認ダイアログ）とユーザーの通報も出す。
  * [#963] muteState: none = 「ミュート」「ブロック」、muted = 「ミュートを解除」「ブロック」、blocked = 「ブロックを解除」。
+ * [#1025]「Yo を送る」（nostr-yo。相手のプロフィールへの `:yo:` のリアクション）。ブロック中の人には出さない。
+ * 送っている間は押せない。結果は sendYo がトーストで知らせる。
  */
 export function ProfileMenu({
   pubkey,
@@ -47,6 +50,7 @@ export function ProfileMenu({
   const [dialog, setDialog] = useState<"mute" | "unmute" | "block" | "unblock" | "report" | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const yoBusy = useYoSending((s) => s.sending.has(pubkey));
 
   // [#540] 開いている間の「戻る」はメニューを閉じるだけにする
   useCloseMenuOnBack(open, () => setOpen(false));
@@ -156,6 +160,20 @@ export function ProfileMenu({
           >
             {t("note_copy_link")}
           </button>
+          {me !== null && muteState !== "blocked" && (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.menuItem}
+              disabled={yoBusy}
+              onClick={() => {
+                setOpen(false);
+                sendYo(pubkey);
+              }}
+            >
+              {t("yo_send")}
+            </button>
+          )}
           {me !== null && (
             <>
               {muteState === "blocked" ? (

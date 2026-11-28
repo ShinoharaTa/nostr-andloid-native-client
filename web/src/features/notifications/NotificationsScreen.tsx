@@ -5,6 +5,7 @@ import { ScreenHeader } from "../../ui/ScreenHeader";
 import { SingleColumnPane } from "../../ui/SingleColumnPane";
 import { NOTIFICATIONS_SCREEN_SCROLL_ID } from "../deck/columnScroll";
 import { useColumnFeed } from "../deck/useColumnFeed";
+import { YoHeaderPill } from "../yo/YoHeaderPill";
 import { NotificationList } from "./NotificationList";
 import styles from "./NotificationsScreen.module.css";
 
@@ -34,6 +35,7 @@ export function NotificationsScreen() {
         title={t("nav_notifications")}
         subtitle={t("notif_subtitle")}
         icon={<Icon name="notifications" size="lg" />}
+        trailing={<YoHeaderPill events={events} />}
       />
       <hr className={styles.divider} />
       <div className={styles.body}>

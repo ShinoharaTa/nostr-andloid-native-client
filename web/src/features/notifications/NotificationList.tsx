@@ -1,7 +1,9 @@
+import { use$ } from "applesauce-react/hooks/use-$";
 import type { NostrEvent } from "nostr-tools/pure";
 import { useEffect, useMemo, useRef } from "react";
 import { type ListRange, Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useT } from "../../i18n";
+import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { isMutedRevealed, useDeck } from "../../store/deck";
 import { PullToRefreshIndicator } from "../../ui/PullToRefreshIndicator";
@@ -42,7 +44,12 @@ export function NotificationList({
   const me = useSession((s) => s.pubkey);
   const revealed = useDeck((s) => isMutedRevealed(s, columnId));
   const dms = useDmNotices(me !== null, revealed);
-  const items = useMemo(() => withDmNotices(notificationsFrom(events, me), dms), [events, me, dms]);
+  // [#1025] 自分の kind:7（送った Yo から、Yo の行の「返しました」を決める）
+  const myReactions = use$(() => (me ? eventStore.timeline({ kinds: [7], authors: [me] }) : undefined), [me]);
+  const items = useMemo(
+    () => withDmNotices(notificationsFrom(events, me, { myReactions: myReactions ?? [] }), dms),
+    [events, me, dms, myReactions],
+  );
   const list = useRef<VirtuosoHandle>(null);
   // デッキのカラムならキー操作の対象にする（通知の行は r / t / f の対象外）
   useKbList(list, items.length);

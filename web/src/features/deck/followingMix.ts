@@ -1,10 +1,12 @@
 import type { NostrEvent } from "nostr-tools/pure";
+import { unixNow } from "../../lib/time";
 import type { FeedCategory } from "../../store/deck";
 import {
   type NotificationItem,
   type NotificationKind,
   notificationsFrom,
 } from "../notifications/notificationModel";
+import { reactsToProfile, yoRecipientOf } from "../yo/yoModel";
 
 /**
  * フォロー中カラムの混在（ネイティブ EventRepository.kt buildFollowingFeedMixed と DeckScreen.kt の種別の絞り込みの写し）。
@@ -33,6 +35,8 @@ export type MixInput = {
   hidden: readonly FeedCategory[];
   /** 自分のリアクションの対象を取得できているか（取得できたものだけ混ぜる） */
   hasTarget: (reaction: NostrEvent) => boolean;
+  /** [#1025] Yo の判定に使う時計（省けば今） */
+  now?: number;
 };
 
 /** 通知の種別 → 隠す種別（ネイティブ DeckScreen.kt 511–521）。Zap は混ぜない（null） */
@@ -43,13 +47,15 @@ const CATEGORY_OF: Record<NotificationKind, FeedCategory | null> = {
   repost: "REPOSTS",
   dm: "DMS",
   zap: null,
+  // [#1025] Yo は kind:7。「リアクション」と一緒に出し入れする
+  yo: "REACTIONS",
 };
 
 /**
  * 混ぜる規則（ネイティブと同じ）:
  * - 自分宛ての通知のうちリアクションは常に。リポスト・返信・メンションは相手がフォロー外のときだけ
  *   （フォロー中なら本文側に流れて重複する）。Zap は混ぜない
- * - 自分がしたリアクションは常に（#337。対象を取得できたものだけ）
+ * - 自分がしたリアクションは常に（#337。対象を取得できたものだけ。[#1025] 自分が送った Yo は対象を待たない）
  * - パブリックチャットの発言（kind:42。#796）は投稿として時刻順に混ぜる（CHAT を隠したら出さない）
  * - 未読のある DM 会話は 1 会話 1 行
  * - 隠した種別は除き、時刻の新しい順（同時刻は 投稿 → 通知・DM → 自分のリアクション の順）
@@ -68,7 +74,11 @@ export function mixFollowingFeed(input: MixInput): FeedRow[] {
   // 本文として出ている通知（フォローが未取得の間のリレー新着など）は重ねない
   const postIds = new Set(rows.map((row) => row.id));
 
-  const notices = [...notificationsFrom(input.notifications, input.me), ...input.dms];
+  // [#1025] 自分の kind:7 を渡す（送った Yo から、Yo の行の「返しました」を決める）
+  const notices = [
+    ...notificationsFrom(input.notifications, input.me, { myReactions: input.myReactions, now: input.now }),
+    ...input.dms,
+  ];
   for (const item of notices) {
     const category = CATEGORY_OF[item.kind];
     if (category === null || hidden.has(category) || postIds.has(item.id)) continue;
@@ -78,8 +88,12 @@ export function mixFollowingFeed(input: MixInput): FeedRow[] {
   }
 
   if (!hidden.has("MY_REACTIONS")) {
+    const now = input.now ?? unixNow();
     for (const reaction of input.myReactions) {
-      if (!input.hasTarget(reaction)) continue;
+      // [#1025] 自分が送った Yo は対象（相手の kind:0）を待たずに混ぜる（行は「〇〇 さんに Yo」）。
+      // Yo でないプロフィールへのリアクションは、対象を投稿として出せないので混ぜない
+      const isYo = yoRecipientOf(reaction, now) !== null;
+      if (!isYo && (reactsToProfile(reaction.tags) || !input.hasTarget(reaction))) continue;
       rows.push({ type: "myReaction", id: reaction.id, at: reaction.created_at, reaction });
     }
   }

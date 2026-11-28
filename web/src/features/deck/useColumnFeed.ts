@@ -32,6 +32,7 @@ import { useSession } from "../../signer/session";
 import { feedCatHiddenOf, isMutedRevealed, useDeck } from "../../store/deck";
 import { muteVisibleFilter, useMuteMatcher } from "../mute/muteList";
 import { useDmNotices } from "../notifications/useDmNotices";
+import { reactsToProfile } from "../yo/yoModel";
 import { type FeedRow, mixFollowingFeed } from "./followingMix";
 import { useFollows } from "./useFollows";
 
@@ -294,6 +295,8 @@ function useFollowingRows(
   const targets = useMemo(() => {
     const byId = new Map<string, EventPointer>();
     for (const reaction of myReactions) {
+      // [#1025] プロフィール（kind:0）へのリアクション（Yo など）の対象は取りに行かない（投稿として出さない）
+      if (reactsToProfile(reaction.tags)) continue;
       const pointer = reactionTargetOf(reaction);
       if (pointer && !byId.has(pointer.id)) byId.set(pointer.id, pointer);
     }

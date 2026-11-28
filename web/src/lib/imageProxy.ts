@@ -69,6 +69,16 @@ export function proxiedEmoji(url: string, quality = 80): string {
 }
 
 /**
+ * カスタム絵文字を**プロキシ経由でだけ**読み込むための URL。プロキシを通せないホスト（プロキシに拒否されたホスト・
+ * 手元のサーバー）なら null（proxied() は元 URL を返し、配信元へ直接つなぐことになるため）。
+ * 配信元へ直接つなぎたくない画像（[#1025] Yo に付いた絵。送り主が選んだ URL）に使う（ネイティブ ImageProxy.viaProxy）。
+ */
+export function proxiedEmojiOnly(url: string, quality = 80): string | null {
+  const src = proxiedEmoji(url, quality);
+  return originOf(src) !== null ? src : null;
+}
+
+/**
  * proxied() が生成した URL から元画像 URL を復元する（プロキシ URL でなければ null）。
  * プロキシが読み込めなかったときの元 URL 直取得のフォールバックに使う。
  */

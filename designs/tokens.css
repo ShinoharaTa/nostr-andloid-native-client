@@ -146,6 +146,12 @@
   --w-link:   500;  /* リンク/アクティブ要素 */
   --w-body:   400;  /* 本文・メタ（時刻/ハンドル/npub/ID） */
 
+  /* --- Yo（nostr-yo。#1024 / #1025）: 「Yo!」の文字の太さと、紫の表示の色（Compose DeckColors.Yo / OnYo と 1対1）--- */
+  /* 色は 1 色のベタ塗りで、テーマに依らず同じ。白い文字とのコントラストは約 5:1。Yo の表示が「紫」のときだけ使う。 */
+  --w-yo:  900;      /* 「Yo!」だけの太さ（Compose FontWeight.Black。太字モードでも変えない） */
+  --yo:    #8b3dff;
+  --on-yo: #ffffff;
+
   /* --- Type scale (Option C: hybrid / 7段, Compose DeckType と 1対1) --- */
   /* 文字サイズ設定の倍率（Compose TextScale.factor = 0.75 / 1 / 1.15 / 1.35。sp が fontScale に追従するのと同じく
      --type-* / --line-* に掛ける）。Web は <html> の style で差し替える（web/src/features/theme）。
@@ -165,6 +171,8 @@
   --type-micro:   max(8px, calc(10px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* バッジ/最小メタ */
   --type-emoji:   max(8px, calc(18px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* リアクション絵文字グリフ */
   --type-emoji-lg: max(8px, calc(22px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 拡大絵文字（Compose DeckType.EmojiLg と 1 対 1） */
+  --type-yo-lg:   max(8px, calc(34px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 大きな「Yo!」（まだ返していない Yo の行。Compose DeckType.YoLg） */
+  --type-yo-md:   max(8px, calc(20px * var(--web-base) * var(--text-scale) * var(--ui-scale)));  /* 小さな「Yo!」（返したあとの印。Compose DeckType.YoMd） */
   --line-title:   calc(22px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 2段テキスト(タイトル+説明)のタイトル行高 */
   --line-desc:    calc(18px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 同・説明行高（合計40px, スペーサーなし） */
   --line-body: calc(20px * var(--web-base) * var(--text-scale) * var(--ui-scale));  /* 本文の行高（Compose CollapsibleText の lineHeight 20sp と 1 対 1） */
