@@ -321,7 +321,7 @@ private fun LazyListScope.emojiRows(keyPrefix: String, emojis: List<EmojiEntry>,
 }
 
 @Composable
-private fun EmojiCell(onClick: () -> Unit, content: @Composable () -> Unit) {
+internal fun EmojiCell(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         // [#339] 文字サイズ設定に追従（老眼モードでセルとグリフが一緒に大きくなる）。
         // [#861] 高さは固定、幅は最小で正方形。横長のカスタム絵文字はセルごと横に広がる。
@@ -350,7 +350,7 @@ private fun RecentEmojiButton(emoji: UsedEmoji, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmojiImage(url: String, desc: String) {
+internal fun EmojiImage(url: String, desc: String) {
     // [#277] iOS/Desktop でも GIF/アニメ WebP を動かすため共通コンポーネントへ。
     // [#308] 隣に並ぶ Unicode 絵文字ボタン（Display）と同じ大きさに揃える。
     // [#861] 高さ固定・幅は縦横比どおり。

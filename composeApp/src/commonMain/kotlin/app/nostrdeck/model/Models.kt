@@ -278,6 +278,8 @@ data class NotificationUi(
     val yoCount: Int = 0,
     /** [#1024] YO のとき、いちばん新しい Yo より後に、こちらから Yo を送ってある（「返しました」）。 */
     val yoReplied: Boolean = false,
+    /** [#1024] YO のとき、送り主が付けた絵文字の画像 URL（[Yo.imageUrlOf]。まとめた行では、いちばん新しい Yo のもの）。 */
+    val yoImageUrl: String? = null,
 )
 
 /**
@@ -298,8 +300,11 @@ sealed interface FeedEntry {
     data class MyReaction(val reaction: ReactionUi, val target: NoteUi, val reactedAt: Long) : FeedEntry {
         override val sortAt: Long get() = reactedAt
     }
-    /** [#1024] 自分が送った Yo（[id] = その kind:7）。対象は相手のプロフィールなので、投稿ではなく「〇〇 さんに Yo」と出す。 */
-    data class MyYo(val id: String, val to: Profile, val sentAt: Long) : FeedEntry {
+    /**
+     * [#1024] 自分が送った Yo（[id] = その kind:7）。対象は相手のプロフィールなので、投稿ではなく「〇〇 さんに Yo」と出す。
+     * [imageUrl] は、そのとき付けた絵文字の画像（[Yo.imageUrlOf]）。
+     */
+    data class MyYo(val id: String, val to: Profile, val sentAt: Long, val imageUrl: String? = null) : FeedEntry {
         override val sortAt: Long get() = sentAt
     }
 }

@@ -147,16 +147,16 @@ enum class TimeDisplay(val id: String) {
 }
 
 /**
- * [#1024] Yo（nostr-yo）の通知の見た目（設定 > 表示）。既定はモノクロ。端末ローカル設定。
- *  - BLOCK: モノクロ。まだ返していない Yo は、行まるごと白黒を反転した塊にして大きな「Yo!」で受ける
- *  - COLOR: 紫。紫のタイルとボタンで出し、通知の見出しにまだ返していない数を出す
+ * [#1024] Yo（nostr-yo）の通知の見た目（設定 > 表示）。既定は紫。端末ローカル設定。
+ *  - COLOR: 紫（既定）。紫のボタンと左端の線で出し、通知の見出しにまだ返していない数を出す
+ *  - BLOCK: 白黒（強調したいとき）。まだ返していない Yo は、行まるごと白黒を反転した塊にして大きく受ける
  */
 enum class YoStyle(val id: String) {
-    BLOCK("block"),
-    COLOR("color");
+    COLOR("color"),
+    BLOCK("block");
 
     companion object {
-        fun fromId(id: String?): YoStyle = entries.firstOrNull { it.id == id } ?: BLOCK
+        fun fromId(id: String?): YoStyle = entries.firstOrNull { it.id == id } ?: COLOR
     }
 }
 

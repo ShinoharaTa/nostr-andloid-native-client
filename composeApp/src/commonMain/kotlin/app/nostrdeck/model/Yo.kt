@@ -24,8 +24,9 @@ object Yo {
     const val LABEL = "Yo"
 
     /**
-     * 送る Yo の `emoji` の URL。nostr-yo と同じにする（nostr-yo の受信箱で「別の画像」と注記されない。
+     * 送る Yo の `emoji` の URL の標準。nostr-yo と同じ絵（nostr-yo の受信箱で「別の画像」と注記されない。
      * ほかのクライアントでも同じ絵で出る）。URL として載せるだけで、アプリには画像を入れない（リポジトリにライセンスが無い）。
+     * 利用者は、自分のカスタム絵文字に替えられる（[sendImageUrl]。ショートコードは `yo` のまま、画像だけが替わる）。
      */
     const val IMAGE_URL = "https://kojira.github.io/nostr-yo/yo.png"
 
@@ -96,10 +97,37 @@ object Yo {
             .firstOrNull(verify)
 
     /**
-     * 送る Yo（署名前）。[profileEventId] は相手の最新の kind:0 の id、[hint] はそれが見つかるリレー（無ければ空）。
-     * [createdAt] は 0 なら署名のときに今の時刻が入る。
+     * Yo に付いている絵文字の画像 URL（`emoji` タグ）。受け取った Yo の行に、送り主が選んだ絵として出す。
+     * [recipientOf] が通した Yo（`emoji` がちょうど 1 つで、受け付けられる https の URL）に使うこと。条件に合わなければ null。
      */
-    fun unsigned(recipient: String, profileEventId: String, hint: String = "", createdAt: Long = 0): UnsignedEvent {
+    fun imageUrlOf(event: NostrEvent): String? =
+        event.tags.singleOrNull { it.getOrNull(0) == "emoji" }
+            ?.takeIf { it.getOrNull(1) == SHORTCODE }?.getOrNull(2)?.takeIf { isAcceptableEmojiUrl(it) }
+
+    /**
+     * 送る Yo に付ける画像 URL。設定で選んだもの（[saved]）が受け付けられる URL ならそれ、そうでなければ標準（[IMAGE_URL]）。
+     * 受け取る側の規則 2（https・認証情報なし・2048 文字まで）を通らない URL では Yo として認識されないので、標準に戻す。
+     */
+    fun sendImageUrl(saved: String?): String = saved?.takeIf { isAcceptableEmojiUrl(it) } ?: IMAGE_URL
+
+    /**
+     * 「Yo の絵文字」で選べるもの。先頭に標準（nostr-yo の絵）を必ず入れ、続けて自分のカスタム絵文字（[customs]）のうち
+     * Yo に使える URL のもの。同じ画像は 1 つにまとめる。
+     */
+    fun emojiChoices(customs: List<CustomEmoji>): List<CustomEmoji> =
+        (listOf(CustomEmoji(SHORTCODE, IMAGE_URL)) + customs.filter { isAcceptableEmojiUrl(it.url) }).distinctBy { it.url }
+
+    /**
+     * 送る Yo（署名前）。[profileEventId] は相手の最新の kind:0 の id、[hint] はそれが見つかるリレー（無ければ空）。
+     * [createdAt] は 0 なら署名のときに今の時刻が入る。[imageUrl] は付ける絵（標準は nostr-yo の絵。使えない URL なら標準に戻す）。
+     */
+    fun unsigned(
+        recipient: String,
+        profileEventId: String,
+        hint: String = "",
+        createdAt: Long = 0,
+        imageUrl: String = IMAGE_URL,
+    ): UnsignedEvent {
         require(HEX64.matches(recipient) && HEX64.matches(profileEventId)) { "invalid Yo target" }
         return UnsignedEvent(
             kind = KIND,
@@ -108,7 +136,7 @@ object Yo {
                 listOf("e", profileEventId, hint, recipient),
                 listOf("p", recipient, hint),
                 listOf("k", "0"),
-                listOf("emoji", SHORTCODE, IMAGE_URL),
+                listOf("emoji", SHORTCODE, sendImageUrl(imageUrl)),
                 listOf("t", SHORTCODE),
             ),
             createdAt = createdAt,
