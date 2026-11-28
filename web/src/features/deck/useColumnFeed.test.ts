@@ -304,6 +304,42 @@ it("リレーごとに取れた幅が違っても、全リレーが取り終え�
   expect(result.current.events.at(-1)?.created_at).toBe(1_000);
 });
 
+it("遡りの返事のあとも下限より浅いリレーにだけ、続けて聞く（#962）", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(2_000_000);
+  const tag = `catchup${Date.now()}`;
+  const spec: ColumnSpec = { ...HASHTAG, id: "c_catchup", filter: { ...HASHTAG.filter, hashtags: [tag] } };
+  const { result } = renderHook(() => useColumnFeed(spec));
+  // A で下限が 1_000 に決まったあとに、浅い境界（1_900）の C が加わる。下限は 1_000 のまま
+  act(() => arrive(lastPaged().progress, "wss://a/", [1_900, 1_000]));
+  act(() => arrive(lastPaged().progress, "wss://c/", [1_950, 1_900]));
+
+  act(() => result.current.loadOlder());
+  expect(vi.mocked(requestFrom).mock.calls.map(([relay]) => relay)).toEqual(["wss://a/", "wss://c/"]);
+  act(() => {
+    // A は 900 まで取れた（下限より深い）。C は 1_800 までしか進まない
+    olderRequest(0).reply.next(900);
+    olderRequest(0).reply.next("EOSE");
+    olderRequest(1).reply.next(1_800);
+    olderRequest(1).reply.next("EOSE");
+  });
+  // 続けて聞くのは C だけ（C の境界から）
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(3);
+  expect(olderRequest(2).relay).toBe("wss://c/");
+  expect(olderRequest(2).filters).toEqual([{ kinds: [1], "#t": [tag], limit: 100, until: 1_800 }]);
+  expect(result.current.loadingOlder).toBe(true);
+
+  // C が空の EOSE を返したら（先が無い）止める
+  act(() => {
+    olderRequest(2).reply.next("EOSE");
+    olderRequest(2).reply.complete();
+    olderRequest(0).reply.complete();
+    olderRequest(1).reply.complete();
+  });
+  expect(vi.mocked(requestFrom)).toHaveBeenCalledTimes(3);
+  expect(result.current.loadingOlder).toBe(false);
+});
+
 it("refresh: 前の購読をやめて REQ を張り直す", () => {
   const { result } = renderHook(() => useColumnFeed(HASHTAG));
   const before = lastPaged().progress;
