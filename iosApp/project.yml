@@ -49,6 +49,8 @@ targets:
         NSLocalNetworkUsageDescription: ユーザーが指定した LAN 内のリレー（NIP-46 の bunker 等）に接続するために使用します。
         # 画像を写真ライブラリへ保存する際の利用目的（未設定だと保存時にクラッシュ）。追加のみ。
         NSPhotoLibraryAddUsageDescription: 画像を写真ライブラリに保存するために使用します。
+        # [#1021] Now Playing: 「ミュージック」アプリで再生中の曲を読む（未設定だと読んだときにクラッシュ）。追加のみ。
+        NSAppleMusicUsageDescription: 「いま聴いている曲を読む」を押したときに、「ミュージック」アプリで再生中の曲名を読むために使用します。
         # Compose Multiplatform 必須: 未指定だと PlistSanityCheck が例外を投げてクラッシュする
         # （ProMotion 120Hz を有効化するためのフラグ）。
         CADisableMinimumFrameDurationOnPhone: true

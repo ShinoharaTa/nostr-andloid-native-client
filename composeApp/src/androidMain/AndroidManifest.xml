@@ -68,5 +68,17 @@
                 <data android:scheme="nostr" />
             </intent-filter>
         </activity>
+
+        <!-- [#1021] Now Playing: ほかのアプリの再生中の曲（メディアセッション）を読むための許可の受け皿。
+             利用者が OS の「通知へのアクセス」で許可したときだけ有効になる。通知の中身は読まない
+             （サービスは何もしない。曲を読むのは、利用者がボタンを押したときの 1 回だけ）。 -->
+        <service
+            android:name=".NowPlayingListenerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
