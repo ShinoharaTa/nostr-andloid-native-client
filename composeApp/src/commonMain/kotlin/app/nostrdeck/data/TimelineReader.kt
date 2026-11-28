@@ -35,7 +35,8 @@ import kotlin.concurrent.Volatile
  *  - 読む投稿はフォロー中のカラムが描く一覧から拾う（[onFeedRendered]。画面に出たものと読むものが一致する）。
  *    ON にした時点で出ていた投稿は読まない（[NewPostPicker]）。エンジンを読み込んでいる間に出た投稿は読む
  *  - リポスト・自分の投稿・ミュート対象は読まない
- *  - スロットは待ちの上限を設けない（追いつけなくても捨てず、届いた順に全部読む。待ちの件数は [Stats.waiting]）
+ *  - スロットは待ちの上限を設けない（追いつけなくても捨てず、届いた順に読む。待ちの件数は [Stats.waiting]）。
+ *    ただし読む直前に、作られてから [MAX_AGE_SEC] より経った投稿は飛ばす
  *  - カラムが画面から消えた（別のページ・設定など）間に届いた投稿は読まない（戻ったときの一覧は「前からある投稿」）
  *  - ON / OFF は端末に覚えない（起動したら OFF）
  *  - 声のエンジン（見えない WebView。百数十 MB 使う）は ON の間だけ持つ。OFF にしたら捨てる。
@@ -105,9 +106,12 @@ class TimelineReader(
         val fresh = picker.pick(posts)
         if (fresh.isEmpty() || sleeping) return
         val s = slot ?: return
-        var added = 0
-        for (note in fresh) if (s.trySend(note).isSuccess) added++
-        if (added > 0) statsState.update { it.copy(waiting = it.waiting + added) }
+        // 待ちは入れる前に数える。入れてから数えると、読む側（別スレッド）が先に取り出して引いてしまい
+        //（0 より下へは引けないので引いた分が消える）、後から足した分が引かれずに残る（読み終えても待ちが 0 に戻らない）
+        statsState.update { it.copy(waiting = it.waiting + fresh.size) }
+        // 入らなかった分（止めてスロットを閉じた後）は待ちに数えない
+        val rejected = fresh.count { !s.trySend(it).isSuccess }
+        if (rejected > 0) statsState.update { it.copy(waiting = (it.waiting - rejected).coerceAtLeast(0)) }
     }
 
     /** フォロー中のカラムが画面から消えた。次に描かれる一覧は「前からある投稿」として覚え、読まない。 */
@@ -154,6 +158,9 @@ class TimelineReader(
             try {
                 run()
             } finally {
+                // スロットは閉じてから手放す。止めるのと同時に描かれた投稿（onFeedRendered が手放す前のスロットを掴んでいた分）は
+                // 閉じたスロットに入らず、待ちにも数えない（下で 0 にした後に数えられて、OFF なのに待ちが残る、を防ぐ）
+                slot?.close()
                 slot = null
                 sleeping = false
                 releaseEngine()
@@ -212,6 +219,8 @@ class TimelineReader(
                 // 裏でエンジンを捨てた後は読み込み直さない（前に戻るまで読まない）
                 if (sleeping || (inBackground.value && engine == null)) continue
                 if (note.event.pubkey == me() || matcher.value.muted(note)) continue
+                // 古くなった投稿は読まない（読んだ・失敗に数えない）
+                if (now() - note.event.createdAt > MAX_AGE_SEC) continue
                 // 名前を DB から引くので失敗しうる。1 件の失敗で読み上げ全体を止めない
                 val text = try {
                     textOf(note)
@@ -324,6 +333,11 @@ class TimelineReader(
         const val BACKGROUND_RELEASE_MS = 30_000L
         /** 続けてエンジンが落ちたら諦める回数（1 回目は作り直して読み直す）。 */
         const val MAX_LOST_IN_A_ROW = 2
+        /**
+         * [#960] 読む直前に、作られてからこれ（秒）より経っている投稿は飛ばす。圏外から戻ったときの再送で
+         * スロットに溜まった古い投稿を延々と（数百件・30 分以上）読み続けないため。
+         */
+        const val MAX_AGE_SEC = 300L
     }
 }
 

@@ -38,7 +38,6 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.util.encodeBase64
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readAvailable
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.putJsonObject
@@ -571,7 +570,7 @@ class EventRepository(
         val key = normalizeRelayUrl(url)
         scope.launch(relayDispatcher) {
             if (relays.containsKey(key)) return@launch
-            val client = RelayClient(key, scope)
+            val client = RelayClient(key, scope, holdReconnect = { inBackground })   // [#853]
             relays[key] = client
             client.start()
             scope.launch { client.messages.collect { onMessage(it, client) } }
@@ -602,6 +601,8 @@ class EventRepository(
 
     // [#358] バックグラウンド滞在で全リレーを一時停止するジョブ。フォアグラウンド復帰でキャンセル。
     private var bgPauseJob: Job? = null
+    // [#853] 裏にいるか（onBackground から onForeground まで）。裏で切れたリレーは前面に戻るまで再接続しない。
+    @kotlin.concurrent.Volatile private var inBackground = false
 
     /**
      * アプリがフォアグラウンド復帰したときに呼ぶ。バックオフ待機中のリレーを即再接続させる。
@@ -609,6 +610,7 @@ class EventRepository(
      * [#358] バックグラウンドで一時停止([onBackground])したリレーもここで再開する。
      */
     fun onForeground() {
+        inBackground = false   // [#853] wake より先に下ろす（裏で止めていた再接続を wake で 1 回だけ起こす）
         bgPauseJob?.cancel()
         bgPauseJob = null
         readerInstance?.onAppForeground()   // [#948]
@@ -631,6 +633,7 @@ class EventRepository(
      * 切らず、置きっぱなしだけを止める」ための猶予。
      */
     fun onBackground(delayMs: Long = BG_PAUSE_DELAY_MS) {
+        inBackground = true   // [#853] 切れなければ 5 分は繋いだまま。切れたら前面に戻るまで繋ぎ直さない
         readerInstance?.onAppBackground()   // [#948] 読み上げのエンジンは読み上げ側の猶予で片付ける
         bgPauseJob?.cancel()
         bgPauseJob = scope.launch {
@@ -908,7 +911,7 @@ class EventRepository(
         bookmarkList.reset(); pinnedList.reset(); pinsAtByAuthor.clear()
         pendingBlocks.value = emptySet()   // [#951] KV は下で消す。手元の分も捨てる
         legacyMutes.value = emptySet()     // [#965] 同上
-        syncEventByD.value = emptyMap()
+        syncEventByD.value = emptyMap(); remoteUnknownColumns = emptyList()   // [#778]
         muteListAt = 0L; muteFlow.value = null
         muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
         processedWraps.clear(); processedLegacyDm.clear(); dmRelaysAtByAuthor.clear()
@@ -958,7 +961,7 @@ class EventRepository(
             muteListAt = 0L; muteFlow.value = null
             muteOtherPublic = emptyList(); muteOtherPrivate = emptyList()
             // [#374] 旧アカウントの 30078 スナップショットを新アカウントで見せないように。
-            syncEventByD.value = emptyMap()
+            syncEventByD.value = emptyMap(); remoteUnknownColumns = emptyList()   // [#778]
 
             // 履歴・キャッシュを全消去（NIP-65 リレーも。default/manual は維持）。
             q.transaction {
@@ -1082,18 +1085,7 @@ class EventRepository(
     //  - 読み込み: 「リレーから読み込む」で一時REQにより最新1件ずつ取得し、UI 側で
     //    ローカル現在値との差分を確認 → チェックした項目だけ適用する。常時購読はしない。
 
-    /** 30078 の content に載せるカラム1件分。他クライアントからも読める素直な JSON。
-     *  #122 時代に発行済みのイベントと互換のある形式なので変更しないこと。 */
-    @Serializable
-    private data class DeckColumnDto(
-        val id: String,
-        val title: String,
-        val subtitle: String = "",
-        val kind: String,
-        val renderer: String,
-        val filter: ReqFilter = ReqFilter(),
-        val order: Int = 0,
-    )
+    // content の形（DeckColumnDto）と読み書きは SettingsSync.kt（[decodeDeckColumnsContent] / [encodeDeckColumnsContent]）。
 
     // 適用したカラム構成。App が collect して DeckState へ反映する（UI 反映の既存経路）。
     private val remoteColumnsFlow = MutableSharedFlow<List<ColumnSpec>>(replay = 1)
@@ -1102,6 +1094,8 @@ class EventRepository(
     // 受信/発行した自分の 30078 スナップショット（d タグ → 最新イベント）。in-memory のみ。
     private val syncEventByD = MutableStateFlow<Map<String, NostrEvent>>(emptyMap())
     private var syncFetchSeq = 0
+    // [#778] 最後に読み込んだカラム構成のうち、このビルドが知らない種別の行（表示しない）。保存のとき元の位置へ書き戻す。
+    private var remoteUnknownColumns: List<UnknownDeckColumn> = emptyList()
 
     /** リレーから取得した同期スナップショット。null のフィールド = リレーに未保存。 */
     data class RelaySyncSnapshot(
@@ -1143,8 +1137,9 @@ class EventRepository(
         val settings = syncEventByD.value[SETTINGS_SYNC_D]?.let { e ->
             runCatching { json.decodeFromString(SettingsSyncPayload.serializer(), e.content).settings }.getOrNull()
         }
-        val columns = syncEventByD.value[DECK_COLUMNS_D]?.let { decodeDeckColumns(it.content) }
-        return RelaySyncSnapshot(settings, columns)
+        val decoded = syncEventByD.value[DECK_COLUMNS_D]?.let { decodeDeckColumnsContent(it.content) }
+        remoteUnknownColumns = decoded?.unknown.orEmpty()   // [#778] 読み込み直したら入れ替える
+        return RelaySyncSnapshot(settings, decoded?.columns)
     }
 
     /** ホワイトリスト設定の現在値スナップショット（正規化済み文字列）。差分計算・発行に使う。 */
@@ -1164,35 +1159,18 @@ class EventRepository(
         true
     }.getOrElse { println("Nostrism publishSettingsSync failed: $it"); false }
 
-    /** 現在のピン留めカラム構成を kind:30078（d=DECK_COLUMNS_D）として発行する。 */
+    /**
+     * 現在のピン留めカラム構成を kind:30078（d=DECK_COLUMNS_D）として発行する。
+     * [#778] 最後に読み込んだ版にあった知らない種別の行は、消さずに元の位置へそのまま書き戻す。
+     */
     suspend fun publishDeckColumnsSync(): Boolean = runCatching {
-        val dtos = loadPinnedColumns().sortedBy { it.order }.mapIndexed { i, s ->
-            DeckColumnDto(s.id, s.title, s.subtitle, s.kind.name, s.renderer.name, s.filter, i)
-        }
-        val content = json.encodeToString(ListSerializer(DeckColumnDto.serializer()), dtos)
+        val content = encodeDeckColumnsContent(loadPinnedColumns().sortedBy { it.order }, remoteUnknownColumns)
         val signed = publishSigned(
             UnsignedEvent(kind = 30078, content = content, tags = listOf(listOf("d", DECK_COLUMNS_D))),
         )
         captureSyncEvent(signed)
         true
     }.getOrElse { println("Nostrism publishDeckColumnsSync failed: $it"); false }
-
-    /** d=DECK_COLUMNS_D の content（#122 互換の DeckColumnDto 配列）を ColumnSpec 群へ。壊れていれば null。 */
-    // [#388-review] JSON 全体の decode 失敗だけを null にし、行の変換は loadPinnedColumns と同じく
-    // 1件ずつ runCatching で包む。旧ビルドが未知の ColumnKind（LIST 等）を1件読んだだけで
-    // 全カラムが null（＝同期の全件失敗）になっていた。
-    private fun decodeDeckColumns(content: String): List<ColumnSpec>? =
-        runCatching { json.decodeFromString(ListSerializer(DeckColumnDto.serializer()), content) }
-            .getOrNull()
-            ?.mapNotNull { d ->
-                runCatching {
-                    ColumnSpec(
-                        id = d.id, title = d.title, subtitle = d.subtitle,
-                        kind = ColumnKind.valueOf(d.kind), renderer = ColumnRenderer.valueOf(d.renderer),
-                        filter = d.filter, pinned = true, order = d.order,
-                    ).withHexProfileAuthors()   // [#578]
-                }.getOrNull()
-            }
 
     /**
      * 差分適用後のカラム構成を反映する（ローカル保存 + [remoteColumnsFlow] 経由で DeckState へ）。

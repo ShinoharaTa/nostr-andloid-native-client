@@ -9,6 +9,7 @@ import app.nostrdeck.model.Profile
 import app.nostrdeck.model.TtsStyle
 import app.nostrdeck.model.TtsTone
 import app.nostrdeck.model.TtsVoice
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,13 +33,15 @@ class TimelineReaderTest {
         val failLoad: Boolean = false,
         /** この文章を読もうとしたら投げる。 */
         val failOn: (String) -> Throwable? = { null },
+        /** この文章を読み始めたときに呼ぶ（読んでいる間に時計を進める等）。 */
+        val onSpeak: (String) -> Unit = {},
     ) : SpeechEngine {
         val loaded = mutableListOf<TtsVoice>()
         val spoken = mutableListOf<String>()
         val styles = mutableListOf<TtsStyle>()
         @Volatile var closed = false
         override suspend fun load(voice: TtsVoice) { delay(loadDelayMs); if (failLoad) error("load failed"); loaded += voice }
-        override suspend fun speak(text: String, style: TtsStyle) { failOn(text)?.let { throw it }; spoken += text; styles += style; delay(5) }
+        override suspend fun speak(text: String, style: TtsStyle) { onSpeak(text); failOn(text)?.let { throw it }; spoken += text; styles += style; delay(5) }
         override fun stop() {}
         override fun close() { closed = true }
     }
@@ -80,8 +83,10 @@ class TimelineReaderTest {
         backgroundReleaseMs: Long = 50,
         personName: suspend (String) -> String? = { null },
         style: () -> TtsStyle = { TtsStyle.DEFAULT },
+        /** 読む側が動く場所。アプリと同じく既定は別スレッド。 */
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
     ): Setup {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val mutes = MutableStateFlow<MuteList?>(null)
         lateinit var s: Setup
         val reader = TimelineReader(
@@ -329,6 +334,25 @@ class TimelineReaderTest {
         }
     }
 
+    /**
+     * 待ちの件数は、スロットへ入れる前に数える。入れてから数えると、読む側が先に取り出して引いた分
+     *（0 より下へは引けない）が消え、読み終えても待ちが残る。別スレッドだとたまにしか起きない順序なので、
+     * 読む側をその場で動かして（Unconfined。スロットへ入れた呼び出しの中で、取り出して引くところまで進む）必ず起こす。
+     */
+    @Test
+    fun waiting_returns_to_zero_when_a_post_is_taken_the_moment_it_is_queued(): Unit = runBlocking {
+        val s = setup(dispatcher = Dispatchers.Unconfined)
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(note("p2", "c", "う", "二つ目", start + 2), note("p1", "b", "い", "一つ目", start + 1))
+            val done = withTimeout(2_000) { s.reader.stats.first { it.read == 2 } }
+            assertEquals(TimelineReader.Stats(read = 2), done)
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
     @Test
     fun a_burst_is_read_in_order_without_dropping(): Unit = runBlocking {
         val s = setup()
@@ -341,6 +365,65 @@ class TimelineReaderTest {
             s.waitSpoken(12)
             assertEquals(burst.map { "${it.author.name}。${it.event.content}" }, s.spoken)
             withTimeout(2_000) { s.reader.stats.first { it.read == 12 && it.waiting == 0 } }
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun posts_older_than_five_minutes_are_skipped(): Unit = runBlocking {
+        var now = start
+        val s = setup(clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            // 圏外から戻った再送: ON にした後の投稿だが、読む時点で 5 分より前
+            now = start + 1_000
+            s.arrive(note("fresh", "c", "う", "新しい", start + 995), note("stale", "b", "い", "古い", start + 1))
+            withTimeout(2_000) { s.reader.stats.first { it.read == 1 } }   // 古い順に読むので、古い方はもう飛ばしている
+            assertEquals(listOf("う。新しい"), s.spoken)
+            assertEquals(0, s.reader.stats.value.failed)   // 飛ばした分は失敗に数えない
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_post_exactly_five_minutes_old_is_read(): Unit = runBlocking {
+        var now = start
+        val s = setup(clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            now = start + 1_000
+            s.arrive(
+                note("edge", "c", "う", "ちょうど 5 分", now - TimelineReader.MAX_AGE_SEC),
+                note("over", "b", "い", "5 分と 1 秒", now - TimelineReader.MAX_AGE_SEC - 1),
+            )
+            s.waitSpoken(1)
+            delay(30)
+            assertEquals(listOf("う。ちょうど 5 分"), s.spoken)
+        } finally {
+            s.reader.stop(); s.scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_post_that_goes_stale_while_waiting_is_skipped(): Unit = runBlocking {
+        var now = start
+        // 1 件目を読んでいる間に時計が 5 分以上進む（読み上げに追いつけず待っている間に古くなる）
+        val s = setup(engines = listOf(FakeEngine(onSpeak = { if ("一つ目" in it) now = start + 303 })), clock = { now })
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(
+                note("c", "d", "え", "三つ目", start + 10),
+                note("b", "c", "う", "二つ目", start + 2),
+                note("a", "b", "い", "一つ目", start + 1),
+            )
+            withTimeout(2_000) { s.reader.stats.first { it.read == 2 } }
+            assertEquals(listOf("い。一つ目", "え。三つ目"), s.spoken)
+            assertEquals(0, s.reader.stats.value.failed)
         } finally {
             s.reader.stop(); s.scope.cancel()
         }
@@ -395,6 +478,30 @@ class TimelineReaderTest {
             s.reader.stop()
             withTimeout(2_000) { s.reader.status.first { it == TimelineReader.Status.OFF } }
             assertTrue(s.made.single().closed)
+        } finally {
+            s.scope.cancel()
+        }
+    }
+
+    /**
+     * 止めるのと同時に描かれた投稿が、OFF の後に待ちとして残らない。読む側をその場で動かし（Unconfined）、
+     * 1 件目をスロットへ入れた呼び出しの中で止めて片付けまで済ませる（残りの 2 件はその後に入れようとする）。
+     */
+    @Test
+    fun posts_shown_at_the_moment_of_stop_are_not_left_waiting(): Unit = runBlocking {
+        lateinit var s: Setup
+        // failOn は読み始めに呼ばれる。ここでは止めるだけで、投げない（null）
+        s = setup(engines = listOf(FakeEngine(failOn = { s.reader.stop(); null })), dispatcher = Dispatchers.Unconfined)
+        try {
+            s.reader.start()
+            s.on()
+            s.arrive(
+                note("p3", "d", "え", "三つ目", start + 3),
+                note("p2", "c", "う", "二つ目", start + 2),
+                note("p1", "b", "い", "一つ目", start + 1),
+            )
+            withTimeout(2_000) { s.reader.status.first { it == TimelineReader.Status.OFF } }
+            assertEquals(0, s.reader.stats.value.waiting)
         } finally {
             s.scope.cancel()
         }
