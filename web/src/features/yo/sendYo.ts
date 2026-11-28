@@ -13,6 +13,7 @@ import { useSession } from "../../signer/session";
 import { showToast } from "../../ui/toast";
 import { storeRelayHints } from "../compose/relayHints";
 import { isPublicRelay, normalizeRelayUrl } from "../compose/tags";
+import { yoEmojiUrl } from "./yoEmoji";
 import {
   latestProfileOf,
   YO_FETCH_SETTLE_MS,
@@ -98,7 +99,14 @@ export async function sendYoNow(recipient: string, timeoutMs = YO_FETCH_TIMEOUT_
   const seen = [...(getSeenRelays(profile) ?? [])].map(normalizeRelayUrl).find(isPublicRelay);
   const hint = seen ?? storeRelayHints(me).pubkeyHint(recipient);
   const signed = await publishEvent(
-    yoDraft(recipient, profile.id, hint, yoReplyCreatedAt(now, latestYoFrom(recipient, me, now))),
+    // 絵文字の画像は、設定の「Yo の絵文字」で選んだもの（標準は nostr-yo の絵）
+    yoDraft(
+      recipient,
+      profile.id,
+      hint,
+      yoReplyCreatedAt(now, latestYoFrom(recipient, me, now)),
+      yoEmojiUrl(),
+    ),
   );
   useYoSending.setState((s) => ({ sentAt: new Map(s.sentAt).set(recipient, signed.created_at) }));
   return "sent";

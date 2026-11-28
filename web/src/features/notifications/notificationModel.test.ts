@@ -2,7 +2,7 @@ import { decode } from "nostr-tools/nip19";
 import type { NostrEvent } from "nostr-tools/pure";
 import { describe, expect, it } from "vitest";
 import type { DmConversation } from "../dm/dmStore";
-import { yoDraft } from "../yo/yoModel";
+import { YO_IMAGE_URL, yoDraft } from "../yo/yoModel";
 import {
   collapseYos,
   dmNotices,
@@ -280,13 +280,26 @@ describe("Yo", () => {
     return ev({ pubkey: from, kind: 7, content: ":yo:", created_at: at, tags: yoDraft(to, PROFILE).tags });
   }
 
-  it("自分あての Yo は yo の行。対象も絵文字の画像も持たない", () => {
+  it("自分あての Yo は yo の行。対象は持たず、送り主が付けた絵は Yo の絵として持つ（リアクションの絵文字としては持たない）", () => {
     const item = toNotification(yo(OTHER, ME, NOW - 10), ME, NOW);
     expect(item?.kind).toBe("yo");
     expect(item?.target).toBeNull();
     expect(item?.reaction).toBeNull();
     expect(item?.targetIsProfile).toBe(true);
-    expect(item?.yo).toEqual({ count: 1, replied: false });
+    expect(item?.yo).toEqual({ count: 1, replied: false, imageUrl: YO_IMAGE_URL });
+  });
+
+  it("まとめた行の絵は、いちばん新しい Yo に付いていたもの", () => {
+    const custom = "https://emoji.example/theirs.png";
+    const newest = ev({
+      pubkey: OTHER,
+      kind: 7,
+      content: ":yo:",
+      created_at: NOW - 10,
+      tags: yoDraft(ME, PROFILE, "", undefined, custom).tags,
+    });
+    const [row] = notificationsFrom([yo(OTHER, ME, NOW - 100), newest], ME, { now: NOW });
+    expect(row.yo).toEqual({ count: 2, replied: false, imageUrl: custom });
   });
 
   it("me を渡さなければ Yo を見ない。ほかの人あての :yo: はふつうのリアクション（対象は取りに行かない）", () => {
@@ -345,7 +358,7 @@ describe("Yo", () => {
     expect(isYoReplied(item, NOW - 100)).toBe(true);
     // それより新しい Yo が届いていれば、まだ返していない
     expect(isYoReplied(item, NOW - 101)).toBe(false);
-    expect(isYoReplied({ ...item, yo: { count: 1, replied: true } }, undefined)).toBe(true);
+    expect(isYoReplied({ ...item, yo: { count: 1, replied: true, imageUrl: null } }, undefined)).toBe(true);
   });
 
   it("見出しの件数は、まだ返していない相手の数（同じ人の Yo は 1 人。返した人と Yo 以外は数えない）", () => {

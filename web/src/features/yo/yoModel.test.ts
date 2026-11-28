@@ -8,8 +8,11 @@ import {
   YO_IMAGE_URL,
   yoCountLabel,
   yoDraft,
+  yoEmojiChoices,
+  yoImageUrlOf,
   yoRecipientOf,
   yoReplyCreatedAt,
+  yoSendImageUrl,
 } from "./yoModel";
 
 /**
@@ -232,6 +235,53 @@ describe("そのほか", () => {
       ]),
     ).toBe(false);
     expect(reactsToProfile([["e", PROFILE]])).toBe(false);
+  });
+
+  it("絵を替えても Yo のまま（ショートコードは yo のまま、画像だけが替わる）", () => {
+    const custom = "https://emoji.example/mine.webp";
+    const draft = yoDraft(SENDER, PROFILE, "", undefined, custom);
+    expect(draft.tags.filter((tag) => tag[0] === "emoji")).toEqual([["emoji", "yo", custom]]);
+    expect(draft.content).toBe(":yo:");
+    expect(yoRecipientOf(yo({ tags: yoDraft(ME, PROFILE, "", undefined, custom).tags }), NOW)).toBe(ME);
+  });
+
+  it("使えない URL は標準の絵に戻す（受け取る側で Yo と認識されなくならない）", () => {
+    expect(yoSendImageUrl(null)).toBe(YO_IMAGE_URL);
+    expect(yoSendImageUrl("")).toBe(YO_IMAGE_URL);
+    expect(yoSendImageUrl("http://emoji.example/a.png")).toBe(YO_IMAGE_URL);
+    expect(yoSendImageUrl("https://user:pw@emoji.example/a.png")).toBe(YO_IMAGE_URL);
+    expect(yoSendImageUrl("https://emoji.example/a.png")).toBe("https://emoji.example/a.png");
+    const draft = yoDraft(SENDER, PROFILE, "", undefined, "http://emoji.example/a.png");
+    expect(draft.tags.find((tag) => tag[0] === "emoji")?.[2]).toBe(YO_IMAGE_URL);
+  });
+
+  it("受け取った Yo の絵は emoji タグから読む（2 つ・ショートコード違い・使えない URL は出さない）", () => {
+    const custom = "https://emoji.example/theirs.png";
+    expect(yoImageUrlOf(yo({ tags: yoDraft(ME, PROFILE, "", undefined, custom).tags }))).toBe(custom);
+    expect(yoImageUrlOf(yo())).toBe(YO_IMAGE_URL);
+    expect(
+      yoImageUrlOf(yo({ tags: tagsWith("emoji", ["emoji", "yo", custom], ["emoji", "x", custom]) })),
+    ).toBeNull();
+    expect(yoImageUrlOf(yo({ tags: tagsWith("emoji", ["emoji", "yoo", custom]) }))).toBeNull();
+    expect(
+      yoImageUrlOf(yo({ tags: tagsWith("emoji", ["emoji", "yo", "http://emoji.example/a.png"]) })),
+    ).toBeNull();
+  });
+
+  it("選べる絵の先頭は、必ず標準（nostr-yo の絵）。使えない URL・同じ画像は並べない", () => {
+    expect(yoEmojiChoices([])).toEqual([{ shortcode: "yo", url: YO_IMAGE_URL }]);
+    const mine = [
+      { shortcode: "wave", url: "https://emoji.example/wave.png" },
+      { shortcode: "bad", url: "http://emoji.example/bad.png" },
+      { shortcode: "yo_again", url: YO_IMAGE_URL },
+      { shortcode: "wave2", url: "https://emoji.example/wave.png" },
+      { shortcode: "cat", url: "https://emoji.example/cat.gif" },
+    ];
+    expect(yoEmojiChoices(mine)).toEqual([
+      { shortcode: "yo", url: YO_IMAGE_URL },
+      { shortcode: "wave", url: "https://emoji.example/wave.png" },
+      { shortcode: "cat", url: "https://emoji.example/cat.gif" },
+    ]);
   });
 
   it("件数は 2 件以上のときだけ付ける", () => {

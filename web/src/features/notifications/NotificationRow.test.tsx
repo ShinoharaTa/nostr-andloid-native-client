@@ -5,7 +5,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from 
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { NEVER } from "rxjs";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { proxiedEmoji } from "../../lib/imageProxy";
+import { markProxyBlocked, originOf, proxiedEmoji } from "../../lib/imageProxy";
 import { unixNow } from "../../lib/time";
 import { type EventDraft, publishEvent } from "../../nostr/publish";
 import { eventStore } from "../../nostr/store";
@@ -14,7 +14,7 @@ import { installDialogPolyfill } from "../../test/dialog";
 import actionStyles from "../actions/NoteActionButtons.module.css";
 import { useCompose } from "../compose/composeStore";
 import { sendYo, useYoSending } from "../yo/sendYo";
-import { yoDraft } from "../yo/yoModel";
+import { YO_IMAGE_URL, yoDraft } from "../yo/yoModel";
 import { reloadYoStyleForTest, setYoStyle, YO_STYLE_KEY } from "../yo/yoStyle";
 import { NotificationRow } from "./NotificationRow";
 import { type NotificationItem, toNotification } from "./notificationModel";
@@ -518,12 +518,17 @@ it("[#817] 対象が自分のチャット発言（kind:42）なら、行と時�
 
 describe("[#1025] Yo", () => {
   /** alice から自分あての Yo の行（count 件ぶんをまとめた形） */
+  /** Yo の行の yo（件数と返したかだけ差し替える。絵は Yo に付いていたもの） */
+  function withYo(item: NotificationItem, yo: { count: number; replied: boolean }): NotificationItem {
+    return { ...item, yo: { ...yo, imageUrl: item.yo?.imageUrl ?? null } };
+  }
+
   function yoItem(yo: { count: number; replied: boolean } = { count: 1, replied: false }) {
     const alice = withProfile("alice");
     const event = signed(7, alice, yoDraft(me, "c".repeat(64)).tags, ":yo:");
     const item = toNotification(event, me, unixNow());
     if (!item) throw new Error("not a notification");
-    return { item: { ...item, yo }, alice: event.pubkey };
+    return { item: withYo(item, yo), alice: event.pubkey };
   }
 
   beforeEach(() => {
@@ -536,22 +541,35 @@ describe("[#1025] Yo", () => {
     reloadYoStyleForTest();
   });
 
-  it("モノクロ（既定）: まだ返していない Yo は行まるごと反転し、大きな「Yo!」・「×3」・「Yo を返す」。引用カードも絵文字の画像も出さない", async () => {
+  /** 行の中の Yo の絵（img）。無ければ null */
+  const yoImg = (root: ParentNode) => root.querySelector<HTMLImageElement>("[role=img] img");
+  /** 印の枠（傾き・動き・返したあとの印を持つ） */
+  const yoFrame = () => screen.getByRole("img", { name: "Yo" }).firstElementChild as HTMLElement;
+
+  it("紫（既定）: まだ返していない Yo は紫のボタンと「×3」。印は送り主の絵（プロキシ経由）で、読み込めるまでは描いた「Yo!」。引用カードは出さない", async () => {
     const { item } = yoItem({ count: 3, replied: false });
     const { container } = renderRow(item);
 
-    expect(container.querySelector("article")).toHaveAttribute("data-yo", "block");
-    // 印は文字の「Yo!」（アイコンでもタイルでもない）
-    const mark = screen.getByRole("img", { name: "Yo" });
-    expect(mark.querySelector("svg")).toBeNull();
-    expect(mark).toHaveTextContent("Yo!");
+    expect(container.querySelector("article")).toHaveAttribute("data-yo", "color");
+    expect(yoFrame()).toHaveAttribute("data-shape", "tile");
+    // 絵は画像プロキシ経由で読み込む（送り主が選んだ URL へ直接つながない）
+    const img = yoImg(container);
+    expect(img?.getAttribute("src")).toMatch(/^https:\/\/wsrv\.nl\/\?url=/);
+    expect(originOf(img?.getAttribute("src"))).toBe(YO_IMAGE_URL);
+    // 読み込めるまでは、描いた「Yo!」（紫のタイル）を出して、絵は隠しておく
+    expect(img).not.toBeVisible();
     expect(screen.getByText("Yo!")).not.toHaveAttribute("data-dimmed");
+    // 読み込めたら絵に替わる
+    if (img) fireEvent.load(img);
+    expect(yoImg(container)).toBeVisible();
+    expect(screen.queryByText("Yo!")).toBeNull();
+
     expect(screen.getByText("×3")).toBeInTheDocument();
     const back = screen.getByRole("button", { name: "Yo を返す" });
     expect(back).toBeEnabled();
-    expect(back).toHaveAttribute("data-variant", "block");
+    expect(back).toHaveAttribute("data-variant", "color");
     expect(screen.queryByRole("link", CARD)).toBeNull();
-    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
     expect(screen.queryByRole("group", { name: "操作" })).toBeNull();
     // 名前も時刻も、相手のプロフィールへ
     const name = await screen.findByRole("link", { name: "alice" });
@@ -559,6 +577,35 @@ describe("[#1025] Yo", () => {
     expect(container.querySelector("time")?.closest("a")?.getAttribute("href")).toBe(
       name.getAttribute("href"),
     );
+  });
+
+  it("絵を読み込めなければ、描いた「Yo!」のまま。プロキシが受け付けないホストの絵は、取りに行かない", () => {
+    const { item } = yoItem();
+    const failed = renderRow(item);
+    const img = yoImg(failed.container);
+    if (img) fireEvent.error(img);
+    // 配信元へ直接取り直さない（img ごと無くなる）
+    expect(yoImg(failed.container)).toBeNull();
+    expect(screen.getByText("Yo!")).toBeInTheDocument();
+    failed.unmount();
+
+    const blockedUrl = "https://yo-blocked-by-proxy.test/yo.png";
+    markProxyBlocked(blockedUrl);
+    const blocked = renderRow({ ...item, yo: { count: 1, replied: false, imageUrl: blockedUrl } });
+    expect(yoImg(blocked.container)).toBeNull();
+    expect(screen.getByText("Yo!")).toBeInTheDocument();
+  });
+
+  it("白黒（強調）: まだ返していない Yo は行まるごと反転し、絵を大きく置く", () => {
+    setYoStyle("block");
+    const { item } = yoItem({ count: 3, replied: false });
+    const { container } = renderRow(item);
+    expect(container.querySelector("article")).toHaveAttribute("data-yo", "block");
+    expect(yoFrame()).toHaveAttribute("data-shape", "large");
+    // 読み込めるまでの「Yo!」は文字（タイルではない）
+    expect(screen.getByText("Yo!")).not.toHaveAttribute("data-dimmed");
+    expect(screen.getByText("×3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Yo を返す" })).toHaveAttribute("data-variant", "block");
   });
 
   it("1 件だけなら件数を付けない。行を押すと相手のプロフィールを開く", async () => {
@@ -583,32 +630,27 @@ describe("[#1025] Yo", () => {
     expect(screen.getByRole("button", { name: "送信中" })).toBeDisabled();
   });
 
-  it("返したあとは普通の行に戻る: 沈めた「Yo!」・「Yo が届きました ×2」・「返しました」で、ボタンは無い", () => {
+  it("返したあとは普通の行に戻る: 絵を沈め、「Yo が届きました ×2」・「返しました」で、ボタンは無い", () => {
     const { item } = yoItem({ count: 2, replied: true });
     const { container } = renderRow(item);
     expect(container.querySelector("article")).toHaveAttribute("data-yo", "done");
+    expect(yoFrame()).toHaveAttribute("data-done");
     expect(screen.getByText("Yo が届きました ×2")).toBeInTheDocument();
     expect(screen.getByText("返しました")).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
-    // モノクロの「返したあと」はタイルにしない
-    expect(screen.getByText("Yo!")).not.toHaveAttribute("data-dimmed");
+    // 紫の「返したあと」: 読み込めるまでの「Yo!」は沈めたタイル
+    expect(screen.getByText("Yo!")).toHaveAttribute("data-dimmed");
   });
 
-  it("紫: まだ返していない Yo は紫のタイルと紫のボタン。返したあとはタイルを沈める", () => {
-    setYoStyle("color");
-    const { item } = yoItem({ count: 3, replied: false });
-    const { container, unmount } = renderRow(item);
-    expect(container.querySelector("article")).toHaveAttribute("data-yo", "color");
+  it("白黒（強調）の「返したあと」は、小さな絵（読み込めるまでは沈めた文字の「Yo!」）", () => {
+    setYoStyle("block");
+    const { item } = yoItem({ count: 3, replied: true });
+    const { container } = renderRow(item);
+    expect(container.querySelector("article")).toHaveAttribute("data-yo", "done");
+    expect(yoFrame()).toHaveAttribute("data-shape", "small");
+    expect(yoFrame()).toHaveAttribute("data-done");
     expect(screen.getByText("Yo!")).not.toHaveAttribute("data-dimmed");
-    expect(screen.getByText("×3")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Yo を返す" })).toHaveAttribute("data-variant", "color");
-    unmount();
-
-    const done = renderRow({ ...item, yo: { count: 3, replied: true } });
-    expect(done.container.querySelector("article")).toHaveAttribute("data-yo", "done");
-    expect(screen.getByText("Yo!")).toHaveAttribute("data-dimmed");
     expect(screen.getByText("Yo が届きました ×3")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("届いたばかりの Yo だけ、印を一度動かす（返したあと・古い Yo は動かさない）", () => {
@@ -616,15 +658,15 @@ describe("[#1025] Yo", () => {
     const { item } = yoItem();
     const now = { ...item, createdAt: unixNow() };
     const fresh = renderRow(now);
-    expect(screen.getByText("Yo!")).toHaveAttribute("data-fresh");
+    expect(yoFrame()).toHaveAttribute("data-fresh");
     fresh.unmount();
 
     const old = renderRow(item);
-    expect(screen.getByText("Yo!")).not.toHaveAttribute("data-fresh");
+    expect(yoFrame()).not.toHaveAttribute("data-fresh");
     old.unmount();
 
-    renderRow({ ...now, yo: { count: 1, replied: true } });
-    expect(screen.getByText("Yo!")).not.toHaveAttribute("data-fresh");
+    renderRow(withYo(now, { count: 1, replied: true }));
+    expect(yoFrame()).not.toHaveAttribute("data-fresh");
   });
 
   it("送った直後（通知が組み直される前）も「返しました」にする。それより新しい Yo が届いていれば、また押せる", () => {

@@ -1,4 +1,4 @@
-/* [#1025] 自分が送った Yo の行の印（手を振るアイコン。ネイティブ YoMark。通知の種別マークと同じ大きさ） */
+/* [#1025] 自分が送った Yo の行の印（付けた絵を読み込めるまでの、手を振るアイコン。ネイティブ YoMark） */
 .markIcon {
   width: var(--icon-md);
   height: var(--icon-md);
@@ -12,7 +12,40 @@
   align-items: center;
 }
 
-/* 「Yo!」の文字。太さは Yo だけのもの（--w-yo） */
+/*
+ * 印の枠。傾きと、届いた瞬間の動きを持つ（中身は送り主の絵か、描いた「Yo!」）。
+ * data-shape = tile（紫。種別マークの列いっぱい）/ large（白黒・まだ返していない）/ small（白黒・返したあと）
+ */
+.frame {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-6deg);
+}
+
+.frame[data-shape="tile"] {
+  transform: rotate(-8deg);
+}
+
+/* 送り主が付けた絵文字の画像。枠の大きさの正方形に収める（縦横比はそのまま） */
+.image {
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  object-fit: contain;
+}
+
+.frame[data-shape="large"] .image {
+  width: var(--touch);
+  height: var(--touch);
+}
+
+/* 返したあとは絵を沈める（ネイティブ YO_DONE_IMAGE_ALPHA） */
+.frame[data-done] .image {
+  opacity: 0.45;
+}
+
+/* 「Yo!」の文字（絵を読み込めるまで・読み込めなかったとき）。太さは Yo だけのもの（--w-yo） */
 .word {
   flex: none;
   font-weight: var(--w-yo);
@@ -21,17 +54,15 @@
   white-space: nowrap;
 }
 
-/* モノクロ・まだ返していない Yo: 大きな「Yo!」（色は行の反転に従う） */
+/* 白黒・まだ返していない Yo: 大きな「Yo!」（色は行の反転に従う） */
 .wordLg {
   font-size: var(--type-yo-lg);
-  transform: rotate(-6deg);
 }
 
-/* モノクロ・返したあと: 沈めた小さな「Yo!」 */
+/* 白黒・返したあと: 沈めた小さな「Yo!」 */
 .wordSm {
   color: var(--text-3);
   font-size: var(--type-yo-md);
-  transform: rotate(-6deg);
 }
 
 /* 紫のタイル（種別マークの列いっぱい。返したあとは面を沈める） */
@@ -45,7 +76,6 @@
   background: var(--yo);
   color: var(--on-yo);
   font-size: var(--type-title);
-  transform: rotate(-8deg);
 }
 
 .tile[data-dimmed] {
@@ -53,7 +83,7 @@
   color: var(--text-2);
 }
 
-/* 廃人モード: 列が細いので文字を 1 段下げる（ネイティブ YoUi.kt の isDense の分岐と同じ） */
+/* 廃人モード: 列が細いので 1 段下げる（ネイティブ YoUi.kt の isDense の分岐と同じ） */
 :root[data-density="dense"] .wordLg {
   font-size: var(--type-yo-md);
 }
@@ -66,7 +96,12 @@
   font-size: var(--type-label);
 }
 
-/* 届いた瞬間の動き（一度だけ）。モノクロは「Yo!」が弾む、紫はタイルが揺れる（行き 160ms・戻り 260ms） */
+:root[data-density="dense"] .frame[data-shape="large"] .image {
+  width: var(--touch-xs);
+  height: var(--touch-xs);
+}
+
+/* 届いた瞬間の動き（一度だけ）。白黒は弾む、紫は揺れる（行き 160ms・戻り 260ms） */
 @keyframes yoBounce {
   0% {
     transform: rotate(-6deg) scale(1);
@@ -91,17 +126,16 @@
   }
 }
 
-.wordLg[data-fresh] {
+.frame[data-fresh] {
   animation: yoBounce 420ms ease-out 1;
 }
 
-.tile[data-fresh] {
+.frame[data-shape="tile"][data-fresh] {
   animation: yoWobble 420ms ease-out 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wordLg[data-fresh],
-  .tile[data-fresh] {
+  .frame[data-fresh] {
     animation: none;
   }
 }
@@ -252,6 +286,13 @@
   width: 38px;
 }
 
+/* 自分が送った Yo に付けた絵（小さく） */
+.myImage {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  object-fit: contain;
+}
+
 .myLine {
   flex: 1;
   min-width: 0;
@@ -272,6 +313,20 @@
 
 .myTime {
   flex: none;
+  color: var(--text-3);
+  font-size: var(--type-label);
+}
+
+/* ===== 「Yo の絵文字」を選ぶ画面（マス目はリアクションのピッカーのもの） ===== */
+
+/* いま選んでいる絵 */
+.pickCell[aria-pressed="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.pickHint {
+  margin: var(--sp-3) 0 0;
   color: var(--text-3);
   font-size: var(--type-label);
 }

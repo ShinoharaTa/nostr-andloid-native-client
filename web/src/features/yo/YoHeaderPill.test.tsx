@@ -38,7 +38,13 @@ afterEach(() => {
   reloadYoStyleForTest();
 });
 
-it("モノクロ（既定）では出さない", () => {
+it("紫（既定）では、設定を変えていなくても出す", () => {
+  render(<YoHeaderPill events={[yo(ALICE, 30)]} />);
+  expect(screen.getByText("Yo! 1")).toBeInTheDocument();
+});
+
+it("白黒（強調）では出さない", () => {
+  setYoStyle("block");
   const { container } = render(<YoHeaderPill events={[yo(ALICE, 30)]} />);
   expect(container).toBeEmptyDOMElement();
 });

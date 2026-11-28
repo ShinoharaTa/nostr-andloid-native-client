@@ -9,7 +9,7 @@ import { unixNow } from "../../lib/time";
 import { plainTextOf } from "../actions/noteLinks";
 import type { DmConversation } from "../dm/dmStore";
 import { normalizeReaction } from "../thread/engagement";
-import { myLatestYoTo, reactsToProfile, YO_LABEL, yoRecipientOf } from "../yo/yoModel";
+import { myLatestYoTo, reactsToProfile, YO_LABEL, yoImageUrlOf, yoRecipientOf } from "../yo/yoModel";
 
 /**
  * 通知の 1 件（ネイティブの EventRepository.kt toNotification / Nostr.sq notificationsFor の写し）。
@@ -45,9 +45,10 @@ export type NotificationItem = {
   targetIsProfile: boolean;
   /**
    * [#1025] Yo の行だけ。count = 同じ人から届いている Yo の数（1 行にまとめている。collapseYos）、
-   * replied = いちばん新しい Yo より後に、こちらから Yo を送ってある（「返しました」）
+   * replied = いちばん新しい Yo より後に、こちらから Yo を送ってある（「返しました」）、
+   * imageUrl = 送り主が付けた絵文字の画像（yoImageUrlOf。まとめた行では、いちばん新しい Yo のもの）
    */
-  yo: { count: number; replied: boolean } | null;
+  yo: { count: number; replied: boolean; imageUrl: string | null } | null;
 };
 
 const HEX64 = /^[0-9a-f]{64}$/i;
@@ -95,9 +96,16 @@ export function toNotification(
         zapSats: zapAmountSats(event.tags),
       };
     case 7:
-      // [#1025] Yo（nostr-yo）。対象は自分のプロフィールなので取りに行かない。送り主が指定した絵文字の画像も持たない
+      // [#1025] Yo（nostr-yo）。対象は自分のプロフィールなので取りに行かない。送り主が付けた絵文字の画像は、
+      // リアクションの絵文字（reaction）ではなく Yo の絵（yo.imageUrl）として持つ
       if (me !== null && yoRecipientOf(event, now) === me) {
-        return { ...base, kind: "yo", target: null, targetIsProfile: true, yo: { count: 1, replied: false } };
+        return {
+          ...base,
+          kind: "yo",
+          target: null,
+          targetIsProfile: true,
+          yo: { count: 1, replied: false, imageUrl: yoImageUrlOf(event) },
+        };
       }
       // [#1025] プロフィール（kind:0）へのリアクション（k タグで分かるもの）は、対象を取りに行かない
       if (reactsToProfile(event.tags)) {
@@ -193,7 +201,12 @@ export function collapseYos(
     const mine = myLatest.get(actor);
     others.push({
       ...newest,
-      yo: { count: group.length, replied: mine !== undefined && mine >= newest.createdAt },
+      // 絵は、いちばん新しい Yo のもの
+      yo: {
+        count: group.length,
+        replied: mine !== undefined && mine >= newest.createdAt,
+        imageUrl: newest.yo?.imageUrl ?? null,
+      },
     });
   }
   return others;

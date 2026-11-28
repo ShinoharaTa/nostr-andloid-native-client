@@ -120,14 +120,51 @@ export function latestProfileOf(
 }
 
 /**
+ * Yo に付いている絵文字の画像 URL（`emoji` タグ。ネイティブ Yo.imageUrlOf）。受け取った Yo の行に、送り主が選んだ絵として出す。
+ * yoRecipientOf が通した Yo（`emoji` がちょうど 1 つで、受け付けられる https の URL）に使うこと。条件に合わなければ null
+ */
+export function yoImageUrlOf(event: Pick<NostrEvent, "tags">): string | null {
+  const emoji = event.tags.filter((tag) => tag[0] === "emoji");
+  if (emoji.length !== 1 || emoji[0][1] !== YO_SHORTCODE) return null;
+  const url = emoji[0][2] ?? "";
+  return isAcceptableYoEmojiUrl(url) ? url : null;
+}
+
+/**
+ * 送る Yo に付ける画像 URL（ネイティブ Yo.sendImageUrl）。設定で選んだもの（saved）が受け付けられる URL ならそれ、
+ * そうでなければ標準（YO_IMAGE_URL）。受け取る側の規則 2 を通らない URL では Yo として認識されないので、標準に戻す
+ */
+export function yoSendImageUrl(saved: string | null | undefined): string {
+  return typeof saved === "string" && isAcceptableYoEmojiUrl(saved) ? saved : YO_IMAGE_URL;
+}
+
+/**
+ * 「Yo の絵文字」で選べるもの（ネイティブ Yo.emojiChoices）。先頭に標準（nostr-yo の絵）を必ず入れ、続けて自分の
+ * カスタム絵文字のうち Yo に使える URL のもの。同じ画像は 1 つにまとめる
+ */
+export function yoEmojiChoices(
+  customs: readonly { shortcode: string; url: string }[],
+): { shortcode: string; url: string }[] {
+  const seen = new Set<string>();
+  const out: { shortcode: string; url: string }[] = [];
+  for (const emoji of [{ shortcode: YO_SHORTCODE, url: YO_IMAGE_URL }, ...customs]) {
+    if (!isAcceptableYoEmojiUrl(emoji.url) || seen.has(emoji.url)) continue;
+    seen.add(emoji.url);
+    out.push({ shortcode: emoji.shortcode, url: emoji.url });
+  }
+  return out;
+}
+
+/**
  * 送る Yo（署名前）。profileEventId は相手の最新の kind:0 の id、hint はそれが見つかるリレー（無ければ空）。
- * createdAt を省くと発行のときの時刻になる。
+ * createdAt を省くと発行のときの時刻になる。imageUrl は付ける絵（標準は nostr-yo の絵。使えない URL なら標準に戻す）
  */
 export function yoDraft(
   recipient: string,
   profileEventId: string,
   hint = "",
   createdAt?: number,
+  imageUrl: string = YO_IMAGE_URL,
 ): EventDraft {
   if (!HEX64.test(recipient) || !HEX64.test(profileEventId)) throw new Error("invalid Yo target");
   return {
@@ -137,7 +174,7 @@ export function yoDraft(
       ["e", profileEventId, hint, recipient],
       ["p", recipient, hint],
       ["k", "0"],
-      ["emoji", YO_SHORTCODE, YO_IMAGE_URL],
+      ["emoji", YO_SHORTCODE, yoSendImageUrl(imageUrl)],
       ["t", YO_SHORTCODE],
     ],
     ...(createdAt === undefined ? {} : { created_at: createdAt }),

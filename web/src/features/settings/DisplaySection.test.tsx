@@ -6,6 +6,7 @@ import { NYAN_MODE_KEY, useNyanMode } from "../../ui/nyan";
 import { DEFAULT_EMBED_PREFS, EMBED_PREFS_KEY, useEmbedPrefs } from "../linkcard/embedPrefs";
 import { REACTION_COUNTS_KEY, useReactionCountsPref } from "../reactions/reactionCountsPref";
 import { DEFAULT_THEME_PREFS, THEME_KEY, useThemePrefs } from "../theme/themePrefs";
+import { reloadYoEmojiForTest } from "../yo/yoEmoji";
 import { reloadYoStyleForTest, YO_STYLE_KEY } from "../yo/yoStyle";
 import { DisplaySection } from "./DisplaySection";
 import { reloadTimeDisplayForTest, TIME_DISPLAY_KEY } from "./timeDisplay";
@@ -18,6 +19,7 @@ afterEach(() => {
   useReactionCountsPref.setState({ enabled: true });
   reloadTimeDisplayForTest();
   reloadYoStyleForTest();
+  reloadYoEmojiForTest();
 });
 
 it("埋め込み表示の 6 項目は既定ですべて ON", () => {
@@ -190,34 +192,36 @@ it("[#940] 時刻の表示は既定で経過時間。3 択を選ぶと保存さ�
   expect(screen.getByRole("button", { name: "日時（秒まで）" })).toHaveAttribute("aria-pressed", "true");
 });
 
-it("[#1025] Yo の表示は既定でモノクロ。紫を選ぶと保存され、次の描画にも残る。読めない値は既定に戻す", async () => {
+it("[#1025] Yo の表示は既定で紫。白黒（強調）を選ぶと保存され、次の描画にも残る。読めない値は既定に戻す", async () => {
   const user = userEvent.setup();
   const { unmount } = render(<DisplaySection />);
 
   expect(screen.getByRole("heading", { name: "Yo の表示" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "モノクロ" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("button", { name: "紫" })).toHaveAttribute("aria-pressed", "false");
-
-  await user.click(screen.getByRole("button", { name: "紫" }));
-  expect(localStorage.getItem(YO_STYLE_KEY)).toBe("color");
   expect(screen.getByRole("button", { name: "紫" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "白黒（強調）" })).toHaveAttribute("aria-pressed", "false");
+
+  await user.click(screen.getByRole("button", { name: "白黒（強調）" }));
+  expect(localStorage.getItem(YO_STYLE_KEY)).toBe("block");
+  expect(screen.getByRole("button", { name: "白黒（強調）" })).toHaveAttribute("aria-pressed", "true");
   unmount();
 
   reloadYoStyleForTest();
   const second = render(<DisplaySection />);
-  expect(screen.getByRole("button", { name: "紫" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "白黒（強調）" })).toHaveAttribute("aria-pressed", "true");
   second.unmount();
 
   localStorage.setItem(YO_STYLE_KEY, "rainbow");
   reloadYoStyleForTest();
   render(<DisplaySection />);
-  expect(screen.getByRole("button", { name: "モノクロ" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "紫" })).toHaveAttribute("aria-pressed", "true");
 });
 
-it("[#1025] Yo の表示はネイティブと同じく 時刻の表示 の下・にゃにゃにゃ の上", () => {
+it("[#1025] Yo の表示・Yo の絵文字は、ネイティブと同じく 時刻の表示 の下・にゃにゃにゃ の上", () => {
   const { container } = render(<DisplaySection />);
   const text = container.textContent ?? "";
-  const positions = ["時刻の表示", "Yo の表示", "にゃにゃにゃウイルス"].map((label) => text.indexOf(label));
+  const positions = ["時刻の表示", "Yo の表示", "Yo の絵文字", "にゃにゃにゃウイルス"].map((label) =>
+    text.indexOf(label),
+  );
   expect(positions.every((p) => p >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
 });

@@ -8,7 +8,8 @@ import { eventStore } from "../../nostr/store";
 import { useSession } from "../../signer/session";
 import { useToast } from "../../ui/toast";
 import { sendYo, sendYoNow, useYoSending } from "./sendYo";
-import { yoDraft, yoRecipientOf } from "./yoModel";
+import { reloadYoEmojiForTest, setYoEmojiUrl, YO_EMOJI_KEY } from "./yoEmoji";
+import { YO_IMAGE_URL, yoDraft, yoRecipientOf } from "./yoModel";
 
 // 署名・送信はしない（publishEvent だけ差し替えて draft を見る）
 vi.mock("../../nostr/publish", async (importOriginal) => {
@@ -56,6 +57,8 @@ beforeEach(() => {
 
 afterEach(() => {
   useSession.setState({ status: "loading", method: null, pubkey: null });
+  localStorage.removeItem(YO_EMOJI_KEY);
+  reloadYoEmojiForTest();
 });
 
 describe("sendYoNow", () => {
@@ -84,6 +87,20 @@ describe("sendYoNow", () => {
     expect(yoRecipientOf({ ...draft, created_at: draft.created_at ?? unixNow() }, unixNow())).toBe(bob);
     // 発行できた時点で、送った時刻を覚える（ボタンをまた押せないようにする）
     expect(useYoSending.getState().sentAt.get(bob)).toBe(draft.created_at);
+  });
+
+  it("設定で選んだ絵を付けて送る（標準は nostr-yo の絵）", async () => {
+    const latest = profileOf(bobKey, unixNow() - 10, "new");
+    vi.mocked(requestOnce).mockReturnValue(of(latest));
+    const emojiOf = (n: number) =>
+      vi.mocked(publishEvent).mock.calls[n][0].tags.filter((tag: string[]) => tag[0] === "emoji");
+
+    expect(await sendYoNow(bob)).toBe("sent");
+    expect(emojiOf(0)).toEqual([["emoji", "yo", YO_IMAGE_URL]]);
+
+    setYoEmojiUrl("https://emoji.example/mine.webp");
+    expect(await sendYoNow(bob)).toBe("sent");
+    expect(emojiOf(1)).toEqual([["emoji", "yo", "https://emoji.example/mine.webp"]]);
   });
 
   it("相手の kind:0 が見つからなければ送らない", async () => {

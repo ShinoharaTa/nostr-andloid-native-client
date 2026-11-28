@@ -6,6 +6,7 @@ import { isYoReplied, type NotificationItem } from "../notifications/notificatio
 import { useYoSending } from "./sendYo";
 import styles from "./Yo.module.css";
 import { YoBackButton } from "./YoBackButton";
+import { YoImage } from "./YoImage";
 import { YO_FRESH_SEC, YO_LABEL, YO_WORD, yoCountLabel } from "./yoModel";
 import { useYoStyle, type YoStyle } from "./yoStyle";
 
@@ -24,38 +25,51 @@ export function useYoRowState(item: NotificationItem): YoRowState | null {
 }
 
 /**
- * [#1025] Yo の行の左の印（ネイティブ YoUi.kt の YoWord / YoTile）。送り主が emoji タグで指定した画像は使わない
- * （SPEC: 受け取る側はその URL を取りに行かない）。
- *  - モノクロ・まだ返していない: 大きな「Yo!」
- *  - 紫: 紫のタイル「Yo!」（返したあとは面を沈める）
- *  - モノクロ・返したあと: 沈めた小さな「Yo!」
- * 届いたばかりの Yo を初めて描くときだけ、一度動かす（モノクロは弾む、紫は揺れる）。
+ * [#1025] Yo の行の左の印（ネイティブ YoUi.kt の YoImage / YoTile）。送り主が Yo に付けた絵文字の画像（imageUrl）を出す。
+ * 読み込めるまで・読み込めなかったときは、描いた「Yo!」を出す（紫 = 紫のタイル、白黒 = 文字）。
+ *  - 白黒・まだ返していない: 大きな絵
+ *  - 紫: 種別マークの列いっぱいの絵
+ *  - 返したあと: 絵を沈める
+ * 届いたばかりの Yo を初めて描くときだけ、一度動かす（白黒は弾む、紫は揺れる）。
  */
-export function YoNoticeMark({ state, createdAt }: { state: YoRowState; createdAt: number }) {
+export function YoNoticeMark({
+  state,
+  createdAt,
+  imageUrl,
+}: {
+  state: YoRowState;
+  createdAt: number;
+  imageUrl: string | null;
+}) {
   const style = useYoStyle();
   const [fresh] = useState(() => Math.abs(unixNow() - createdAt) <= YO_FRESH_SEC);
   const animate = fresh && state !== "done" ? true : undefined;
+  const done = state === "done" || undefined;
   const tile = state === "color" || (state === "done" && style === "color");
+  // 枠（傾き・動きを持つ）。中身は絵か、描いた「Yo!」
+  const shape = tile ? "tile" : state === "block" ? "large" : "small";
   return (
     <span className={styles.markWrap} role="img" aria-label={YO_LABEL}>
-      {tile ? (
-        <span
-          className={`${styles.word} ${styles.tile}`}
-          data-dimmed={state === "done" || undefined}
-          data-fresh={animate}
-          aria-hidden="true"
-        >
-          {YO_WORD}
-        </span>
-      ) : (
-        <span
-          className={`${styles.word} ${state === "block" ? styles.wordLg : styles.wordSm}`}
-          data-fresh={animate}
-          aria-hidden="true"
-        >
-          {YO_WORD}
-        </span>
-      )}
+      <span className={styles.frame} data-shape={shape} data-fresh={animate} data-done={done}>
+        <YoImage
+          url={imageUrl}
+          className={styles.image}
+          fallback={
+            tile ? (
+              <span className={`${styles.word} ${styles.tile}`} data-dimmed={done} aria-hidden="true">
+                {YO_WORD}
+              </span>
+            ) : (
+              <span
+                className={`${styles.word} ${state === "block" ? styles.wordLg : styles.wordSm}`}
+                aria-hidden="true"
+              >
+                {YO_WORD}
+              </span>
+            )
+          }
+        />
+      </span>
     </span>
   );
 }

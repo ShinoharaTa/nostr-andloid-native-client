@@ -10,6 +10,7 @@ import { setDensity, useThemePrefs } from "../theme/themePrefs";
 import { ReactionCountsSettings } from "./ReactionCountsSettings";
 import styles from "./SettingsSections.module.css";
 import { TimeDisplaySettings } from "./TimeDisplaySettings";
+import { YoEmojiSettings } from "./YoEmojiSettings";
 import { YoStyleSettings } from "./YoStyleSettings";
 
 /**
@@ -27,6 +28,7 @@ export function DisplaySection() {
       </div>
       <TimeDisplaySettings />
       <YoStyleSettings />
+      <YoEmojiSettings />
       <NyanModeBlock />
       <KansaiBlock />
       <DensityBlock />

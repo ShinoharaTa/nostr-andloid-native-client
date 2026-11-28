@@ -9,10 +9,12 @@ import { useTimeDisplay } from "../settings/timeDisplay";
 import { Avatar } from "../timeline/NoteItem";
 import { useNow } from "../timeline/useNow";
 import styles from "./Yo.module.css";
+import { YoImage } from "./YoImage";
+import { yoImageUrlOf } from "./yoModel";
 
 /**
  * [#1025] 自分が送った Yo の行（ネイティブ YoUi.kt MyYoRow。フォロー中カラムの「自分がしたリアクション」・ふぁぼ欄）:
- * 「(手を振るアイコン) (アバター) 〇〇 さんに Yo  時刻」。対象は相手のプロフィール（kind:0）なので、投稿としては出さない。
+ * 「(付けた絵) (アバター) 〇〇 さんに Yo  時刻」。絵を読み込めるまでは手を振るアイコン。対象は相手のプロフィール（kind:0）なので、投稿としては出さない。
  * 押すと相手のプロフィールを開く。
  */
 export function MyYoRow({ reaction, to }: { reaction: NostrEvent; to: string }) {
@@ -24,7 +26,11 @@ export function MyYoRow({ reaction, to }: { reaction: NostrEvent; to: string }) 
   return (
     <Link to={hrefForProfile(to)} className={styles.myRow} data-testid="my-yo-row">
       <span className={styles.myMark}>
-        <WavingHandIcon className={styles.markIcon} />
+        <YoImage
+          url={yoImageUrlOf(reaction)}
+          className={styles.myImage}
+          fallback={<WavingHandIcon className={styles.markIcon} />}
+        />
       </span>
       <span className={styles.myLine}>
         <Avatar key={picture} url={picture} size="sm" seed={to} pubkey={to} />

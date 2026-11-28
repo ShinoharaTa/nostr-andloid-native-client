@@ -159,7 +159,11 @@ export const NotificationRow = memo(function NotificationRow({ item }: { item: N
   return (
     <article ref={ref} className={styles.row} data-kind={item.kind} data-yo={yoState ?? undefined}>
       <div className={styles.mark}>
-        {yoState ? <YoNoticeMark state={yoState} createdAt={item.createdAt} /> : <KindMark item={item} />}
+        {yoState ? (
+          <YoNoticeMark state={yoState} createdAt={item.createdAt} imageUrl={item.yo?.imageUrl ?? null} />
+        ) : (
+          <KindMark item={item} />
+        )}
       </div>
       <div className={styles.main}>
         {head}
