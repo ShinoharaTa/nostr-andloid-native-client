@@ -204,11 +204,18 @@ fun App(
                     if (intent == null || !session) return@collect
                     when (intent) {
                         is ExternalIntent.ShareText -> {
-                            // 共有テキストをコンポーザー初期値に。返信/引用モードの残骸はクリア。
-                            state.replyTo = null
-                            state.quoting = null
-                            state.composeInitialText = intent.text
-                            state.showCompose = true
+                            // [#1021] 音楽サービスのリンクが入っていれば、投稿するかステータスに出すかを選んでもらう
+                            // （選ぶ画面は AppScaffold の SharedMusicDialog）。
+                            val music = app.nostrdeck.model.NowPlaying.musicLinkIn(intent.text)
+                            if (music != null) {
+                                state.sharedMusic = app.nostrdeck.state.SharedMusic(intent.text, music)
+                            } else {
+                                // 共有テキストをコンポーザー初期値に。返信/引用モードの残骸はクリア。
+                                state.replyTo = null
+                                state.quoting = null
+                                state.composeInitialText = intent.text
+                                state.showCompose = true
+                            }
                         }
                         is ExternalIntent.ShareImage -> {
                             // [#201] 共有画像をコンポーザーの初期添付に。返信/引用モードの残骸はクリア。

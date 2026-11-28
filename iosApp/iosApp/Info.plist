@@ -57,6 +57,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>「いま聴いている曲を読む」を押したときに、「ミュージック」アプリで再生中の曲名を読むために使用します。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ユーザーが指定した LAN 内のリレー（NIP-46 の bunker 等）に接続するために使用します。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

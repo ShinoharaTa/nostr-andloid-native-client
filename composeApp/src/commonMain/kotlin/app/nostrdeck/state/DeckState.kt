@@ -236,8 +236,22 @@ class DeckState(
     /** [#1019] 自分のステータス（NIP-38 の 1 行）を更新する画面の表示状態。 */
     var showStatusEditor by mutableStateOf(false)
 
+    /**
+     * [#1021] 音楽アプリの「共有」で受け取った曲（共有された文字に音楽サービスのリンクがあるとき）。
+     * 「投稿する / ステータスに出す」を選ぶ画面を出す。選ぶか閉じたら null に戻す。
+     */
+    var sharedMusic by mutableStateOf<SharedMusic?>(null)
+
     /** [#100] コンポーザーの初期テキスト（共有ターゲット経由）。閉じたらクリアする。 */
     var composeInitialText by mutableStateOf<String?>(null)
+
+    /** [#1021] 文面を入れた状態で投稿欄を開く（返信・引用の残りは外す。共有で受け取ったときと同じ）。 */
+    fun openComposeWith(text: String) {
+        replyTo = null
+        quoting = null
+        composeInitialText = text
+        showCompose = true
+    }
 
     /** [#201] コンポーザーの初期添付画像（共有ターゲット経由の content URI 文字列）。閉じたらクリアする。 */
     var composeInitialImageUris by mutableStateOf<List<String>>(emptyList())
@@ -464,3 +478,6 @@ class DeckState(
         if (i >= 0) columns[i] = transform(columns[i])
     }
 }
+
+/** [#1021] 音楽アプリの「共有」で受け取ったもの。[text] は共有された文字の全体、[url] はその中の音楽サービスのリンク。 */
+data class SharedMusic(val text: String, val url: String)
