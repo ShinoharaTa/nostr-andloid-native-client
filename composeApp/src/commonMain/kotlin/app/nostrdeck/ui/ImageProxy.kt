@@ -57,6 +57,13 @@ object ImageProxy {
     }
 
     /**
+     * [url] の画像を、いまプロキシ経由で読み込めるか（[proxied] がプロキシの URL を返すか）。
+     * プロキシに拒否されたホスト・手元のサーバーは false（[proxied] は元 URL を返し、配信元へ直接つなぐことになる）。
+     * 配信元へ直接つなぎたくない画像（[#1024] Yo に付いた絵。送り主が選んだ URL）は、true のときだけ読み込む。
+     */
+    fun viaProxy(url: String): Boolean = originOf(proxied(url)) != null
+
+    /**
      * [proxied] が生成した URL から元画像 URL を復元する（プロキシ URL でなければ null）。
      * プロキシ（wsrv.nl）が特定ドメイン/TLD をポリシーで拒否した場合の**元 URL 直取得**
      * フォールバックに使う（例: .cc ドメインは wsrv.nl が 400 で拒否する）。
